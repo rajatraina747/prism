@@ -98,55 +98,81 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
     let now = chrono::Utc::now().to_rfc3339();
 
     // Collect unique resolutions from real video formats (not storyboards, not audio-only)
+    // Use format_note (e.g. "720p", "1080p") for labels, height for yt-dlp filters
     let raw_formats = info.formats.unwrap_or_default();
-    let mut seen_heights: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-    let mut best_size_for_height: std::collections::HashMap<u32, u64> = std::collections::HashMap::new();
+
+    struct ResInfo {
+        label: String,  // e.g. "1080p"
+        height: u32,    // actual pixel height (for yt-dlp filter)
+        size: u64,
+    }
+
+    let mut resolutions: std::collections::HashMap<String, ResInfo> = std::collections::HashMap::new();
 
     for f in &raw_formats {
         let height = f.height.unwrap_or(0);
         if height < 144 {
-            continue; // skip storyboards and tiny thumbnails
+            continue;
         }
         let vcodec = f.vcodec.as_deref().unwrap_or("none");
         if vcodec == "none" {
-            continue; // skip audio-only
+            continue;
         }
         let ext = f.ext.as_deref().unwrap_or("");
         if ext == "mhtml" {
-            continue; // skip storyboard formats
+            continue;
         }
-        seen_heights.insert(height);
+
+        // Use format_note (e.g. "1080p") if available, otherwise fall back to height
+        let note = f.format_note.as_deref().unwrap_or("");
+        let label = if note.ends_with('p') && note.len() <= 6 {
+            note.to_string()
+        } else {
+            format!("{}p", height)
+        };
+
         let size = f.filesize.or(f.filesize_approx).unwrap_or(0);
-        let entry = best_size_for_height.entry(height).or_insert(0);
-        if size > *entry {
-            *entry = size;
+        let entry = resolutions.entry(label.clone()).or_insert(ResInfo {
+            label: label.clone(),
+            height,
+            size: 0,
+        });
+        if size > entry.size {
+            entry.size = size;
+        }
+        // Keep the largest height for this label (in case of aspect ratio differences)
+        if height > entry.height {
+            entry.height = height;
         }
     }
 
-    // Build format options as resolution choices (yt-dlp will merge video+audio)
-    let unique_formats: Vec<FormatOption> = seen_heights
-        .into_iter()
-        .rev()
-        .map(|height| {
-            let quality = match height {
+    // Sort by resolution height descending
+    let mut unique_formats: Vec<FormatOption> = resolutions
+        .into_values()
+        .map(|r| {
+            let label_height: u32 = r.label.trim_end_matches('p').parse().unwrap_or(r.height);
+            let quality = match label_height {
                 h if h >= 2160 => "best",
                 h if h >= 1080 => "high",
                 h if h >= 720 => "medium",
                 _ => "low",
             };
-            let size = best_size_for_height.get(&height).copied().unwrap_or(0);
             FormatOption {
-                // Use yt-dlp merge syntax: best video at this height + best audio
-                id: format!("bestvideo[height<={}]+bestaudio/best[height<={}]", height, height),
-                label: format!("{}p MP4", height),
-                resolution: format!("{}p", height),
+                id: format!("bestvideo[height<={}]+bestaudio/best[height<={}]", r.height, r.height),
+                label: format!("{} MP4", r.label),
+                resolution: r.label.clone(),
                 container: "mp4".into(),
                 codec: "h264/aac".into(),
-                file_size: size,
+                file_size: r.size,
                 quality: quality.into(),
             }
         })
         .collect();
+    unique_formats.sort_by(|a, b| {
+        let a_h: u32 = a.resolution.trim_end_matches('p').parse().unwrap_or(0);
+        let b_h: u32 = b.resolution.trim_end_matches('p').parse().unwrap_or(0);
+        b_h.cmp(&a_h)
+    });
 
     Ok(MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),

@@ -79,10 +79,11 @@ export class TauriPrismService implements IPrismService {
         onComplete(event.payload.success, event.payload.error ?? undefined);
       });
 
-      // Build output path (always .mp4 since we use --merge-output-format mp4)
+      // Use %(ext)s template so yt-dlp can download video+audio separately
+      // then merge them. --merge-output-format mp4 ensures final output is .mp4
       const dest = item.settings.destination || '~/Downloads/Prism';
       const filename = item.settings.filename || item.metadata.title || 'video';
-      const outputPath = `${dest}/${filename}.mp4`;
+      const outputPath = `${dest}/${filename}.%(ext)s`;
 
       await invoke('start_download', {
         id: item.id,

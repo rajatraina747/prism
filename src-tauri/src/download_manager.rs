@@ -152,7 +152,8 @@ impl DownloadManager {
                         Some("Download failed or was cancelled".into())
                     },
                     file_path: if success {
-                        Some(output_path)
+                        // The template %(ext)s gets replaced with "mp4" after merge
+                        Some(output_path.replace("%(ext)s", "mp4"))
                     } else {
                         None
                     },
