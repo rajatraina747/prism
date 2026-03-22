@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useHistory } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Panel } from '@/components/common';
 import { formatBytes, formatDuration } from '@/services';
+import { toast } from 'sonner';
 import {
   CheckCircle2, FolderOpen, RotateCcw, Trash2, ExternalLink,
   Copy, Search,
@@ -9,6 +11,7 @@ import {
 
 export default function Downloads() {
   const { items, removeFromHistory } = useHistory();
+  const service = useService();
   const [search, setSearch] = useState('');
 
   const completed = items
@@ -62,13 +65,25 @@ export default function Downloads() {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button title="Open file" className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
+                <button title="Open file" onClick={() => {
+                  const dest = item.settings.destination || '~/Downloads/Prism';
+                  const ext = item.settings.format?.container || 'mp4';
+                  const filename = item.settings.filename || item.metadata.title || 'video';
+                  service.openFile(`${dest}/${filename}.${ext}`).catch(() => toast.error('Could not open file'));
+                }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
-                <button title="Show in folder" className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
+                <button title="Show in folder" onClick={() => {
+                  const dest = item.settings.destination || '~/Downloads/Prism';
+                  const ext = item.settings.format?.container || 'mp4';
+                  const filename = item.settings.filename || item.metadata.title || 'video';
+                  service.showInFolder(`${dest}/${filename}.${ext}`).catch(() => toast.error('Could not open folder'));
+                }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
                   <FolderOpen className="w-3.5 h-3.5" />
                 </button>
-                <button title="Copy source URL" className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
+                <button title="Copy source URL" onClick={() => {
+                  service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'));
+                }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
                   <Copy className="w-3.5 h-3.5" />
                 </button>
                 <button title="Remove" onClick={() => removeFromHistory(item.id)} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]">

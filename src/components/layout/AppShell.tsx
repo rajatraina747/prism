@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useQueue } from '@/stores/AppProvider';
+import { useThemeSync } from '@/hooks/use-theme-sync';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -10,7 +11,6 @@ import {
   Clock,
   Settings2,
   Info,
-  Zap,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -34,9 +34,7 @@ function SidebarNav() {
     <aside className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand */}
       <div className="h-14 flex items-center gap-2.5 px-5 border-b border-border/30">
-        <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-          <Zap className="w-4 h-4 text-primary" strokeWidth={2.5} />
-        </div>
+        <img src="/logo-nobg.png" alt="Prism" className="w-7 h-7 rounded-lg object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
         <span className="text-[10px] font-medium text-muted-foreground ml-auto">v1.0</span>
       </div>
@@ -110,6 +108,8 @@ function PageHeader() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  useThemeSync();
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <SidebarNav />

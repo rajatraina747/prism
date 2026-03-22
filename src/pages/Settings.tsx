@@ -1,7 +1,10 @@
 import React from 'react';
 import { useSettings } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
+import { diagnostics } from '@/services/diagnostics';
 import { Panel } from '@/components/common';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   FolderOpen, Download, Gauge, Bell, Palette, HardDrive,
   RefreshCw, Bug, Shield, ChevronRight,
@@ -75,6 +78,7 @@ const SECTIONS = [
 
 export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
+  const service = useService();
   const [activeSection, setActiveSection] = React.useState('general');
 
   return (
@@ -110,10 +114,16 @@ export default function Settings() {
             {activeSection === 'general' && (
               <div className="divide-y divide-border/30">
                 <SettingRow label="Default save folder" description="Where downloaded files are saved">
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground max-w-[200px] truncate">
+                  <button
+                    onClick={async () => {
+                      const dir = await service.pickDirectory();
+                      if (dir) updatePreference('defaultSaveFolder', dir);
+                    }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground max-w-[200px] truncate hover:bg-secondary transition-colors cursor-pointer"
+                  >
                     <FolderOpen className="w-3 h-3 shrink-0" />
                     {p.defaultSaveFolder}
-                  </div>
+                  </button>
                 </SettingRow>
                 <SettingRow label="Naming template" description="How downloaded files are named">
                   <Select value={p.namingTemplate} options={[{ value: '{title}', label: 'Video Title' }, { value: '{title}_{resolution}', label: 'Title + Resolution' }, { value: '{id}_{title}', label: 'ID + Title' }]} onChange={v => updatePreference('namingTemplate', v)} />
@@ -171,9 +181,16 @@ export default function Settings() {
             {activeSection === 'storage' && (
               <div className="divide-y divide-border/30">
                 <SettingRow label="Download location" description="Primary storage path for downloads">
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground">
+                  <button
+                    onClick={async () => {
+                      const dir = await service.pickDirectory();
+                      if (dir) updatePreference('defaultSaveFolder', dir);
+                    }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    <FolderOpen className="w-3 h-3 shrink-0" />
                     {p.defaultSaveFolder}
-                  </div>
+                  </button>
                 </SettingRow>
               </div>
             )}
@@ -187,7 +204,18 @@ export default function Settings() {
                   <Select value={p.updateChannel} options={[{ value: 'stable', label: 'Stable' }, { value: 'beta', label: 'Beta' }]} onChange={v => updatePreference('updateChannel', v as any)} />
                 </SettingRow>
                 <SettingRow label="Check for updates">
-                  <button className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
+                  <button
+                    onClick={async () => {
+                      toast.info('Checking for updates...');
+                      const result = await service.checkForUpdates();
+                      if (result.available) {
+                        toast.success(`Update ${result.version} available!`);
+                      } else {
+                        toast.success('You are on the latest version');
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                  >
                     Check Now
                   </button>
                 </SettingRow>
@@ -206,7 +234,13 @@ export default function Settings() {
                   <Toggle checked={p.minimizeToTray} onChange={v => updatePreference('minimizeToTray', v)} />
                 </SettingRow>
                 <SettingRow label="Export logs">
-                  <button className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
+                  <button
+                    onClick={async () => {
+                      await service.exportLogs(diagnostics.getLogs());
+                      toast.success('Logs exported');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                  >
                     Export
                   </button>
                 </SettingRow>

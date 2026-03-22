@@ -1,16 +1,18 @@
 import React, { useState, useCallback } from 'react';
 import { useQueue } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
-import { EmptyState, Panel, StatusBadge, ProgressBar } from '@/components/common';
+import { Panel, ProgressBar } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, DEFAULT_PREFERENCES } from '@/types/models';
-import { mockParseUrl, formatBytes, formatDuration, generateId } from '@/services';
+import { generateId } from '@/services';
 import {
-  ArrowDownToLine, Sparkles, Clock, Zap, Loader2,
+  Sparkles, Zap, Loader2,
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
+  const service = useService();
   const [parseError, setParseError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parsedMetadata, setParsedMetadata] = useState<MediaMetadata | null>(null);
@@ -23,7 +25,7 @@ export default function Dashboard() {
     setParseError(null);
     setIsParsing(true);
     try {
-      const metadata = await mockParseUrl(url);
+      const metadata = await service.parseUrl(url);
       setParsedMetadata(metadata);
       setShowMediaModal(true);
     } catch (err: any) {
@@ -31,7 +33,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, []);
+  }, [service]);
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
     setParseError(null);
@@ -39,7 +41,7 @@ export default function Dashboard() {
 
     for (let i = 0; i < urls.length; i++) {
       try {
-        const metadata = await mockParseUrl(urls[i]);
+        const metadata = await service.parseUrl(urls[i]);
         // Auto-add to queue with default format
         const format = metadata.formats[1] || metadata.formats[0];
         const item: DownloadItem = {
@@ -69,7 +71,7 @@ export default function Dashboard() {
     }
 
     setBatchProgress(null);
-  }, [addToQueue]);
+  }, [addToQueue, service]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);

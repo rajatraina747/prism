@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
-import type { DownloadItem, HistoryItem, AppPreferences, DownloadStatus, DownloadError } from '@/types/models';
+import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
-import { persistence, mockStartDownload, generateId, diagnostics } from '@/services';
+import { useService } from '@/services/ServiceProvider';
+import { diagnostics } from '@/services/diagnostics';
 
 // ── Types ──
 interface QueueActions {
@@ -55,16 +56,18 @@ export function useSettings() {
 
 // ── Provider ──
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [queue, setQueue] = useState<DownloadItem[]>(() => persistence.loadQueue());
-  const [history, setHistory] = useState<HistoryItem[]>(() => persistence.loadHistory());
-  const [settings, setSettings] = useState<AppPreferences>(() => persistence.loadSettings() || DEFAULT_PREFERENCES);
+  const service = useService();
+
+  const [queue, setQueue] = useState<DownloadItem[]>(() => service.persistence.loadQueue());
+  const [history, setHistory] = useState<HistoryItem[]>(() => service.persistence.loadHistory());
+  const [settings, setSettings] = useState<AppPreferences>(() => service.persistence.loadSettings() || DEFAULT_PREFERENCES);
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
 
   // Persist
-  useEffect(() => { persistence.saveQueue(queue); }, [queue]);
-  useEffect(() => { persistence.saveHistory(history); }, [history]);
-  useEffect(() => { persistence.saveSettings(settings); }, [settings]);
+  useEffect(() => { service.persistence.saveQueue(queue); }, [queue, service]);
+  useEffect(() => { service.persistence.saveHistory(history); }, [history, service]);
+  useEffect(() => { service.persistence.saveSettings(settings); }, [settings, service]);
 
   // Move completed/failed to history
   useEffect(() => {
@@ -105,7 +108,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         i.id === item.id ? { ...i, status: 'downloading' as const, startedAt: new Date().toISOString() } : i
       ));
 
-      const cleanup = mockStartDownload(
+      const cleanup = service.startDownload(
         item,
         (data) => {
           setQueue(prev => prev.map(i =>
@@ -139,7 +142,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       cleanupRefs.current.set(item.id, cleanup);
     });
-  }, [queue, settings.maxConcurrentDownloads]);
+  }, [queue, settings.maxConcurrentDownloads, service]);
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);
