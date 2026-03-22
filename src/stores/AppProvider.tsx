@@ -15,6 +15,7 @@ interface QueueActions {
   clearCompleted: () => void;
   startAll: () => void;
   pauseAll: () => void;
+  reorderQueue: (fromIndex: number, toIndex: number) => void;
 }
 
 interface HistoryActions {
