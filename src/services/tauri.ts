@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { check as checkUpdate } from '@tauri-apps/plugin-updater';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
@@ -161,8 +162,15 @@ export class TauriPrismService implements IPrismService {
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
-    // Will be implemented with tauri-plugin-updater in Phase 6
-    return { available: false };
+    try {
+      const update = await checkUpdate();
+      if (update) {
+        return { available: true, version: update.version, notes: update.body ?? undefined };
+      }
+      return { available: false };
+    } catch {
+      return { available: false };
+    }
   }
 
   async getAppVersion(): Promise<string> {

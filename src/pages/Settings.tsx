@@ -229,12 +229,6 @@ export default function Settings() {
                 <SettingRow label="Log level" description="Verbosity of diagnostic logs">
                   <Select value={p.logLevel} options={[{ value: 'error', label: 'Error' }, { value: 'warn', label: 'Warning' }, { value: 'info', label: 'Info' }, { value: 'debug', label: 'Debug' }]} onChange={v => updatePreference('logLevel', v as any)} />
                 </SettingRow>
-                <SettingRow label="Launch on startup" description="Start Prism when your computer starts">
-                  <Toggle checked={p.launchOnStartup} onChange={v => updatePreference('launchOnStartup', v)} />
-                </SettingRow>
-                <SettingRow label="Minimize to tray" description="Keep Prism running in the system tray">
-                  <Toggle checked={p.minimizeToTray} onChange={v => updatePreference('minimizeToTray', v)} />
-                </SettingRow>
                 <SettingRow label="Export logs">
                   <button
                     onClick={async () => {

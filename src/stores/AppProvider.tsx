@@ -3,6 +3,24 @@ import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
+import { toast } from 'sonner';
+
+function playNotificationSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+    setTimeout(() => ctx.close(), 500);
+  } catch { /* audio not available */ }
+}
 
 // ── Types ──
 interface QueueActions {
@@ -69,6 +87,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { service.persistence.saveHistory(history); }, [history, service]);
   useEffect(() => { service.persistence.saveSettings(settings); }, [settings, service]);
 
+  // Sync log level preference to diagnostics service
+  useEffect(() => { diagnostics.setLogLevel(settings.logLevel); }, [settings.logLevel]);
+
   // Move completed/failed to history
   useEffect(() => {
     const terminal = queue.filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled');
@@ -126,8 +147,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setQueue(prev => prev.map(i =>
               i.id === item.id ? { ...i, status: 'completed' as const, progress: 100, completedAt: new Date().toISOString(), filePath, totalBytes: fileSize ?? i.totalBytes } : i
             ));
+            if (settings.notificationsEnabled) {
+              toast.success(`Downloaded: ${item.metadata.title}`);
+            }
+            if (settings.soundEnabled) playNotificationSound();
           } else {
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });
+            if (settings.notificationsEnabled) {
+              toast.error(`Failed: ${item.metadata.title}`);
+            }
             const err: DownloadError = {
               code: 'DOWNLOAD_FAILED',
               message: errorMsg || 'An unexpected error occurred',
