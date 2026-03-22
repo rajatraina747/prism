@@ -57,7 +57,7 @@ function SidebarNav() {
           >
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span>{item.label}</span>
-            {item.badgeKey === 'queue' && activeCount > 0 && (
+            {item.path === '/queue' && activeCount > 0 && (
               <span className="ml-auto text-[10px] tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
                 {activeCount}
               </span>
