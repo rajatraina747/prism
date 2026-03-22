@@ -80,7 +80,7 @@ interface PanelProps {
 
 export function Panel({ title, children, className, action, style }: PanelProps) {
   return (
-    <div className={cn('panel', className)}>
+    <div className={cn('panel', className)} style={style}>
       {(title || action) && (
         <div className="flex items-center justify-between mb-3">
           {title && <span className="panel-header mb-0">{title}</span>}
