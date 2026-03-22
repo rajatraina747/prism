@@ -63,11 +63,17 @@ impl DownloadManager {
                 "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
                 "--js-runtimes".into(),
                 "node,deno,bun".into(),
+                "--merge-output-format".into(),
+                "mp4".into(),
             ];
 
             if let Some(ref fmt) = format_id {
                 args.push("-f".into());
                 args.push(fmt.clone());
+            } else {
+                // Default: best video+audio merged
+                args.push("-f".into());
+                args.push("bestvideo+bestaudio/best".into());
             }
 
             let cmd = match app.shell().sidecar("yt-dlp") {
