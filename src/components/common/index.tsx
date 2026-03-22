@@ -78,7 +78,7 @@ interface PanelProps {
   style?: React.CSSProperties;
 }
 
-export function Panel({ title, children, className, action }: PanelProps) {
+export function Panel({ title, children, className, action, style }: PanelProps) {
   return (
     <div className={cn('panel', className)}>
       {(title || action) && (
