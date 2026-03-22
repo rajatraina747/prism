@@ -198,12 +198,14 @@ async fn start_download(
     format_id: Option<String>,
 ) -> Result<(), String> {
     let expanded_path = expand_tilde(&output_path);
+    // Auto-number if the target .mp4 already exists
+    let deduped_path = dedupe_output_path(&expanded_path);
     // Ensure the parent directory exists
-    if let Some(parent) = PathBuf::from(&expanded_path).parent() {
+    if let Some(parent) = PathBuf::from(&deduped_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let manager = app.state::<DownloadManager>();
-    manager.start_download(app.clone(), id, url, expanded_path, format_id);
+    manager.start_download(app.clone(), id, url, deduped_path, format_id);
     Ok(())
 }
 
@@ -272,6 +274,50 @@ fn extract_domain(url: &str) -> String {
         .and_then(|s| s.split('/').next())
         .unwrap_or("unknown")
         .to_string()
+}
+
+/// Given an output path like `/path/to/video.%(ext)s`, check if
+/// `video.mp4` already exists. If so, try `video (1).%(ext)s`, `video (2).%(ext)s`, etc.
+fn dedupe_output_path(template: &str) -> String {
+    // The template ends with .%(ext)s — check the .mp4 version for existence
+    let mp4_path = template.replace(".%(ext)s", ".mp4");
+    if !std::path::Path::new(&mp4_path).exists() {
+        return template.to_string();
+    }
+
+    // Strip the .%(ext)s suffix to get the base
+    let base = template.trim_end_matches(".%(ext)s");
+
+    for n in 1..1000 {
+        let candidate_mp4 = format!("{} ({}).mp4", base, n);
+        if !std::path::Path::new(&candidate_mp4).exists() {
+            return format!("{} ({}).%(ext)s", base, n);
+        }
+    }
+    // Unlikely fallback — just use the original
+    template.to_string()
+}
+
+/// Find ffmpeg on the system. When launched from Finder/DMG, PATH may not
+/// include /opt/homebrew/bin or /usr/local/bin, so we check common locations.
+pub fn find_ffmpeg() -> Option<String> {
+    let candidates = [
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ];
+    for p in candidates {
+        if std::path::Path::new(p).exists() {
+            return Some(p.to_string());
+        }
+    }
+    // Fallback: try `which`
+    std::process::Command::new("which")
+        .arg("ffmpeg")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
 // ── App setup ────────────────────────────────────────────────────────

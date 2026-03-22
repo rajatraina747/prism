@@ -4,11 +4,18 @@ import { useService } from '@/services/ServiceProvider';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { Panel, ProgressBar } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, DEFAULT_PREFERENCES } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, DEFAULT_PREFERENCES } from '@/types/models';
 import { generateId } from '@/services';
+import { cn } from '@/lib/utils';
 import {
-  Sparkles, Zap, Loader2,
+  Sparkles, Loader2,
 } from 'lucide-react';
+
+/** Pick the format that best matches a preset's target resolution. */
+function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
+  if (preset.resolution === 'Best') return formats[0]; // formats are sorted descending
+  return formats.find(f => f.resolution === preset.resolution) || formats[0];
+}
 
 export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
@@ -18,6 +25,7 @@ export default function Dashboard() {
   const [parsedMetadata, setParsedMetadata] = useState<MediaMetadata | null>(null);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ total: number; done: number } | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<DownloadPreset>(DEFAULT_PRESETS[2]); // Full HD default
 
   const activeDownloads = queueItems.filter(i => i.status === 'downloading');
 
@@ -42,8 +50,8 @@ export default function Dashboard() {
     for (let i = 0; i < urls.length; i++) {
       try {
         const metadata = await service.parseUrl(urls[i]);
-        // Auto-add to queue with default format
-        const format = metadata.formats[1] || metadata.formats[0];
+        // Auto-add to queue with preset-matched format
+        const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
         const item: DownloadItem = {
           id: generateId(),
           metadata,
@@ -80,7 +88,7 @@ export default function Dashboard() {
 
   return (
     <div className="page-container max-w-3xl mx-auto">
-      <div className="page-header">
+      <div className="page-header text-center">
         <h2 className="page-title">Dashboard</h2>
         <p className="page-subtitle">Paste a video URL to get started</p>
       </div>
@@ -116,13 +124,19 @@ export default function Dashboard() {
         <Panel title="Quick Presets" className="animate-fade-in" style={{ animationDelay: '100ms' } as React.CSSProperties}>
           <div className="flex flex-wrap gap-1.5">
             {DEFAULT_PRESETS.map(preset => (
-              <span
+              <button
                 key={preset.id}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary/60 text-[11px] font-medium text-secondary-foreground"
+                onClick={() => setSelectedPreset(preset)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors active:scale-[0.97]',
+                  selectedPreset.id === preset.id
+                    ? 'bg-primary/15 text-primary border border-primary/30'
+                    : 'bg-secondary/60 text-secondary-foreground hover:bg-secondary border border-transparent'
+                )}
               >
-                <Sparkles className="w-3 h-3 text-primary" />
+                <Sparkles className="w-3 h-3" />
                 {preset.name}
-              </span>
+              </button>
             ))}
           </div>
         </Panel>
@@ -152,18 +166,22 @@ export default function Dashboard() {
         </Panel>
       </div>
 
-      {/* Supported Formats Notice */}
-      <div className="mt-6 px-4 py-3 rounded-xl bg-secondary/30 border border-border/20 animate-fade-in" style={{ animationDelay: '220ms' } as React.CSSProperties}>
-        <div className="flex items-start gap-3">
-          <Zap className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-          <div>
-            <p className="text-xs font-medium text-foreground mb-0.5">Video download support</p>
-            <p className="text-[11px] text-muted-foreground text-pretty leading-relaxed">
-              Prism supports downloading videos from standard web URLs. The download engine is abstracted for future integration with lawful content sources. Resolution, format, and quality selection available per source.
-            </p>
-          </div>
+      {/* RainaCorp Branding */}
+      <a
+        href="https://www.rainacorp.co.uk"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-10 mb-2 flex flex-col items-center gap-2.5 py-5 group animate-fade-in"
+        style={{ animationDelay: '220ms' } as React.CSSProperties}
+      >
+        <img src="/rainacorp-logo.png" alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
+        <div className="text-center">
+          <p className="text-[11px] font-semibold tracking-wide text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
+            A RAINACORP PRODUCT
+          </p>
+          <p className="text-[10px] text-muted-foreground/40 mt-0.5">rainacorp.co.uk</p>
         </div>
-      </div>
+      </a>
 
       {/* Media Details Modal */}
       <MediaDetailsModal
@@ -171,6 +189,7 @@ export default function Dashboard() {
         onClose={() => setShowMediaModal(false)}
         metadata={parsedMetadata}
         onAddToQueue={handleAddToQueue}
+        preferredResolution={selectedPreset.resolution}
       />
     </div>
   );

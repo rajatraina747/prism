@@ -36,6 +36,13 @@ async function writeJson(file: string, data: unknown): Promise<void> {
 }
 
 export class TauriPrismService implements IPrismService {
+  private _initDone = false;
+
+  async init(): Promise<void> {
+    await this.persistence._ensureLoaded();
+    this._initDone = true;
+  }
+
   async parseUrl(url: string): Promise<MediaMetadata> {
     return invoke<MediaMetadata>('parse_url', { url });
   }
@@ -73,10 +80,11 @@ export class TauriPrismService implements IPrismService {
         success: boolean;
         error: string | null;
         file_path: string | null;
+        file_size: number | null;
       }>(`download-complete-${item.id}`, (event) => {
         if (cancelled) return;
         cleanup();
-        onComplete(event.payload.success, event.payload.error ?? undefined);
+        onComplete(event.payload.success, event.payload.error ?? undefined, event.payload.file_path ?? undefined, event.payload.file_size ?? undefined);
       });
 
       // Use %(ext)s template so yt-dlp can download video+audio separately
@@ -162,8 +170,8 @@ export class TauriPrismService implements IPrismService {
   }
 
   persistence = {
-    // These must be synchronous per the interface, so we use a cached approach.
-    // On init we load from disk; writes go to both cache and disk.
+    // Data is preloaded by init() before the UI renders.
+    // Writes go to both the in-memory cache and disk.
     _queueCache: [] as DownloadItem[],
     _historyCache: [] as HistoryItem[],
     _settingsCache: null as AppPreferences | null,
@@ -184,34 +192,30 @@ export class TauriPrismService implements IPrismService {
     },
 
     loadQueue(): DownloadItem[] {
-      // Kick off async load (will be ready on next call)
-      this._ensureLoaded();
       return this._queueCache;
     },
 
-    saveQueue(items: DownloadItem[]) {
-      this._queueCache = items;
-      writeJson(FILES.queue, items).catch(() => {});
+    saveQueue: (items: DownloadItem[]) => {
+      this.persistence._queueCache = items;
+      if (this._initDone) writeJson(FILES.queue, items).catch(() => {});
     },
 
     loadHistory(): HistoryItem[] {
-      this._ensureLoaded();
       return this._historyCache;
     },
 
-    saveHistory(items: HistoryItem[]) {
-      this._historyCache = items;
-      writeJson(FILES.history, items).catch(() => {});
+    saveHistory: (items: HistoryItem[]) => {
+      this.persistence._historyCache = items;
+      if (this._initDone) writeJson(FILES.history, items).catch(() => {});
     },
 
     loadSettings(): AppPreferences | null {
-      this._ensureLoaded();
       return this._settingsCache;
     },
 
-    saveSettings(prefs: AppPreferences) {
-      this._settingsCache = prefs;
-      writeJson(FILES.settings, prefs).catch(() => {});
+    saveSettings: (prefs: AppPreferences) => {
+      this.persistence._settingsCache = prefs;
+      if (this._initDone) writeJson(FILES.settings, prefs).catch(() => {});
     },
   };
 }

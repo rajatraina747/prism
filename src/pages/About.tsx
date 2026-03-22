@@ -1,12 +1,29 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useService } from '@/services/ServiceProvider';
 import { Panel } from '@/components/common';
-import { ExternalLink, Heart, Shield, BookOpen, MessageCircle } from 'lucide-react';
+import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+const CHANGELOG = [
+  {
+    version: '1.0.0',
+    date: 'March 2026',
+    highlights: [
+      'Download videos in up to 4K quality with automatic format selection',
+      'Smart quality presets — choose your preferred resolution with one click',
+      'Full download queue with pause, resume, retry, and batch import',
+      'Download history with search and one-click file access',
+      'Automatic file renaming to prevent overwrites',
+      'Light & dark themes with system preference detection',
+      'All data stored locally on your device — zero tracking, zero telemetry',
+      'Seamless auto-updates to keep you on the latest version',
+    ],
+  },
+];
 
 export default function About() {
   const service = useService();
+  const navigate = useNavigate();
   const [version, setVersion] = React.useState('1.0.0');
 
   React.useEffect(() => {
@@ -19,6 +36,12 @@ export default function About() {
         <img src="/logo-nobg.png" alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
         <h2 className="page-title">Prism</h2>
         <p className="page-subtitle">Premium Video Downloader</p>
+        <p className="text-[10px] text-muted-foreground/60 mt-1">
+          by{' '}
+          <a href="https://www.rainacorp.co.uk" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors">
+            RainaCorp
+          </a>
+        </p>
       </div>
 
       <Panel className="animate-fade-in">
@@ -26,31 +49,35 @@ export default function About() {
           <InfoRow label="Version" value={version} />
           <InfoRow label="Build" value="2026.03.22-stable" />
           <InfoRow label="Channel" value="Stable" />
-          <InfoRow label="Runtime" value={isTauri ? 'Tauri Desktop' : 'Web Preview'} />
           <InfoRow label="License" value="Personal Use" />
         </div>
       </Panel>
 
-      <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '80ms' } as React.CSSProperties}>
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-foreground">What's New</h3>
-          <div className="text-xs text-muted-foreground space-y-1.5 leading-relaxed">
-            <p>• Initial release with full queue management</p>
-            <p>• Multi-format video quality selection</p>
-            <p>• Download history with search and filtering</p>
-            <p>• Configurable concurrent downloads</p>
-            <p>• Pause, resume, retry, and cancel support</p>
-            <p>• Local-first data persistence</p>
+      {/* Changelog */}
+      {CHANGELOG.map(release => (
+        <Panel key={release.version} className="mt-4 animate-fade-in" style={{ animationDelay: '80ms' } as React.CSSProperties}>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <h3 className="text-xs font-semibold text-foreground">v{release.version}</h3>
+              <span className="text-[10px] text-muted-foreground ml-auto">{release.date}</span>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1.5 leading-relaxed">
+              {release.highlights.map((item, i) => (
+                <p key={i}>&#8226; {item}</p>
+              ))}
+            </div>
           </div>
-        </div>
-      </Panel>
+        </Panel>
+      ))}
 
       <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
         <div className="space-y-2">
-          <LinkRow icon={Shield} label="Privacy & Lawful Use" description="Prism respects content rights. Users must comply with applicable laws." href="#" />
-          <LinkRow icon={BookOpen} label="Documentation" description="Guides, API reference, and integration docs" href="https://github.com" />
-          <LinkRow icon={MessageCircle} label="Support" description="Get help or report issues" href="https://github.com" />
-          <LinkRow icon={Heart} label="Credits" description="Built with React, TypeScript, Tailwind CSS, and Tauri" href="#" />
+          <button onClick={() => navigate('/privacy')} className="w-full text-left">
+            <LinkRow icon={Shield} label="Privacy Policy" description="How Prism handles your data — spoiler: it stays on your device" />
+          </button>
+          <LinkRow icon={BookOpen} label="RainaCorp" description="Visit our website" href="https://www.rainacorp.co.uk" />
+          <LinkRow icon={Heart} label="Credits" description="Built with React, TypeScript, Tailwind CSS, Tauri, and yt-dlp" />
         </div>
       </Panel>
     </div>
@@ -66,14 +93,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LinkRow({ icon: Icon, label, description, href }: { icon: React.ElementType; label: string; description: string; href: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
-    >
+function LinkRow({ icon: Icon, label, description, href }: { icon: React.ElementType; label: string; description: string; href?: string }) {
+  const content = (
+    <>
       <div className="w-7 h-7 rounded-md bg-secondary/70 flex items-center justify-center shrink-0">
         <Icon className="w-3.5 h-3.5 text-muted-foreground" />
       </div>
@@ -81,7 +103,26 @@ function LinkRow({ icon: Icon, label, description, href }: { icon: React.Element
         <p className="text-xs font-medium text-foreground">{label}</p>
         <p className="text-[10px] text-muted-foreground">{description}</p>
       </div>
-      <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-    </a>
+      {href && <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />}
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group">
+      {content}
+    </div>
   );
 }

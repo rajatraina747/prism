@@ -82,6 +82,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         status: i.status as 'completed' | 'failed' | 'canceled',
         completedAt: i.completedAt || new Date().toISOString(),
         fileSize: i.status === 'completed' ? i.totalBytes : i.downloadedBytes,
+        filePath: i.filePath,
         error: i.error,
       }));
       setHistory(prev => [...historyItems, ...prev]);
@@ -117,13 +118,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
               : i
           ));
         },
-        (success, errorMsg) => {
+        (success, errorMsg, filePath, fileSize) => {
           startedRef.current.delete(item.id);
           cleanupRefs.current.delete(item.id);
           if (success) {
             diagnostics.log('info', `Download completed: ${item.metadata.title}`);
             setQueue(prev => prev.map(i =>
-              i.id === item.id ? { ...i, status: 'completed' as const, progress: 100, completedAt: new Date().toISOString() } : i
+              i.id === item.id ? { ...i, status: 'completed' as const, progress: 100, completedAt: new Date().toISOString(), filePath, totalBytes: fileSize ?? i.totalBytes } : i
             ));
           } else {
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });

@@ -15,9 +15,10 @@ interface MediaDetailsModalProps {
   onClose: () => void;
   metadata: MediaMetadata | null;
   onAddToQueue: (item: DownloadItem) => void;
+  preferredResolution?: string;
 }
 
-export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue }: MediaDetailsModalProps) {
+export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, preferredResolution }: MediaDetailsModalProps) {
   const [selectedFormat, setSelectedFormat] = useState<FormatOption | null>(null);
   const [filename, setFilename] = useState('');
   const [startImmediately, setStartImmediately] = useState(true);
@@ -26,10 +27,15 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue }: Med
 
   React.useEffect(() => {
     if (metadata) {
-      setSelectedFormat(metadata.formats[1] || metadata.formats[0] || null);
+      // Auto-select format matching the preferred resolution (from preset)
+      let pick: FormatOption | null = null;
+      if (preferredResolution && preferredResolution !== 'Best') {
+        pick = metadata.formats.find(f => f.resolution === preferredResolution) || null;
+      }
+      setSelectedFormat(pick || metadata.formats[0] || null);
       setFilename(metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'));
     }
-  }, [metadata]);
+  }, [metadata, preferredResolution]);
 
   if (!metadata) return null;
 

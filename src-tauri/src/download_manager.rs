@@ -9,6 +9,8 @@ use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
+use crate::find_ffmpeg;
+
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
     pub id: String,
@@ -25,6 +27,7 @@ pub struct DownloadComplete {
     pub success: bool,
     pub error: Option<String>,
     pub file_path: Option<String>,
+    pub file_size: Option<u64>,
 }
 
 struct ActiveDownload {
@@ -65,6 +68,8 @@ impl DownloadManager {
                 "node,deno,bun".into(),
                 "--merge-output-format".into(),
                 "mp4".into(),
+                "--remux-video".into(),
+                "mp4".into(),
             ];
 
             if let Some(ref fmt) = format_id {
@@ -74,6 +79,12 @@ impl DownloadManager {
                 // Default: best video+audio merged
                 args.push("-f".into());
                 args.push("bestvideo+bestaudio/best".into());
+            }
+
+            // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
+            if let Some(ffmpeg_path) = find_ffmpeg() {
+                args.push("--ffmpeg-location".into());
+                args.push(ffmpeg_path);
             }
 
             let cmd = match app.shell().sidecar("yt-dlp") {
@@ -86,6 +97,7 @@ impl DownloadManager {
                             success: false,
                             error: Some(format!("Failed to find yt-dlp sidecar: {}", e)),
                             file_path: None,
+                            file_size: None,
                         },
                     );
                     return;
@@ -102,6 +114,7 @@ impl DownloadManager {
                             success: false,
                             error: Some(format!("Failed to start yt-dlp: {}", e)),
                             file_path: None,
+                            file_size: None,
                         },
                     );
                     return;
@@ -141,6 +154,16 @@ impl DownloadManager {
                 map.remove(&id);
             }
 
+            let final_path = if success {
+                find_output_file(&output_path)
+            } else {
+                None
+            };
+
+            let file_size = final_path.as_ref().and_then(|p| {
+                std::fs::metadata(p).ok().map(|m| m.len())
+            });
+
             let _ = app.emit(
                 &format!("download-complete-{}", id),
                 DownloadComplete {
@@ -151,12 +174,8 @@ impl DownloadManager {
                     } else {
                         Some("Download failed or was cancelled".into())
                     },
-                    file_path: if success {
-                        // The template %(ext)s gets replaced with "mp4" after merge
-                        Some(output_path.replace("%(ext)s", "mp4"))
-                    } else {
-                        None
-                    },
+                    file_path: final_path,
+                    file_size,
                 },
             );
         });
@@ -233,4 +252,18 @@ fn parse_size(val: f64, unit: &str) -> u64 {
         _ => 1.0,
     };
     (val * multiplier) as u64
+}
+
+/// Given an output template like `/path/to/video.%(ext)s`, find the actual
+/// file on disk. Tries .mp4 first (most common due to --merge-output-format
+/// and --remux-video), then falls back to other common extensions.
+fn find_output_file(template: &str) -> Option<String> {
+    let extensions = ["mp4", "mkv", "webm", "mov", "avi", "flv"];
+    for ext in extensions {
+        let candidate = template.replace("%(ext)s", ext);
+        if std::path::Path::new(&candidate).exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }

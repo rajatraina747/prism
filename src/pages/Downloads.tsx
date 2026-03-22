@@ -66,18 +66,14 @@ export default function Downloads() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button title="Open file" onClick={() => {
-                  const dest = item.settings.destination || '~/Downloads/Prism';
-                  const ext = item.settings.format?.container || 'mp4';
-                  const filename = item.settings.filename || item.metadata.title || 'video';
-                  service.openFile(`${dest}/${filename}.${ext}`).catch(() => toast.error('Could not open file'));
+                  if (!item.filePath) { toast.error('File path not available'); return; }
+                  service.openFile(item.filePath).catch(() => toast.error('Could not open file'));
                 }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
                 <button title="Show in folder" onClick={() => {
-                  const dest = item.settings.destination || '~/Downloads/Prism';
-                  const ext = item.settings.format?.container || 'mp4';
-                  const filename = item.settings.filename || item.metadata.title || 'video';
-                  service.showInFolder(`${dest}/${filename}.${ext}`).catch(() => toast.error('Could not open folder'));
+                  if (!item.filePath) { toast.error('File path not available'); return; }
+                  service.showInFolder(item.filePath).catch(() => toast.error('Could not open folder'));
                 }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
                   <FolderOpen className="w-3.5 h-3.5" />
                 </button>

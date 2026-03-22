@@ -55,6 +55,7 @@ export interface DownloadItem {
   totalBytes: number;
   startedAt?: string;
   completedAt?: string;
+  filePath?: string;
   error?: DownloadError;
   retryAttempt: number;
 }
@@ -114,6 +115,7 @@ export interface HistoryItem {
   status: 'completed' | 'failed' | 'canceled';
   completedAt: string;
   fileSize: number;
+  filePath?: string;
   error?: DownloadError;
 }
 

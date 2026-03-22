@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
@@ -79,6 +80,7 @@ const SECTIONS = [
 export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
   const service = useService();
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = React.useState('general');
 
   return (
@@ -253,15 +255,21 @@ export default function Settings() {
                   Prism is a general-purpose video download utility. Users are responsible for ensuring they have the right to download any content. Do not use Prism to circumvent DRM or access restrictions.
                 </p>
                 <div className="divide-y divide-border/30">
-                  <SettingRow label="Privacy Policy">
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                  </SettingRow>
-                  <SettingRow label="Terms of Service">
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                  </SettingRow>
-                  <SettingRow label="Open Source Licenses">
-                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                  </SettingRow>
+                  <button onClick={() => navigate('/privacy')} className="w-full">
+                    <SettingRow label="Privacy Policy">
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </SettingRow>
+                  </button>
+                  <button onClick={() => navigate('/terms')} className="w-full">
+                    <SettingRow label="Terms of Service">
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </SettingRow>
+                  </button>
+                  <button onClick={() => navigate('/licenses')} className="w-full">
+                    <SettingRow label="Open Source Licenses">
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </SettingRow>
+                  </button>
                 </div>
               </div>
             )}

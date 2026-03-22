@@ -15,12 +15,17 @@ function detectEnvironment(): 'tauri' | 'web' {
 }
 
 async function createService(): Promise<IPrismService> {
+  let service: IPrismService;
   if (detectEnvironment() === 'tauri') {
     // Dynamic import so the Tauri module is only loaded in desktop builds
     const { TauriPrismService } = await import('./tauri');
-    return new TauriPrismService();
+    service = new TauriPrismService();
+  } else {
+    service = new MockPrismService();
   }
-  return new MockPrismService();
+  // Preload persistence data before UI renders
+  await service.init?.();
+  return service;
 }
 
 export function ServiceProvider({ children }: { children: ReactNode }) {

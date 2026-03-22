@@ -8,7 +8,7 @@ export type ProgressCallback = (data: {
   eta: number;
 }) => void;
 
-export type CompletionCallback = (success: boolean, error?: string) => void;
+export type CompletionCallback = (success: boolean, error?: string, filePath?: string, fileSize?: number) => void;
 
 export interface UpdateCheckResult {
   available: boolean;
@@ -17,6 +17,9 @@ export interface UpdateCheckResult {
 }
 
 export interface IPrismService {
+  // Initialize the service (preload persistence data from disk)
+  init?(): Promise<void>;
+
   // URL parsing & metadata
   parseUrl(url: string): Promise<MediaMetadata>;
 

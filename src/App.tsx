@@ -14,6 +14,9 @@ import Failed from "@/pages/Failed";
 import History from "@/pages/History";
 import Settings from "@/pages/Settings";
 import About from "@/pages/About";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsOfService from "@/pages/TermsOfService";
+import OpenSourceLicenses from "@/pages/OpenSourceLicenses";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +39,9 @@ const App = () => (
                 <Route path="/history" element={<History />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/about" element={<About />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/licenses" element={<OpenSourceLicenses />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
               </ErrorBoundary>

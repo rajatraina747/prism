@@ -82,6 +82,18 @@ function SidebarNav() {
           </NavLink>
         ))}
       </div>
+
+      {/* RainaCorp Branding */}
+      <div className="px-4 py-2.5 border-t border-border/20">
+        <a
+          href="https://www.rainacorp.co.uk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+        >
+          Designed & built by RainaCorp
+        </a>
+      </div>
     </aside>
   );
 }
@@ -96,6 +108,9 @@ function PageHeader() {
     '/history': 'History',
     '/settings': 'Settings',
     '/about': 'About Prism',
+    '/privacy': 'Privacy Policy',
+    '/terms': 'Terms of Service',
+    '/licenses': 'Open Source Licenses',
   };
 
   return (
