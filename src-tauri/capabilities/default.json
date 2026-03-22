@@ -22,6 +22,8 @@
     "fs:allow-download-write-recursive",
     "fs:allow-home-read-recursive",
     "fs:allow-home-write-recursive",
-    "updater:default"
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
   ]
 }

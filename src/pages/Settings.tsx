@@ -219,10 +219,11 @@ export default function Settings() {
                       <button
                         onClick={async () => {
                           setUpdateState('installing');
-                          toast.info('Downloading update...');
+                          toast.info('Downloading and installing update — Prism will restart shortly...');
                           try {
                             await service.installUpdate();
-                            // App will restart automatically after install
+                            // relaunch() is called inside installUpdate — if we reach here it didn't restart
+                            toast.success('Update installed! Please restart Prism to apply.');
                           } catch (e) {
                             toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
                             setUpdateState('available');

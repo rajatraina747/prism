@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "1.0.1"
+version = "1.0.2"
 description = "Prism — Premium Video Downloader"
 authors = ["you"]
 license = "MIT"
@@ -30,3 +30,4 @@ regex = "1"
 chrono = "0.4"
 dirs = "6"
 tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
