@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/common';
 import { ArrowDownToLine, Pause, Play, Trash2 } from 'lucide-react';
 
 export default function Queue() {
-  const { items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, clearCompleted, startAll, pauseAll } = useQueue();
+  const { items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, clearCompleted, startAll, pauseAll, reorderQueue } = useQueue();
 
   const activeItems = items.filter(i => !['completed', 'canceled'].includes(i.status));
   const hasActive = items.some(i => i.status === 'downloading');
