@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::process::Stdio;
 use std::sync::Arc;
 
 use regex::Regex;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tauri::{AppHandle, Emitter};
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
 #[derive(Clone, Serialize)]
@@ -28,7 +28,7 @@ pub struct DownloadComplete {
 }
 
 struct ActiveDownload {
-    child: Child,
+    child: CommandChild,
 }
 
 pub struct DownloadManager {
@@ -53,29 +53,39 @@ impl DownloadManager {
         let downloads = self.downloads.clone();
 
         tauri::async_runtime::spawn(async move {
-            let sidecar = app
-                .path()
-                .resolve("binaries/yt-dlp", tauri::path::BaseDirectory::Resource)
-                .unwrap_or_else(|_| std::path::PathBuf::from("yt-dlp"));
-
-            let mut cmd = Command::new(&sidecar);
-            cmd.arg(&url)
-                .arg("-o")
-                .arg(&output_path)
-                .arg("--newline")
-                .arg("--progress")
-                .arg("--progress-template")
-                .arg("%(progress._percent_str)s %(progress._total_bytes_str)s %(progress._speed_str)s %(progress._eta_str)s")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true);
+            let mut args = vec![
+                url.clone(),
+                "-o".into(),
+                output_path.clone(),
+                "--newline".into(),
+                "--progress".into(),
+                "--progress-template".into(),
+                "%(progress._percent_str)s %(progress._total_bytes_str)s %(progress._speed_str)s %(progress._eta_str)s".into(),
+            ];
 
             if let Some(ref fmt) = format_id {
-                cmd.arg("-f").arg(fmt);
+                args.push("-f".into());
+                args.push(fmt.clone());
             }
 
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
+            let cmd = match app.shell().sidecar("yt-dlp") {
+                Ok(c) => c.args(&args),
+                Err(e) => {
+                    let _ = app.emit(
+                        &format!("download-complete-{}", id),
+                        DownloadComplete {
+                            id,
+                            success: false,
+                            error: Some(format!("Failed to find yt-dlp sidecar: {}", e)),
+                            file_path: None,
+                        },
+                    );
+                    return;
+                }
+            };
+
+            let (mut rx, child) = match cmd.spawn() {
+                Ok(pair) => pair,
                 Err(e) => {
                     let _ = app.emit(
                         &format!("download-complete-{}", id),
@@ -90,38 +100,39 @@ impl DownloadManager {
                 }
             };
 
-            let stdout = child.stderr.take();
             {
                 let mut map = downloads.lock().await;
                 map.insert(id.clone(), ActiveDownload { child });
             }
 
-            if let Some(pipe) = stdout {
-                let reader = BufReader::new(pipe);
-                let mut lines = reader.lines();
-                let pct_re = Regex::new(r"(\d+\.?\d*)%").unwrap();
-                let size_re = Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap();
-                let speed_re = Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap();
-                let eta_re = Regex::new(r"ETA\s+(\d+):(\d+)").unwrap();
+            let pct_re = Regex::new(r"(\d+\.?\d*)%").unwrap();
+            let size_re = Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap();
+            let speed_re = Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap();
+            let eta_re = Regex::new(r"ETA\s+(\d+):(\d+)").unwrap();
 
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let progress = parse_progress(&line, &pct_re, &size_re, &speed_re, &eta_re, &id);
-                    if let Some(p) = progress {
-                        let _ = app.emit(&format!("download-progress-{}", id), p);
+            let mut success = false;
+
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(data) | CommandEvent::Stderr(data) => {
+                        let line = String::from_utf8_lossy(&data);
+                        if let Some(p) = parse_progress(&line, &pct_re, &size_re, &speed_re, &eta_re, &id) {
+                            let _ = app.emit(&format!("download-progress-{}", id), p);
+                        }
                     }
+                    CommandEvent::Terminated(payload) => {
+                        success = payload.code == Some(0);
+                    }
+                    _ => {}
                 }
             }
 
-            let exit_status: Option<std::process::ExitStatus> = {
+            // Remove from active downloads
+            {
                 let mut map = downloads.lock().await;
-                let dl = map.remove(&id);
-                match dl {
-                    Some(mut d) => d.child.wait().await.ok(),
-                    None => None,
-                }
-            };
+                map.remove(&id);
+            }
 
-            let success = exit_status.map(|s: std::process::ExitStatus| s.success()).unwrap_or(false);
             let _ = app.emit(
                 &format!("download-complete-{}", id),
                 DownloadComplete {
@@ -144,8 +155,8 @@ impl DownloadManager {
 
     pub async fn cancel_download(&self, id: &str) -> bool {
         let mut map = self.downloads.lock().await;
-        if let Some(mut dl) = map.remove(id) {
-            let _ = dl.child.kill().await;
+        if let Some(dl) = map.remove(id) {
+            let _ = dl.child.kill();
             true
         } else {
             false

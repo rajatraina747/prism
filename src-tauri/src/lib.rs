@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use download_manager::DownloadManager;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-use tokio::process::Command;
+use tauri_plugin_shell::ShellExt;
 
 // ── Structs matching frontend types ──────────────────────────────────
 
@@ -71,26 +71,18 @@ struct YtDlpInfo {
 
 // ── Commands ─────────────────────────────────────────────────────────
 
-fn resolve_yt_dlp(app: &AppHandle) -> PathBuf {
-    app.path()
-        .resolve("binaries/yt-dlp", tauri::path::BaseDirectory::Resource)
-        .unwrap_or_else(|_| PathBuf::from("yt-dlp"))
-}
-
 #[tauri::command]
 async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String> {
-    let bin = resolve_yt_dlp(&app);
-
-    let output = Command::new(&bin)
-        .arg("--dump-json")
-        .arg("--no-download")
-        .arg("--no-warnings")
-        .arg(&url)
+    let output = app
+        .shell()
+        .sidecar("yt-dlp")
+        .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
+        .args(["--dump-json", "--no-download", "--no-warnings", &url])
         .output()
         .await
         .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
 
-    if !output.status.success() {
+    if output.status.code() != Some(0) {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("yt-dlp error: {}", stderr.trim()));
     }
