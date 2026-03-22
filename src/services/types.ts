@@ -14,6 +14,7 @@ export interface UpdateCheckResult {
   available: boolean;
   version?: string;
   notes?: string;
+  error?: string;
 }
 
 export interface IPrismService {
@@ -45,6 +46,7 @@ export interface IPrismService {
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
   checkForUpdates(): Promise<UpdateCheckResult>;
+  installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void>;
   getAppVersion(): Promise<string>;
 
   // Persistence

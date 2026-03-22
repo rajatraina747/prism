@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   FolderOpen, Download, Gauge, Bell, Palette, HardDrive,
-  RefreshCw, Bug, Shield, ChevronRight,
+  RefreshCw, Bug, Shield, ChevronRight, Loader2,
 } from 'lucide-react';
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
@@ -82,6 +82,9 @@ export default function Settings() {
   const service = useService();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = React.useState('general');
+  const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
+  const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
+  const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
 
   return (
     <div className="page-container">
@@ -199,28 +202,82 @@ export default function Settings() {
 
             {activeSection === 'updates' && (
               <div className="divide-y divide-border/30">
-                <SettingRow label="Auto-update" description="Automatically download and install updates">
+                <SettingRow label="Auto-update" description="Automatically check and install updates on launch">
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
                 </SettingRow>
                 <SettingRow label="Update channel" description="Release track for updates">
                   <Select value={p.updateChannel} options={[{ value: 'stable', label: 'Stable' }, { value: 'beta', label: 'Beta' }]} onChange={v => updatePreference('updateChannel', v as any)} />
                 </SettingRow>
-                <SettingRow label="Check for updates">
-                  <button
-                    onClick={async () => {
-                      toast.info('Checking for updates...');
-                      const result = await service.checkForUpdates();
-                      if (result.available) {
-                        toast.success(`Update ${result.version} available!`);
-                      } else {
-                        toast.success('You are on the latest version');
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
-                  >
-                    Check Now
-                  </button>
+                <SettingRow label="Check for updates" description={
+                  updateState === 'available' ? `Version ${updateVersion} is available` :
+                  updateState === 'up-to-date' ? 'You are on the latest version' :
+                  updateState === 'error' ? 'Could not reach update server' :
+                  undefined
+                }>
+                  <div className="flex items-center gap-2">
+                    {updateState === 'available' && (
+                      <button
+                        onClick={async () => {
+                          setUpdateState('installing');
+                          toast.info('Downloading update...');
+                          try {
+                            await service.installUpdate();
+                            // App will restart automatically after install
+                          } catch (e) {
+                            toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
+                            setUpdateState('available');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
+                      >
+                        Install Update
+                      </button>
+                    )}
+                    <button
+                      disabled={updateState === 'checking' || updateState === 'installing'}
+                      onClick={async () => {
+                        setUpdateState('checking');
+                        const result = await service.checkForUpdates();
+                        if (result.available) {
+                          setUpdateState('available');
+                          setUpdateVersion(result.version);
+                          setUpdateNotes(result.notes);
+                          toast.success(`Update ${result.version} available!`);
+                        } else if (result.error) {
+                          setUpdateState('error');
+                          toast.error('Could not check for updates');
+                        } else {
+                          setUpdateState('up-to-date');
+                          toast.success('You are on the latest version');
+                        }
+                      }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                        updateState === 'checking' || updateState === 'installing'
+                          ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      )}
+                    >
+                      {updateState === 'checking' ? (
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Checking...
+                        </span>
+                      ) : updateState === 'installing' ? (
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Installing...
+                        </span>
+                      ) : 'Check Now'}
+                    </button>
+                  </div>
                 </SettingRow>
+                {updateState === 'available' && updateNotes && (
+                  <div className="py-2.5">
+                    <p className="text-[10px] text-muted-foreground font-medium mb-1">Release Notes</p>
+                    <p className="text-[10px] text-muted-foreground/70 whitespace-pre-line">{updateNotes}</p>
+                  </div>
+                )}
               </div>
             )}
 

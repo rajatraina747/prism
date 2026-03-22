@@ -90,6 +90,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Sync log level preference to diagnostics service
   useEffect(() => { diagnostics.setLogLevel(settings.logLevel); }, [settings.logLevel]);
 
+  // Auto-check for updates on startup (if enabled)
+  const autoUpdateChecked = useRef(false);
+  useEffect(() => {
+    if (!settings.autoUpdate || autoUpdateChecked.current) return;
+    autoUpdateChecked.current = true;
+    // Small delay so the app finishes rendering first
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await service.checkForUpdates();
+        if (result.available) {
+          diagnostics.log('info', `Update available: ${result.version}`);
+          toast('Update available', {
+            description: `Version ${result.version} is ready to install`,
+            action: {
+              label: 'Install',
+              onClick: async () => {
+                toast.info('Downloading update...');
+                try {
+                  await service.installUpdate();
+                } catch (e) {
+                  toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
+                }
+              },
+            },
+            duration: 15000,
+          });
+        }
+      } catch {
+        // Silently fail — don't bother the user on startup
+      }
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [settings.autoUpdate, service]);
+
   // Move completed/failed to history
   useEffect(() => {
     const terminal = queue.filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled');

@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { check as checkUpdate } from '@tauri-apps/plugin-updater';
+import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
@@ -38,6 +38,7 @@ async function writeJson(file: string, data: unknown): Promise<void> {
 
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
+  private _pendingUpdate: Update | null = null;
 
   async init(): Promise<void> {
     await this.persistence._ensureLoaded();
@@ -163,14 +164,41 @@ export class TauriPrismService implements IPrismService {
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
     try {
-      const update = await checkUpdate();
+      // Race against a 15s timeout so the UI never hangs
+      const update = await Promise.race([
+        checkUpdate(),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Update check timed out')), 15_000)
+        ),
+      ]);
       if (update) {
+        this._pendingUpdate = update;
         return { available: true, version: update.version, notes: update.body ?? undefined };
       }
+      this._pendingUpdate = null;
       return { available: false };
-    } catch {
-      return { available: false };
+    } catch (e) {
+      this._pendingUpdate = null;
+      const msg = e instanceof Error ? e.message : String(e);
+      // Network/timeout errors — distinguish from "no update"
+      return { available: false, error: msg };
     }
+  }
+
+  async installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void> {
+    if (!this._pendingUpdate) {
+      throw new Error('No update available to install');
+    }
+    let totalDownloaded = 0;
+    await this._pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === 'Started') {
+        onProgress?.(0, event.data.contentLength ?? null);
+      } else if (event.event === 'Progress') {
+        totalDownloaded += event.data.chunkLength;
+        onProgress?.(totalDownloaded, null);
+      }
+    });
+    // After install, the app will restart automatically
   }
 
   async getAppVersion(): Promise<string> {

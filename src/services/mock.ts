@@ -143,7 +143,11 @@ export class MockPrismService implements IPrismService {
   }
 
   async checkForUpdates() {
-    return { available: false };
+    return { available: false } as import('./types').UpdateCheckResult;
+  }
+
+  async installUpdate(): Promise<void> {
+    // Mock: no-op
   }
 
   async getAppVersion(): Promise<string> {
