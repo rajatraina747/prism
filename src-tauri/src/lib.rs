@@ -77,7 +77,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         .shell()
         .sidecar("yt-dlp")
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
-        .args(["--dump-json", "--no-download", "--no-warnings", &url])
+        .args(["--dump-json", "--no-download", "--no-warnings", "--js-runtimes", "node,deno,bun", &url])
         .output()
         .await
         .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
@@ -167,8 +167,13 @@ async fn start_download(
     output_path: String,
     format_id: Option<String>,
 ) -> Result<(), String> {
+    let expanded_path = expand_tilde(&output_path);
+    // Ensure the parent directory exists
+    if let Some(parent) = PathBuf::from(&expanded_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let manager = app.state::<DownloadManager>();
-    manager.start_download(app.clone(), id, url, output_path, format_id);
+    manager.start_download(app.clone(), id, url, expanded_path, format_id);
     Ok(())
 }
 
@@ -181,14 +186,29 @@ async fn cancel_download(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_file(path: String) -> Result<(), String> {
-    opener::open(&path).map_err(|e| format!("Failed to open file: {}", e))
+    let expanded = expand_tilde(&path);
+    opener::open(&expanded).map_err(|e| format!("Failed to open file: {}", e))
 }
 
 #[tauri::command]
 async fn show_in_folder(path: String) -> Result<(), String> {
-    let p = PathBuf::from(&path);
-    let folder = p.parent().unwrap_or(&p);
-    opener::open(folder).map_err(|e| format!("Failed to open folder: {}", e))
+    let expanded = expand_tilde(&path);
+    // On macOS, use `open -R` to reveal the file in Finder (selects it)
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&expanded)
+            .spawn()
+            .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let p = PathBuf::from(&expanded);
+        let folder = p.parent().unwrap_or(&p);
+        opener::open(folder).map_err(|e| format!("Failed to open folder: {}", e))
+    }
 }
 
 #[tauri::command]
@@ -206,6 +226,15 @@ async fn get_app_version() -> String {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") || path == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return path.replacen('~', &home.to_string_lossy(), 1);
+        }
+    }
+    path.to_string()
+}
 
 fn extract_domain(url: &str) -> String {
     url.split("//")

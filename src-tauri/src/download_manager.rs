@@ -60,7 +60,9 @@ impl DownloadManager {
                 "--newline".into(),
                 "--progress".into(),
                 "--progress-template".into(),
-                "%(progress._percent_str)s %(progress._total_bytes_str)s %(progress._speed_str)s %(progress._eta_str)s".into(),
+                "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
+                "--js-runtimes".into(),
+                "node,deno,bun".into(),
             ];
 
             if let Some(ref fmt) = format_id {
