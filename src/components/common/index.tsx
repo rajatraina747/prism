@@ -75,6 +75,7 @@ interface PanelProps {
   children: React.ReactNode;
   className?: string;
   action?: React.ReactNode;
+  style?: React.CSSProperties;
 }
 
 export function Panel({ title, children, className, action }: PanelProps) {
