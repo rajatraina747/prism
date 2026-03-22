@@ -97,52 +97,56 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    let formats = info
-        .formats
-        .unwrap_or_default()
+    // Collect unique resolutions from real video formats (not storyboards, not audio-only)
+    let raw_formats = info.formats.unwrap_or_default();
+    let mut seen_heights: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    let mut best_size_for_height: std::collections::HashMap<u32, u64> = std::collections::HashMap::new();
+
+    for f in &raw_formats {
+        let height = f.height.unwrap_or(0);
+        if height < 144 {
+            continue; // skip storyboards and tiny thumbnails
+        }
+        let vcodec = f.vcodec.as_deref().unwrap_or("none");
+        if vcodec == "none" {
+            continue; // skip audio-only
+        }
+        let ext = f.ext.as_deref().unwrap_or("");
+        if ext == "mhtml" {
+            continue; // skip storyboard formats
+        }
+        seen_heights.insert(height);
+        let size = f.filesize.or(f.filesize_approx).unwrap_or(0);
+        let entry = best_size_for_height.entry(height).or_insert(0);
+        if size > *entry {
+            *entry = size;
+        }
+    }
+
+    // Build format options as resolution choices (yt-dlp will merge video+audio)
+    let unique_formats: Vec<FormatOption> = seen_heights
         .into_iter()
-        .filter(|f| f.height.unwrap_or(0) > 0)
-        .map(|f| {
-            let height = f.height.unwrap_or(0);
+        .rev()
+        .map(|height| {
             let quality = match height {
                 h if h >= 2160 => "best",
                 h if h >= 1080 => "high",
                 h if h >= 720 => "medium",
                 _ => "low",
             };
+            let size = best_size_for_height.get(&height).copied().unwrap_or(0);
             FormatOption {
-                id: f.format_id.unwrap_or_default(),
-                label: format!(
-                    "{}p {}",
-                    height,
-                    f.ext.as_deref().unwrap_or("mp4")
-                ),
+                // Use yt-dlp merge syntax: best video at this height + best audio
+                id: format!("bestvideo[height<={}]+bestaudio/best[height<={}]", height, height),
+                label: format!("{}p MP4", height),
                 resolution: format!("{}p", height),
-                container: f.ext.unwrap_or_else(|| "mp4".into()),
-                codec: f.vcodec.unwrap_or_else(|| "unknown".into()),
-                file_size: f.filesize.or(f.filesize_approx).unwrap_or(0),
+                container: "mp4".into(),
+                codec: "h264/aac".into(),
+                file_size: size,
                 quality: quality.into(),
             }
         })
-        .collect::<Vec<_>>();
-
-    // Deduplicate by resolution, keeping the largest file per resolution
-    let mut best_by_res: std::collections::HashMap<String, FormatOption> =
-        std::collections::HashMap::new();
-    for fmt in formats {
-        let entry = best_by_res
-            .entry(fmt.resolution.clone())
-            .or_insert_with(|| fmt.clone());
-        if fmt.file_size > entry.file_size {
-            *entry = fmt;
-        }
-    }
-    let mut unique_formats: Vec<FormatOption> = best_by_res.into_values().collect();
-    unique_formats.sort_by(|a, b| {
-        let a_h: u32 = a.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        let b_h: u32 = b.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        b_h.cmp(&a_h)
-    });
+        .collect();
 
     Ok(MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),

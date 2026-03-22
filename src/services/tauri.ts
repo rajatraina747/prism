@@ -79,11 +79,10 @@ export class TauriPrismService implements IPrismService {
         onComplete(event.payload.success, event.payload.error ?? undefined);
       });
 
-      // Build output path
+      // Build output path (always .mp4 since we use --merge-output-format mp4)
       const dest = item.settings.destination || '~/Downloads/Prism';
-      const ext = item.settings.format?.container || 'mp4';
       const filename = item.settings.filename || item.metadata.title || 'video';
-      const outputPath = `${dest}/${filename}.${ext}`;
+      const outputPath = `${dest}/${filename}.mp4`;
 
       await invoke('start_download', {
         id: item.id,
