@@ -52,6 +52,10 @@ impl DownloadManager {
         url: String,
         output_path: String,
         format_id: Option<String>,
+        audio_only: bool,
+        download_subtitles: bool,
+        subtitle_language: Option<String>,
+        speed_limit: Option<u64>,
     ) {
         let downloads = self.downloads.clone();
 
@@ -66,19 +70,46 @@ impl DownloadManager {
                 "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
                 "--js-runtimes".into(),
                 "node,deno,bun".into(),
-                "--merge-output-format".into(),
-                "mp4".into(),
-                "--remux-video".into(),
-                "mp4".into(),
             ];
 
-            if let Some(ref fmt) = format_id {
-                args.push("-f".into());
-                args.push(fmt.clone());
+            if audio_only {
+                // Audio-only: extract audio as mp3
+                args.push("--extract-audio".into());
+                args.push("--audio-format".into());
+                args.push("mp3".into());
+                args.push("--audio-quality".into());
+                args.push("0".into());
             } else {
-                // Default: best video+audio merged
-                args.push("-f".into());
-                args.push("bestvideo+bestaudio/best".into());
+                // Video: merge to mp4
+                args.push("--merge-output-format".into());
+                args.push("mp4".into());
+                args.push("--remux-video".into());
+                args.push("mp4".into());
+
+                if let Some(ref fmt) = format_id {
+                    args.push("-f".into());
+                    args.push(fmt.clone());
+                } else {
+                    args.push("-f".into());
+                    args.push("bestvideo+bestaudio/best".into());
+                }
+            }
+
+            if download_subtitles {
+                args.push("--write-subs".into());
+                args.push("--write-auto-subs".into());
+                let lang = subtitle_language.as_deref().unwrap_or("en");
+                args.push("--sub-lang".into());
+                args.push(lang.into());
+                args.push("--sub-format".into());
+                args.push("srt/vtt/best".into());
+            }
+
+            if let Some(limit) = speed_limit {
+                if limit > 0 {
+                    args.push("--limit-rate".into());
+                    args.push(format!("{}K", limit / 1024));
+                }
             }
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
@@ -258,7 +289,7 @@ fn parse_size(val: f64, unit: &str) -> u64 {
 /// file on disk. Tries .mp4 first (most common due to --merge-output-format
 /// and --remux-video), then falls back to other common extensions.
 fn find_output_file(template: &str) -> Option<String> {
-    let extensions = ["mp4", "mkv", "webm", "mov", "avi", "flv"];
+    let extensions = ["mp4", "mkv", "webm", "mov", "avi", "flv", "mp3", "m4a", "opus", "ogg", "wav"];
     for ext in extensions {
         let candidate = template.replace("%(ext)s", ext);
         if std::path::Path::new(&candidate).exists() {

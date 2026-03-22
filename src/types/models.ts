@@ -41,6 +41,22 @@ export interface DownloadSettings {
   priority: 'high' | 'normal' | 'low';
   retryCount: number;
   startImmediately: boolean;
+  audioOnly?: boolean;
+  downloadSubtitles?: boolean;
+  subtitleLanguage?: string;
+  speedLimit?: number; // bytes per second, 0 = unlimited
+}
+
+export interface PlaylistEntry {
+  url: string;
+  title: string;
+  duration: number;
+  thumbnail: string;
+}
+
+export interface PlaylistInfo {
+  title: string;
+  entries: PlaylistEntry[];
 }
 
 export interface DownloadItem {

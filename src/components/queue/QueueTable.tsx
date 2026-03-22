@@ -146,8 +146,13 @@ function QueueRow({
 
           {/* Stats row */}
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground tabular-nums">
-            {item.settings.format && (
+            {item.settings.audioOnly ? (
+              <span className="text-primary/80">MP3 Audio</span>
+            ) : item.settings.format ? (
               <span>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</span>
+            ) : null}
+            {item.settings.downloadSubtitles && (
+              <span className="text-muted-foreground/70">+ Subs</span>
             )}
             {isActive && (
               <>

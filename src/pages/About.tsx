@@ -6,6 +6,27 @@ import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const CHANGELOG = [
   {
+    version: '1.0.2',
+    date: 'March 2026',
+    highlights: [
+      'Audio-only download mode — extract MP3/M4A from any video',
+      'Subtitle download support with language selection',
+      'Download speed limiting — honor your bandwidth preferences',
+      'Playlist support — queue entire playlists with one URL',
+      'Improved auto-updater reliability with retry logic and 30s timeout',
+      'Explicit app restart after update installation',
+    ],
+  },
+  {
+    version: '1.0.1',
+    date: 'March 2026',
+    highlights: [
+      'Auto-updater with in-app install and restart',
+      'Updater signing and artifact generation for secure updates',
+      'Windows cross-platform compatibility improvements',
+    ],
+  },
+  {
     version: '1.0.0',
     date: 'March 2026',
     highlights: [
@@ -16,7 +37,6 @@ const CHANGELOG = [
       'Automatic file renaming to prevent overwrites',
       'Light & dark themes with system preference detection',
       'All data stored locally on your device — zero tracking, zero telemetry',
-      'Seamless auto-updates to keep you on the latest version',
     ],
   },
 ];
@@ -46,8 +66,7 @@ export default function About() {
 
       <Panel className="animate-fade-in">
         <div className="divide-y divide-border/30">
-          <InfoRow label="Version" value={version} />
-          <InfoRow label="Build" value="2026.03.22-stable" />
+          <InfoRow label="Version" value={`v${version}`} />
           <InfoRow label="Channel" value="Stable" />
           <InfoRow label="License" value="Personal Use" />
         </div>

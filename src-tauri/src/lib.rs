@@ -41,6 +41,22 @@ pub struct MediaMetadata {
     pub uploader: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistEntry {
+    pub url: String,
+    pub title: String,
+    pub duration: f64,
+    pub thumbnail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistInfo {
+    pub title: String,
+    pub entries: Vec<PlaylistEntry>,
+}
+
 // ── yt-dlp JSON subset ───────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +83,19 @@ struct YtDlpInfo {
     description: Option<String>,
     uploader: Option<String>,
     formats: Option<Vec<YtDlpFormat>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YtDlpPlaylistEntry {
+    url: Option<String>,
+    title: Option<String>,
+    duration: Option<f64>,
+    thumbnails: Option<Vec<YtDlpThumbnail>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YtDlpThumbnail {
+    url: Option<String>,
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -190,12 +219,82 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 }
 
 #[tauri::command]
+async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, String> {
+    let output = app
+        .shell()
+        .sidecar("yt-dlp")
+        .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
+        .args([
+            "--flat-playlist",
+            "--dump-json",
+            "--no-download",
+            "--no-warnings",
+            "--js-runtimes", "node,deno,bun",
+            &url,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+
+    if output.status.code() != Some(0) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("yt-dlp error: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+
+    if lines.is_empty() {
+        return Err("No playlist entries found".into());
+    }
+
+    let mut entries = Vec::new();
+    let mut playlist_title = String::from("Playlist");
+
+    for line in &lines {
+        if let Ok(entry) = serde_json::from_str::<YtDlpPlaylistEntry>(line) {
+            let thumb = entry.thumbnails
+                .and_then(|ts| ts.into_iter().rev().find_map(|t| t.url))
+                .unwrap_or_default();
+
+            let entry_url = entry.url.unwrap_or_default();
+            if entry_url.is_empty() {
+                continue;
+            }
+
+            entries.push(PlaylistEntry {
+                url: entry_url,
+                title: entry.title.unwrap_or_else(|| "Unknown".into()),
+                duration: entry.duration.unwrap_or(0.0),
+                thumbnail: thumb,
+            });
+        }
+    }
+
+    // Try to extract playlist title from the URL
+    if entries.len() > 1 {
+        playlist_title = format!("Playlist ({} videos)", entries.len());
+    } else if entries.len() == 1 {
+        playlist_title = entries[0].title.clone();
+    }
+
+    Ok(PlaylistInfo {
+        title: playlist_title,
+        entries,
+    })
+}
+
+#[tauri::command]
 async fn start_download(
     app: AppHandle,
     id: String,
     url: String,
     output_path: String,
     format_id: Option<String>,
+    audio_only: Option<bool>,
+    download_subtitles: Option<bool>,
+    subtitle_language: Option<String>,
+    speed_limit: Option<u64>,
 ) -> Result<(), String> {
     let expanded_path = expand_tilde(&output_path);
     // Auto-number if the target .mp4 already exists
@@ -205,7 +304,17 @@ async fn start_download(
         let _ = std::fs::create_dir_all(parent);
     }
     let manager = app.state::<DownloadManager>();
-    manager.start_download(app.clone(), id, url, deduped_path, format_id);
+    manager.start_download(
+        app.clone(),
+        id,
+        url,
+        deduped_path,
+        format_id,
+        audio_only.unwrap_or(false),
+        download_subtitles.unwrap_or(false),
+        subtitle_language,
+        speed_limit,
+    );
     Ok(())
 }
 
@@ -369,6 +478,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             parse_url,
+            parse_playlist,
             start_download,
             cancel_download,
             open_file,

@@ -6,7 +6,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
 
 // Persistence file names (stored in app data directory)
@@ -48,6 +48,10 @@ export class TauriPrismService implements IPrismService {
 
   async parseUrl(url: string): Promise<MediaMetadata> {
     return invoke<MediaMetadata>('parse_url', { url });
+  }
+
+  async parsePlaylist(url: string): Promise<PlaylistInfo> {
+    return invoke<PlaylistInfo>('parse_playlist', { url });
   }
 
   startDownload(
@@ -100,7 +104,11 @@ export class TauriPrismService implements IPrismService {
         id: item.id,
         url: item.metadata.source.url,
         outputPath,
-        formatId: item.settings.format?.id ?? null,
+        formatId: item.settings.audioOnly ? null : (item.settings.format?.id ?? null),
+        audioOnly: item.settings.audioOnly ?? false,
+        downloadSubtitles: item.settings.downloadSubtitles ?? false,
+        subtitleLanguage: item.settings.subtitleLanguage ?? null,
+        speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
       });
     };
 

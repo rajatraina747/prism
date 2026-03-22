@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -23,6 +23,7 @@ export interface IPrismService {
 
   // URL parsing & metadata
   parseUrl(url: string): Promise<MediaMetadata>;
+  parsePlaylist(url: string): Promise<PlaylistInfo>;
 
   // Download lifecycle — returns a cancel/cleanup function
   startDownload(

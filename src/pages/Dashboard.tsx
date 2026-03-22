@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
-import { useQueue } from '@/stores/AppProvider';
+import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
+import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { Panel, ProgressBar } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, DEFAULT_PREFERENCES } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, DEFAULT_PREFERENCES } from '@/types/models';
 import { generateId } from '@/services';
 import { cn } from '@/lib/utils';
 import {
@@ -17,8 +18,23 @@ function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): F
   return formats.find(f => f.resolution === preset.resolution) || formats[0];
 }
 
+/** Detect if a URL looks like a playlist (heuristic). */
+function looksLikePlaylist(url: string): boolean {
+  try {
+    const u = new URL(url);
+    // YouTube playlist
+    if (u.hostname.includes('youtube') || u.hostname.includes('youtu.be')) {
+      if (u.pathname === '/playlist' || u.searchParams.has('list')) return true;
+    }
+    // Other common patterns
+    if (u.pathname.includes('/playlist') || u.pathname.includes('/sets/')) return true;
+  } catch { /* not a valid URL, continue */ }
+  return false;
+}
+
 export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
+  const { preferences } = useSettings();
   const service = useService();
   const [parseError, setParseError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -27,12 +43,34 @@ export default function Dashboard() {
   const [batchProgress, setBatchProgress] = useState<{ total: number; done: number } | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<DownloadPreset>(DEFAULT_PRESETS[2]); // Full HD default
 
+  // Playlist state
+  const [parsedPlaylist, setParsedPlaylist] = useState<PlaylistInfo | null>(null);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [playlistProcessing, setPlaylistProcessing] = useState(false);
+  const [playlistProcessedCount, setPlaylistProcessedCount] = useState(0);
+
   const activeDownloads = queueItems.filter(i => i.status === 'downloading');
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
     setIsParsing(true);
     try {
+      // Check if it looks like a playlist
+      if (looksLikePlaylist(url)) {
+        try {
+          const playlist = await service.parsePlaylist(url);
+          if (playlist.entries.length > 1) {
+            setParsedPlaylist(playlist);
+            setShowPlaylistModal(true);
+            setIsParsing(false);
+            return;
+          }
+          // Single-entry "playlist" — fall through to single parse
+        } catch {
+          // Not a playlist or failed — fall through to single parse
+        }
+      }
+
       const metadata = await service.parseUrl(url);
       setParsedMetadata(metadata);
       setShowMediaModal(true);
@@ -47,10 +85,13 @@ export default function Dashboard() {
     setParseError(null);
     setBatchProgress({ total: urls.length, done: 0 });
 
+    const speedLimitBytes = preferences.bandwidthLimit > 0
+      ? preferences.bandwidthLimit * 1024 * 1024
+      : 0;
+
     for (let i = 0; i < urls.length; i++) {
       try {
         const metadata = await service.parseUrl(urls[i]);
-        // Auto-add to queue with preset-matched format
         const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
         const item: DownloadItem = {
           id: generateId(),
@@ -62,6 +103,7 @@ export default function Dashboard() {
             priority: 'normal',
             retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
             startImmediately: true,
+            speedLimit: speedLimitBytes || undefined,
           },
           status: 'queued',
           progress: 0,
@@ -79,12 +121,57 @@ export default function Dashboard() {
     }
 
     setBatchProgress(null);
-  }, [addToQueue, service]);
+  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);
     setParsedMetadata(null);
   }, [addToQueue]);
+
+  const handlePlaylistQueue = useCallback(async (entries: PlaylistEntry[]) => {
+    setPlaylistProcessing(true);
+    setPlaylistProcessedCount(0);
+
+    const speedLimitBytes = preferences.bandwidthLimit > 0
+      ? preferences.bandwidthLimit * 1024 * 1024
+      : 0;
+
+    for (let i = 0; i < entries.length; i++) {
+      try {
+        const metadata = await service.parseUrl(entries[i].url);
+        const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
+        const item: DownloadItem = {
+          id: generateId(),
+          metadata,
+          settings: {
+            format,
+            destination: DEFAULT_PREFERENCES.defaultSaveFolder,
+            filename: metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'),
+            priority: 'normal',
+            retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
+            startImmediately: true,
+            speedLimit: speedLimitBytes || undefined,
+          },
+          status: 'queued',
+          progress: 0,
+          speed: 0,
+          eta: 0,
+          downloadedBytes: 0,
+          totalBytes: format?.fileSize || 500_000_000,
+          retryAttempt: 0,
+        };
+        addToQueue(item);
+      } catch {
+        // Skip entries that fail to parse
+      }
+      setPlaylistProcessedCount(i + 1);
+    }
+
+    setPlaylistProcessing(false);
+    setShowPlaylistModal(false);
+    setParsedPlaylist(null);
+    setPlaylistProcessedCount(0);
+  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset]);
 
   return (
     <div className="page-container max-w-3xl mx-auto">
@@ -190,6 +277,16 @@ export default function Dashboard() {
         metadata={parsedMetadata}
         onAddToQueue={handleAddToQueue}
         preferredResolution={selectedPreset.resolution}
+      />
+
+      {/* Playlist Modal */}
+      <PlaylistModal
+        open={showPlaylistModal}
+        onClose={() => { setShowPlaylistModal(false); setParsedPlaylist(null); }}
+        playlist={parsedPlaylist}
+        onQueueSelected={handlePlaylistQueue}
+        isProcessing={playlistProcessing}
+        processedCount={playlistProcessedCount}
       />
     </div>
   );

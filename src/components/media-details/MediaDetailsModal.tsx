@@ -3,12 +3,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
 import { generateId, formatBytes, formatDuration } from '@/services';
 import { DEFAULT_PREFERENCES } from '@/types/models';
-import { StatusBadge } from '@/components/common';
+import { useSettings } from '@/stores/AppProvider';
 import { cn } from '@/lib/utils';
 import {
-  Clock, HardDrive, Film, User, ChevronDown, ChevronUp,
-  FolderOpen, FileText, Gauge,
+  Clock, Film, User, ChevronDown, ChevronUp,
+  FolderOpen, FileText, Music, Subtitles,
 } from 'lucide-react';
+
+const SUBTITLE_LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'it', label: 'Italian' },
+  { value: 'ru', label: 'Russian' },
+];
 
 interface MediaDetailsModalProps {
   open: boolean;
@@ -19,45 +34,60 @@ interface MediaDetailsModalProps {
 }
 
 export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, preferredResolution }: MediaDetailsModalProps) {
+  const { preferences } = useSettings();
   const [selectedFormat, setSelectedFormat] = useState<FormatOption | null>(null);
   const [filename, setFilename] = useState('');
   const [startImmediately, setStartImmediately] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
+  const [audioOnly, setAudioOnly] = useState(false);
+  const [downloadSubtitles, setDownloadSubtitles] = useState(false);
+  const [subtitleLanguage, setSubtitleLanguage] = useState('en');
 
   React.useEffect(() => {
     if (metadata) {
-      // Auto-select format matching the preferred resolution (from preset)
       let pick: FormatOption | null = null;
       if (preferredResolution && preferredResolution !== 'Best') {
         pick = metadata.formats.find(f => f.resolution === preferredResolution) || null;
       }
       setSelectedFormat(pick || metadata.formats[0] || null);
       setFilename(metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'));
+      setAudioOnly(false);
+      setDownloadSubtitles(false);
     }
   }, [metadata, preferredResolution]);
 
   if (!metadata) return null;
 
+  const fileExtension = audioOnly ? 'mp3' : (selectedFormat?.container || 'mp4');
+
   const handleAdd = () => {
-    if (!selectedFormat) return;
+    if (!audioOnly && !selectedFormat) return;
+    const speedLimitBytes = preferences.bandwidthLimit > 0
+      ? preferences.bandwidthLimit * 1024 * 1024
+      : 0;
+
     const item: DownloadItem = {
       id: generateId(),
       metadata,
       settings: {
-        format: selectedFormat,
+        format: audioOnly ? null : selectedFormat,
         destination: DEFAULT_PREFERENCES.defaultSaveFolder,
         filename,
         priority,
         retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
         startImmediately,
+        audioOnly,
+        downloadSubtitles,
+        subtitleLanguage: downloadSubtitles ? subtitleLanguage : undefined,
+        speedLimit: speedLimitBytes || undefined,
       },
       status: startImmediately ? 'queued' : 'ready',
       progress: 0,
       speed: 0,
       eta: 0,
       downloadedBytes: 0,
-      totalBytes: selectedFormat.fileSize,
+      totalBytes: audioOnly ? 10_000_000 : (selectedFormat?.fileSize || 0),
       retryAttempt: 0,
     };
     onAddToQueue(item);
@@ -88,31 +118,72 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             </div>
           </div>
 
-          {/* Format Selection */}
-          <div>
-            <label className="panel-header block">Quality & Format</label>
-            <div className="grid grid-cols-1 gap-1.5">
-              {metadata.formats.map(fmt => (
-                <button
-                  key={fmt.id}
-                  onClick={() => setSelectedFormat(fmt)}
-                  className={cn(
-                    'flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors active:scale-[0.98]',
-                    selectedFormat?.id === fmt.id
-                      ? 'bg-primary/12 border border-primary/30 text-foreground'
-                      : 'bg-secondary/50 border border-transparent text-secondary-foreground hover:bg-secondary'
-                  )}
-                >
-                  <span className="font-medium">{fmt.label}</span>
-                  <span className="flex items-center gap-3 text-muted-foreground">
-                    <span>{fmt.resolution}</span>
-                    <span className="uppercase">{fmt.container}</span>
-                    <span className="tabular-nums">{formatBytes(fmt.fileSize)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
+          {/* Audio Only Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAudioOnly(false)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                !audioOnly
+                  ? 'bg-primary/15 text-primary border border-primary/30'
+                  : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary border border-transparent'
+              )}
+            >
+              <Film className="w-3 h-3" />
+              Video
+            </button>
+            <button
+              onClick={() => setAudioOnly(true)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                audioOnly
+                  ? 'bg-primary/15 text-primary border border-primary/30'
+                  : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary border border-transparent'
+              )}
+            >
+              <Music className="w-3 h-3" />
+              Audio Only
+            </button>
           </div>
+
+          {/* Format Selection — only for video mode */}
+          {!audioOnly && (
+            <div>
+              <label className="panel-header block">Quality & Format</label>
+              <div className="grid grid-cols-1 gap-1.5">
+                {metadata.formats.map(fmt => (
+                  <button
+                    key={fmt.id}
+                    onClick={() => setSelectedFormat(fmt)}
+                    className={cn(
+                      'flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors active:scale-[0.98]',
+                      selectedFormat?.id === fmt.id
+                        ? 'bg-primary/12 border border-primary/30 text-foreground'
+                        : 'bg-secondary/50 border border-transparent text-secondary-foreground hover:bg-secondary'
+                    )}
+                  >
+                    <span className="font-medium">{fmt.label}</span>
+                    <span className="flex items-center gap-3 text-muted-foreground">
+                      <span>{fmt.resolution}</span>
+                      <span className="uppercase">{fmt.container}</span>
+                      <span className="tabular-nums">{formatBytes(fmt.fileSize)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Audio format info */}
+          {audioOnly && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
+              <Music className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-xs font-medium text-foreground">MP3 Audio</p>
+                <p className="text-[10px] text-muted-foreground">Best quality audio extracted from video</p>
+              </div>
+            </div>
+          )}
 
           {/* Filename */}
           <div>
@@ -125,8 +196,33 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 onChange={(e) => setFilename(e.target.value)}
                 className="flex-1 bg-transparent text-xs text-foreground outline-none"
               />
-              <span className="text-[10px] text-muted-foreground">.{selectedFormat?.container || 'mp4'}</span>
+              <span className="text-[10px] text-muted-foreground">.{fileExtension}</span>
             </div>
+          </div>
+
+          {/* Subtitles */}
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={downloadSubtitles}
+                onChange={(e) => setDownloadSubtitles(e.target.checked)}
+                className="rounded border-border"
+              />
+              <Subtitles className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Download subtitles</span>
+            </label>
+            {downloadSubtitles && (
+              <select
+                value={subtitleLanguage}
+                onChange={e => setSubtitleLanguage(e.target.value)}
+                className="px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none cursor-pointer"
+              >
+                {SUBTITLE_LANGUAGES.map(l => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Advanced */}
@@ -164,6 +260,11 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                   ))}
                 </div>
               </div>
+              {preferences.bandwidthLimit > 0 && (
+                <div className="text-[10px] text-muted-foreground">
+                  Speed limited to {preferences.bandwidthLimit} MB/s (from Settings)
+                </div>
+              )}
             </div>
           )}
 
@@ -188,7 +289,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               </button>
               <button
                 onClick={handleAdd}
-                disabled={!selectedFormat}
+                disabled={!audioOnly && !selectedFormat}
                 className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
               >
                 Add to Queue

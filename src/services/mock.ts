@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback } from './types';
 import { generateId } from './utils';
 
@@ -45,6 +45,18 @@ const STORAGE_KEYS = {
 // ── Mock Service Implementation ──
 
 export class MockPrismService implements IPrismService {
+  async parsePlaylist(url: string): Promise<PlaylistInfo> {
+    await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
+    const count = 3 + Math.floor(Math.random() * 8);
+    const entries = Array.from({ length: count }, (_, i) => ({
+      url: `${url}?v=mock${i}`,
+      title: `${randomFrom(MOCK_TITLES)} (Part ${i + 1})`,
+      duration: 120 + Math.floor(Math.random() * 3600),
+      thumbnail: `https://picsum.photos/seed/${generateId()}/320/180`,
+    }));
+    return { title: `Mock Playlist (${count} videos)`, entries };
+  }
+
   async parseUrl(url: string): Promise<MediaMetadata> {
     await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
 
