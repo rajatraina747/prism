@@ -59,5 +59,46 @@ jobs:
             Download the installer for your platform below.
 
             **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications.
+            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" → "Run anyway".
+          releaseDraft: true
+          prerelease: false
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Download yt-dlp sidecar for Windows
+      - name: Download yt-dlp (Windows x86_64)
+        run: |
+          curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Prism ${{ github.ref_name }}'
+          releaseBody: |
+            Download the installer for your platform below.
+
+            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications.
+            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" → "Run anyway".
           releaseDraft: true
           prerelease: false

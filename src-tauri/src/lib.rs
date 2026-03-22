@@ -225,7 +225,6 @@ async fn open_file(path: String) -> Result<(), String> {
 #[tauri::command]
 async fn show_in_folder(path: String) -> Result<(), String> {
     let expanded = expand_tilde(&path);
-    // On macOS, use `open -R` to reveal the file in Finder (selects it)
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -235,7 +234,15 @@ async fn show_in_folder(path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
         return Ok(());
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", expanded.replace('/', "\\")))
+            .spawn()
+            .map_err(|e| format!("Failed to reveal in Explorer: {}", e))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
     {
         let p = PathBuf::from(&expanded);
         let folder = p.parent().unwrap_or(&p);
@@ -298,26 +305,44 @@ fn dedupe_output_path(template: &str) -> String {
     template.to_string()
 }
 
-/// Find ffmpeg on the system. When launched from Finder/DMG, PATH may not
-/// include /opt/homebrew/bin or /usr/local/bin, so we check common locations.
+/// Find ffmpeg on the system. Desktop apps may not have it in PATH,
+/// so we check common locations per platform.
 pub fn find_ffmpeg() -> Option<String> {
-    let candidates = [
+    #[cfg(target_os = "macos")]
+    let candidates: &[&str] = &[
         "/opt/homebrew/bin/ffmpeg",
         "/usr/local/bin/ffmpeg",
         "/usr/bin/ffmpeg",
     ];
+    #[cfg(target_os = "windows")]
+    let candidates: &[&str] = &[
+        "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+        "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
+        "C:\\ffmpeg\\bin\\ffmpeg.exe",
+    ];
+    #[cfg(target_os = "linux")]
+    let candidates: &[&str] = &[
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+    ];
+
     for p in candidates {
         if std::path::Path::new(p).exists() {
             return Some(p.to_string());
         }
     }
-    // Fallback: try `which`
-    std::process::Command::new("which")
-        .arg("ffmpeg")
-        .output()
+
+    // Fallback: try `which` (Unix) or `where` (Windows)
+    #[cfg(not(target_os = "windows"))]
+    let lookup = std::process::Command::new("which").arg("ffmpeg").output();
+    #[cfg(target_os = "windows")]
+    let lookup = std::process::Command::new("where").arg("ffmpeg").output();
+
+    lookup
         .ok()
         .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 // ── App setup ────────────────────────────────────────────────────────
