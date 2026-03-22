@@ -29,13 +29,14 @@ jobs:
       # Download yt-dlp sidecar for both architectures
       - name: Download yt-dlp (x86_64)
         run: |
-          curl -L -o src-tauri/binaries/yt-dlp-x86_64-apple-darwin \
+          mkdir -p src-tauri/binaries
+          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-apple-darwin \
             "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
           chmod +x src-tauri/binaries/yt-dlp-x86_64-apple-darwin
 
       - name: Download yt-dlp (aarch64)
         run: |
-          curl -L -o src-tauri/binaries/yt-dlp-aarch64-apple-darwin \
+          curl -fL -o src-tauri/binaries/yt-dlp-aarch64-apple-darwin \
             "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
           chmod +x src-tauri/binaries/yt-dlp-aarch64-apple-darwin
 
@@ -84,7 +85,8 @@ jobs:
       # Download yt-dlp sidecar for Windows
       - name: Download yt-dlp (Windows x86_64)
         run: |
-          curl -L -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+          mkdir -p src-tauri/binaries
+          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
