@@ -204,6 +204,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ));
   }, [queue]);
 
+  const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    setQueue(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }, []);
+
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
