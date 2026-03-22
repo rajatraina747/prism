@@ -4,6 +4,7 @@ import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialo
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
@@ -163,26 +164,27 @@ export class TauriPrismService implements IPrismService {
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
-    try {
-      // Race against a 15s timeout so the UI never hangs
-      const update = await Promise.race([
-        checkUpdate(),
-        new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('Update check timed out')), 15_000)
-        ),
-      ]);
-      if (update) {
-        this._pendingUpdate = update;
-        return { available: true, version: update.version, notes: update.body ?? undefined };
+    // Retry up to 2 times — GitHub CDN redirects can be slow/flaky
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const update = await checkUpdate({ timeout: 30_000 });
+        if (update) {
+          this._pendingUpdate = update;
+          return { available: true, version: update.version, notes: update.body ?? undefined };
+        }
+        this._pendingUpdate = null;
+        return { available: false };
+      } catch (e) {
+        if (attempt === 1) {
+          this._pendingUpdate = null;
+          const msg = e instanceof Error ? e.message : String(e);
+          return { available: false, error: msg };
+        }
+        // Brief pause before retry
+        await new Promise(r => setTimeout(r, 1000));
       }
-      this._pendingUpdate = null;
-      return { available: false };
-    } catch (e) {
-      this._pendingUpdate = null;
-      const msg = e instanceof Error ? e.message : String(e);
-      // Network/timeout errors — distinguish from "no update"
-      return { available: false, error: msg };
     }
+    return { available: false, error: 'Check failed' };
   }
 
   async installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void> {
@@ -198,7 +200,8 @@ export class TauriPrismService implements IPrismService {
         onProgress?.(totalDownloaded, null);
       }
     });
-    // After install, the app will restart automatically
+    // Explicitly relaunch — downloadAndInstall doesn't always restart on macOS
+    await relaunch();
   }
 
   async getAppVersion(): Promise<string> {

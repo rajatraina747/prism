@@ -106,9 +106,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             action: {
               label: 'Install',
               onClick: async () => {
-                toast.info('Downloading update...');
+                toast.info('Downloading and installing — Prism will restart shortly...');
                 try {
                   await service.installUpdate();
+                  toast.success('Update installed! Please restart Prism to apply.');
                 } catch (e) {
                   toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
                 }
