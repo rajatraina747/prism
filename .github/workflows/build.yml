@@ -54,12 +54,11 @@ jobs:
           releaseBody: |
             ## What's New
 
+            - Fixed video parsing on installed app (YouTube links now work correctly)
+            - Better error messages when link parsing fails
             - Audio-only download mode — extract MP3 from any video
-            - Subtitle download support with 12 language options
+            - Subtitle & playlist support
             - Download speed limiting from Settings
-            - Playlist support — queue entire playlists with one URL
-            - Redesigned sidebar branding
-            - Improved auto-updater reliability
 
             ## Install
 
@@ -104,12 +103,11 @@ jobs:
           releaseBody: |
             ## What's New
 
+            - Fixed video parsing on installed app (YouTube links now work correctly)
+            - Better error messages when link parsing fails
             - Audio-only download mode — extract MP3 from any video
-            - Subtitle download support with 12 language options
+            - Subtitle & playlist support
             - Download speed limiting from Settings
-            - Playlist support — queue entire playlists with one URL
-            - Redesigned sidebar branding
-            - Improved auto-updater reliability
 
             ## Install
 

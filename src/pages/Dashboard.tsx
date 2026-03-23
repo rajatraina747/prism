@@ -75,7 +75,7 @@ export default function Dashboard() {
       setParsedMetadata(metadata);
       setShowMediaModal(true);
     } catch (err: any) {
-      setParseError(err.message || 'Failed to parse URL');
+      setParseError(typeof err === 'string' ? err : (err?.message || 'Failed to parse URL'));
     } finally {
       setIsParsing(false);
     }

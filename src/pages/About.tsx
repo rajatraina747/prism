@@ -5,15 +5,15 @@ import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const LATEST_RELEASE = {
-  version: '1.0.4',
+  version: '1.0.5',
   date: 'March 2026',
   highlights: [
+    'Fixed video parsing on installed app (PATH resolution for JS runtimes)',
+    'Better error messages when parsing fails',
     'Audio-only download mode — extract MP3 from any video',
     'Subtitle download support with 12 language options',
     'Download speed limiting from Settings',
     'Playlist support — queue entire playlists with one URL',
-    'Redesigned sidebar branding',
-    'Improved auto-updater reliability',
   ],
 };
 

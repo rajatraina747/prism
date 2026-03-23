@@ -106,7 +106,8 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         .shell()
         .sidecar("yt-dlp")
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
-        .args(["--dump-json", "--no-download", "--no-warnings", "--js-runtimes", "node,deno,bun", &url])
+        .env("PATH", augmented_path())
+        .args(["--dump-json", "--no-download", "--no-warnings", &url])
         .output()
         .await
         .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
@@ -224,12 +225,12 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         .shell()
         .sidecar("yt-dlp")
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
+        .env("PATH", augmented_path())
         .args([
             "--flat-playlist",
             "--dump-json",
             "--no-download",
             "--no-warnings",
-            "--js-runtimes", "node,deno,bun",
             &url,
         ])
         .output()
@@ -412,6 +413,60 @@ fn dedupe_output_path(template: &str) -> String {
     }
     // Unlikely fallback — just use the original
     template.to_string()
+}
+
+/// Build an augmented PATH that includes common binary directories.
+/// Desktop apps launched from Finder/Dock don't inherit the shell PATH,
+/// so tools installed via Homebrew, nvm, volta, etc. won't be visible.
+pub fn augmented_path() -> String {
+    let base = std::env::var("PATH").unwrap_or_default();
+    let mut extra: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        extra.push("/opt/homebrew/bin".into());
+        extra.push("/usr/local/bin".into());
+        // nvm-managed Node.js
+        if let Some(home) = dirs::home_dir() {
+            let nvm_dir = home.join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                for entry in entries.flatten() {
+                    let bin = entry.path().join("bin");
+                    if bin.exists() {
+                        extra.push(bin.to_string_lossy().into_owned());
+                    }
+                }
+            }
+            // volta
+            let volta_bin = home.join(".volta/bin");
+            if volta_bin.exists() {
+                extra.push(volta_bin.to_string_lossy().into_owned());
+            }
+            // fnm
+            let fnm_dir = home.join(".local/share/fnm/aliases/default/bin");
+            if fnm_dir.exists() {
+                extra.push(fnm_dir.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(prog) = std::env::var("ProgramFiles") {
+            extra.push(format!("{}\\nodejs", prog));
+        }
+    }
+
+    if extra.is_empty() {
+        return base;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let sep = ":";
+    #[cfg(target_os = "windows")]
+    let sep = ";";
+
+    format!("{}{}{}", extra.join(sep), sep, base)
 }
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,

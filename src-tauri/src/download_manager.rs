@@ -9,7 +9,7 @@ use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
-use crate::find_ffmpeg;
+use crate::{augmented_path, find_ffmpeg};
 
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
@@ -68,8 +68,6 @@ impl DownloadManager {
                 "--progress".into(),
                 "--progress-template".into(),
                 "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
-                "--js-runtimes".into(),
-                "node,deno,bun".into(),
             ];
 
             if audio_only {
@@ -119,7 +117,7 @@ impl DownloadManager {
             }
 
             let cmd = match app.shell().sidecar("yt-dlp") {
-                Ok(c) => c.args(&args),
+                Ok(c) => c.env("PATH", augmented_path()).args(&args),
                 Err(e) => {
                     let _ = app.emit(
                         &format!("download-complete-{}", id),
