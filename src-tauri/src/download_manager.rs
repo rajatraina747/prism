@@ -9,7 +9,7 @@ use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
-use crate::{augmented_path, cookie_browser, find_ffmpeg};
+use crate::{augmented_path, find_ffmpeg};
 
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
@@ -110,11 +110,9 @@ impl DownloadManager {
                 }
             }
 
-            // Pass browser cookies to avoid YouTube bot detection
-            if let Some(browser) = cookie_browser() {
-                args.push("--cookies-from-browser".into());
-                args.push(browser);
-            }
+            // Bypass YouTube bot detection using alternative player clients
+            args.push("--extractor-args".into());
+            args.push("youtube:player_client=web_creator,mweb".into());
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
             if let Some(ffmpeg_path) = find_ffmpeg() {
