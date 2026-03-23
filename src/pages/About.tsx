@@ -5,7 +5,7 @@ import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const LATEST_RELEASE = {
-  version: '1.0.5',
+  version: '1.0.6',
   date: 'March 2026',
   highlights: [
     'Fixed video parsing on installed app (PATH resolution for JS runtimes)',
