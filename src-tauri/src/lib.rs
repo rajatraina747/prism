@@ -102,12 +102,23 @@ struct YtDlpThumbnail {
 
 #[tauri::command]
 async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String> {
+    let mut parse_args: Vec<String> = vec![
+        "--dump-json".into(),
+        "--no-download".into(),
+        "--no-warnings".into(),
+    ];
+    if let Some(browser) = cookie_browser() {
+        parse_args.push("--cookies-from-browser".into());
+        parse_args.push(browser);
+    }
+    parse_args.push(url.clone());
+
     let output = app
         .shell()
         .sidecar("yt-dlp")
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
         .env("PATH", augmented_path())
-        .args(["--dump-json", "--no-download", "--no-warnings", &url])
+        .args(&parse_args)
         .output()
         .await
         .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
@@ -221,18 +232,24 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 
 #[tauri::command]
 async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, String> {
+    let mut playlist_args: Vec<String> = vec![
+        "--flat-playlist".into(),
+        "--dump-json".into(),
+        "--no-download".into(),
+        "--no-warnings".into(),
+    ];
+    if let Some(browser) = cookie_browser() {
+        playlist_args.push("--cookies-from-browser".into());
+        playlist_args.push(browser);
+    }
+    playlist_args.push(url.clone());
+
     let output = app
         .shell()
         .sidecar("yt-dlp")
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
         .env("PATH", augmented_path())
-        .args([
-            "--flat-playlist",
-            "--dump-json",
-            "--no-download",
-            "--no-warnings",
-            &url,
-        ])
+        .args(&playlist_args)
         .output()
         .await
         .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
@@ -473,6 +490,35 @@ pub fn augmented_path() -> String {
     let sep = ";";
 
     format!("{}{}{}", extra.join(sep), sep, base)
+}
+
+/// Detect the best browser to extract cookies from for yt-dlp.
+/// YouTube often requires authentication cookies to avoid bot detection.
+pub fn cookie_browser() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let checks: &[(&str, &str)] = &[
+            ("chrome", "/Applications/Google Chrome.app"),
+            ("brave", "/Applications/Brave Browser.app"),
+            ("edge", "/Applications/Microsoft Edge.app"),
+            ("firefox", "/Applications/Firefox.app"),
+            ("safari", "/Applications/Safari.app"),
+        ];
+        for (name, path) in checks {
+            if std::path::Path::new(path).exists() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return Some("chrome".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return Some("chrome".into());
+    }
+    None
 }
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,
