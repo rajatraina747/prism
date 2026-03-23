@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
+import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
@@ -36,6 +38,7 @@ export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
   const { preferences } = useSettings();
   const service = useService();
+  const navigate = useNavigate();
   const [parseError, setParseError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parsedMetadata, setParsedMetadata] = useState<MediaMetadata | null>(null);
@@ -136,6 +139,7 @@ export default function Dashboard() {
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
 
+    let queued = 0;
     for (let i = 0; i < entries.length; i++) {
       try {
         const metadata = await service.parseUrl(entries[i].url);
@@ -161,6 +165,7 @@ export default function Dashboard() {
           retryAttempt: 0,
         };
         addToQueue(item);
+        queued++;
       } catch {
         // Skip entries that fail to parse
       }
@@ -171,7 +176,14 @@ export default function Dashboard() {
     setShowPlaylistModal(false);
     setParsedPlaylist(null);
     setPlaylistProcessedCount(0);
-  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset]);
+
+    if (queued > 0) {
+      toast.success(`${queued} video${queued !== 1 ? 's' : ''} added to queue`);
+      navigate('/queue');
+    } else {
+      toast.error('Failed to queue any videos');
+    }
+  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset, navigate]);
 
   return (
     <div className="page-container max-w-3xl mx-auto">

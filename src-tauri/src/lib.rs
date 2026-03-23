@@ -258,10 +258,16 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
                 .and_then(|ts| ts.into_iter().rev().find_map(|t| t.url))
                 .unwrap_or_default();
 
-            let entry_url = entry.url.unwrap_or_default();
-            if entry_url.is_empty() {
+            let raw_url = entry.url.unwrap_or_default();
+            if raw_url.is_empty() {
                 continue;
             }
+            // --flat-playlist may return bare video IDs; expand to full URLs
+            let entry_url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+                raw_url
+            } else {
+                format!("https://www.youtube.com/watch?v={}", raw_url)
+            };
 
             entries.push(PlaylistEntry {
                 url: entry_url,
