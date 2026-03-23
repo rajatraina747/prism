@@ -19,6 +19,7 @@ describe('diagnostics', () => {
   it('supports all log levels', () => {
     // Suppress console.error for the error-level test
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    diagnostics.setLogLevel('debug');
 
     diagnostics.log('info', 'info msg');
     diagnostics.log('warn', 'warn msg');
