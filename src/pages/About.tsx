@@ -4,42 +4,18 @@ import { useService } from '@/services/ServiceProvider';
 import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
-const CHANGELOG = [
-  {
-    version: '1.0.2',
-    date: 'March 2026',
-    highlights: [
-      'Audio-only download mode — extract MP3/M4A from any video',
-      'Subtitle download support with language selection',
-      'Download speed limiting — honor your bandwidth preferences',
-      'Playlist support — queue entire playlists with one URL',
-      'Improved auto-updater reliability with retry logic and 30s timeout',
-      'Explicit app restart after update installation',
-    ],
-  },
-  {
-    version: '1.0.1',
-    date: 'March 2026',
-    highlights: [
-      'Auto-updater with in-app install and restart',
-      'Updater signing and artifact generation for secure updates',
-      'Windows cross-platform compatibility improvements',
-    ],
-  },
-  {
-    version: '1.0.0',
-    date: 'March 2026',
-    highlights: [
-      'Download videos in up to 4K quality with automatic format selection',
-      'Smart quality presets — choose your preferred resolution with one click',
-      'Full download queue with pause, resume, retry, and batch import',
-      'Download history with search and one-click file access',
-      'Automatic file renaming to prevent overwrites',
-      'Light & dark themes with system preference detection',
-      'All data stored locally on your device — zero tracking, zero telemetry',
-    ],
-  },
-];
+const LATEST_RELEASE = {
+  version: '1.0.4',
+  date: 'March 2026',
+  highlights: [
+    'Audio-only download mode — extract MP3 from any video',
+    'Subtitle download support with 12 language options',
+    'Download speed limiting from Settings',
+    'Playlist support — queue entire playlists with one URL',
+    'Redesigned sidebar branding',
+    'Improved auto-updater reliability',
+  ],
+};
 
 export default function About() {
   const service = useService();
@@ -72,23 +48,21 @@ export default function About() {
         </div>
       </Panel>
 
-      {/* Changelog */}
-      {CHANGELOG.map(release => (
-        <Panel key={release.version} className="mt-4 animate-fade-in" style={{ animationDelay: '80ms' } as React.CSSProperties}>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <h3 className="text-xs font-semibold text-foreground">v{release.version}</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">{release.date}</span>
-            </div>
-            <div className="text-xs text-muted-foreground space-y-1.5 leading-relaxed">
-              {release.highlights.map((item, i) => (
-                <p key={i}>&#8226; {item}</p>
-              ))}
-            </div>
+      {/* What's New */}
+      <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '80ms' } as React.CSSProperties}>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <h3 className="text-xs font-semibold text-foreground">What's New</h3>
+            <span className="text-[10px] text-muted-foreground ml-auto">{LATEST_RELEASE.date}</span>
           </div>
-        </Panel>
-      ))}
+          <div className="text-xs text-muted-foreground space-y-1.5 leading-relaxed">
+            {LATEST_RELEASE.highlights.map((item, i) => (
+              <p key={i}>&#8226; {item}</p>
+            ))}
+          </div>
+        </div>
+      </Panel>
 
       <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
         <div className="space-y-2">

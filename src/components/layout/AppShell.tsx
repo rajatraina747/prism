@@ -33,10 +33,10 @@ function SidebarNav() {
   return (
     <aside className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand */}
-      <div className="h-14 flex items-center gap-2.5 px-5 border-b border-border/30">
-        <img src="/logo-nobg.png" alt="Prism" className="w-7 h-7 rounded-lg object-contain" />
+      <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
+        <img src="/logo-nobg.png" alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
-        <span className="text-[10px] font-medium text-muted-foreground ml-auto">v1.0</span>
+        <span className="text-[10px] text-muted-foreground/60">by RainaCorp</span>
       </div>
 
       {/* Main Nav */}
@@ -83,17 +83,6 @@ function SidebarNav() {
         ))}
       </div>
 
-      {/* RainaCorp Branding */}
-      <div className="px-4 py-2.5 border-t border-border/20">
-        <a
-          href="https://www.rainacorp.co.uk"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-        >
-          Designed & built by RainaCorp
-        </a>
-      </div>
     </aside>
   );
 }

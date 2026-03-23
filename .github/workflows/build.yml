@@ -45,22 +45,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # For Apple code signing (configure these secrets when ready):
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Ad-hoc sign so macOS doesn't show "damaged" error on downloaded apps
+          APPLE_SIGNING_IDENTITY: "-"
         with:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: |
-            Download the installer for your platform below.
+            ## What's New
 
-            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications.
-            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" → "Run anyway".
+            - Audio-only download mode — extract MP3 from any video
+            - Subtitle download support with 12 language options
+            - Download speed limiting from Settings
+            - Playlist support — queue entire playlists with one URL
+            - Redesigned sidebar branding
+            - Improved auto-updater reliability
+
+            ## Install
+
+            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
+            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
           releaseDraft: true
           prerelease: false
 
@@ -98,9 +102,18 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: |
-            Download the installer for your platform below.
+            ## What's New
 
-            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications.
-            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" → "Run anyway".
+            - Audio-only download mode — extract MP3 from any video
+            - Subtitle download support with 12 language options
+            - Download speed limiting from Settings
+            - Playlist support — queue entire playlists with one URL
+            - Redesigned sidebar branding
+            - Improved auto-updater reliability
+
+            ## Install
+
+            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
+            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
           releaseDraft: true
           prerelease: false
