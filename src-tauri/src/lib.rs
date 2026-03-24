@@ -108,8 +108,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         "--no-warnings".into(),
         "--extractor-args".into(),
         "youtube:player_client=web_creator,mweb".into(),
-        "--cookies-from-browser".into(),
-        cookie_browser().into(),
+        "--force-ipv4".into(),
     ];
     parse_args.push(url.clone());
 
@@ -239,8 +238,7 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         "--no-warnings".into(),
         "--extractor-args".into(),
         "youtube:player_client=web_creator,mweb".into(),
-        "--cookies-from-browser".into(),
-        cookie_browser().into(),
+        "--force-ipv4".into(),
     ];
     playlist_args.push(url.clone());
 
@@ -445,12 +443,24 @@ pub fn augmented_path() -> String {
     let base = std::env::var("PATH").unwrap_or_default();
     let mut extra: Vec<String> = Vec::new();
 
+    // Include the app's own binary directory — bundled sidecars (deno, etc.) live here
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            extra.push(dir.to_string_lossy().into_owned());
+        }
+    }
+
     #[cfg(target_os = "macos")]
     {
         extra.push("/opt/homebrew/bin".into());
         extra.push("/usr/local/bin".into());
-        // nvm-managed Node.js
         if let Some(home) = dirs::home_dir() {
+            // Deno
+            let deno_bin = home.join(".deno/bin");
+            if deno_bin.exists() {
+                extra.push(deno_bin.to_string_lossy().into_owned());
+            }
+            // nvm-managed Node.js
             let nvm_dir = home.join(".nvm/versions/node");
             if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
                 for entry in entries.flatten() {
@@ -478,6 +488,12 @@ pub fn augmented_path() -> String {
         if let Ok(prog) = std::env::var("ProgramFiles") {
             extra.push(format!("{}\\nodejs", prog));
         }
+        if let Some(home) = dirs::home_dir() {
+            let deno_bin = home.join(".deno\\bin");
+            if deno_bin.exists() {
+                extra.push(deno_bin.to_string_lossy().into_owned());
+            }
+        }
     }
 
     if extra.is_empty() {
@@ -490,19 +506,6 @@ pub fn augmented_path() -> String {
     let sep = ";";
 
     format!("{}{}{}", extra.join(sep), sep, base)
-}
-
-/// Return the browser to read cookies from.
-/// macOS → Safari (cookies NOT encrypted via Keychain — no password prompt).
-/// Windows → Chrome (uses DPAPI — no prompt).
-/// Linux → Firefox (no keyring prompt).
-pub fn cookie_browser() -> &'static str {
-    #[cfg(target_os = "macos")]
-    { "safari" }
-    #[cfg(target_os = "windows")]
-    { "chrome" }
-    #[cfg(target_os = "linux")]
-    { "firefox" }
 }
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,

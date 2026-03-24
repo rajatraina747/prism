@@ -40,6 +40,23 @@ jobs:
             "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
           chmod +x src-tauri/binaries/yt-dlp-aarch64-apple-darwin
 
+      # Bundle Deno so yt-dlp can solve YouTube JS challenges (required since yt-dlp 2025.11.12)
+      - name: Download Deno (x86_64)
+        run: |
+          curl -fL -o /tmp/deno-x86.zip \
+            "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-apple-darwin.zip"
+          unzip -o /tmp/deno-x86.zip -d /tmp/deno-x86
+          mv /tmp/deno-x86/deno src-tauri/binaries/deno-x86_64-apple-darwin
+          chmod +x src-tauri/binaries/deno-x86_64-apple-darwin
+
+      - name: Download Deno (aarch64)
+        run: |
+          curl -fL -o /tmp/deno-arm.zip \
+            "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip"
+          unzip -o /tmp/deno-arm.zip -d /tmp/deno-arm
+          mv /tmp/deno-arm/deno src-tauri/binaries/deno-aarch64-apple-darwin
+          chmod +x src-tauri/binaries/deno-aarch64-apple-darwin
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -90,6 +107,13 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           curl -fL -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+
+      # Bundle Deno so yt-dlp can solve YouTube JS challenges
+      - name: Download Deno (Windows x86_64)
+        run: |
+          curl -fL -o deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+          unzip -o deno.zip -d src-tauri/binaries/
+          mv src-tauri/binaries/deno.exe src-tauri/binaries/deno-x86_64-pc-windows-msvc.exe
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

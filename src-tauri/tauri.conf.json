@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Prism",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "identifier": "com.prism.app",
   "build": {
     "frontendDist": "../dist",
@@ -46,7 +46,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/yt-dlp"
+      "binaries/yt-dlp",
+      "binaries/deno"
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",

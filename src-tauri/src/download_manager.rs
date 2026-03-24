@@ -110,11 +110,10 @@ impl DownloadManager {
                 }
             }
 
-            // Bypass YouTube bot detection using alternative player clients + Safari cookies
+            // Bypass YouTube bot detection using alternative player clients
             args.push("--extractor-args".into());
             args.push("youtube:player_client=web_creator,mweb".into());
-            args.push("--cookies-from-browser".into());
-            args.push(crate::cookie_browser().into());
+            args.push("--force-ipv4".into());
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
             if let Some(ffmpeg_path) = find_ffmpeg() {
