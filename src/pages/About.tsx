@@ -5,10 +5,10 @@ import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const LATEST_RELEASE = {
-  version: '1.0.8',
+  version: '1.0.9',
   date: 'March 2026',
   highlights: [
-    'Fixed YouTube bot detection without requiring browser passwords',
+    'YouTube auth via Safari cookies (no password prompts)',
     'Fixed playlist queueing — videos now properly added to queue',
     'Better error messages when parsing fails',
     'Audio-only download mode — extract MP3 from any video',
