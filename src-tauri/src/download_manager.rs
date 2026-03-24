@@ -89,8 +89,11 @@ impl DownloadManager {
                     args.push(fmt.clone());
                 } else {
                     args.push("-f".into());
-                    args.push("bestvideo+bestaudio/best".into());
+                    args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best".into());
                 }
+                // Prefer H.264/AAC for QuickTime compatibility
+                args.push("-S".into());
+                args.push("vcodec:h264,acodec:m4a".into());
             }
 
             if download_subtitles {
