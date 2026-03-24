@@ -110,9 +110,6 @@ impl DownloadManager {
                 }
             }
 
-            // Bypass YouTube bot detection using alternative player clients
-            args.push("--extractor-args".into());
-            args.push("youtube:player_client=web_creator,mweb".into());
             args.push("--force-ipv4".into());
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
