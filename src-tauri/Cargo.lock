@@ -2908,7 +2908,7 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "1.0.6"
+version = "1.0.12"
 dependencies = [
  "chrono",
  "dirs",
