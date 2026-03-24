@@ -27,6 +27,7 @@ dist-ssr
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/yt-dlp-*
+src-tauri/binaries/deno-*
 *.app
 *.dmg
 *.AppImage
