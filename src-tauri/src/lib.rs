@@ -108,6 +108,8 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         "--no-warnings".into(),
         "--extractor-args".into(),
         "youtube:player_client=web_creator,mweb".into(),
+        "--cookies-from-browser".into(),
+        cookie_browser().into(),
     ];
     parse_args.push(url.clone());
 
@@ -237,6 +239,8 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         "--no-warnings".into(),
         "--extractor-args".into(),
         "youtube:player_client=web_creator,mweb".into(),
+        "--cookies-from-browser".into(),
+        cookie_browser().into(),
     ];
     playlist_args.push(url.clone());
 
@@ -486,6 +490,19 @@ pub fn augmented_path() -> String {
     let sep = ";";
 
     format!("{}{}{}", extra.join(sep), sep, base)
+}
+
+/// Return the browser to read cookies from.
+/// macOS → Safari (cookies NOT encrypted via Keychain — no password prompt).
+/// Windows → Chrome (uses DPAPI — no prompt).
+/// Linux → Firefox (no keyring prompt).
+pub fn cookie_browser() -> &'static str {
+    #[cfg(target_os = "macos")]
+    { "safari" }
+    #[cfg(target_os = "windows")]
+    { "chrome" }
+    #[cfg(target_os = "linux")]
+    { "firefox" }
 }
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,
