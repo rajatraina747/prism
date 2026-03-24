@@ -5,10 +5,10 @@ import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const LATEST_RELEASE = {
-  version: '1.0.10',
+  version: '1.0.11',
   date: 'March 2026',
   highlights: [
-    'Bundled Deno runtime — YouTube downloads work out of the box',
+    'Full resolution options (1080p, 4K) — removed restrictive player clients',
     'Fixed playlist queueing — videos now properly added to queue',
     'Better error messages when parsing fails',
     'Audio-only download mode — extract MP3 from any video',

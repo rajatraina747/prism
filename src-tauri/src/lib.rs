@@ -106,8 +106,6 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         "--dump-json".into(),
         "--no-download".into(),
         "--no-warnings".into(),
-        "--extractor-args".into(),
-        "youtube:player_client=web_creator,mweb".into(),
         "--force-ipv4".into(),
     ];
     parse_args.push(url.clone());
@@ -236,8 +234,6 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         "--dump-json".into(),
         "--no-download".into(),
         "--no-warnings".into(),
-        "--extractor-args".into(),
-        "youtube:player_client=web_creator,mweb".into(),
         "--force-ipv4".into(),
     ];
     playlist_args.push(url.clone());
