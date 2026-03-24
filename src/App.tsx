@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -21,8 +20,6 @@ import TermsOfService from "@/pages/TermsOfService";
 import OpenSourceLicenses from "@/pages/OpenSourceLicenses";
 import NotFound from "@/pages/NotFound";
 
-const queryClient = new QueryClient();
-
 const App = () => {
   const [showSplash, setShowSplash] = useState(true);
   const handleSplashFinished = useCallback(() => setShowSplash(false), []);
@@ -31,32 +28,30 @@ const App = () => {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       {showSplash && <SplashScreen onFinished={handleSplashFinished} />}
       <ServiceProvider>
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <Sonner />
-            <BrowserRouter>
-              <AppProvider>
-              <AppShell>
-                <ErrorBoundary>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/queue" element={<Queue />} />
-                  <Route path="/downloads" element={<Downloads />} />
-                  <Route path="/failed" element={<Failed />} />
-                  <Route path="/history" element={<History />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/about" element={<About />} />
-                  <Route path="/privacy" element={<PrivacyPolicy />} />
-                  <Route path="/terms" element={<TermsOfService />} />
-                  <Route path="/licenses" element={<OpenSourceLicenses />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-                </ErrorBoundary>
-              </AppShell>
-              </AppProvider>
-            </BrowserRouter>
-          </TooltipProvider>
-        </QueryClientProvider>
+        <TooltipProvider>
+          <Sonner />
+          <BrowserRouter>
+            <AppProvider>
+            <AppShell>
+              <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/queue" element={<Queue />} />
+                <Route path="/downloads" element={<Downloads />} />
+                <Route path="/failed" element={<Failed />} />
+                <Route path="/history" element={<History />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/licenses" element={<OpenSourceLicenses />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              </ErrorBoundary>
+            </AppShell>
+            </AppProvider>
+          </BrowserRouter>
+        </TooltipProvider>
       </ServiceProvider>
     </ThemeProvider>
   );

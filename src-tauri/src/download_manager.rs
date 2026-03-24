@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
 use serde::Serialize;
@@ -10,6 +10,11 @@ use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
 use crate::{augmented_path, find_ffmpeg};
+
+static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
+static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
+static SPEED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap());
+static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(\d+):(\d+)").unwrap());
 
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
@@ -160,25 +165,44 @@ impl DownloadManager {
                 map.insert(id.clone(), ActiveDownload { child });
             }
 
-            let pct_re = Regex::new(r"(\d+\.?\d*)%").unwrap();
-            let size_re = Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap();
-            let speed_re = Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap();
-            let eta_re = Regex::new(r"ETA\s+(\d+):(\d+)").unwrap();
-
             let mut success = false;
+            let mut last_error = String::new();
 
-            while let Some(event) = rx.recv().await {
-                match event {
-                    CommandEvent::Stdout(data) | CommandEvent::Stderr(data) => {
-                        let line = String::from_utf8_lossy(&data);
-                        if let Some(p) = parse_progress(&line, &pct_re, &size_re, &speed_re, &eta_re, &id) {
-                            let _ = app.emit(&format!("download-progress-{}", id), p);
+            loop {
+                match tokio::time::timeout(std::time::Duration::from_secs(300), rx.recv()).await {
+                    Ok(Some(event)) => match event {
+                        CommandEvent::Stdout(data) => {
+                            let line = String::from_utf8_lossy(&data);
+                            if let Some(p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                let _ = app.emit(&format!("download-progress-{}", id), p);
+                            }
                         }
+                        CommandEvent::Stderr(data) => {
+                            let line = String::from_utf8_lossy(&data);
+                            let trimmed = line.trim();
+                            if !trimmed.is_empty() {
+                                last_error = trimmed.to_string();
+                            }
+                            if let Some(p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                let _ = app.emit(&format!("download-progress-{}", id), p);
+                            }
+                        }
+                        CommandEvent::Terminated(payload) => {
+                            success = payload.code == Some(0);
+                            break;
+                        }
+                        _ => {}
+                    },
+                    Ok(None) => break,
+                    Err(_) => {
+                        // 5-minute inactivity timeout
+                        let mut map = downloads.lock().await;
+                        if let Some(dl) = map.remove(&id) {
+                            let _ = dl.child.kill();
+                        }
+                        last_error = "Download timed out (no activity for 5 minutes)".to_string();
+                        break;
                     }
-                    CommandEvent::Terminated(payload) => {
-                        success = payload.code == Some(0);
-                    }
-                    _ => {}
                 }
             }
 
@@ -206,7 +230,7 @@ impl DownloadManager {
                     error: if success {
                         None
                     } else {
-                        Some("Download failed or was cancelled".into())
+                        Some(if last_error.is_empty() { "Download failed or was cancelled".into() } else { last_error })
                     },
                     file_path: final_path,
                     file_size,

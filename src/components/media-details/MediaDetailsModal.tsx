@@ -39,7 +39,6 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
   const [filename, setFilename] = useState('');
   const [startImmediately, setStartImmediately] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [priority, setPriority] = useState<'high' | 'normal' | 'low'>('normal');
   const [audioOnly, setAudioOnly] = useState(false);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [subtitleLanguage, setSubtitleLanguage] = useState('en');
@@ -72,9 +71,8 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       metadata,
       settings: {
         format: audioOnly ? null : selectedFormat,
-        destination: DEFAULT_PREFERENCES.defaultSaveFolder,
+        destination: preferences.defaultSaveFolder,
         filename,
-        priority,
         retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
         startImmediately,
         audioOnly,
@@ -240,24 +238,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40">
                   <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">{DEFAULT_PREFERENCES.defaultSaveFolder}</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Priority</label>
-                <div className="flex gap-1.5">
-                  {(['high', 'normal', 'low'] as const).map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setPriority(p)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors active:scale-[0.97]',
-                        priority === p ? 'bg-primary/15 text-primary' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                      )}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                  <span className="text-xs text-muted-foreground">{preferences.defaultSaveFolder}</span>
                 </div>
               </div>
               {preferences.bandwidthLimit > 0 && (

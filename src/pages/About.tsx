@@ -5,16 +5,16 @@ import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 const LATEST_RELEASE = {
-  version: '1.0.12',
+  version: '1.0.14',
   date: 'March 2026',
   highlights: [
-    'QuickTime-compatible downloads — prefers H.264/AAC codecs',
-    'Fixed playlist queueing — videos now properly added to queue',
-    'Better error messages when parsing fails',
-    'Audio-only download mode — extract MP3 from any video',
-    'Subtitle download support with 12 language options',
-    'Download speed limiting from Settings',
-    'Playlist support — queue entire playlists with one URL',
+    'Security hardening — scoped permissions, CSP, path traversal protection',
+    'Better error messages — real yt-dlp errors shown instead of generic messages',
+    'Stalled download timeout — kills inactive downloads after 5 minutes',
+    'Smart error classification — permission, storage, network, and parse errors',
+    'Dead code cleanup — removed ~29KB from bundle',
+    'Accessibility improvements — screen reader labels, ARIA roles',
+    'Performance — memoized components and lazy-compiled regexes',
   ],
 };
 

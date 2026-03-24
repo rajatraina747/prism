@@ -71,11 +71,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Fixed video parsing on installed app (YouTube links now work correctly)
-            - Better error messages when link parsing fails
-            - Audio-only download mode — extract MP3 from any video
-            - Subtitle & playlist support
-            - Download speed limiting from Settings
+            - Security hardening — scoped permissions, CSP, path traversal protection
+            - Better error messages — real yt-dlp errors shown instead of generic messages
+            - Stalled download timeout — kills inactive downloads after 5 minutes
+            - Smart error classification — permission, storage, network, and parse errors
+            - Dead code cleanup — smaller, faster bundle
+            - Accessibility improvements — screen reader labels, ARIA roles
+            - Performance — memoized components and lazy-compiled regexes
 
             ## Install
 
@@ -127,11 +129,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Fixed video parsing on installed app (YouTube links now work correctly)
-            - Better error messages when link parsing fails
-            - Audio-only download mode — extract MP3 from any video
-            - Subtitle & playlist support
-            - Download speed limiting from Settings
+            - Security hardening — scoped permissions, CSP, path traversal protection
+            - Better error messages — real yt-dlp errors shown instead of generic messages
+            - Stalled download timeout — kills inactive downloads after 5 minutes
+            - Smart error classification — permission, storage, network, and parse errors
+            - Dead code cleanup — smaller, faster bundle
+            - Accessibility improvements — screen reader labels, ARIA roles
+            - Performance — memoized components and lazy-compiled regexes
 
             ## Install
 

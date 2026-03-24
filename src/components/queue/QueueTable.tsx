@@ -96,7 +96,7 @@ export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemo
   );
 }
 
-function QueueRow({
+const QueueRow = React.memo(function QueueRow({
   item, index, onPause, onResume, onCancel, onRetry, onRemove, showDragHandle,
 }: {
   item: DownloadItem; index: number;
@@ -192,13 +192,14 @@ function QueueRow({
       </div>
     </div>
   );
-}
+});
 
 function ActionButton({ icon: Icon, onClick, tooltip }: { icon: React.ElementType; onClick: () => void; tooltip: string }) {
   return (
     <button
       onClick={onClick}
       title={tooltip}
+      aria-label={tooltip}
       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
     >
       <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />

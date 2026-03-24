@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { PlaylistInfo, PlaylistEntry } from '@/types/models';
 import { formatDuration } from '@/services';
@@ -16,10 +16,15 @@ interface PlaylistModalProps {
 
 export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProcessing, processedCount }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const prevPlaylistRef = useRef<string | null>(null);
 
   React.useEffect(() => {
     if (playlist) {
-      setSelected(new Set(playlist.entries.map((_, i) => i)));
+      const key = playlist.title;
+      if (key !== prevPlaylistRef.current) {
+        prevPlaylistRef.current = key;
+        setSelected(new Set(playlist.entries.map((_, i) => i)));
+      }
     }
   }, [playlist]);
 

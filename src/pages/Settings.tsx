@@ -26,6 +26,8 @@ function SettingRow({ label, description, children }: { label: string; descripti
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
         'relative w-9 h-5 rounded-full transition-colors duration-200 active:scale-[0.95]',
@@ -66,7 +68,6 @@ function NumberInput({ value, onChange, min, max }: { value: number; onChange: (
 }
 
 const SECTIONS = [
-  { id: 'general', label: 'General', icon: FolderOpen },
   { id: 'downloads', label: 'Downloads', icon: Download },
   { id: 'queue', label: 'Queue', icon: Gauge },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -81,7 +82,7 @@ export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
   const service = useService();
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = React.useState('general');
+  const [activeSection, setActiveSection] = React.useState('downloads');
   const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
@@ -116,36 +117,10 @@ export default function Settings() {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <Panel className="animate-fade-in" key={activeSection}>
-            {activeSection === 'general' && (
-              <div className="divide-y divide-border/30">
-                <SettingRow label="Default save folder" description="Where downloaded files are saved">
-                  <button
-                    onClick={async () => {
-                      const dir = await service.pickDirectory();
-                      if (dir) updatePreference('defaultSaveFolder', dir);
-                    }}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground max-w-[200px] truncate hover:bg-secondary transition-colors cursor-pointer"
-                  >
-                    <FolderOpen className="w-3 h-3 shrink-0" />
-                    {p.defaultSaveFolder}
-                  </button>
-                </SettingRow>
-                <SettingRow label="Naming template" description="How downloaded files are named">
-                  <Select value={p.namingTemplate} options={[{ value: '{title}', label: 'Video Title' }, { value: '{title}_{resolution}', label: 'Title + Resolution' }, { value: '{id}_{title}', label: 'ID + Title' }]} onChange={v => updatePreference('namingTemplate', v)} />
-                </SettingRow>
-                <SettingRow label="Overwrite behavior" description="When a file already exists">
-                  <Select value={p.overwriteBehavior} options={[{ value: 'rename', label: 'Rename' }, { value: 'overwrite', label: 'Overwrite' }, { value: 'skip', label: 'Skip' }]} onChange={v => updatePreference('overwriteBehavior', v as any)} />
-                </SettingRow>
-              </div>
-            )}
-
             {activeSection === 'downloads' && (
               <div className="divide-y divide-border/30">
                 <SettingRow label="Default retry count" description="Number of retry attempts on failure">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
-                </SettingRow>
-                <SettingRow label="Clipboard auto-detect" description="Automatically detect video URLs from clipboard">
-                  <Toggle checked={p.clipboardAutoDetect} onChange={v => updatePreference('clipboardAutoDetect', v)} />
                 </SettingRow>
               </div>
             )}
@@ -204,9 +179,6 @@ export default function Settings() {
               <div className="divide-y divide-border/30">
                 <SettingRow label="Auto-update" description="Automatically check and install updates on launch">
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
-                </SettingRow>
-                <SettingRow label="Update channel" description="Release track for updates">
-                  <Select value={p.updateChannel} options={[{ value: 'stable', label: 'Stable' }, { value: 'beta', label: 'Beta' }]} onChange={v => updatePreference('updateChannel', v as any)} />
                 </SettingRow>
                 <SettingRow label="Check for updates" description={
                   updateState === 'available' ? `Version ${updateVersion} is available` :

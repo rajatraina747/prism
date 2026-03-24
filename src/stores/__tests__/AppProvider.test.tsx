@@ -18,7 +18,6 @@ function makeItem(id: string, status: DownloadItem['status'] = 'queued'): Downlo
       format: null,
       destination: '/downloads',
       filename: 'test',
-      priority: 'normal',
       retryCount: 3,
       startImmediately: false,
     },

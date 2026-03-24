@@ -314,12 +314,13 @@ async fn start_download(
     subtitle_language: Option<String>,
     speed_limit: Option<u64>,
 ) -> Result<(), String> {
-    let expanded_path = expand_tilde(&output_path);
+    let expanded_path = validate_download_path(&output_path)?;
     // Auto-number if the target .mp4 already exists
     let deduped_path = dedupe_output_path(&expanded_path);
     // Ensure the parent directory exists
     if let Some(parent) = PathBuf::from(&deduped_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create download directory: {}", e))?;
     }
     let manager = app.state::<DownloadManager>();
     manager.start_download(
@@ -400,6 +401,33 @@ fn expand_tilde(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+/// Validate that a download path doesn't escape allowed directories via traversal.
+fn validate_download_path(path: &str) -> Result<String, String> {
+    let expanded = expand_tilde(path);
+
+    // Reject paths with traversal components
+    if expanded.contains("..") {
+        return Err("Invalid download path: directory traversal not allowed".into());
+    }
+
+    // Verify path is under home, downloads, or appdata
+    let path_buf = PathBuf::from(&expanded);
+    let allowed = [
+        dirs::home_dir(),
+        dirs::download_dir(),
+        dirs::data_dir(),
+    ];
+    let is_allowed = allowed.iter().any(|base| {
+        base.as_ref().map_or(false, |b| path_buf.starts_with(b))
+    });
+
+    if !is_allowed {
+        return Err(format!("Download path must be within your home directory: {}", expanded));
+    }
+
+    Ok(expanded)
 }
 
 fn extract_domain(url: &str) -> String {

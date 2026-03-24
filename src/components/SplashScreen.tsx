@@ -29,10 +29,10 @@ export function SplashScreen({ onFinished, minimumDuration = 2800 }: SplashScree
           <img
             src="/logo-nobg.png"
             alt="Prism"
-            className="splash-logo-enter h-24 w-24 object-contain drop-shadow-[0_0_24px_hsl(160,50%,44%,0.35)]"
+            className="splash-logo-enter h-28 w-28 object-contain drop-shadow-[0_0_24px_hsl(160,50%,44%,0.35)]"
             style={{ animationDelay: '0.2s' }}
           />
-          <div className="splash-divider-enter h-16 w-px bg-gradient-to-b from-transparent via-muted-foreground/30 to-transparent" />
+          <div className="splash-divider-enter h-20 w-px bg-gradient-to-b from-transparent via-muted-foreground/30 to-transparent" />
           <img
             src="/rainacorp-logo.png"
             alt="RainaCorp"

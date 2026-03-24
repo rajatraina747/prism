@@ -42,7 +42,7 @@ describe('MockPrismService', () => {
       const mockItem = {
         id: 'test-1',
         metadata: { title: 'Test', duration: 60, thumbnail: '', source: { url: 'https://x.com', domain: 'x.com', addedAt: '' }, formats: [] },
-        settings: { format: null, destination: '', filename: 'test', priority: 'normal' as const, retryCount: 0, startImmediately: true },
+        settings: { format: null, destination: '', filename: 'test', retryCount: 0, startImmediately: true },
         status: 'downloading' as const,
         progress: 0, speed: 0, eta: 0, downloadedBytes: 0, totalBytes: 500_000_000,
         retryAttempt: 0,
@@ -70,7 +70,7 @@ describe('MockPrismService', () => {
       const mockItem = {
         id: 'test-2',
         metadata: { title: 'Test', duration: 60, thumbnail: '', source: { url: 'https://x.com', domain: 'x.com', addedAt: '' }, formats: [] },
-        settings: { format: null, destination: '', filename: 'test', priority: 'normal' as const, retryCount: 0, startImmediately: true },
+        settings: { format: null, destination: '', filename: 'test', retryCount: 0, startImmediately: true },
         status: 'downloading' as const,
         progress: 0, speed: 0, eta: 0, downloadedBytes: 0, totalBytes: 500_000_000,
         retryAttempt: 0,

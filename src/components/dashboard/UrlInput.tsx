@@ -113,17 +113,15 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error }: UrlInput
     if (e.key === 'Enter') handleSubmit();
   };
 
-  // Detect multi-line paste in input
+  // Detect multi-line paste in input — just set text, don't auto-submit
   const handleInputPaste = useCallback((e: React.ClipboardEvent) => {
     const text = e.clipboardData.getData('text/plain');
     const urls = extractUrls(text);
-    if (urls.length > 1 && onBatchSubmit) {
+    if (urls.length > 1) {
       e.preventDefault();
-      onBatchSubmit(urls);
-      setBatchCount(urls.length);
-      setTimeout(() => setBatchCount(null), 3000);
+      setUrl(text.trim());
     }
-  }, [onBatchSubmit]);
+  }, []);
 
   return (
     <div className="animate-fade-in">
@@ -149,6 +147,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error }: UrlInput
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handleInputPaste}
+            aria-label="Video URL"
             placeholder="Paste a video URL to download..."
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
             disabled={isLoading}

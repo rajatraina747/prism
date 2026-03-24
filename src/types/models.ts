@@ -38,7 +38,6 @@ export interface DownloadSettings {
   format: FormatOption | null;
   destination: string;
   filename: string;
-  priority: 'high' | 'normal' | 'low';
   retryCount: number;
   startImmediately: boolean;
   audioOnly?: boolean;
@@ -94,17 +93,13 @@ export interface DownloadPreset {
 
 export interface AppPreferences {
   defaultSaveFolder: string;
-  namingTemplate: string;
-  overwriteBehavior: 'rename' | 'overwrite' | 'skip';
   maxConcurrentDownloads: number;
   bandwidthLimit: number;
   defaultRetryCount: number;
-  clipboardAutoDetect: boolean;
   theme: 'dark' | 'light' | 'system';
   launchOnStartup: boolean;
   minimizeToTray: boolean;
   autoUpdate: boolean;
-  updateChannel: 'stable' | 'beta';
   logLevel: 'error' | 'warn' | 'info' | 'debug';
   notificationsEnabled: boolean;
   soundEnabled: boolean;
@@ -118,12 +113,6 @@ export interface DiagnosticsEntry {
   context?: Record<string, unknown>;
 }
 
-export interface QueueState {
-  items: DownloadItem[];
-  activeCount: number;
-  isPaused: boolean;
-}
-
 export interface HistoryItem {
   id: string;
   metadata: MediaMetadata;
@@ -135,26 +124,15 @@ export interface HistoryItem {
   error?: DownloadError;
 }
 
-export interface UpdatePreferences {
-  autoCheck: boolean;
-  autoInstall: boolean;
-  channel: 'stable' | 'beta';
-  lastChecked?: string;
-}
-
 export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultSaveFolder: '~/Downloads/Prism',
-  namingTemplate: '{title}',
-  overwriteBehavior: 'rename',
   maxConcurrentDownloads: 3,
   bandwidthLimit: 0,
   defaultRetryCount: 3,
-  clipboardAutoDetect: true,
   theme: 'dark',
   launchOnStartup: false,
   minimizeToTray: true,
   autoUpdate: true,
-  updateChannel: 'stable',
   logLevel: 'info',
   notificationsEnabled: true,
   soundEnabled: false,

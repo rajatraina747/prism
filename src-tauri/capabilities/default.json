@@ -8,7 +8,6 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "shell:allow-execute",
     "shell:allow-spawn",
     "shell:allow-stdin-write",
     "shell:allow-kill",
@@ -20,8 +19,6 @@
     "fs:allow-appdata-write-recursive",
     "fs:allow-download-read-recursive",
     "fs:allow-download-write-recursive",
-    "fs:allow-home-read-recursive",
-    "fs:allow-home-write-recursive",
     "updater:default",
     "process:allow-restart",
     "process:allow-exit"

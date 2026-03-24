@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
@@ -7,7 +7,7 @@ import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { Panel, ProgressBar } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, DEFAULT_PREFERENCES } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
 import { generateId } from '@/services';
 import { cn } from '@/lib/utils';
 import {
@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [playlistProcessing, setPlaylistProcessing] = useState(false);
   const [playlistProcessedCount, setPlaylistProcessedCount] = useState(0);
 
-  const activeDownloads = queueItems.filter(i => i.status === 'downloading');
+  const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
@@ -101,10 +101,9 @@ export default function Dashboard() {
           metadata,
           settings: {
             format,
-            destination: DEFAULT_PREFERENCES.defaultSaveFolder,
+            destination: preferences.defaultSaveFolder,
             filename: metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'),
-            priority: 'normal',
-            retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
+            retryCount: preferences.defaultRetryCount,
             startImmediately: true,
             speedLimit: speedLimitBytes || undefined,
           },
@@ -124,7 +123,7 @@ export default function Dashboard() {
     }
 
     setBatchProgress(null);
-  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset]);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);
@@ -149,10 +148,9 @@ export default function Dashboard() {
           metadata,
           settings: {
             format,
-            destination: DEFAULT_PREFERENCES.defaultSaveFolder,
+            destination: preferences.defaultSaveFolder,
             filename: metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'),
-            priority: 'normal',
-            retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
+            retryCount: preferences.defaultRetryCount,
             startImmediately: true,
             speedLimit: speedLimitBytes || undefined,
           },

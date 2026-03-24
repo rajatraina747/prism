@@ -31,7 +31,7 @@ function SidebarNav() {
   const activeCount = queueItems.filter(i => i.status === 'downloading' || i.status === 'queued').length;
 
   return (
-    <aside className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
+    <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand */}
       <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
         <img src="/logo-nobg.png" alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />

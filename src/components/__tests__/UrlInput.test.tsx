@@ -55,7 +55,7 @@ describe('UrlInput', () => {
     expect(screen.getByText('Something went wrong')).toBeTruthy();
   });
 
-  it('handles batch submit via paste with multiple URLs', () => {
+  it('handles multi-URL paste by setting text without auto-submit', () => {
     const onSubmit = vi.fn();
     const onBatchSubmit = vi.fn();
     render(<UrlInput onSubmit={onSubmit} onBatchSubmit={onBatchSubmit} />);
@@ -67,11 +67,8 @@ describe('UrlInput', () => {
       clipboardData: { getData: () => pasteData },
     });
 
-    expect(onBatchSubmit).toHaveBeenCalledWith([
-      'https://a.com/1',
-      'https://b.com/2',
-      'https://c.com/3',
-    ]);
+    // Multi-URL paste should set the text but NOT auto-submit
+    expect(onBatchSubmit).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

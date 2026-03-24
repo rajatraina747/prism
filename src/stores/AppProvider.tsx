@@ -5,9 +5,27 @@ import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
 
+function classifyError(msg: string): { category: DownloadError['category']; suggestion: string } {
+  const lower = msg.toLowerCase();
+  if (lower.includes('permission') || lower.includes('access denied'))
+    return { category: 'permission', suggestion: 'Check folder permissions' };
+  if (lower.includes('disk') || lower.includes('space') || lower.includes('no space') || lower.includes('full'))
+    return { category: 'storage', suggestion: 'Free up disk space' };
+  if (lower.includes('codec') || lower.includes('format') || lower.includes('merge') || lower.includes('remux'))
+    return { category: 'unknown', suggestion: 'Try a different format' };
+  if (lower.includes('timeout') || lower.includes('timed out'))
+    return { category: 'network', suggestion: 'Check your connection' };
+  if (lower.includes('not found') || lower.includes('unsupported') || lower.includes('unable to extract'))
+    return { category: 'parse', suggestion: 'This URL may not be supported' };
+  return { category: 'network', suggestion: 'Check your connection and retry' };
+}
+
+let audioCtx: AudioContext | null = null;
 function playNotificationSound() {
   try {
-    const ctx = new AudioContext();
+    if (!audioCtx) audioCtx = new AudioContext();
+    const ctx = audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -18,7 +36,6 @@ function playNotificationSound() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.3);
-    setTimeout(() => ctx.close(), 500);
   } catch { /* audio not available */ }
 }
 
@@ -191,12 +208,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (settings.notificationsEnabled) {
               toast.error(`Failed: ${item.metadata.title}`);
             }
+            const message = errorMsg || 'An unexpected error occurred';
+            const { category, suggestion } = classifyError(message);
             const err: DownloadError = {
               code: 'DOWNLOAD_FAILED',
-              message: errorMsg || 'An unexpected error occurred',
-              category: 'network',
+              message,
+              category,
               timestamp: new Date().toISOString(),
-              suggestion: 'Check your connection and retry the download',
+              suggestion,
             };
             setQueue(prev => prev.map(i =>
               i.id === item.id ? { ...i, status: 'failed' as const, error: err } : i
@@ -245,6 +264,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const retryDownload = useCallback((id: string) => {
+    cleanupRefs.current.get(id)?.();
+    cleanupRefs.current.delete(id);
+    startedRef.current.delete(id);
     setQueue(prev => prev.map(i =>
       i.id === id ? { ...i, status: 'queued' as const, progress: 0, downloadedBytes: 0, speed: 0, eta: 0, error: undefined, retryAttempt: i.retryAttempt + 1 } : i
     ));
@@ -261,15 +283,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const pauseAll = useCallback(() => {
-    queue.filter(i => i.status === 'downloading').forEach(i => {
-      cleanupRefs.current.get(i.id)?.();
-      cleanupRefs.current.delete(i.id);
-      startedRef.current.delete(i.id);
+    setQueue(prev => {
+      prev.filter(i => i.status === 'downloading').forEach(i => {
+        cleanupRefs.current.get(i.id)?.();
+        cleanupRefs.current.delete(i.id);
+        startedRef.current.delete(i.id);
+      });
+      return prev.map(i =>
+        i.status === 'downloading' ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
+      );
     });
-    setQueue(prev => prev.map(i =>
-      i.status === 'downloading' ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
-    ));
-  }, [queue]);
+  }, []);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     setQueue(prev => {

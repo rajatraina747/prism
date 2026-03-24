@@ -17,7 +17,6 @@ function makeItem(overrides: Partial<DownloadItem> = {}): DownloadItem {
       format: { id: 'f1', label: '1080p', resolution: '1080p', container: 'mp4', codec: 'H.264', fileSize: 100_000, quality: 'high' },
       destination: '/downloads',
       filename: 'test',
-      priority: 'normal',
       retryCount: 3,
       startImmediately: true,
     },
