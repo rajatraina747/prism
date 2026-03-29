@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rajatraina747/video-vault-pro/actions/workflows/ci.yml"><img src="https://github.com/rajatraina747/video-vault-pro/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/rajatraina747/video-vault-pro/releases/latest"><img src="https://img.shields.io/github/v/release/rajatraina747/video-vault-pro?label=latest" alt="Latest Release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/rajatraina747/video-vault-pro" alt="License" /></a>
+  <a href="https://github.com/rajatraina747/prism/actions/workflows/ci.yml"><img src="https://github.com/rajatraina747/prism/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/rajatraina747/prism/releases/latest"><img src="https://img.shields.io/github/v/release/rajatraina747/prism?label=latest" alt="Latest Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/rajatraina747/prism" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue" alt="Platform" />
 </p>
 
@@ -40,9 +40,9 @@ Get the latest release for your platform:
 
 | Platform | Download |
 |----------|----------|
-| macOS | [Prism.dmg](https://github.com/rajatraina747/video-vault-pro/releases/latest) |
-| Windows | [Prism-setup.exe](https://github.com/rajatraina747/video-vault-pro/releases/latest) |
-| Web Demo | [Try in your browser](https://rajatraina747.github.io/video-vault-pro/) |
+| macOS | [Prism.dmg](https://github.com/rajatraina747/prism/releases/latest) |
+| Windows | [Prism-setup.exe](https://github.com/rajatraina747/prism/releases/latest) |
+| Web Demo | [Try in your browser](https://rajatraina747.github.io/prism/) |
 
 > **macOS note:** If macOS warns about an unidentified developer, right-click the app and choose "Open".
 > **Windows note:** Windows may show a SmartScreen warning — click "More info" then "Run anyway".
