@@ -196,7 +196,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
                 _ => "low",
             };
             FormatOption {
-                id: format!("bestvideo[height<={}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={}]+bestaudio/best[height<={}]", r.height, r.height, r.height),
+                id: format!("bestvideo[height<={}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<={}][vcodec^=avc1]/bestvideo[height<={}]+bestaudio/best[height<={}]", r.height, r.height, r.height, r.height),
                 label: format!("{} MP4", r.label),
                 resolution: r.label.clone(),
                 container: "mp4".into(),
