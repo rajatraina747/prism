@@ -20,7 +20,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/app-dark.png" alt="Prism Screenshot" width="800" />
+  <img src="docs/screenshots/app-light.png" alt="Prism Screenshot" width="800" />
 </p>
 
 ## Features
