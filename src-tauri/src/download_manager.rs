@@ -94,7 +94,7 @@ impl DownloadManager {
                     args.push(fmt.clone());
                 } else {
                     args.push("-f".into());
-                    args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best".into());
+                    args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into());
                 }
                 // Prefer H.264/AAC for QuickTime compatibility
                 args.push("-S".into());
