@@ -38,7 +38,7 @@ free tooling. Ordered by impact. Tiers: 1 = honest, 2 = dependable, 3 = lovable,
 - [x] **Metadata embedding.** `--embed-thumbnail --embed-metadata --embed-chapters`.
 - [x] **Cookies-from-browser setting.** Generalize the Safari-cookie trick:
   Settings dropdown → `--cookies-from-browser <browser>`.
-- [ ] **Deep-link scheme + bookmarklet.** `prism://add?url=...` via
+- [x] **Deep-link scheme + bookmarklet.** `prism://add?url=...` via
   `tauri-plugin-deep-link`; later a Firefox extension (free to publish).
 - [ ] **Subscriptions.** Watch a channel/playlist, auto-download new videos
   (`--download-archive` + `--dateafter`).
