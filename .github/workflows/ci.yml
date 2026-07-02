@@ -30,3 +30,49 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # tauri-build requires the frontend dist and sidecar binaries to exist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci && npm run build
+
+      - name: Fetch sidecar binaries
+        working-directory: src-tauri
+        run: |
+          mkdir -p binaries
+          curl -fsSL -o binaries/yt-dlp-x86_64-unknown-linux-gnu \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+          chmod +x binaries/yt-dlp-x86_64-unknown-linux-gnu
+          curl -fsSL -o /tmp/deno.zip \
+            https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip
+          unzip -o /tmp/deno.zip -d /tmp/deno-bin
+          mv /tmp/deno-bin/deno binaries/deno-x86_64-unknown-linux-gnu
+          chmod +x binaries/deno-x86_64-unknown-linux-gnu
+
+      - name: Clippy (deny warnings)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib
