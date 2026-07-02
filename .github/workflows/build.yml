@@ -71,16 +71,15 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Cancel and pause now stop the download immediately (previously kept running in the background)
-            - Real pause/resume — paused and interrupted downloads pick up where they left off
-            - Self-updating downloader engine — update yt-dlp from Settings when sites stop working, no app update needed
-            - Auto-retry with backoff for flaky network failures
-            - Browser cookies setting (Safari/Chrome/Firefox/Edge/Brave) for sign-in-required and age-restricted videos
-            - Clipboard watcher — copy a video link, focus Prism, one-click fetch
-            - Embedded thumbnails, metadata, and chapters in downloaded files
-            - Disk space check before starting downloads
-            - Clearer errors for sign-in walls, removed videos, geo locks, and rate limits
-            - Security: fixed a filename injection issue; hardened download path validation
+            - **Subscriptions** — watch channels and playlists; new videos are queued automatically on a configurable interval (only videos published after you subscribe)
+            - **SponsorBlock** — mark sponsor segments as chapters, or cut them out entirely (Settings → Downloads)
+            - **Quiet hours** — hold or throttle downloads during part of the day (Settings → Queue)
+            - **Firefox extension** — send pages and links to Prism from the browser (`extension/firefox/` in the repo)
+            - Engine self-updates are now verified against yt-dlp's official SHA-256 checksums
+            - Fixed: repeat audio downloads colliding with existing files instead of auto-numbering
+            - Fixed: ETA display for downloads longer than an hour
+            - Fixed: speed limits under 1 MB/s being ignored
+            - Under the hood: rewritten queue state machine — pause/cancel now reliably wins races with retries and completions; far fewer disk writes during downloads
 
             ## Install
 
@@ -132,16 +131,15 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Cancel and pause now stop the download immediately (previously kept running in the background)
-            - Real pause/resume — paused and interrupted downloads pick up where they left off
-            - Self-updating downloader engine — update yt-dlp from Settings when sites stop working, no app update needed
-            - Auto-retry with backoff for flaky network failures
-            - Browser cookies setting (Safari/Chrome/Firefox/Edge/Brave) for sign-in-required and age-restricted videos
-            - Clipboard watcher — copy a video link, focus Prism, one-click fetch
-            - Embedded thumbnails, metadata, and chapters in downloaded files
-            - Disk space check before starting downloads
-            - Clearer errors for sign-in walls, removed videos, geo locks, and rate limits
-            - Security: fixed a filename injection issue; hardened download path validation
+            - **Subscriptions** — watch channels and playlists; new videos are queued automatically on a configurable interval (only videos published after you subscribe)
+            - **SponsorBlock** — mark sponsor segments as chapters, or cut them out entirely (Settings → Downloads)
+            - **Quiet hours** — hold or throttle downloads during part of the day (Settings → Queue)
+            - **Firefox extension** — send pages and links to Prism from the browser (`extension/firefox/` in the repo)
+            - Engine self-updates are now verified against yt-dlp's official SHA-256 checksums
+            - Fixed: repeat audio downloads colliding with existing files instead of auto-numbering
+            - Fixed: ETA display for downloads longer than an hour
+            - Fixed: speed limits under 1 MB/s being ignored
+            - Under the hood: rewritten queue state machine — pause/cancel now reliably wins races with retries and completions; far fewer disk writes during downloads
 
             ## Install
 
