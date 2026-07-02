@@ -31,5 +31,7 @@ chrono = "0.4"
 dirs = "6"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 fs2 = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

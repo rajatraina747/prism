@@ -1,8 +1,10 @@
 import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useQueue } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
+import { pushDeepLink } from '@/lib/deep-link-bus';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -113,6 +115,15 @@ function PageHeader() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   useThemeSync();
+  const service = useService();
+  const navigate = useNavigate();
+
+  // Deep links can arrive on any page; buffer them and jump to the Dashboard,
+  // which drains the buffer and submits the URL.
+  React.useEffect(() => service.onDeepLink((url) => {
+    pushDeepLink(url);
+    navigate('/');
+  }), [service, navigate]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">

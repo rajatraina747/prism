@@ -45,6 +45,10 @@ export interface IPrismService {
   copyToClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;
 
+  // Deep links (prism://add?url=...) — handler receives the extracted video URL.
+  // Returns an unsubscribe function.
+  onDeepLink(handler: (url: string) => void): () => void;
+
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
   checkForUpdates(): Promise<UpdateCheckResult>;

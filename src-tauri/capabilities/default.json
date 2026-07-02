@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "deep-link:default",
     "shell:allow-open",
     "shell:allow-spawn",
     "shell:allow-stdin-write",

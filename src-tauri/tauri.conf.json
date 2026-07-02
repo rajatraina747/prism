@@ -27,6 +27,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["prism"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/rajatraina747/prism/releases/latest/download/latest.json"

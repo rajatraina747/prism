@@ -152,6 +152,11 @@ export class MockPrismService implements IPrismService {
     }
   }
 
+  onDeepLink(_handler: (url: string) => void): () => void {
+    // Deep links only exist in the desktop app
+    return () => {};
+  }
+
   async exportLogs(logs: import('@/types/models').DiagnosticsEntry[]): Promise<void> {
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

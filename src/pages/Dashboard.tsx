@@ -10,6 +10,7 @@ import { Panel, ProgressBar } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
 import { generateId } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
+import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { cn } from '@/lib/utils';
 import {
   Sparkles, Loader2,
@@ -57,6 +58,13 @@ export default function Dashboard() {
 
   // Ref indirection so the clipboard watcher callback stays stable
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
+
+  // prism://add?url=... deep links (bookmarklet / "send to Prism"), buffered
+  // by AppShell so links arriving on other pages aren't lost
+  React.useEffect(() => consumeDeepLinks((url) => {
+    toast.info('Link received');
+    handleUrlSubmitRef.current(url);
+  }), []);
 
   // Offer to fetch video URLs found on the clipboard when the app regains focus
   useClipboardWatcher(useCallback((url: string) => {

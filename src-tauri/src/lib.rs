@@ -625,6 +625,14 @@ pub fn find_ffmpeg() -> Option<String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be first: relays argv (incl. deep links on Windows/Linux) from a
+        // second launch to the running instance and refocuses its window.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .manage(DownloadManager::new())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

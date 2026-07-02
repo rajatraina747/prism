@@ -53,6 +53,17 @@ Get the latest release for your platform:
 > **macOS note:** If macOS warns about an unidentified developer, right-click the app and choose "Open".
 > **Windows note:** Windows may show a SmartScreen warning — click "More info" then "Run anyway".
 
+## Send to Prism from your browser
+
+Prism registers the `prism://` URL scheme. Save this bookmarklet to your bookmarks bar,
+then click it on any video page to send that page straight to Prism:
+
+```
+javascript:location.href='prism://add?url='+encodeURIComponent(location.href)
+```
+
+Prism opens (or comes to the front), fetches the video, and shows the quality picker.
+
 ## Tech Stack
 
 | Layer | Technology |

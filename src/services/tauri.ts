@@ -4,6 +4,7 @@ import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialo
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
+import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
@@ -36,6 +37,23 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 async function writeJson(file: string, data: unknown): Promise<void> {
   await ensureAppData();
   await writeTextFile(file, JSON.stringify(data), { baseDir: BaseDirectory.AppData });
+}
+
+/** Extract the video URL from a `prism://add?url=...` deep link. */
+function parsePrismDeepLink(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'prism:') return null;
+    // Accept both prism://add?url=... (host) and prism:/add?url=... (path)
+    const action = u.hostname || u.pathname.replace(/^\/+/, '');
+    if (action !== 'add') return null;
+    const target = u.searchParams.get('url');
+    if (!target) return null;
+    const t = new URL(target);
+    return (t.protocol === 'http:' || t.protocol === 'https:') ? target : null;
+  } catch {
+    return null;
+  }
 }
 
 export class TauriPrismService implements IPrismService {
@@ -165,6 +183,33 @@ export class TauriPrismService implements IPrismService {
 
   async readClipboard(): Promise<string> {
     return (await readText()) ?? '';
+  }
+
+  onDeepLink(handler: (url: string) => void): () => void {
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+
+    const extract = (urls: string[]) => {
+      if (cancelled) return;
+      for (const raw of urls) {
+        const url = parsePrismDeepLink(raw);
+        if (url) handler(url);
+      }
+    };
+
+    // Link that launched the app (cold start)
+    getCurrentDeepLinks().then(urls => { if (urls) extract(urls); }).catch(() => {});
+    // Links arriving while running
+    onOpenUrl(extract).then(fn => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      unlisten = null;
+    };
   }
 
   async exportLogs(logs: DiagnosticsEntry[]): Promise<void> {
