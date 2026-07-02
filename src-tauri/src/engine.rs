@@ -24,6 +24,19 @@ const RELEASE_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/down
 #[cfg(target_os = "linux")]
 const RELEASE_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 
+const SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+
+/// Look up the expected SHA-256 for `asset` in the release's SHA2-256SUMS
+/// manifest (lines of `<hex>  <filename>`).
+fn expected_sha256(sums: &str, asset: &str) -> Option<String> {
+    sums.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let hash = parts.next()?;
+        let name = parts.next()?;
+        (name == asset).then(|| hash.to_ascii_lowercase())
+    })
+}
+
 fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_data_dir().ok()?;
     Some(dir.join("engine").join(YTDLP_NAME))
@@ -59,8 +72,9 @@ pub async fn get_ytdlp_version(app: AppHandle) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Download the latest official yt-dlp release into app-data, verify it runs,
-/// then atomically swap it in. Returns the new version string.
+/// Download the latest official yt-dlp release into app-data, verify its
+/// SHA-256 against the release manifest and that it runs, then atomically
+/// swap it in. Returns the new version string.
 #[tauri::command]
 pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     let target = managed_ytdlp_path(&app).ok_or("Could not resolve app data directory")?;
@@ -79,6 +93,36 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
         .bytes()
         .await
         .map_err(|e| format!("Failed to download yt-dlp: {}", e))?;
+
+    // Verify against the release's published SHA-256 manifest. A mismatch can
+    // also mean "latest" advanced between the two fetches — retrying resolves
+    // that; a persistent mismatch means a corrupted or tampered download.
+    let sums_resp = reqwest::get(SUMS_URL)
+        .await
+        .map_err(|e| format!("Failed to fetch yt-dlp checksums: {}", e))?;
+    if !sums_resp.status().is_success() {
+        return Err(format!(
+            "Failed to fetch yt-dlp checksums: HTTP {}",
+            sums_resp.status()
+        ));
+    }
+    let sums = sums_resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to fetch yt-dlp checksums: {}", e))?;
+    let asset = RELEASE_URL.rsplit('/').next().unwrap_or_default();
+    let expected = expected_sha256(&sums, asset)
+        .ok_or_else(|| format!("No checksum entry for {} in SHA2-256SUMS", asset))?;
+    let actual = {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
+    };
+    if actual != expected {
+        return Err("Downloaded yt-dlp failed checksum verification — keeping current engine. Please try again.".into());
+    }
 
     let staging = target.with_extension("download");
     std::fs::write(&staging, &bytes).map_err(|e| format!("Failed to write yt-dlp: {}", e))?;
@@ -104,6 +148,22 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
 
     std::fs::rename(&staging, &target).map_err(|e| format!("Failed to install yt-dlp: {}", e))?;
     Ok(version)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_checksum_for_asset() {
+        let sums = "\
+aaaa1111  yt-dlp
+BBBB2222  yt-dlp_macos
+cccc3333  yt-dlp.exe";
+        assert_eq!(expected_sha256(sums, "yt-dlp_macos"), Some("bbbb2222".into()));
+        assert_eq!(expected_sha256(sums, "yt-dlp.exe"), Some("cccc3333".into()));
+        assert_eq!(expected_sha256(sums, "yt-dlp_linux_armv7l"), None);
+    }
 }
 
 /// Remove the self-updated engine, falling back to the bundled sidecar.

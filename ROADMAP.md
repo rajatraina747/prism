@@ -1,10 +1,11 @@
 # Prism Roadmap
 
 Goal: close the gap to flagship downloaders (Downie, 4KVD, JDownloader) using only
-free tooling. Ordered by impact. Tiers: 1 = honest, 2 = dependable, 3 = lovable,
-4 = sustainable.
+free tooling. Ordered by impact.
 
-## Tier 1 — Trust layer (bugs where the UI lies)
+## Done — v1.0/v1.1 hardening arcs
+
+### Trust layer (bugs where the UI lies)
 
 - [x] **Real cancellation.** `cancelDownload` / `pauseDownload` / `removeFromQueue` /
   `pauseAll` in `AppProvider` must call `service.cancelDownload(id)` so the Rust side
@@ -17,11 +18,11 @@ free tooling. Ordered by impact. Tiers: 1 = honest, 2 = dependable, 3 = lovable,
 - [x] **Harden path validation.** Use `Path::components()` (reject `ParentDir`)
   instead of `contains("..")`; canonicalize before the allowed-prefix check.
 
-## Tier 2 — Robustness (survive the real world)
+### Robustness (survive the real world)
 
 - [x] **Self-updating yt-dlp.** Fetch latest yt-dlp release binary from GitHub into
   app-data; prefer it over the bundled sidecar. Decouples "YouTube broke" from
-  "wait for a Prism release". Highest-leverage feature in this tier.
+  "wait for a Prism release".
 - [x] **Crash-safe queue.** Recover `.part` files on startup; offer to resume
   interrupted downloads.
 - [x] **Auto-retry with backoff.** 2–3 retries before failing; pass `--retries` /
@@ -31,32 +32,78 @@ free tooling. Ordered by impact. Tiers: 1 = honest, 2 = dependable, 3 = lovable,
   network bucket.
 - [x] **Disk space preflight** when format size is known.
 
-## Tier 3 — Feature gap (flagship conveniences)
+### Feature gap (flagship conveniences)
 
 - [x] **Clipboard watcher.** On window focus, detect a video URL on the clipboard and
   offer one-click add.
 - [x] **Metadata embedding.** `--embed-thumbnail --embed-metadata --embed-chapters`.
-- [x] **Cookies-from-browser setting.** Generalize the Safari-cookie trick:
-  Settings dropdown → `--cookies-from-browser <browser>`.
+- [x] **Cookies-from-browser setting.** Settings dropdown → `--cookies-from-browser <browser>`.
 - [x] **Deep-link scheme + bookmarklet.** `prism://add?url=...` via
-  `tauri-plugin-deep-link`; later a Firefox extension (free to publish).
+  `tauri-plugin-deep-link`.
+
+### Engineering maturity
+
+- [x] **Integration tests against the real yt-dlp sidecar.**
+- [x] **CI gates:** `cargo clippy -- -D warnings`, eslint, coverage floor,
+  Playwright smoke test against the built app.
+
+## Next arc — July 2026 (free tooling only)
+
+### Tier 0 — Debt paydown (prerequisites for subscriptions)
+
+- [x] **Verify engine updates against `SHA2-256SUMS`.** yt-dlp publishes a SHA-256
+  manifest per release; check it before the atomic swap so a corrupted or
+  tampered download can never become the engine.
+- [x] **Fix audio dedupe.** `dedupe_output_path` only probed `.mp4`; audio-only
+  downloads (`.mp3`) collided with existing files. Now probes all output extensions.
+- [x] **Fix long-download ETA.** Progress regex only matched `MM:SS`; `H:MM:SS`
+  ETAs displayed wildly wrong.
+- [x] **Fix speed-limit truncation.** Limits under 1 MiB/s truncated toward zero
+  (`{}K` after integer division); pass raw bytes/sec to `--limit-rate`.
+- [x] **Debounce queue persistence.** Progress ticks were serializing the whole
+  queue to disk several times per second.
+- [ ] **Queue state machine refactor.** Move orchestration (auto-start, retry,
+  move-to-history) out of React `useEffect`/`setTimeout` chains into an explicit
+  reducer — or better, into Rust where the processes live. Prerequisite for
+  subscriptions: they multiply concurrent queue mutations.
+
+### Tier 1 — Flagship gap
+
 - [ ] **Subscriptions.** Watch a channel/playlist, auto-download new videos
-  (`--download-archive` + `--dateafter`).
+  (`--download-archive` + `--dateafter`). The biggest functional gap to 4KVD;
+  turns Prism from a tool into a service.
+- [ ] **Firefox extension.** AMO publishing is free. Right-click → "Download in
+  Prism" via the existing `prism://` scheme; 80% of Downie's convenience moat.
+- [ ] **Batch import.** Paste multi-line text or drop a `.txt`; extract every URL,
+  queue them all.
+- [ ] **SponsorBlock integration.** `--sponsorblock-remove` / `--sponsorblock-mark`.
+  Native in yt-dlp, free, and most paid flagships don't have it.
 - [ ] **Scheduling / bandwidth windows.** Time-of-day rules on top of existing
   speed limits.
 
-## Tier 4 — Engineering maturity
+### Tier 2 — Trust & distribution (free versions)
 
-- [x] **Integration tests against the real yt-dlp sidecar** (the seam where both
-  Tier-1 bugs lived; unit tests can't catch this class).
-- [x] **CI gates:** `cargo clippy -- -D warnings`, eslint, coverage floor,
-  Playwright smoke test against the built app.
-- [ ] **Crash reporting** (Sentry free tier or self-hosted GlitchTip), opt-in.
-- [ ] **Free distribution:** Homebrew cask tap, winget manifest.
+- [ ] **Signed auto-updates via Tauri updater keys** (minisign — free, no Apple cert).
+- [ ] **Homebrew cask tap** and **winget manifest.** A `brew install --cask` path is
+  the free substitute for notarization trust.
+- [ ] **Crash reporting, opt-in.** Sentry free tier or self-hosted GlitchTip.
+- [ ] **Windows + Linux release builds in CI.** GitHub runners are free for public
+  repos; the platform branches in engine/ffmpeg code are already written.
+
+### Tier 3 — Daily-driver polish
+
+- [ ] **Menu bar / tray quick-add** — paste a URL without the window open; pairs
+  with the clipboard watcher.
+- [ ] **Drag-and-drop** a URL onto the window or dock icon.
+- [ ] **History that works harder:** search/filter, re-download from history.
+- [ ] **Richer format choices:** audio bitrate/codec options (m4a vs mp3), and a
+  per-site "smart preset" that remembers last-used settings.
 
 ## Explicitly deferred
 
-- Paid Apple notarization (ad-hoc signing works for now).
+- Paid Apple notarization (ad-hoc signing + Homebrew cask for now).
 - Multi-language UI, theming, mobile.
 - Custom download engine — yt-dlp is the moat; Prism's value is the experience
   around it.
+- Account/premium-host handling à la JDownloader — maintenance tarpit, outside
+  Prism's identity.

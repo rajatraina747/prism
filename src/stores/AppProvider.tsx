@@ -116,8 +116,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
 
-  // Persist
-  useEffect(() => { service.persistence.saveQueue(queue); }, [queue, service]);
+  // Persist. Queue writes are debounced: progress events mutate the queue
+  // several times per second, and each save serializes the whole list to disk.
+  // A trailing write within 300ms is plenty — on restart, in-flight items are
+  // reset to 'queued' anyway, so losing the final progress tick is harmless.
+  useEffect(() => {
+    const t = setTimeout(() => service.persistence.saveQueue(queue), 300);
+    return () => clearTimeout(t);
+  }, [queue, service]);
   useEffect(() => { service.persistence.saveHistory(history); }, [history, service]);
   useEffect(() => { service.persistence.saveSettings(settings); }, [settings, service]);
 

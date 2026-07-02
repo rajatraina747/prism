@@ -13,7 +13,7 @@ use crate::find_ffmpeg;
 static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
 static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
 static SPEED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap());
-static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(\d+):(\d+)").unwrap());
+static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(?:(\d+):)?(\d+):(\d+)").unwrap());
 
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
@@ -113,8 +113,10 @@ impl DownloadManager {
 
             if let Some(limit) = speed_limit {
                 if limit > 0 {
+                    // Pass raw bytes/sec — dividing to KiB truncates limits under
+                    // 1024 B/s to an invalid "0K"
                     args.push("--limit-rate".into());
-                    args.push(format!("{}K", limit / 1024));
+                    args.push(limit.to_string());
                 }
             }
 
@@ -316,9 +318,10 @@ fn parse_progress(
     let eta = eta_re
         .captures(line)
         .and_then(|c| {
-            let mins: f64 = c.get(1)?.as_str().parse().ok()?;
-            let secs: f64 = c.get(2)?.as_str().parse().ok()?;
-            Some(mins * 60.0 + secs)
+            let hours: f64 = c.get(1).map_or("0", |m| m.as_str()).parse().ok()?;
+            let mins: f64 = c.get(2)?.as_str().parse().ok()?;
+            let secs: f64 = c.get(3)?.as_str().parse().ok()?;
+            Some(hours * 3600.0 + mins * 60.0 + secs)
         })
         .unwrap_or(0.0);
 
@@ -372,6 +375,13 @@ mod tests {
         assert_eq!(p.speed, 2.5 * 1024.0 * 1024.0);
         assert_eq!(p.eta, 83.0);
         assert_eq!(p.downloaded_bytes, (0.452 * 120.5 * 1024.0 * 1024.0) as u64);
+    }
+
+    #[test]
+    fn parses_eta_with_hours() {
+        let line = " 12.0% of ~ 4.20GiB at 1.0MiB/s ETA 1:02:33";
+        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap();
+        assert_eq!(p.eta, 3600.0 + 2.0 * 60.0 + 33.0);
     }
 
     #[test]

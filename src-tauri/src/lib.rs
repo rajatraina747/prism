@@ -486,12 +486,19 @@ fn extract_domain(url: &str) -> String {
         .to_string()
 }
 
-/// Given an output path like `/path/to/video.%(ext)s`, check if
-/// `video.mp4` already exists. If so, try `video (1).%(ext)s`, `video (2).%(ext)s`, etc.
+/// Given an output path like `/path/to/video.%(ext)s`, check if a file with
+/// that name already exists under any of the extensions Prism can produce
+/// (video merges to .mp4, audio-only extracts to .mp3). If so, try
+/// `video (1).%(ext)s`, `video (2).%(ext)s`, etc.
 fn dedupe_output_path(template: &str) -> String {
-    // The template ends with .%(ext)s — check the .mp4 version for existence
-    let mp4_path = template.replace(".%(ext)s", ".mp4");
-    if !std::path::Path::new(&mp4_path).exists() {
+    const PROBE_EXTS: [&str; 5] = ["mp4", "mp3", "m4a", "mkv", "webm"];
+    let exists_any = |tpl: &str| {
+        PROBE_EXTS
+            .iter()
+            .any(|ext| std::path::Path::new(&tpl.replace(".%(ext)s", &format!(".{}", ext))).exists())
+    };
+
+    if !exists_any(template) {
         return template.to_string();
     }
 
@@ -499,9 +506,9 @@ fn dedupe_output_path(template: &str) -> String {
     let base = template.trim_end_matches(".%(ext)s");
 
     for n in 1..1000 {
-        let candidate_mp4 = format!("{} ({}).mp4", base, n);
-        if !std::path::Path::new(&candidate_mp4).exists() {
-            return format!("{} ({}).%(ext)s", base, n);
+        let candidate = format!("{} ({}).%(ext)s", base, n);
+        if !exists_any(&candidate) {
+            return candidate;
         }
     }
     // Unlikely fallback — just use the original
@@ -711,6 +718,12 @@ mod tests {
         assert_eq!(
             dedupe_output_path(&template),
             dir.join("vid (1).%(ext)s").to_string_lossy().into_owned()
+        );
+        // vid (1).mp3 also exists (audio-only output) — bumps to (2)
+        std::fs::write(dir.join("vid (1).mp3"), b"x").unwrap();
+        assert_eq!(
+            dedupe_output_path(&template),
+            dir.join("vid (2).%(ext)s").to_string_lossy().into_owned()
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
