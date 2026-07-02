@@ -144,6 +144,14 @@ export class MockPrismService implements IPrismService {
     await navigator.clipboard.writeText(text);
   }
 
+  async readClipboard(): Promise<string> {
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      return '';
+    }
+  }
+
   async exportLogs(logs: import('@/types/models').DiagnosticsEntry[]): Promise<void> {
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -164,6 +172,19 @@ export class MockPrismService implements IPrismService {
 
   async getAppVersion(): Promise<string> {
     return '1.0.0-web';
+  }
+
+  async getEngineVersion(): Promise<string> {
+    return '2026.01.01-mock';
+  }
+
+  async updateEngine(): Promise<string> {
+    await new Promise(r => setTimeout(r, 500));
+    return '2026.01.01-mock';
+  }
+
+  async resetEngine(): Promise<void> {
+    // Mock: no-op
   }
 
   persistence = {

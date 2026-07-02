@@ -1,11 +1,11 @@
 mod download_manager;
+mod engine;
 
 use std::path::PathBuf;
 
 use download_manager::DownloadManager;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
 
 // ── Structs matching frontend types ──────────────────────────────────
 
@@ -108,13 +108,13 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         "--no-warnings".into(),
         "--force-ipv4".into(),
     ];
+    if let Some(browser) = cookies_browser(&app) {
+        parse_args.push("--cookies-from-browser".into());
+        parse_args.push(browser);
+    }
     parse_args.push(url.clone());
 
-    let output = app
-        .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
-        .env("PATH", augmented_path())
+    let output = engine::ytdlp_command(&app)?
         .args(&parse_args)
         .output()
         .await
@@ -236,13 +236,13 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         "--no-warnings".into(),
         "--force-ipv4".into(),
     ];
+    if let Some(browser) = cookies_browser(&app) {
+        playlist_args.push("--cookies-from-browser".into());
+        playlist_args.push(browser);
+    }
     playlist_args.push(url.clone());
 
-    let output = app
-        .shell()
-        .sidecar("yt-dlp")
-        .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))?
-        .env("PATH", augmented_path())
+    let output = engine::ytdlp_command(&app)?
         .args(&playlist_args)
         .output()
         .await
@@ -303,6 +303,7 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn start_download(
     app: AppHandle,
     id: String,
@@ -313,6 +314,7 @@ async fn start_download(
     download_subtitles: Option<bool>,
     subtitle_language: Option<String>,
     speed_limit: Option<u64>,
+    expected_size: Option<u64>,
 ) -> Result<(), String> {
     let expanded_path = validate_download_path(&output_path)?;
     // Auto-number if the target .mp4 already exists
@@ -321,6 +323,21 @@ async fn start_download(
     if let Some(parent) = PathBuf::from(&deduped_path).parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create download directory: {}", e))?;
+
+        // Preflight: separate video+audio streams plus the merge temp file can
+        // need ~2x the final size. Failing here beats failing at 99%.
+        if let Some(size) = expected_size.filter(|s| *s > 0) {
+            if let Ok(available) = fs2::available_space(parent) {
+                let needed = size.saturating_mul(2);
+                if available < needed {
+                    return Err(format!(
+                        "Not enough disk space: need ~{} MB free, have {} MB",
+                        needed / 1_048_576,
+                        available / 1_048_576
+                    ));
+                }
+            }
+        }
     }
     let manager = app.state::<DownloadManager>();
     manager.start_download(
@@ -351,6 +368,7 @@ async fn open_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
 async fn show_in_folder(path: String) -> Result<(), String> {
     let expanded = expand_tilde(&path);
     #[cfg(target_os = "macos")]
@@ -394,6 +412,17 @@ async fn get_app_version() -> String {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/// Read the cookies-from-browser preference from the frontend's settings file.
+/// Whitelisted so a corrupted settings file can't inject arbitrary yt-dlp args.
+pub fn cookies_browser(app: &AppHandle) -> Option<String> {
+    let path = app.path().app_data_dir().ok()?.join("settings.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let browser = v.get("cookiesFromBrowser")?.as_str()?;
+    matches!(browser, "safari" | "chrome" | "firefox" | "edge" | "brave")
+        .then(|| browser.to_string())
+}
+
 fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") || path == "~" {
         if let Some(home) = dirs::home_dir() {
@@ -406,25 +435,44 @@ fn expand_tilde(path: &str) -> String {
 /// Validate that a download path doesn't escape allowed directories via traversal.
 fn validate_download_path(path: &str) -> Result<String, String> {
     let expanded = expand_tilde(path);
+    let path_buf = PathBuf::from(&expanded);
 
-    // Reject paths with traversal components
-    if expanded.contains("..") {
+    if !path_buf.is_absolute() {
+        return Err("Invalid download path: must be an absolute path".into());
+    }
+
+    // Reject `..` as a path component (a filename merely containing dots is fine)
+    if path_buf
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return Err("Invalid download path: directory traversal not allowed".into());
     }
 
+    // Resolve symlinks on the deepest existing ancestor so the containment
+    // check applies to the real location, not a symlink into it.
+    let mut existing = path_buf.as_path();
+    while !existing.exists() {
+        existing = existing
+            .parent()
+            .ok_or_else(|| "Invalid download path".to_string())?;
+    }
+    let resolved = existing
+        .canonicalize()
+        .map_err(|e| format!("Invalid download path: {}", e))?;
+
     // Verify path is under home, downloads, or appdata
-    let path_buf = PathBuf::from(&expanded);
-    let allowed = [
-        dirs::home_dir(),
-        dirs::download_dir(),
-        dirs::data_dir(),
-    ];
-    let is_allowed = allowed.iter().any(|base| {
-        base.as_ref().map_or(false, |b| path_buf.starts_with(b))
+    let allowed = [dirs::home_dir(), dirs::download_dir(), dirs::data_dir()];
+    let is_allowed = allowed.iter().flatten().any(|base| {
+        let base = base.canonicalize().unwrap_or_else(|_| base.clone());
+        resolved.starts_with(&base)
     });
 
     if !is_allowed {
-        return Err(format!("Download path must be within your home directory: {}", expanded));
+        return Err(format!(
+            "Download path must be within your home directory: {}",
+            expanded
+        ));
     }
 
     Ok(expanded)
@@ -603,7 +651,93 @@ pub fn run() {
             show_in_folder,
             get_default_download_path,
             get_app_version,
+            engine::get_ytdlp_version,
+            engine::update_ytdlp,
+            engine::reset_ytdlp,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_domains() {
+        assert_eq!(extract_domain("https://www.youtube.com/watch?v=x"), "www.youtube.com");
+        assert_eq!(extract_domain("nonsense"), "unknown");
+    }
+
+    #[test]
+    fn validates_paths_under_home() {
+        let home = dirs::home_dir().unwrap();
+        let good = home.join("Downloads/Prism/video.%(ext)s");
+        assert!(validate_download_path(&good.to_string_lossy()).is_ok());
+        // Tilde expansion
+        assert!(validate_download_path("~/Downloads/Prism/video.%(ext)s").is_ok());
+    }
+
+    #[test]
+    fn rejects_traversal_and_outside_paths() {
+        assert!(validate_download_path("~/Downloads/../../etc/cron.d/x").is_err());
+        assert!(validate_download_path("/etc/passwd").is_err());
+        assert!(validate_download_path("relative/path.mp4").is_err());
+    }
+
+    #[test]
+    fn allows_dotted_names_that_are_not_traversal() {
+        let p = dirs::home_dir().unwrap().join("Downloads/my..videos/clip.%(ext)s");
+        assert!(validate_download_path(&p.to_string_lossy()).is_ok());
+    }
+
+    #[test]
+    fn dedupes_existing_outputs() {
+        let dir = std::env::temp_dir().join(format!("prism-dedupe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let template = dir.join("vid.%(ext)s").to_string_lossy().into_owned();
+        // Nothing exists — unchanged
+        assert_eq!(dedupe_output_path(&template), template);
+        // vid.mp4 exists — bumps to (1)
+        std::fs::write(dir.join("vid.mp4"), b"x").unwrap();
+        assert_eq!(
+            dedupe_output_path(&template),
+            dir.join("vid (1).%(ext)s").to_string_lossy().into_owned()
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Integration: the bundled yt-dlp sidecar binary actually executes.
+    /// Skips (rather than fails) when the binary isn't present, e.g. on a
+    /// fresh clone before sidecars are fetched.
+    #[test]
+    fn bundled_ytdlp_runs() {
+        let triple = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            "aarch64-apple-darwin"
+        } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            "x86_64-unknown-linux-gnu"
+        } else {
+            eprintln!("skipping: no bundled sidecar for this platform in-repo");
+            return;
+        };
+        let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join(format!("yt-dlp-{}", triple));
+        if !bin.exists() {
+            eprintln!("skipping: sidecar binary not present at {:?}", bin);
+            return;
+        }
+        let out = std::process::Command::new(&bin)
+            .arg("--version")
+            .output()
+            .expect("failed to spawn bundled yt-dlp");
+        assert!(out.status.success(), "yt-dlp --version exited nonzero");
+        let version = String::from_utf8_lossy(&out.stdout);
+        // Versions are date-based, e.g. 2025.06.09
+        assert!(
+            version.trim().len() >= 8 && version.contains('.'),
+            "unexpected version output: {}",
+            version
+        );
+    }
 }

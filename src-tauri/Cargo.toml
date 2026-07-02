@@ -1,11 +1,11 @@
 [package]
 name = "prism"
-version = "1.0.14"
+version = "1.1.0"
 description = "Prism — Premium Video Downloader"
 authors = ["you"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80"
 
 [lib]
 name = "app_lib"
@@ -31,3 +31,5 @@ chrono = "0.4"
 dirs = "6"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+fs2 = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

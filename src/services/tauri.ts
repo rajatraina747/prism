@@ -2,12 +2,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
+import { sanitizeFilename } from './utils';
 
 // Persistence file names (stored in app data directory)
 const FILES = {
@@ -97,7 +98,7 @@ export class TauriPrismService implements IPrismService {
       // Use %(ext)s template so yt-dlp can download video+audio separately
       // then merge them. --merge-output-format mp4 ensures final output is .mp4
       const dest = item.settings.destination || '~/Downloads/Prism';
-      const filename = item.settings.filename || item.metadata.title || 'video';
+      const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
       const outputPath = `${dest}/${filename}.%(ext)s`;
 
       await invoke('start_download', {
@@ -109,6 +110,7 @@ export class TauriPrismService implements IPrismService {
         downloadSubtitles: item.settings.downloadSubtitles ?? false,
         subtitleLanguage: item.settings.subtitleLanguage ?? null,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
+        expectedSize: item.settings.format?.fileSize || null,
       });
     };
 
@@ -159,6 +161,10 @@ export class TauriPrismService implements IPrismService {
 
   async copyToClipboard(text: string): Promise<void> {
     await writeText(text);
+  }
+
+  async readClipboard(): Promise<string> {
+    return (await readText()) ?? '';
   }
 
   async exportLogs(logs: DiagnosticsEntry[]): Promise<void> {
@@ -214,6 +220,18 @@ export class TauriPrismService implements IPrismService {
 
   async getAppVersion(): Promise<string> {
     return invoke<string>('get_app_version');
+  }
+
+  async getEngineVersion(): Promise<string> {
+    return invoke<string>('get_ytdlp_version');
+  }
+
+  async updateEngine(): Promise<string> {
+    return invoke<string>('update_ytdlp');
+  }
+
+  async resetEngine(): Promise<void> {
+    await invoke('reset_ytdlp');
   }
 
   persistence = {

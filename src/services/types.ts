@@ -43,12 +43,18 @@ export interface IPrismService {
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;
+  readClipboard(): Promise<string>;
 
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
   checkForUpdates(): Promise<UpdateCheckResult>;
   installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void>;
   getAppVersion(): Promise<string>;
+
+  // yt-dlp engine management — the engine can be updated independently of the app
+  getEngineVersion(): Promise<string>;
+  updateEngine(): Promise<string>;
+  resetEngine(): Promise<void>;
 
   // Persistence
   persistence: {

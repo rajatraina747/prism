@@ -78,7 +78,7 @@ export interface DownloadItem {
 export interface DownloadError {
   code: string;
   message: string;
-  category: 'network' | 'parse' | 'permission' | 'storage' | 'unknown';
+  category: 'network' | 'parse' | 'permission' | 'storage' | 'auth' | 'unknown';
   timestamp: string;
   suggestion?: string;
 }
@@ -103,6 +103,7 @@ export interface AppPreferences {
   logLevel: 'error' | 'warn' | 'info' | 'debug';
   notificationsEnabled: boolean;
   soundEnabled: boolean;
+  cookiesFromBrowser: 'none' | 'safari' | 'chrome' | 'firefox' | 'edge' | 'brave';
 }
 
 export interface DiagnosticsEntry {
@@ -136,6 +137,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   logLevel: 'info',
   notificationsEnabled: true,
   soundEnabled: false,
+  cookiesFromBrowser: 'none',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

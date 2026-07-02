@@ -6,10 +6,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::process::CommandEvent;
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
-use crate::{augmented_path, find_ffmpeg};
+use crate::find_ffmpeg;
 
 static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
 static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
@@ -50,6 +49,7 @@ impl DownloadManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start_download(
         &self,
         app: AppHandle,
@@ -118,16 +118,48 @@ impl DownloadManager {
                 }
             }
 
+            // Resume partial (.part) files from a previous paused/cancelled run.
+            // The frontend reuses the same output template per queue item, so a
+            // killed download picks up where it left off instead of restarting.
+            args.push("--continue".into());
+
+            // Fail fast on dead connections (default socket timeout is 20s but
+            // stalls can still sit under the app's 5-minute inactivity kill),
+            // and be generous retrying individual HLS/DASH fragments.
+            args.push("--socket-timeout".into());
+            args.push("30".into());
+            args.push("--retries".into());
+            args.push("10".into());
+            args.push("--fragment-retries".into());
+            args.push("10".into());
+
             args.push("--force-ipv4".into());
 
-            // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
-            if let Some(ffmpeg_path) = find_ffmpeg() {
-                args.push("--ffmpeg-location".into());
-                args.push(ffmpeg_path);
+            if let Some(browser) = crate::cookies_browser(&app) {
+                args.push("--cookies-from-browser".into());
+                args.push(browser);
             }
 
-            let cmd = match app.shell().sidecar("yt-dlp") {
-                Ok(c) => c.env("PATH", augmented_path()).args(&args),
+            // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
+            let ffmpeg = find_ffmpeg();
+            if let Some(ref ffmpeg_path) = ffmpeg {
+                args.push("--ffmpeg-location".into());
+                args.push(ffmpeg_path.clone());
+            }
+
+            // Embed cover art, tags, and chapter markers so files look right in
+            // Finder and media players. Gated on ffmpeg: these postprocessors
+            // fail the whole download when it's missing.
+            if ffmpeg.is_some() {
+                args.push("--embed-thumbnail".into());
+                args.push("--embed-metadata".into());
+                if !audio_only {
+                    args.push("--embed-chapters".into());
+                }
+            }
+
+            let cmd = match crate::engine::ytdlp_command(&app) {
+                Ok(c) => c.args(&args),
                 Err(e) => {
                     let _ = app.emit(
                         &format!("download-complete-{}", id),
@@ -324,4 +356,46 @@ fn find_output_file(template: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_progress_template_line() {
+        let line = " 45.2% of ~ 120.50MiB at 2.5MiB/s ETA 01:23";
+        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "test-id").unwrap();
+        assert_eq!(p.id, "test-id");
+        assert!((p.progress - 45.2).abs() < f64::EPSILON);
+        assert_eq!(p.total_bytes, (120.5 * 1024.0 * 1024.0) as u64);
+        assert_eq!(p.speed, 2.5 * 1024.0 * 1024.0);
+        assert_eq!(p.eta, 83.0);
+        assert_eq!(p.downloaded_bytes, (0.452 * 120.5 * 1024.0 * 1024.0) as u64);
+    }
+
+    #[test]
+    fn ignores_lines_without_percent() {
+        assert!(parse_progress("[download] Destination: video.mp4", &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").is_none());
+    }
+
+    #[test]
+    fn parses_sizes_by_unit() {
+        assert_eq!(parse_size(1.0, "KiB"), 1024);
+        assert_eq!(parse_size(1.0, "MiB"), 1024 * 1024);
+        assert_eq!(parse_size(2.0, "GiB"), 2 * 1024 * 1024 * 1024);
+        assert_eq!(parse_size(5.0, "??"), 5);
+    }
+
+    #[test]
+    fn finds_output_file_by_extension() {
+        let dir = std::env::temp_dir().join(format!("prism-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let template = dir.join("clip.%(ext)s").to_string_lossy().into_owned();
+        assert_eq!(find_output_file(&template), None);
+        let mp4 = dir.join("clip.mp4");
+        std::fs::write(&mp4, b"x").unwrap();
+        assert_eq!(find_output_file(&template), Some(mp4.to_string_lossy().into_owned()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

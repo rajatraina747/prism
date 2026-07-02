@@ -22,6 +22,19 @@ export function formatSpeed(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
+// Titles come from the remote site and are untrusted: they can contain path
+// separators (escaping the destination dir) or yt-dlp %(...)s template
+// sequences (expanded by yt-dlp when building the output path).
+export function sanitizeFilename(name: string): string {
+  const cleaned = name
+    .replace(/[/\\]/g, '-')
+    .replace(/%/g, '%%')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f]/g, '')
+    .trim();
+  return cleaned || 'video';
+}
+
 export function formatEta(seconds: number): string {
   if (!seconds || seconds <= 0 || !isFinite(seconds)) return '--';
   if (seconds < 60) return `${Math.ceil(seconds)}s`;

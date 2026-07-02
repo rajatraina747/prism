@@ -86,6 +86,13 @@ export default function Settings() {
   const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
+  const [engineVersion, setEngineVersion] = React.useState<string | null>(null);
+  const [engineUpdating, setEngineUpdating] = React.useState(false);
+
+  React.useEffect(() => {
+    if (activeSection !== 'updates') return;
+    service.getEngineVersion().then(setEngineVersion).catch(() => setEngineVersion(null));
+  }, [activeSection, service]);
 
   return (
     <div className="page-container">
@@ -121,6 +128,20 @@ export default function Settings() {
               <div className="divide-y divide-border/30">
                 <SettingRow label="Default retry count" description="Number of retry attempts on failure">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
+                </SettingRow>
+                <SettingRow label="Browser cookies" description="Use a browser's cookies for sign-in-required and age-restricted videos">
+                  <Select
+                    value={p.cookiesFromBrowser}
+                    options={[
+                      { value: 'none', label: 'Off' },
+                      { value: 'safari', label: 'Safari' },
+                      { value: 'chrome', label: 'Chrome' },
+                      { value: 'firefox', label: 'Firefox' },
+                      { value: 'edge', label: 'Edge' },
+                      { value: 'brave', label: 'Brave' },
+                    ]}
+                    onChange={v => updatePreference('cookiesFromBrowser', v as any)}
+                  />
                 </SettingRow>
               </div>
             )}
@@ -251,6 +272,39 @@ export default function Settings() {
                     <p className="text-[10px] text-muted-foreground/70 whitespace-pre-line">{updateNotes}</p>
                   </div>
                 )}
+                <SettingRow
+                  label="Downloader engine"
+                  description={engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
+                >
+                  <button
+                    disabled={engineUpdating}
+                    onClick={async () => {
+                      setEngineUpdating(true);
+                      try {
+                        const v = await service.updateEngine();
+                        setEngineVersion(v);
+                        toast.success(`Downloader engine updated to ${v}`);
+                      } catch (e) {
+                        toast.error('Engine update failed: ' + (e instanceof Error ? e.message : String(e)));
+                      } finally {
+                        setEngineUpdating(false);
+                      }
+                    }}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                      engineUpdating
+                        ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    )}
+                  >
+                    {engineUpdating ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Updating...
+                      </span>
+                    ) : 'Update Engine'}
+                  </button>
+                </SettingRow>
               </div>
             )}
 

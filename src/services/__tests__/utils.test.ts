@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename } from '../utils';
+
+describe('sanitizeFilename', () => {
+  it('passes ordinary titles through', () => {
+    expect(sanitizeFilename('My Holiday Video 2026')).toBe('My Holiday Video 2026');
+  });
+
+  it('replaces path separators', () => {
+    expect(sanitizeFilename('a/b\\c')).toBe('a-b-c');
+    expect(sanitizeFilename('../../etc/passwd')).toBe('..-..-etc-passwd');
+  });
+
+  it('escapes yt-dlp template sequences', () => {
+    expect(sanitizeFilename('cool %(channel)s clip')).toBe('cool %%(channel)s clip');
+  });
+
+  it('strips control characters and trims', () => {
+    expect(sanitizeFilename('  hi\x00\x1fthere  ')).toBe('hithere');
+  });
+
+  it('falls back for empty or fully-stripped input', () => {
+    expect(sanitizeFilename('')).toBe('video');
+    expect(sanitizeFilename('  \x01  ')).toBe('video');
+  });
+});
 
 describe('generateId', () => {
   it('returns a non-empty string', () => {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
@@ -9,6 +9,7 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { Panel, ProgressBar } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
 import { generateId } from '@/services';
+import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { cn } from '@/lib/utils';
 import {
   Sparkles, Loader2,
@@ -54,6 +55,18 @@ export default function Dashboard() {
 
   const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
 
+  // Ref indirection so the clipboard watcher callback stays stable
+  const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
+
+  // Offer to fetch video URLs found on the clipboard when the app regains focus
+  useClipboardWatcher(useCallback((url: string) => {
+    toast('Video link on clipboard', {
+      description: url,
+      action: { label: 'Fetch', onClick: () => handleUrlSubmitRef.current(url) },
+      duration: 8000,
+    });
+  }, []));
+
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
     setIsParsing(true);
@@ -83,6 +96,7 @@ export default function Dashboard() {
       setIsParsing(false);
     }
   }, [service]);
+  handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
     setParseError(null);

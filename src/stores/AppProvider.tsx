@@ -7,13 +7,29 @@ import { toast } from 'sonner';
 
 function classifyError(msg: string): { category: DownloadError['category']; suggestion: string } {
   const lower = msg.toLowerCase();
+  // Auth / access walls (yt-dlp phrases these many ways)
+  if (lower.includes('sign in to confirm') || lower.includes('not a bot') || lower.includes('login required')
+    || lower.includes('private video') || lower.includes('members-only') || lower.includes('age-restricted')
+    || lower.includes('age restricted') || lower.includes('confirm your age'))
+    return { category: 'auth', suggestion: 'This video requires sign-in — set "Browser cookies" in Settings to a browser where you\'re logged in' };
+  // Gone / never existed
+  if (lower.includes('video unavailable') || lower.includes('has been removed') || lower.includes('account terminated')
+    || lower.includes('no longer available') || lower.includes('404'))
+    return { category: 'parse', suggestion: 'This video is no longer available' };
+  // Region locks
+  if (lower.includes('not available in your country') || lower.includes('geo restrict') || lower.includes('georestrict'))
+    return { category: 'parse', suggestion: 'Not available in your region' };
+  // Rate limiting — transient, but retrying immediately makes it worse
+  if (lower.includes('429') || lower.includes('too many requests') || lower.includes('rate limit'))
+    return { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes and retry' };
   if (lower.includes('permission') || lower.includes('access denied'))
     return { category: 'permission', suggestion: 'Check folder permissions' };
   if (lower.includes('disk') || lower.includes('space') || lower.includes('no space') || lower.includes('full'))
     return { category: 'storage', suggestion: 'Free up disk space' };
   if (lower.includes('codec') || lower.includes('format') || lower.includes('merge') || lower.includes('remux'))
     return { category: 'unknown', suggestion: 'Try a different format' };
-  if (lower.includes('timeout') || lower.includes('timed out'))
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('connection') || lower.includes('network')
+    || lower.includes('dns') || lower.includes('ssl') || lower.includes('unable to download'))
     return { category: 'network', suggestion: 'Check your connection' };
   if (lower.includes('not found') || lower.includes('unsupported') || lower.includes('unable to extract'))
     return { category: 'parse', suggestion: 'This URL may not be supported' };
@@ -95,7 +111,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [queue, setQueue] = useState<DownloadItem[]>(() => service.persistence.loadQueue());
   const [history, setHistory] = useState<HistoryItem[]>(() => service.persistence.loadHistory());
-  const [settings, setSettings] = useState<AppPreferences>(() => service.persistence.loadSettings() || DEFAULT_PREFERENCES);
+  // Merge over defaults so settings saved by older versions pick up new keys
+  const [settings, setSettings] = useState<AppPreferences>(() => ({ ...DEFAULT_PREFERENCES, ...service.persistence.loadSettings() }));
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
 
@@ -204,12 +221,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             if (settings.soundEnabled) playNotificationSound();
           } else {
+            const message = errorMsg || 'An unexpected error occurred';
+            const { category, suggestion } = classifyError(message);
+
+            // Transient (network) failures: retry automatically with backoff
+            // before surfacing a failure. Keeps status 'downloading' during the
+            // wait so the concurrency slot stays held; the flip is guarded so a
+            // user cancel/pause during the wait wins.
+            if (category === 'network' && item.retryAttempt < 2) {
+              const delay = 5000 * Math.pow(2, item.retryAttempt);
+              diagnostics.log('warn', `Download failed, retrying in ${delay / 1000}s (attempt ${item.retryAttempt + 1}/2): ${item.metadata.title}`, { error: message });
+              setTimeout(() => {
+                setQueue(prev => prev.map(i =>
+                  i.id === item.id && i.status === 'downloading'
+                    ? { ...i, status: 'queued' as const, retryAttempt: i.retryAttempt + 1, progress: 0, downloadedBytes: 0, speed: 0, eta: 0, error: undefined }
+                    : i
+                ));
+              }, delay);
+              return;
+            }
+
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });
             if (settings.notificationsEnabled) {
               toast.error(`Failed: ${item.metadata.title}`);
             }
-            const message = errorMsg || 'An unexpected error occurred';
-            const { category, suggestion } = classifyError(message);
             const err: DownloadError = {
               code: 'DOWNLOAD_FAILED',
               message,
@@ -232,21 +267,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setQueue(prev => [...prev, item]);
   }, []);
 
-  const removeFromQueue = useCallback((id: string) => {
+  // Detach listeners AND kill the backend yt-dlp process for a download.
+  const stopDownload = useCallback((id: string) => {
     cleanupRefs.current.get(id)?.();
     cleanupRefs.current.delete(id);
     startedRef.current.delete(id);
+    service.cancelDownload(id).catch(() => {});
+  }, [service]);
+
+  const removeFromQueue = useCallback((id: string) => {
+    stopDownload(id);
     setQueue(prev => prev.filter(i => i.id !== id));
-  }, []);
+  }, [stopDownload]);
 
   const pauseDownload = useCallback((id: string) => {
-    cleanupRefs.current.get(id)?.();
-    cleanupRefs.current.delete(id);
-    startedRef.current.delete(id);
+    stopDownload(id);
     setQueue(prev => prev.map(i =>
       i.id === id ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
     ));
-  }, []);
+  }, [stopDownload]);
 
   const resumeDownload = useCallback((id: string) => {
     setQueue(prev => prev.map(i =>
@@ -255,22 +294,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const cancelDownload = useCallback((id: string) => {
-    cleanupRefs.current.get(id)?.();
-    cleanupRefs.current.delete(id);
-    startedRef.current.delete(id);
+    stopDownload(id);
     setQueue(prev => prev.map(i =>
       i.id === id ? { ...i, status: 'canceled' as const } : i
     ));
-  }, []);
+  }, [stopDownload]);
 
   const retryDownload = useCallback((id: string) => {
-    cleanupRefs.current.get(id)?.();
-    cleanupRefs.current.delete(id);
-    startedRef.current.delete(id);
+    stopDownload(id);
     setQueue(prev => prev.map(i =>
       i.id === id ? { ...i, status: 'queued' as const, progress: 0, downloadedBytes: 0, speed: 0, eta: 0, error: undefined, retryAttempt: i.retryAttempt + 1 } : i
     ));
-  }, []);
+  }, [stopDownload]);
 
   const clearCompleted = useCallback(() => {
     setQueue(prev => prev.filter(i => i.status !== 'completed'));
@@ -284,16 +319,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const pauseAll = useCallback(() => {
     setQueue(prev => {
-      prev.filter(i => i.status === 'downloading').forEach(i => {
-        cleanupRefs.current.get(i.id)?.();
-        cleanupRefs.current.delete(i.id);
-        startedRef.current.delete(i.id);
-      });
+      prev.filter(i => i.status === 'downloading').forEach(i => stopDownload(i.id));
       return prev.map(i =>
         i.status === 'downloading' ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
       );
     });
-  }, []);
+  }, [stopDownload]);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     setQueue(prev => {
