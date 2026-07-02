@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Prism Downloader",
+  "version": "1.0.0",
+  "description": "Send videos to the Prism desktop app with one click or right-click.",
+  "homepage_url": "https://github.com/rajatraina747/prism",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "prism-downloader@rainacorp",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "permissions": ["contextMenus"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Download this page in Prism",
+    "default_icon": {
+      "32": "icons/icon-32.png",
+      "64": "icons/icon-64.png"
+    }
+  },
+  "icons": {
+    "32": "icons/icon-32.png",
+    "64": "icons/icon-64.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -75,8 +75,10 @@ free tooling. Ordered by impact.
   `--download-archive`) so new videos flow through the normal queue with
   progress UI. Seen set is seeded at subscribe time — only videos published
   after subscribing are downloaded. Configurable check interval in Settings.
-- [ ] **Firefox extension.** AMO publishing is free. Right-click → "Download in
-  Prism" via the existing `prism://` scheme; 80% of Downie's convenience moat.
+- [x] **Firefox extension.** `extension/firefox/` — MV3 event page, toolbar
+  button + page/link context menus, hands off via `prism://add?url=...`.
+  Passes `web-ext lint` (0 errors); publishing to AMO needs a free account
+  (packaging instructions in the folder's README).
 - [x] **Batch import.** Already existed: the Dashboard URL input accepts
   multi-line paste and queues every URL (`handleBatchSubmit`).
 - [ ] **SponsorBlock integration.** `--sponsorblock-remove` / `--sponsorblock-mark`.

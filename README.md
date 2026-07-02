@@ -33,7 +33,9 @@
 - **Browser cookie support** — Use cookies from Safari, Chrome, Firefox, Edge, or Brave for sign-in-required and age-restricted videos.
 - **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
 - **Download history** — Searchable log of every download with one-click replay.
+- **Subscriptions** — Watch channels and playlists; new videos are queued automatically on a configurable interval.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
+- **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
 - **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking.
@@ -55,14 +57,21 @@ Get the latest release for your platform:
 
 ## Send to Prism from your browser
 
-Prism registers the `prism://` URL scheme. Save this bookmarklet to your bookmarks bar,
-then click it on any video page to send that page straight to Prism:
+Prism registers the `prism://` URL scheme, and there are two ways to use it:
+
+**Firefox extension** — see [extension/firefox](extension/firefox/): a toolbar
+button and right-click menu ("Download this page/link in Prism"). Load it
+temporarily via `about:debugging`, or package it for AMO (instructions in the
+folder).
+
+**Bookmarklet (any browser)** — save this to your bookmarks bar, then click it
+on any video page:
 
 ```
 javascript:location.href='prism://add?url='+encodeURIComponent(location.href)
 ```
 
-Prism opens (or comes to the front), fetches the video, and shows the quality picker.
+Either way, Prism opens (or comes to the front), fetches the video, and shows the quality picker.
 
 ## Tech Stack
 
