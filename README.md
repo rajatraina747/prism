@@ -26,13 +26,19 @@
 ## Features
 
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p. H.264/AAC for native QuickTime playback.
-- **Download queue** — Pause, resume, cancel, retry, and drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
+- **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
+- **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
 - **Batch downloads** — Paste multiple URLs at once or import entire playlists with per-video selection.
+- **Resilient by default** — Automatic retries with backoff on network failures, disk-space checks before starting, and clear, actionable error messages (sign-in walls, removed videos, geo locks, rate limits).
+- **Browser cookie support** — Use cookies from Safari, Chrome, Firefox, Edge, or Brave for sign-in-required and age-restricted videos.
+- **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
 - **Download history** — Searchable log of every download with one-click replay.
-- **Clipboard auto-detect** — Automatically detects video URLs copied to your clipboard.
+- **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
 - **Dark and light themes** — Follows your system preference or set manually.
-- **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows.
+- **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking.
+
+See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
 
 ## Download
 
@@ -88,7 +94,7 @@ src/
 └── test/           # Test setup and utilities
 
 src-tauri/
-├── src/            # Rust backend (commands, download manager)
+├── src/            # Rust backend (commands, download manager, engine updater)
 ├── binaries/       # Bundled sidecars (yt-dlp, deno)
 └── icons/          # App icons (macOS, Windows, iOS, Android)
 ```
