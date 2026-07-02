@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback } from './types';
 import { generateId } from './utils';
 
@@ -40,6 +40,7 @@ const STORAGE_KEYS = {
   queue: 'prism_queue',
   history: 'prism_history',
   settings: 'prism_settings',
+  subscriptions: 'prism_subscriptions',
 } as const;
 
 // ── Mock Service Implementation ──
@@ -226,6 +227,15 @@ export class MockPrismService implements IPrismService {
     },
     saveSettings(prefs: AppPreferences) {
       try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(prefs)); } catch {}
+    },
+    loadSubscriptions(): Subscription[] {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.subscriptions);
+        return data ? JSON.parse(data) : [];
+      } catch { return []; }
+    },
+    saveSubscriptions(subs: Subscription[]) {
+      try { localStorage.setItem(STORAGE_KEYS.subscriptions, JSON.stringify(subs)); } catch {}
     },
   };
 }

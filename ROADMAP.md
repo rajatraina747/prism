@@ -70,13 +70,15 @@ free tooling. Ordered by impact.
 
 ### Tier 1 — Flagship gap
 
-- [ ] **Subscriptions.** Watch a channel/playlist, auto-download new videos
-  (`--download-archive` + `--dateafter`). The biggest functional gap to 4KVD;
-  turns Prism from a tool into a service.
+- [x] **Subscriptions.** Watch a channel/playlist, auto-download new videos.
+  Implemented as flat-playlist polling + seen-URL diffing (rather than
+  `--download-archive`) so new videos flow through the normal queue with
+  progress UI. Seen set is seeded at subscribe time — only videos published
+  after subscribing are downloaded. Configurable check interval in Settings.
 - [ ] **Firefox extension.** AMO publishing is free. Right-click → "Download in
   Prism" via the existing `prism://` scheme; 80% of Downie's convenience moat.
-- [ ] **Batch import.** Paste multi-line text or drop a `.txt`; extract every URL,
-  queue them all.
+- [x] **Batch import.** Already existed: the Dashboard URL input accepts
+  multi-line paste and queues every URL (`handleBatchSubmit`).
 - [ ] **SponsorBlock integration.** `--sponsorblock-remove` / `--sponsorblock-mark`.
   Native in yt-dlp, free, and most paid flagships don't have it.
 - [ ] **Scheduling / bandwidth windows.** Time-of-day rules on top of existing

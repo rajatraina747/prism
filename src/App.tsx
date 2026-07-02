@@ -5,11 +5,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceProvider } from "@/services/ServiceProvider";
 import { AppProvider } from "@/stores/AppProvider";
+import { SubscriptionsProvider } from "@/stores/SubscriptionsProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/SplashScreen";
 import Dashboard from "@/pages/Dashboard";
 import Queue from "@/pages/Queue";
+import Subscriptions from "@/pages/Subscriptions";
 import Downloads from "@/pages/Downloads";
 import Failed from "@/pages/Failed";
 import History from "@/pages/History";
@@ -32,11 +34,13 @@ const App = () => {
           <Sonner />
           <BrowserRouter>
             <AppProvider>
+            <SubscriptionsProvider>
             <AppShell>
               <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/queue" element={<Queue />} />
+                <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/downloads" element={<Downloads />} />
                 <Route path="/failed" element={<Failed />} />
                 <Route path="/history" element={<History />} />
@@ -49,6 +53,7 @@ const App = () => {
               </Routes>
               </ErrorBoundary>
             </AppShell>
+            </SubscriptionsProvider>
             </AppProvider>
           </BrowserRouter>
         </TooltipProvider>

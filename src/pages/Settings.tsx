@@ -157,6 +157,12 @@ export default function Settings() {
                     <span className="text-[10px] text-muted-foreground">MB/s</span>
                   </div>
                 </SettingRow>
+                <SettingRow label="Subscription check interval" description="How often to check subscribed channels and playlists for new videos">
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput value={p.subscriptionCheckIntervalMinutes} onChange={v => updatePreference('subscriptionCheckIntervalMinutes', Math.max(5, Math.min(1440, v)))} min={5} max={1440} />
+                    <span className="text-[10px] text-muted-foreground">min</span>
+                  </div>
+                </SettingRow>
               </div>
             )}
 

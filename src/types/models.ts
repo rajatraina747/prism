@@ -104,6 +104,7 @@ export interface AppPreferences {
   notificationsEnabled: boolean;
   soundEnabled: boolean;
   cookiesFromBrowser: 'none' | 'safari' | 'chrome' | 'firefox' | 'edge' | 'brave';
+  subscriptionCheckIntervalMinutes: number;
 }
 
 export interface DiagnosticsEntry {
@@ -112,6 +113,21 @@ export interface DiagnosticsEntry {
   message: string;
   timestamp: string;
   context?: Record<string, unknown>;
+}
+
+// A watched channel/playlist. New entries (relative to seenUrls) are enqueued
+// automatically on each check. seenUrls is seeded at subscribe time so only
+// videos published *after* subscribing are downloaded.
+export interface Subscription {
+  id: string;
+  url: string;
+  title: string;
+  addedAt: string;
+  enabled: boolean;
+  audioOnly: boolean;
+  seenUrls: string[];
+  lastCheckedAt?: string;
+  lastError?: string;
 }
 
 export interface HistoryItem {
@@ -138,6 +154,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   notificationsEnabled: true,
   soundEnabled: false,
   cookiesFromBrowser: 'none',
+  subscriptionCheckIntervalMinutes: 30,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

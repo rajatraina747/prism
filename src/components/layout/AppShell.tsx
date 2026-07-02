@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Rss,
   Settings2,
   Info,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import {
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/queue', icon: ArrowDownToLine, label: 'Queue', badgeKey: 'queue' as const },
+  { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
   { path: '/downloads', icon: CheckCircle2, label: 'Downloads' },
   { path: '/failed', icon: XCircle, label: 'Failed' },
   { path: '/history', icon: Clock, label: 'History' },
@@ -94,6 +96,7 @@ function PageHeader() {
   const titles: Record<string, string> = {
     '/': 'Dashboard',
     '/queue': 'Download Queue',
+    '/subscriptions': 'Subscriptions',
     '/downloads': 'Completed Downloads',
     '/failed': 'Failed Downloads',
     '/history': 'History',

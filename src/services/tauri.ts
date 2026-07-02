@@ -7,7 +7,7 @@ import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
 import { sanitizeFilename } from './utils';
 
@@ -16,6 +16,7 @@ const FILES = {
   queue: 'queue.json',
   history: 'history.json',
   settings: 'settings.json',
+  subscriptions: 'subscriptions.json',
 } as const;
 
 async function ensureAppData() {
@@ -285,6 +286,7 @@ export class TauriPrismService implements IPrismService {
     _queueCache: [] as DownloadItem[],
     _historyCache: [] as HistoryItem[],
     _settingsCache: null as AppPreferences | null,
+    _subscriptionsCache: [] as Subscription[],
     _loaded: false,
 
     async _ensureLoaded() {
@@ -299,6 +301,7 @@ export class TauriPrismService implements IPrismService {
       }));
       this._historyCache = await readJson<HistoryItem[]>(FILES.history, []);
       this._settingsCache = await readJson<AppPreferences | null>(FILES.settings, null);
+      this._subscriptionsCache = await readJson<Subscription[]>(FILES.subscriptions, []);
     },
 
     loadQueue(): DownloadItem[] {
@@ -326,6 +329,15 @@ export class TauriPrismService implements IPrismService {
     saveSettings: (prefs: AppPreferences) => {
       this.persistence._settingsCache = prefs;
       if (this._initDone) writeJson(FILES.settings, prefs).catch(() => {});
+    },
+
+    loadSubscriptions(): Subscription[] {
+      return this._subscriptionsCache;
+    },
+
+    saveSubscriptions: (subs: Subscription[]) => {
+      this.persistence._subscriptionsCache = subs;
+      if (this._initDone) writeJson(FILES.subscriptions, subs).catch(() => {});
     },
   };
 }

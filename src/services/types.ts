@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription } from '@/types/models';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -68,5 +68,7 @@ export interface IPrismService {
     saveHistory(items: HistoryItem[]): void;
     loadSettings(): AppPreferences | null;
     saveSettings(prefs: AppPreferences): void;
+    loadSubscriptions(): Subscription[];
+    saveSubscriptions(subs: Subscription[]): void;
   };
 }
