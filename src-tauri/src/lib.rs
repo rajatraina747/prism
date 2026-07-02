@@ -423,6 +423,16 @@ pub fn cookies_browser(app: &AppHandle) -> Option<String> {
         .then(|| browser.to_string())
 }
 
+/// Read the SponsorBlock preference ("mark" | "remove") from the frontend's
+/// settings file. Whitelisted like cookies_browser; anything else means off.
+pub fn sponsorblock_mode(app: &AppHandle) -> Option<String> {
+    let path = app.path().app_data_dir().ok()?.join("settings.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let mode = v.get("sponsorBlock")?.as_str()?;
+    matches!(mode, "mark" | "remove").then(|| mode.to_string())
+}
+
 fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") || path == "~" {
         if let Some(home) = dirs::home_dir() {

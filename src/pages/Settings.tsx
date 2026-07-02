@@ -143,6 +143,17 @@ export default function Settings() {
                     onChange={v => updatePreference('cookiesFromBrowser', v as any)}
                   />
                 </SettingRow>
+                <SettingRow label="SponsorBlock" description="Mark or remove sponsor segments using crowd-sourced data (requires ffmpeg)">
+                  <Select
+                    value={p.sponsorBlock}
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'mark', label: 'Mark as chapters' },
+                      { value: 'remove', label: 'Remove segments' },
+                    ]}
+                    onChange={v => updatePreference('sponsorBlock', v as any)}
+                  />
+                </SettingRow>
               </div>
             )}
 

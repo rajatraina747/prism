@@ -32,6 +32,7 @@
 - **Resilient by default** — Automatic retries with backoff on network failures, disk-space checks before starting, and clear, actionable error messages (sign-in walls, removed videos, geo locks, rate limits).
 - **Browser cookie support** — Use cookies from Safari, Chrome, Firefox, Edge, or Brave for sign-in-required and age-restricted videos.
 - **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
+- **SponsorBlock** — Optionally mark sponsor segments as chapters or cut them out entirely, using crowd-sourced data.
 - **Download history** — Searchable log of every download with one-click replay.
 - **Subscriptions** — Watch channels and playlists; new videos are queued automatically on a configurable interval.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.

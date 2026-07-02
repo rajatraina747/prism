@@ -81,8 +81,11 @@ free tooling. Ordered by impact.
   (packaging instructions in the folder's README).
 - [x] **Batch import.** Already existed: the Dashboard URL input accepts
   multi-line paste and queues every URL (`handleBatchSubmit`).
-- [ ] **SponsorBlock integration.** `--sponsorblock-remove` / `--sponsorblock-mark`.
-  Native in yt-dlp, free, and most paid flagships don't have it.
+- [x] **SponsorBlock integration.** Settings → Downloads dropdown: off / mark
+  as chapters (`--sponsorblock-mark all`) / remove segments
+  (`--sponsorblock-remove sponsor,selfpromo,interaction`). Read by the Rust
+  side from settings.json with a whitelist, same pattern as browser cookies;
+  gated on ffmpeg since both are postprocessors.
 - [ ] **Scheduling / bandwidth windows.** Time-of-day rules on top of existing
   speed limits.
 

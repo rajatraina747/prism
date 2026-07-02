@@ -105,6 +105,10 @@ export interface AppPreferences {
   soundEnabled: boolean;
   cookiesFromBrowser: 'none' | 'safari' | 'chrome' | 'firefox' | 'edge' | 'brave';
   subscriptionCheckIntervalMinutes: number;
+  // SponsorBlock (crowd-sourced sponsor-segment data): 'mark' adds chapter
+  // markers for the segments, 'remove' cuts them out of the file. Read by the
+  // Rust side directly from settings.json, like cookiesFromBrowser.
+  sponsorBlock: 'off' | 'mark' | 'remove';
 }
 
 export interface DiagnosticsEntry {
@@ -155,6 +159,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   soundEnabled: false,
   cookiesFromBrowser: 'none',
   subscriptionCheckIntervalMinutes: 30,
+  sponsorBlock: 'off',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

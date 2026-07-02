@@ -158,6 +158,21 @@ impl DownloadManager {
                 if !audio_only {
                     args.push("--embed-chapters".into());
                 }
+
+                // SponsorBlock: cut sponsor segments out, or mark everything
+                // the community has flagged as chapters. Both are ffmpeg
+                // postprocessors, hence inside the gate.
+                match crate::sponsorblock_mode(&app).as_deref() {
+                    Some("remove") => {
+                        args.push("--sponsorblock-remove".into());
+                        args.push("sponsor,selfpromo,interaction".into());
+                    }
+                    Some("mark") if !audio_only => {
+                        args.push("--sponsorblock-mark".into());
+                        args.push("all".into());
+                    }
+                    _ => {}
+                }
             }
 
             let cmd = match crate::engine::ytdlp_command(&app) {
