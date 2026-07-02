@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer, useR
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
+import { scheduleGate } from '@/stores/schedule';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
@@ -190,8 +191,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeout);
   }, [queue]);
 
+  // Re-evaluate the quiet-hours gate once a minute while a schedule is on,
+  // so held items start (or throttling changes) when the window flips.
+  const [scheduleTick, setScheduleTick] = useState(0);
+  useEffect(() => {
+    if (!settings.scheduleEnabled) return;
+    const t = setInterval(() => setScheduleTick(x => x + 1), 60_000);
+    return () => clearInterval(t);
+  }, [settings.scheduleEnabled]);
+
   // Auto-start queued items
   useEffect(() => {
+    void scheduleTick; // dep only: minute tick re-runs the gate below
+    const gate = scheduleGate(settings, new Date());
+    if (gate.blockStarts) return;
+
     const activeCount = queue.filter(i => i.status === 'downloading').length;
     const available = settings.maxConcurrentDownloads - activeCount;
     if (available <= 0) return;
@@ -206,8 +220,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startedRef.current.add(item.id);
       dispatch({ type: 'markStarted', id: item.id, startedAt: new Date().toISOString() });
 
+      // During a 'limit' quiet-hours window, spawn with the throttled rate.
+      const effectiveItem = gate.speedLimitOverrideBytes
+        ? { ...item, settings: { ...item.settings, speedLimit: gate.speedLimitOverrideBytes } }
+        : item;
+
       const cleanup = service.startDownload(
-        item,
+        effectiveItem,
         (data) => {
           dispatch({ type: 'progress', id: item.id, data });
         },
@@ -253,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       cleanupRefs.current.set(item.id, cleanup);
     });
-  }, [queue, settings.maxConcurrentDownloads, settings.notificationsEnabled, settings.soundEnabled, service]);
+  }, [queue, settings, scheduleTick, service]);
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);

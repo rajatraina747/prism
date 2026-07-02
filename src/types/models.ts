@@ -109,6 +109,13 @@ export interface AppPreferences {
   // markers for the segments, 'remove' cuts them out of the file. Read by the
   // Rust side directly from settings.json, like cookiesFromBrowser.
   sponsorBlock: 'off' | 'mark' | 'remove';
+  // Quiet hours: between start and end hour, hold new downloads ('pause') or
+  // start them throttled ('limit'). See src/stores/schedule.ts.
+  scheduleEnabled: boolean;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  scheduleMode: 'pause' | 'limit';
+  scheduleLimitMBps: number;
 }
 
 export interface DiagnosticsEntry {
@@ -160,6 +167,11 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   cookiesFromBrowser: 'none',
   subscriptionCheckIntervalMinutes: 30,
   sponsorBlock: 'off',
+  scheduleEnabled: false,
+  scheduleStartHour: 8,
+  scheduleEndHour: 23,
+  scheduleMode: 'limit',
+  scheduleLimitMBps: 5,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

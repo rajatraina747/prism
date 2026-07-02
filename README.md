@@ -27,6 +27,7 @@
 
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p. H.264/AAC for native QuickTime playback.
 - **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
+- **Quiet hours** — Hold or throttle downloads during part of the day; full speed the rest of the time.
 - **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
 - **Batch downloads** — Paste multiple URLs at once or import entire playlists with per-video selection.
 - **Resilient by default** — Automatic retries with backoff on network failures, disk-space checks before starting, and clear, actionable error messages (sign-in walls, removed videos, geo locks, rate limits).

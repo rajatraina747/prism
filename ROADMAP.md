@@ -86,8 +86,10 @@ free tooling. Ordered by impact.
   (`--sponsorblock-remove sponsor,selfpromo,interaction`). Read by the Rust
   side from settings.json with a whitelist, same pattern as browser cookies;
   gated on ffmpeg since both are postprocessors.
-- [ ] **Scheduling / bandwidth windows.** Time-of-day rules on top of existing
-  speed limits.
+- [x] **Scheduling / bandwidth windows.** "Quiet hours" (Settings → Queue):
+  between a start/end hour (wraps overnight), new downloads are either held
+  or started throttled to a configured speed. Applied at start time via the
+  auto-start gate; pure logic in `src/stores/schedule.ts` with unit tests.
 
 ### Tier 2 — Trust & distribution (free versions)
 

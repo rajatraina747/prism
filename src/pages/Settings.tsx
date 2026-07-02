@@ -174,6 +174,39 @@ export default function Settings() {
                     <span className="text-[10px] text-muted-foreground">min</span>
                   </div>
                 </SettingRow>
+                <SettingRow label="Quiet hours" description="Hold or throttle new downloads during part of the day (applies when a download starts)">
+                  <Toggle checked={p.scheduleEnabled} onChange={v => updatePreference('scheduleEnabled', v)} />
+                </SettingRow>
+                {p.scheduleEnabled && (
+                  <>
+                    <SettingRow label="Window" description="Start and end hour (24h clock; wraps overnight)">
+                      <div className="flex items-center gap-1.5">
+                        <NumberInput value={p.scheduleStartHour} onChange={v => updatePreference('scheduleStartHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
+                        <span className="text-[10px] text-muted-foreground">to</span>
+                        <NumberInput value={p.scheduleEndHour} onChange={v => updatePreference('scheduleEndHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
+                        <span className="text-[10px] text-muted-foreground">h</span>
+                      </div>
+                    </SettingRow>
+                    <SettingRow label="During quiet hours" description="Hold downloads entirely, or start them at a reduced speed">
+                      <Select
+                        value={p.scheduleMode}
+                        options={[
+                          { value: 'limit', label: 'Throttle' },
+                          { value: 'pause', label: 'Hold downloads' },
+                        ]}
+                        onChange={v => updatePreference('scheduleMode', v as 'pause' | 'limit')}
+                      />
+                    </SettingRow>
+                    {p.scheduleMode === 'limit' && (
+                      <SettingRow label="Quiet-hours speed" description="Speed limit applied to downloads started during the window">
+                        <div className="flex items-center gap-1.5">
+                          <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', Math.max(1, Math.min(1000, v)))} min={1} max={1000} />
+                          <span className="text-[10px] text-muted-foreground">MB/s</span>
+                        </div>
+                      </SettingRow>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
