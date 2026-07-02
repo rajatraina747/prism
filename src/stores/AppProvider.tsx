@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, type ReactNode } from 'react';
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
+import { queueReducer } from '@/stores/queue-reducer';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
@@ -109,7 +110,9 @@ export function useSettings() {
 export function AppProvider({ children }: { children: ReactNode }) {
   const service = useService();
 
-  const [queue, setQueue] = useState<DownloadItem[]>(() => service.persistence.loadQueue());
+  // Queue transitions live in queueReducer (pure, guarded); this component
+  // only performs side effects — spawning/killing downloads — and dispatches.
+  const [queue, dispatch] = useReducer(queueReducer, null, () => service.persistence.loadQueue());
   const [history, setHistory] = useState<HistoryItem[]>(() => service.persistence.loadHistory());
   // Merge over defaults so settings saved by older versions pick up new keys
   const [settings, setSettings] = useState<AppPreferences>(() => ({ ...DEFAULT_PREFERENCES, ...service.persistence.loadSettings() }));
@@ -182,7 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         error: i.error,
       }));
       setHistory(prev => [...historyItems, ...prev]);
-      setQueue(prev => prev.filter(i => !terminal.some(t => t.id === i.id)));
+      dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
     }, 2000);
     return () => clearTimeout(timeout);
   }, [queue]);
@@ -201,27 +204,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     toStart.forEach(item => {
       startedRef.current.add(item.id);
-      setQueue(prev => prev.map(i =>
-        i.id === item.id ? { ...i, status: 'downloading' as const, startedAt: new Date().toISOString() } : i
-      ));
+      dispatch({ type: 'markStarted', id: item.id, startedAt: new Date().toISOString() });
 
       const cleanup = service.startDownload(
         item,
         (data) => {
-          setQueue(prev => prev.map(i =>
-            i.id === item.id && i.status === 'downloading'
-              ? { ...i, ...data }
-              : i
-          ));
+          dispatch({ type: 'progress', id: item.id, data });
         },
         (success, errorMsg, filePath, fileSize) => {
           startedRef.current.delete(item.id);
           cleanupRefs.current.delete(item.id);
           if (success) {
             diagnostics.log('info', `Download completed: ${item.metadata.title}`);
-            setQueue(prev => prev.map(i =>
-              i.id === item.id ? { ...i, status: 'completed' as const, progress: 100, completedAt: new Date().toISOString(), filePath, totalBytes: fileSize ?? i.totalBytes } : i
-            ));
+            dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize });
             if (settings.notificationsEnabled) {
               toast.success(`Downloaded: ${item.metadata.title}`);
             }
@@ -232,18 +227,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
             // Transient (network) failures: retry automatically with backoff
             // before surfacing a failure. Keeps status 'downloading' during the
-            // wait so the concurrency slot stays held; the flip is guarded so a
-            // user cancel/pause during the wait wins.
+            // wait so the concurrency slot stays held; the reducer guard means
+            // a user cancel/pause during the wait wins.
             if (category === 'network' && item.retryAttempt < 2) {
               const delay = 5000 * Math.pow(2, item.retryAttempt);
               diagnostics.log('warn', `Download failed, retrying in ${delay / 1000}s (attempt ${item.retryAttempt + 1}/2): ${item.metadata.title}`, { error: message });
-              setTimeout(() => {
-                setQueue(prev => prev.map(i =>
-                  i.id === item.id && i.status === 'downloading'
-                    ? { ...i, status: 'queued' as const, retryAttempt: i.retryAttempt + 1, progress: 0, downloadedBytes: 0, speed: 0, eta: 0, error: undefined }
-                    : i
-                ));
-              }, delay);
+              setTimeout(() => dispatch({ type: 'requeueForRetry', id: item.id }), delay);
               return;
             }
 
@@ -258,19 +247,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
               timestamp: new Date().toISOString(),
               suggestion,
             };
-            setQueue(prev => prev.map(i =>
-              i.id === item.id ? { ...i, status: 'failed' as const, error: err } : i
-            ));
+            dispatch({ type: 'failed', id: item.id, error: err });
           }
         }
       );
       cleanupRefs.current.set(item.id, cleanup);
     });
-  }, [queue, settings.maxConcurrentDownloads, service]);
+  }, [queue, settings.maxConcurrentDownloads, settings.notificationsEnabled, settings.soundEnabled, service]);
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);
-    setQueue(prev => [...prev, item]);
+    dispatch({ type: 'add', item });
   }, []);
 
   // Detach listeners AND kill the backend yt-dlp process for a download.
@@ -283,62 +270,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const removeFromQueue = useCallback((id: string) => {
     stopDownload(id);
-    setQueue(prev => prev.filter(i => i.id !== id));
+    dispatch({ type: 'remove', id });
   }, [stopDownload]);
 
   const pauseDownload = useCallback((id: string) => {
     stopDownload(id);
-    setQueue(prev => prev.map(i =>
-      i.id === id ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
-    ));
+    dispatch({ type: 'pause', id });
   }, [stopDownload]);
 
   const resumeDownload = useCallback((id: string) => {
-    setQueue(prev => prev.map(i =>
-      i.id === id ? { ...i, status: 'queued' as const } : i
-    ));
+    dispatch({ type: 'resume', id });
   }, []);
 
   const cancelDownload = useCallback((id: string) => {
     stopDownload(id);
-    setQueue(prev => prev.map(i =>
-      i.id === id ? { ...i, status: 'canceled' as const } : i
-    ));
+    dispatch({ type: 'cancel', id });
   }, [stopDownload]);
 
   const retryDownload = useCallback((id: string) => {
     stopDownload(id);
-    setQueue(prev => prev.map(i =>
-      i.id === id ? { ...i, status: 'queued' as const, progress: 0, downloadedBytes: 0, speed: 0, eta: 0, error: undefined, retryAttempt: i.retryAttempt + 1 } : i
-    ));
+    dispatch({ type: 'retry', id });
   }, [stopDownload]);
 
   const clearCompleted = useCallback(() => {
-    setQueue(prev => prev.filter(i => i.status !== 'completed'));
+    dispatch({ type: 'clearCompleted' });
   }, []);
 
   const startAll = useCallback(() => {
-    setQueue(prev => prev.map(i =>
-      i.status === 'paused' ? { ...i, status: 'queued' as const } : i
-    ));
+    dispatch({ type: 'startAll' });
   }, []);
 
   const pauseAll = useCallback(() => {
-    setQueue(prev => {
-      prev.filter(i => i.status === 'downloading').forEach(i => stopDownload(i.id));
-      return prev.map(i =>
-        i.status === 'downloading' ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i
-      );
-    });
-  }, [stopDownload]);
+    // Side effect stays outside the reducer: kill each active process, then
+    // let the (pure) transition flip statuses.
+    queue.filter(i => i.status === 'downloading').forEach(i => stopDownload(i.id));
+    dispatch({ type: 'pauseAll' });
+  }, [queue, stopDownload]);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
-    setQueue(prev => {
-      const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return next;
-    });
+    dispatch({ type: 'reorder', from: fromIndex, to: toIndex });
   }, []);
 
   const removeFromHistory = useCallback((id: string) => {

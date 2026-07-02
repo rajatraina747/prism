@@ -62,10 +62,11 @@ free tooling. Ordered by impact.
   (`{}K` after integer division); pass raw bytes/sec to `--limit-rate`.
 - [x] **Debounce queue persistence.** Progress ticks were serializing the whole
   queue to disk several times per second.
-- [ ] **Queue state machine refactor.** Move orchestration (auto-start, retry,
-  move-to-history) out of React `useEffect`/`setTimeout` chains into an explicit
-  reducer — or better, into Rust where the processes live. Prerequisite for
-  subscriptions: they multiply concurrent queue mutations.
+- [x] **Queue state machine refactor.** All queue transitions now live in a pure,
+  guarded reducer (`src/stores/queue-reducer.ts`, 16 unit tests covering the
+  races); `AppProvider` only performs side effects and dispatches. Kept in TS
+  rather than Rust so the mock service / web demo keep working. Prerequisite
+  for subscriptions: they multiply concurrent queue mutations.
 
 ### Tier 1 — Flagship gap
 
