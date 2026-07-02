@@ -42,3 +42,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Pages propagation can exceed the 10-minute default
+          timeout: 1800000
