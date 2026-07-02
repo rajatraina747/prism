@@ -71,13 +71,16 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Security hardening — scoped permissions, CSP, path traversal protection
-            - Better error messages — real yt-dlp errors shown instead of generic messages
-            - Stalled download timeout — kills inactive downloads after 5 minutes
-            - Smart error classification — permission, storage, network, and parse errors
-            - Dead code cleanup — smaller, faster bundle
-            - Accessibility improvements — screen reader labels, ARIA roles
-            - Performance — memoized components and lazy-compiled regexes
+            - Cancel and pause now stop the download immediately (previously kept running in the background)
+            - Real pause/resume — paused and interrupted downloads pick up where they left off
+            - Self-updating downloader engine — update yt-dlp from Settings when sites stop working, no app update needed
+            - Auto-retry with backoff for flaky network failures
+            - Browser cookies setting (Safari/Chrome/Firefox/Edge/Brave) for sign-in-required and age-restricted videos
+            - Clipboard watcher — copy a video link, focus Prism, one-click fetch
+            - Embedded thumbnails, metadata, and chapters in downloaded files
+            - Disk space check before starting downloads
+            - Clearer errors for sign-in walls, removed videos, geo locks, and rate limits
+            - Security: fixed a filename injection issue; hardened download path validation
 
             ## Install
 
@@ -129,13 +132,16 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - Security hardening — scoped permissions, CSP, path traversal protection
-            - Better error messages — real yt-dlp errors shown instead of generic messages
-            - Stalled download timeout — kills inactive downloads after 5 minutes
-            - Smart error classification — permission, storage, network, and parse errors
-            - Dead code cleanup — smaller, faster bundle
-            - Accessibility improvements — screen reader labels, ARIA roles
-            - Performance — memoized components and lazy-compiled regexes
+            - Cancel and pause now stop the download immediately (previously kept running in the background)
+            - Real pause/resume — paused and interrupted downloads pick up where they left off
+            - Self-updating downloader engine — update yt-dlp from Settings when sites stop working, no app update needed
+            - Auto-retry with backoff for flaky network failures
+            - Browser cookies setting (Safari/Chrome/Firefox/Edge/Brave) for sign-in-required and age-restricted videos
+            - Clipboard watcher — copy a video link, focus Prism, one-click fetch
+            - Embedded thumbnails, metadata, and chapters in downloaded files
+            - Disk space check before starting downloads
+            - Clearer errors for sign-in walls, removed videos, geo locks, and rate limits
+            - Security: fixed a filename injection issue; hardened download path validation
 
             ## Install
 
