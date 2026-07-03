@@ -35,6 +35,18 @@ export function sanitizeFilename(name: string): string {
   return cleaned || 'video';
 }
 
+// Updater release notes arrive as GitHub-flavored markdown but are shown as
+// plain text in Settings. Strip the markup and drop the "## Install" section,
+// which is noise when you're updating from inside the app.
+export function formatReleaseNotes(raw: string): string {
+  const beforeInstall = raw.split(/^##\s*Install\s*$/m)[0];
+  return beforeInstall
+    .replace(/^#{1,6}\s*(.+)$/gm, '$1') // headers → plain lines
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .trim();
+}
+
 export function formatEta(seconds: number): string {
   if (!seconds || seconds <= 0 || !isFinite(seconds)) return '--';
   if (seconds < 60) return `${Math.ceil(seconds)}s`;

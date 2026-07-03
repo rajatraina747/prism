@@ -86,6 +86,7 @@ jobs:
 
             **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
             **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
+            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
           releaseDraft: true
           prerelease: false
 
@@ -147,6 +148,7 @@ jobs:
 
             **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
             **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
+            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
           releaseDraft: true
           prerelease: false
 
@@ -202,7 +204,23 @@ jobs:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
+          # Must match the other jobs: whichever job finishes last overwrites
+          # the release body AND latest.json's updater notes.
           releaseBody: |
-            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached. Linux builds start with this release.
+            ## What's New
+
+            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
+            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
+            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
+            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
+            - **Linux support** — first release with AppImage, deb, and rpm packages
+            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
+            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
+
+            ## Install
+
+            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
+            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
+            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
           releaseDraft: true
           prerelease: false

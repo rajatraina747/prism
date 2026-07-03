@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -113,5 +113,27 @@ describe('formatEta', () => {
   it('formats hours and minutes', () => {
     expect(formatEta(3700)).toBe('1h 2m');
     expect(formatEta(7200)).toBe('2h 0m');
+  });
+});
+
+describe('formatReleaseNotes', () => {
+  it('strips markdown and drops the Install section', () => {
+    const raw = [
+      '## What\'s New',
+      '',
+      '- **Menu bar quick-add** — paste from `clipboard`',
+      '- **Linux support** — AppImage, deb, rpm',
+      '',
+      '## Install',
+      '',
+      '**macOS**: Download the `.dmg` file.',
+    ].join('\n');
+    const out = formatReleaseNotes(raw);
+    expect(out).toContain("What's New");
+    expect(out).toContain('Menu bar quick-add — paste from clipboard');
+    expect(out).not.toContain('**');
+    expect(out).not.toContain('`');
+    expect(out).not.toContain('Install');
+    expect(out).not.toContain('.dmg');
   });
 });

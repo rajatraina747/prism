@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
+import { formatReleaseNotes } from '@/services';
 import { Panel } from '@/components/common';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -330,7 +331,7 @@ export default function Settings() {
                 {updateState === 'available' && updateNotes && (
                   <div className="py-2.5">
                     <p className="text-[10px] text-muted-foreground font-medium mb-1">Release Notes</p>
-                    <p className="text-[10px] text-muted-foreground/70 whitespace-pre-line">{updateNotes}</p>
+                    <p className="text-[10px] text-muted-foreground/70 whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
                   </div>
                 )}
                 <SettingRow
