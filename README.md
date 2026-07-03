@@ -5,7 +5,7 @@
 <h1 align="center">Prism</h1>
 
 <p align="center">
-  <strong>Premium video downloader for macOS and Windows</strong><br/>
+  <strong>Premium video downloader for macOS, Windows, and Linux</strong><br/>
   Download from YouTube, Instagram, TikTok, and 1000+ sites — powered by yt-dlp.<br/>
   <em>by RainaCorp</em>
 </p>
@@ -14,7 +14,7 @@
   <a href="https://github.com/rajatraina747/prism/actions/workflows/ci.yml"><img src="https://github.com/rajatraina747/prism/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/rajatraina747/prism/releases/latest"><img src="https://img.shields.io/github/v/release/rajatraina747/prism?label=latest" alt="Latest Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/rajatraina747/prism" alt="License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue" alt="Platform" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platform" />
 </p>
 
 ---
@@ -44,7 +44,7 @@
 - **Audio your way** — Extract audio-only as MP3, M4A, or Opus.
 - **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
-- **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows, with signed auto-updates.
+- **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel), Windows, and Linux, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking. Crash reporting exists but is strictly opt-in (off by default) and contains no personal data or download history.
 
 See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
@@ -64,7 +64,7 @@ Or get the latest release for your platform:
 |----------|----------|
 | macOS | [Prism.dmg](https://github.com/rajatraina747/prism/releases/latest) |
 | Windows | [Prism-setup.exe](https://github.com/rajatraina747/prism/releases/latest) |
-| Linux | [AppImage / deb / rpm](https://github.com/rajatraina747/prism/releases/latest) (from v1.3.0) |
+| Linux | [AppImage / deb / rpm](https://github.com/rajatraina747/prism/releases/latest) |
 | Web Demo | [Try in your browser](https://rajatraina747.github.io/prism/) |
 
 > **macOS note:** If macOS warns about an unidentified developer, right-click the app and choose "Open".
@@ -122,9 +122,9 @@ npm run build:tauri
 src/
 ├── components/     # React components (layout, dashboard, queue, media-details)
 ├── hooks/          # Custom React hooks
-├── pages/          # Route page components (Dashboard, Settings, History, About)
+├── pages/          # Route page components (Dashboard, Queue, Subscriptions, History, Settings, …)
 ├── services/       # Service abstraction layer (mock + Tauri implementations)
-├── stores/         # React Context providers (Queue, History, Settings)
+├── stores/         # State: queue reducer + providers (Queue, History, Settings, Subscriptions)
 ├── types/          # TypeScript type definitions
 └── test/           # Test setup and utilities
 
