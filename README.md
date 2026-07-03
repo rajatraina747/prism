@@ -59,6 +59,7 @@ Or get the latest release for your platform:
 |----------|----------|
 | macOS | [Prism.dmg](https://github.com/rajatraina747/prism/releases/latest) |
 | Windows | [Prism-setup.exe](https://github.com/rajatraina747/prism/releases/latest) |
+| Linux | [AppImage / deb / rpm](https://github.com/rajatraina747/prism/releases/latest) (from v1.3.0) |
 | Web Demo | [Try in your browser](https://rajatraina747.github.io/prism/) |
 
 > **macOS note:** If macOS warns about an unidentified developer, right-click the app and choose "Open".

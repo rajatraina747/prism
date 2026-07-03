@@ -105,8 +105,9 @@ free tooling. Ordered by impact.
   user must flip Settings → Diagnostics → Crash reporting (off by default).
   Frontend errors via @sentry/react (no tracing/PII/sessions), Rust panics
   via the sentry crate (toggle applies at next launch).
-- [ ] **Windows + Linux release builds in CI.** GitHub runners are free for public
-  repos; the platform branches in engine/ffmpeg code are already written.
+- [x] **Windows + Linux release builds in CI.** Windows already existed;
+  `build-linux` job added to build.yml (AppImage/deb/rpm + updater artifacts,
+  x86_64, same sidecar strategy). First exercised at the v1.3.0 tag.
 
 ### Tier 3 — Daily-driver polish
 

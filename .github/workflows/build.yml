@@ -153,3 +153,62 @@ jobs:
             **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
           releaseDraft: true
           prerelease: false
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: npm ci
+
+      # Download yt-dlp sidecar for Linux
+      - name: Download yt-dlp (Linux x86_64)
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu \
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+          chmod +x src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
+
+      # Bundle Deno so yt-dlp can solve YouTube JS challenges
+      - name: Download Deno (Linux x86_64)
+        run: |
+          curl -fL -o /tmp/deno.zip \
+            "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
+          unzip -o /tmp/deno.zip -d /tmp/deno
+          mv /tmp/deno/deno src-tauri/binaries/deno-x86_64-unknown-linux-gnu
+          chmod +x src-tauri/binaries/deno-x86_64-unknown-linux-gnu
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Optional: bakes in opt-in crash reporting; empty/missing = disabled
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        with:
+          tauriScript: npx tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Prism ${{ github.ref_name }}'
+          releaseBody: |
+            Linux builds (AppImage / deb / rpm) start with this release — see the notes above.
+
+            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
+          releaseDraft: true
+          prerelease: false
