@@ -114,7 +114,9 @@ free tooling. Ordered by impact.
 - [ ] **Menu bar / tray quick-add** — paste a URL without the window open; pairs
   with the clipboard watcher.
 - [ ] **Drag-and-drop** a URL onto the window or dock icon.
-- [ ] **History that works harder:** search/filter, re-download from history.
+- [x] **History that works harder.** Search + status tabs already existed;
+  added re-download (queues again with the original settings) and Play /
+  Show-in-Folder actions on completed entries.
 - [ ] **Richer format choices:** audio bitrate/codec options (m4a vs mp3), and a
   per-site "smart preset" that remembers last-used settings.
 

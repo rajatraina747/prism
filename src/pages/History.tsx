@@ -1,16 +1,39 @@
-import React, { useState } from 'react';
-import { useHistory } from '@/stores/AppProvider';
+import React, { useState, useCallback } from 'react';
+import { useHistory, useQueue } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
 import { EmptyState } from '@/components/common';
-import { formatBytes, formatDuration } from '@/services';
-import { Clock, Search, Trash2, CheckCircle2, XCircle, Ban } from 'lucide-react';
+import { formatBytes, generateId } from '@/services';
+import { Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw, FolderOpen, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import type { HistoryItem } from '@/types/models';
 
 type FilterTab = 'all' | 'completed' | 'failed' | 'canceled';
 
 export default function History() {
   const { items, removeFromHistory, clearHistory } = useHistory();
+  const { addToQueue } = useQueue();
+  const service = useService();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
+
+  // Queue the same video again with the settings it was originally
+  // downloaded with; the history entry stays put.
+  const redownload = useCallback((item: HistoryItem) => {
+    addToQueue({
+      id: generateId(),
+      metadata: item.metadata,
+      settings: item.settings,
+      status: 'queued',
+      progress: 0,
+      speed: 0,
+      eta: 0,
+      downloadedBytes: 0,
+      totalBytes: item.settings.format?.fileSize || 500_000_000,
+      retryAttempt: 0,
+    });
+    toast.success(`Queued again: ${item.metadata.title}`);
+  }, [addToQueue]);
 
   const filtered = items
     .filter(i => tab === 'all' || i.status === tab)
@@ -100,12 +123,40 @@ export default function History() {
                   <span>{new Date(item.completedAt).toLocaleDateString()}</span>
                 </div>
               </div>
-              <button
-                onClick={() => removeFromHistory(item.id)}
-                className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95] shrink-0"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {item.status === 'completed' && item.filePath && (
+                  <>
+                    <button
+                      onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                      title="Play"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                      title="Show in folder"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => redownload(item)}
+                  title="Download again"
+                  className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => removeFromHistory(item.id)}
+                  title="Remove from history"
+                  className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
