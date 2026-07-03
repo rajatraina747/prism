@@ -20,6 +20,11 @@ interface SubscriptionActions {
   checking: boolean;
 }
 
+// How many newest feed entries a poll fetches. Seeding uses the same window,
+// so anything that can ever appear in a future poll is already marked seen at
+// subscribe time — entries below the window are older and can't re-enter it.
+const POLL_WINDOW = 100;
+
 const SubscriptionsContext = createContext<SubscriptionActions | null>(null);
 
 export function useSubscriptions() {
@@ -55,7 +60,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
       for (const sub of targets) {
         const checkedAt = new Date().toISOString();
         try {
-          const feed = await service.parsePlaylist(sub.url);
+          const feed = await service.parsePlaylist(sub.url, POLL_WINDOW);
           const { newEntries, seenUrls } = diffFeed(sub, feed.entries);
           for (const entry of newEntries) {
             addToQueue(entryToDownloadItem(entry, sub, prefsRef.current));
@@ -96,7 +101,10 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
   }, [subs.length, preferences.subscriptionCheckIntervalMinutes, runCheck]);
 
   const addSubscription = useCallback(async (url: string): Promise<Subscription> => {
-    const feed = await service.parsePlaylist(url);
+    if (subsRef.current.some(s => s.url === url)) {
+      throw new Error('Already subscribed to this URL');
+    }
+    const feed = await service.parsePlaylist(url, POLL_WINDOW);
     const sub: Subscription = {
       id: generateId(),
       url,

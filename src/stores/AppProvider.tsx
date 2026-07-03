@@ -197,7 +197,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         filePath: i.filePath,
         error: i.error,
       }));
-      setHistory(prev => [...historyItems, ...prev]);
+      // Cap history so history.json can't grow (and load/render) unboundedly
+      setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
     }, 2000);
     return () => clearTimeout(timeout);

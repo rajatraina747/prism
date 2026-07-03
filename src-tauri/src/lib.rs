@@ -230,7 +230,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 }
 
 #[tauri::command]
-async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, String> {
+async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Result<PlaylistInfo, String> {
     let mut playlist_args: Vec<String> = vec![
         "--flat-playlist".into(),
         "--dump-json".into(),
@@ -238,6 +238,12 @@ async fn parse_playlist(app: AppHandle, url: String) -> Result<PlaylistInfo, Str
         "--no-warnings".into(),
         "--force-ipv4".into(),
     ];
+    // Subscription polls only need the newest entries, not a channel's whole
+    // catalog — feeds are newest-first, so a window off the top is enough.
+    if let Some(n) = limit.filter(|n| *n > 0) {
+        playlist_args.push("--playlist-items".into());
+        playlist_args.push(format!("1:{}", n));
+    }
     if let Some(browser) = cookies_browser(&app) {
         playlist_args.push("--cookies-from-browser".into());
         playlist_args.push(browser);
@@ -438,50 +444,42 @@ async fn get_app_version() -> String {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Read the cookies-from-browser preference from the frontend's settings file.
-/// Whitelisted so a corrupted settings file can't inject arbitrary yt-dlp args.
+/// Cookies-from-browser preference, whitelisted; else none.
 pub fn cookies_browser(app: &AppHandle) -> Option<String> {
+    read_setting(app, "cookiesFromBrowser")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .filter(|b| matches!(b.as_str(), "safari" | "chrome" | "firefox" | "edge" | "brave"))
+}
+
+/// Read one key from the frontend's settings file. All consumers whitelist
+/// the value they accept, so a corrupted settings file can't inject anything.
+fn read_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
     let path = app.path().app_data_dir().ok()?.join("settings.json");
     let text = std::fs::read_to_string(path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let browser = v.get("cookiesFromBrowser")?.as_str()?;
-    matches!(browser, "safari" | "chrome" | "firefox" | "edge" | "brave")
-        .then(|| browser.to_string())
+    v.get(key).cloned()
 }
 
-/// Read the opt-in crash reporting preference from the frontend's settings
-/// file. Defaults to false on any read/parse failure.
+/// Opt-in crash reporting preference; false on any read/parse failure.
 fn crash_reporting_enabled(app: &AppHandle) -> bool {
-    (|| {
-        let path = app.path().app_data_dir().ok()?.join("settings.json");
-        let text = std::fs::read_to_string(path).ok()?;
-        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-        v.get("crashReportingEnabled")?.as_bool()
-    })()
-    .unwrap_or(false)
+    read_setting(app, "crashReportingEnabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
-/// Read the audio-only output format from the frontend's settings file.
-/// Whitelisted; anything unknown falls back to mp3.
+/// Audio-only output format, whitelisted; unknown values fall back to mp3.
 pub fn audio_format(app: &AppHandle) -> String {
-    (|| {
-        let path = app.path().app_data_dir().ok()?.join("settings.json");
-        let text = std::fs::read_to_string(path).ok()?;
-        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-        let fmt = v.get("audioFormat")?.as_str()?;
-        matches!(fmt, "mp3" | "m4a" | "opus").then(|| fmt.to_string())
-    })()
-    .unwrap_or_else(|| "mp3".to_string())
+    read_setting(app, "audioFormat")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .filter(|f| matches!(f.as_str(), "mp3" | "m4a" | "opus"))
+        .unwrap_or_else(|| "mp3".to_string())
 }
 
-/// Read the SponsorBlock preference ("mark" | "remove") from the frontend's
-/// settings file. Whitelisted like cookies_browser; anything else means off.
+/// SponsorBlock preference ("mark" | "remove"), whitelisted; else off.
 pub fn sponsorblock_mode(app: &AppHandle) -> Option<String> {
-    let path = app.path().app_data_dir().ok()?.join("settings.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let mode = v.get("sponsorBlock")?.as_str()?;
-    matches!(mode, "mark" | "remove").then(|| mode.to_string())
+    read_setting(app, "sponsorBlock")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .filter(|m| matches!(m.as_str(), "mark" | "remove"))
 }
 
 fn expand_tilde(path: &str) -> String {

@@ -23,7 +23,9 @@ export interface IPrismService {
 
   // URL parsing & metadata
   parseUrl(url: string): Promise<MediaMetadata>;
-  parsePlaylist(url: string): Promise<PlaylistInfo>;
+  /** Flat-parse a playlist/channel feed. `limit` caps to the newest N entries
+   * (used by subscription polling; omit for full imports). */
+  parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo>;
 
   // Download lifecycle — returns a cancel/cleanup function
   startDownload(

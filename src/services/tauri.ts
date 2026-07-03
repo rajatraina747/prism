@@ -70,8 +70,8 @@ export class TauriPrismService implements IPrismService {
     return invoke<MediaMetadata>('parse_url', { url });
   }
 
-  async parsePlaylist(url: string): Promise<PlaylistInfo> {
-    return invoke<PlaylistInfo>('parse_playlist', { url });
+  async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
+    return invoke<PlaylistInfo>('parse_playlist', { url, limit: limit ?? null });
   }
 
   startDownload(
