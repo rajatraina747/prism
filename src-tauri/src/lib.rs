@@ -423,6 +423,18 @@ pub fn cookies_browser(app: &AppHandle) -> Option<String> {
         .then(|| browser.to_string())
 }
 
+/// Read the opt-in crash reporting preference from the frontend's settings
+/// file. Defaults to false on any read/parse failure.
+fn crash_reporting_enabled(app: &AppHandle) -> bool {
+    (|| {
+        let path = app.path().app_data_dir().ok()?.join("settings.json");
+        let text = std::fs::read_to_string(path).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+        v.get("crashReportingEnabled")?.as_bool()
+    })()
+    .unwrap_or(false)
+}
+
 /// Read the SponsorBlock preference ("mark" | "remove") from the frontend's
 /// settings file. Whitelisted like cookies_browser; anything else means off.
 pub fn sponsorblock_mode(app: &AppHandle) -> Option<String> {
@@ -664,6 +676,23 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // Opt-in crash reporting for Rust panics. Doubly gated: the build
+            // must have a DSN baked in AND the user must have enabled the
+            // setting (takes effect on next launch when toggled). The init
+            // guard must live as long as the app, hence managed state.
+            if let Some(dsn) = option_env!("SENTRY_DSN") {
+                if !dsn.is_empty() && crash_reporting_enabled(app.handle()) {
+                    let guard = sentry::init((
+                        dsn,
+                        sentry::ClientOptions {
+                            release: sentry::release_name!(),
+                            ..Default::default()
+                        },
+                    ));
+                    app.manage(guard);
+                }
             }
             Ok(())
         })

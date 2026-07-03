@@ -1,5 +1,6 @@
 import React from 'react';
 import { diagnostics } from '@/services/diagnostics';
+import { reportError } from '@/services/crash-reporting';
 import { AlertCircle, RotateCcw } from 'lucide-react';
 
 interface ErrorBoundaryState {
@@ -19,6 +20,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
       stack: error.stack,
       componentStack: info.componentStack,
     });
+    reportError(error);
   }
 
   handleReset = () => {

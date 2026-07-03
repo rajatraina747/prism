@@ -62,6 +62,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Optional: bakes in opt-in crash reporting; empty/missing = disabled
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Ad-hoc sign so macOS doesn't show "damaged" error on downloaded apps
           APPLE_SIGNING_IDENTITY: "-"
         with:
@@ -124,6 +127,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Optional: bakes in opt-in crash reporting; empty/missing = disabled
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         with:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}

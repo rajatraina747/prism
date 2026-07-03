@@ -40,7 +40,7 @@
 - **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
 - **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows, with signed auto-updates.
-- **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking.
+- **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking. Crash reporting exists but is strictly opt-in (off by default) and contains no personal data or download history.
 
 See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
 

@@ -3,6 +3,7 @@ import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { scheduleGate } from '@/stores/schedule';
+import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
@@ -133,6 +134,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Sync log level preference to diagnostics service
   useEffect(() => { diagnostics.setLogLevel(settings.logLevel); }, [settings.logLevel]);
+
+  // Sync opt-in crash reporting (no-op unless built with a DSN)
+  useEffect(() => {
+    if (!settings.crashReportingEnabled) {
+      syncCrashReporting(false);
+      return;
+    }
+    service.getAppVersion()
+      .then(v => syncCrashReporting(true, v))
+      .catch(() => syncCrashReporting(true));
+  }, [settings.crashReportingEnabled, service]);
 
   // Auto-check for updates on startup (if enabled)
   const autoUpdateChecked = useRef(false);

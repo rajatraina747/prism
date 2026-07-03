@@ -100,7 +100,11 @@ free tooling. Ordered by impact.
   cross-repo PAT is set up for auto-bump from build.yml).
 - [ ] **winget manifest.** Needs a PR to microsoft/winget-pkgs; worth doing
   once there's a stable Windows user base.
-- [ ] **Crash reporting, opt-in.** Sentry free tier or self-hosted GlitchTip.
+- [x] **Crash reporting, opt-in.** Sentry free tier. Doubly gated: build must
+  have `SENTRY_DSN` baked in (CI secret; missing = fully disabled) AND the
+  user must flip Settings → Diagnostics → Crash reporting (off by default).
+  Frontend errors via @sentry/react (no tracing/PII/sessions), Rust panics
+  via the sentry crate (toggle applies at next launch).
 - [ ] **Windows + Linux release builds in CI.** GitHub runners are free for public
   repos; the platform branches in engine/ffmpeg code are already written.
 

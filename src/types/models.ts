@@ -116,6 +116,10 @@ export interface AppPreferences {
   scheduleEndHour: number;
   scheduleMode: 'pause' | 'limit';
   scheduleLimitMBps: number;
+  // Opt-in crash reporting (Sentry). Off by default; also requires the app to
+  // have been built with a DSN. Frontend toggles live; Rust panics follow the
+  // setting on next launch.
+  crashReportingEnabled: boolean;
 }
 
 export interface DiagnosticsEntry {
@@ -172,6 +176,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   scheduleEndHour: 23,
   scheduleMode: 'limit',
   scheduleLimitMBps: 5,
+  crashReportingEnabled: false,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

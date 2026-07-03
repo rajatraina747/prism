@@ -363,6 +363,9 @@ export default function Settings() {
                 <SettingRow label="Log level" description="Verbosity of diagnostic logs">
                   <Select value={p.logLevel} options={[{ value: 'error', label: 'Error' }, { value: 'warn', label: 'Warning' }, { value: 'info', label: 'Info' }, { value: 'debug', label: 'Debug' }]} onChange={v => updatePreference('logLevel', v as any)} />
                 </SettingRow>
+                <SettingRow label="Crash reporting" description="Send anonymous crash reports to help fix bugs. Off by default; no personal data or download history is included">
+                  <Toggle checked={p.crashReportingEnabled} onChange={v => updatePreference('crashReportingEnabled', v)} />
+                </SettingRow>
                 <SettingRow label="Export logs">
                   <button
                     onClick={async () => {
