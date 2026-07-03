@@ -20,7 +20,10 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/app-light.png" alt="Prism Screenshot" width="800" />
+  <img src="docs/screenshots/app-dark.png" alt="Prism dashboard with active downloads" width="800" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/queue-dark.png" alt="Prism download queue" width="800" />
 </p>
 
 ## Features
