@@ -5,7 +5,9 @@ use std::path::PathBuf;
 
 use download_manager::DownloadManager;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager};
 
 // ── Structs matching frontend types ──────────────────────────────────
 
@@ -435,6 +437,19 @@ fn crash_reporting_enabled(app: &AppHandle) -> bool {
     .unwrap_or(false)
 }
 
+/// Read the audio-only output format from the frontend's settings file.
+/// Whitelisted; anything unknown falls back to mp3.
+pub fn audio_format(app: &AppHandle) -> String {
+    (|| {
+        let path = app.path().app_data_dir().ok()?.join("settings.json");
+        let text = std::fs::read_to_string(path).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+        let fmt = v.get("audioFormat")?.as_str()?;
+        matches!(fmt, "mp3" | "m4a" | "opus").then(|| fmt.to_string())
+    })()
+    .unwrap_or_else(|| "mp3".to_string())
+}
+
 /// Read the SponsorBlock preference ("mark" | "remove") from the frontend's
 /// settings file. Whitelisted like cookies_browser; anything else means off.
 pub fn sponsorblock_mode(app: &AppHandle) -> Option<String> {
@@ -513,7 +528,7 @@ fn extract_domain(url: &str) -> String {
 /// (video merges to .mp4, audio-only extracts to .mp3). If so, try
 /// `video (1).%(ext)s`, `video (2).%(ext)s`, etc.
 fn dedupe_output_path(template: &str) -> String {
-    const PROBE_EXTS: [&str; 5] = ["mp4", "mp3", "m4a", "mkv", "webm"];
+    const PROBE_EXTS: [&str; 6] = ["mp4", "mp3", "m4a", "opus", "mkv", "webm"];
     let exists_any = |tpl: &str| {
         PROBE_EXTS
             .iter()
@@ -651,6 +666,48 @@ pub fn find_ffmpeg() -> Option<String> {
 
 // ── App setup ────────────────────────────────────────────────────────
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Menu-bar/tray icon: quick access without the window. "Paste & Download"
+/// reads the clipboard and, if it holds an http(s) URL, hands it to the
+/// frontend over the same channel deep links use.
+fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "open", "Open Prism", true, None::<&str>)?;
+    let paste = MenuItem::with_id(app, "paste", "Paste && Download", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Prism", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &paste, &sep, &quit])?;
+
+    let mut tray = TrayIconBuilder::with_id("main-tray")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("Prism")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => show_main_window(app),
+            "paste" => {
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                let text = app.clipboard().read_text().unwrap_or_default();
+                let trimmed = text.trim();
+                if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                    let _ = app.emit("quick-add-url", trimmed.to_string());
+                }
+                show_main_window(app);
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -677,6 +734,8 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            setup_tray(app)?;
 
             // Opt-in crash reporting for Rust panics. Doubly gated: the build
             // must have a DSN baked in AND the user must have enabled the

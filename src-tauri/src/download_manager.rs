@@ -76,10 +76,10 @@ impl DownloadManager {
             ];
 
             if audio_only {
-                // Audio-only: extract audio as mp3
+                // Audio-only: extract to the user's configured format
                 args.push("--extract-audio".into());
                 args.push("--audio-format".into());
-                args.push("mp3".into());
+                args.push(crate::audio_format(&app));
                 args.push("--audio-quality".into());
                 args.push("0".into());
             } else {

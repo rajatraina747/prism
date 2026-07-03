@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { useQueue } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
+import { useUrlDrop } from '@/hooks/use-url-drop';
 import { pushDeepLink } from '@/lib/deep-link-bus';
 import {
   LayoutDashboard,
@@ -127,6 +128,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pushDeepLink(url);
     navigate('/');
   }), [service, navigate]);
+
+  // URLs dragged onto the window take the same path.
+  useUrlDrop((url) => {
+    pushDeepLink(url);
+    navigate('/');
+  });
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">

@@ -120,6 +120,9 @@ export interface AppPreferences {
   // have been built with a DSN. Frontend toggles live; Rust panics follow the
   // setting on next launch.
   crashReportingEnabled: boolean;
+  // Container/codec for audio-only downloads. Read by the Rust side from
+  // settings.json (whitelisted), like cookiesFromBrowser.
+  audioFormat: 'mp3' | 'm4a' | 'opus';
 }
 
 export interface DiagnosticsEntry {
@@ -177,6 +180,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   scheduleMode: 'limit',
   scheduleLimitMBps: 5,
   crashReportingEnabled: false,
+  audioFormat: 'mp3',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

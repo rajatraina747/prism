@@ -188,6 +188,7 @@ export class TauriPrismService implements IPrismService {
 
   onDeepLink(handler: (url: string) => void): () => void {
     let unlisten: UnlistenFn | null = null;
+    let trayUnlisten: UnlistenFn | null = null;
     let cancelled = false;
 
     const extract = (urls: string[]) => {
@@ -206,10 +207,25 @@ export class TauriPrismService implements IPrismService {
       else unlisten = fn;
     }).catch(() => {});
 
+    // Tray "Paste & Download" — the Rust side already validated http(s),
+    // but re-check here since any window code could emit this event name.
+    listen<string>('quick-add-url', (event) => {
+      if (cancelled) return;
+      try {
+        const u = new URL(event.payload);
+        if (u.protocol === 'http:' || u.protocol === 'https:') handler(event.payload);
+      } catch { /* not a URL — ignore */ }
+    }).then(fn => {
+      if (cancelled) fn();
+      else trayUnlisten = fn;
+    }).catch(() => {});
+
     return () => {
       cancelled = true;
       unlisten?.();
       unlisten = null;
+      trayUnlisten?.();
+      trayUnlisten = null;
     };
   }
 

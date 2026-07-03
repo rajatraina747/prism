@@ -37,6 +37,8 @@
 - **Download history** — Searchable log of every download with one-click replay.
 - **Subscriptions** — Watch channels and playlists; new videos are queued automatically on a configurable interval.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
+- **Menu bar quick-add** — Tray icon with Paste & Download; drag a URL onto the window to fetch it.
+- **Audio your way** — Extract audio-only as MP3, M4A, or Opus.
 - **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
 - **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel) and Windows, with signed auto-updates.

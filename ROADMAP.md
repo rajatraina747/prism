@@ -111,14 +111,17 @@ free tooling. Ordered by impact.
 
 ### Tier 3 — Daily-driver polish
 
-- [ ] **Menu bar / tray quick-add** — paste a URL without the window open; pairs
-  with the clipboard watcher.
-- [ ] **Drag-and-drop** a URL onto the window or dock icon.
+- [x] **Menu bar / tray quick-add.** Tray icon with Open / Paste & Download /
+  Quit; paste reads the clipboard in Rust, validates http(s), and feeds the
+  URL through the deep-link channel.
+- [x] **Drag-and-drop** a URL onto the window (`use-url-drop` hook →
+  deep-link bus; accepts `text/uri-list` and plain-text drags).
 - [x] **History that works harder.** Search + status tabs already existed;
   added re-download (queues again with the original settings) and Play /
   Show-in-Folder actions on completed entries.
-- [ ] **Richer format choices:** audio bitrate/codec options (m4a vs mp3), and a
-  per-site "smart preset" that remembers last-used settings.
+- [x] **Audio format choice.** Settings → Downloads: MP3 / M4A / Opus for
+  audio-only downloads (whitelisted settings.json read, like SponsorBlock).
+- [ ] **Per-site smart preset** that remembers last-used settings per domain.
 
 ## Explicitly deferred
 

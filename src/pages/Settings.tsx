@@ -143,6 +143,17 @@ export default function Settings() {
                     onChange={v => updatePreference('cookiesFromBrowser', v as any)}
                   />
                 </SettingRow>
+                <SettingRow label="Audio format" description="Container for audio-only downloads. MP3 is most compatible; M4A is smaller at the same quality; Opus is smallest">
+                  <Select
+                    value={p.audioFormat}
+                    options={[
+                      { value: 'mp3', label: 'MP3' },
+                      { value: 'm4a', label: 'M4A (AAC)' },
+                      { value: 'opus', label: 'Opus' },
+                    ]}
+                    onChange={v => updatePreference('audioFormat', v as any)}
+                  />
+                </SettingRow>
                 <SettingRow label="SponsorBlock" description="Mark or remove sponsor segments using crowd-sourced data (requires ffmpeg)">
                   <Select
                     value={p.sponsorBlock}
