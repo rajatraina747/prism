@@ -46,7 +46,14 @@ See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
 
 ## Download
 
-Get the latest release for your platform:
+**macOS (Apple Silicon) — Homebrew:**
+
+```sh
+brew tap rajatraina747/prism
+brew install --cask prism
+```
+
+Or get the latest release for your platform:
 
 | Platform | Download |
 |----------|----------|

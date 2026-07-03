@@ -94,8 +94,12 @@ free tooling. Ordered by impact.
 ### Tier 2 — Trust & distribution (free versions)
 
 - [ ] **Signed auto-updates via Tauri updater keys** (minisign — free, no Apple cert).
-- [ ] **Homebrew cask tap** and **winget manifest.** A `brew install --cask` path is
-  the free substitute for notarization trust.
+- [x] **Homebrew cask tap.** `rajatraina747/homebrew-prism` —
+  `brew tap rajatraina747/prism && brew install --cask prism`. Passes
+  `brew audit --online`; bump instructions in the tap README (manual until a
+  cross-repo PAT is set up for auto-bump from build.yml).
+- [ ] **winget manifest.** Needs a PR to microsoft/winget-pkgs; worth doing
+  once there's a stable Windows user base.
 - [ ] **Crash reporting, opt-in.** Sentry free tier or self-hosted GlitchTip.
 - [ ] **Windows + Linux release builds in CI.** GitHub runners are free for public
   repos; the platform branches in engine/ffmpeg code are already written.
