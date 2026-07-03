@@ -363,16 +363,40 @@ async fn cancel_download(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a path the frontend asks us to open/reveal: must be an existing
+/// file (not a URL or directory) inside the same allowed roots as downloads.
+/// Defense-in-depth — the frontend only passes stored download paths, but a
+/// compromised webview shouldn't be able to launch arbitrary targets.
+fn validate_open_path(path: &str) -> Result<String, String> {
+    let expanded = expand_tilde(path);
+    let p = std::path::Path::new(&expanded);
+    if !p.is_absolute() || !p.is_file() {
+        return Err("File not found".into());
+    }
+    let resolved = p
+        .canonicalize()
+        .map_err(|_| "File not found".to_string())?;
+    let allowed = [dirs::home_dir(), dirs::download_dir(), dirs::data_dir()];
+    let ok = allowed.iter().flatten().any(|base| {
+        let base = base.canonicalize().unwrap_or_else(|_| base.clone());
+        resolved.starts_with(&base)
+    });
+    if !ok {
+        return Err("File is outside the allowed directories".into());
+    }
+    Ok(expanded)
+}
+
 #[tauri::command]
 async fn open_file(path: String) -> Result<(), String> {
-    let expanded = expand_tilde(&path);
+    let expanded = validate_open_path(&path)?;
     opener::open(&expanded).map_err(|e| format!("Failed to open file: {}", e))
 }
 
 #[tauri::command]
 #[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
 async fn show_in_folder(path: String) -> Result<(), String> {
-    let expanded = expand_tilde(&path);
+    let expanded = validate_open_path(&path)?;
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -802,6 +826,19 @@ mod tests {
     fn allows_dotted_names_that_are_not_traversal() {
         let p = dirs::home_dir().unwrap().join("Downloads/my..videos/clip.%(ext)s");
         assert!(validate_download_path(&p.to_string_lossy()).is_ok());
+    }
+
+    #[test]
+    fn open_path_rejects_urls_dirs_and_outside_paths() {
+        assert!(validate_open_path("https://example.com/x").is_err());
+        assert!(validate_open_path("/etc/passwd").is_err()); // outside allowed roots
+        let home = dirs::home_dir().unwrap();
+        assert!(validate_open_path(&home.to_string_lossy()).is_err()); // dir, not file
+        // A real file under home passes
+        let f = home.join(".prism-open-test");
+        std::fs::write(&f, b"x").unwrap();
+        assert!(validate_open_path(&f.to_string_lossy()).is_ok());
+        std::fs::remove_file(&f).unwrap();
     }
 
     #[test]
