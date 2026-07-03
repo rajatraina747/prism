@@ -91,3 +91,33 @@ export function Panel({ title, children, className, action, style }: PanelProps)
     </div>
   );
 }
+
+// ── Thumbnail with graceful fallback ──
+// Video thumbnails are remote (often expiring CDN) URLs — render a neutral
+// placeholder when the URL is missing or fails to load, instead of the
+// browser's broken-image tile.
+interface ThumbProps {
+  src?: string;
+  className?: string;
+  fallbackIcon?: React.ReactNode;
+}
+
+export function Thumb({ src, className, fallbackIcon }: ThumbProps) {
+  const [failed, setFailed] = React.useState(false);
+  if (!src || failed) {
+    return (
+      <div className={cn('rounded-md bg-secondary flex items-center justify-center shrink-0', className)}>
+        {fallbackIcon}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={cn('rounded-md object-cover bg-secondary shrink-0', className)}
+    />
+  );
+}

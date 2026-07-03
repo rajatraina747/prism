@@ -2,21 +2,30 @@ import React from 'react';
 import { useQueue } from '@/stores/AppProvider';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { EmptyState } from '@/components/common';
+import { formatSpeed } from '@/services';
 import { ArrowDownToLine, Pause, Play, Trash2 } from 'lucide-react';
 
 export default function Queue() {
   const { items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, clearCompleted, startAll, pauseAll, reorderQueue } = useQueue();
 
   const activeItems = items.filter(i => !['completed', 'canceled'].includes(i.status));
-  const hasActive = items.some(i => i.status === 'downloading');
+  const downloading = items.filter(i => i.status === 'downloading');
+  const hasActive = downloading.length > 0;
   const hasPaused = items.some(i => i.status === 'paused' || i.status === 'queued');
+  const totalSpeed = downloading.reduce((sum, i) => sum + (i.speed || 0), 0);
+
+  const subtitle = [
+    `${activeItems.length} item${activeItems.length !== 1 ? 's' : ''} in queue`,
+    hasActive && `${downloading.length} downloading`,
+    totalSpeed > 0 && formatSpeed(totalSpeed),
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
           <h2 className="page-title">Download Queue</h2>
-          <p className="page-subtitle">{activeItems.length} item{activeItems.length !== 1 ? 's' : ''} in queue</p>
+          <p className="page-subtitle tabular-nums">{subtitle}</p>
         </div>
         <div className="flex gap-1.5">
           {hasActive && (

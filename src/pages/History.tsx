@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useHistory, useQueue } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
-import { EmptyState } from '@/components/common';
+import { EmptyState, Thumb } from '@/components/common';
 import { formatBytes, generateId } from '@/services';
 import { Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw, FolderOpen, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -114,9 +114,16 @@ export default function History() {
               className="glass-strong rounded-xl p-3 flex items-center gap-3 animate-fade-in"
               style={{ animationDelay: `${i * 40}ms` }}
             >
-              {statusIcon(item.status)}
+              <Thumb
+                src={item.metadata.thumbnail}
+                className="w-[72px] h-10"
+                fallbackIcon={statusIcon(item.status)}
+              />
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {statusIcon(item.status)}
+                  <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
+                </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground tabular-nums">
                   {item.settings.format && <span>{item.settings.format.resolution}</span>}
                   <span>{formatBytes(item.fileSize)}</span>

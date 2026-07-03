@@ -1,20 +1,37 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueue, useSettings } from '@/stores/AppProvider';
+import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
-import { Panel, ProgressBar } from '@/components/common';
+import { Panel, ProgressBar, Thumb } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
-import { generateId } from '@/services';
+import { generateId, formatBytes, formatSpeed } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { cn } from '@/lib/utils';
 import {
-  Sparkles, Loader2,
+  Sparkles, Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen,
 } from 'lucide-react';
+
+function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
+  return (
+    <div
+      className="glass-strong rounded-xl px-3.5 py-3 flex items-center gap-3 animate-fade-in"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-primary" strokeWidth={1.8} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground tabular-nums truncate">{value}</p>
+        <p className="text-[10px] text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 /** Pick the format that best matches a preset's target resolution. */
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
@@ -38,6 +55,7 @@ function looksLikePlaylist(url: string): boolean {
 
 export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
+  const { items: historyItems } = useHistory();
   const { preferences } = useSettings();
   const service = useService();
   const navigate = useNavigate();
@@ -55,6 +73,10 @@ export default function Dashboard() {
   const [playlistProcessedCount, setPlaylistProcessedCount] = useState(0);
 
   const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
+  const totalSpeed = useMemo(() => activeDownloads.reduce((s, i) => s + (i.speed || 0), 0), [activeDownloads]);
+  const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
+  const totalDownloadedBytes = useMemo(() => completedHistory.reduce((s, i) => s + (i.fileSize || 0), 0), [completedHistory]);
+  const recentDownloads = useMemo(() => completedHistory.slice(0, 3), [completedHistory]);
 
   // Ref indirection so the clipboard watcher callback stays stable
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
@@ -238,7 +260,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mt-6">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3 mt-6">
+        <StatTile icon={ArrowDownToLine} value={String(activeDownloads.length)} label="Active" delay={40} />
+        <StatTile icon={Gauge} value={totalSpeed > 0 ? formatSpeed(totalSpeed) : '—'} label="Current speed" delay={70} />
+        <StatTile icon={CheckCircle2} value={String(completedHistory.length)} label="Completed" delay={100} />
+        <StatTile icon={HardDrive} value={totalDownloadedBytes > 0 ? formatBytes(totalDownloadedBytes) : '—'} label="Total downloaded" delay={130} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mt-4">
         {/* Quick Presets */}
         <Panel title="Quick Presets" className="animate-fade-in" style={{ animationDelay: '100ms' } as React.CSSProperties}>
           <div className="flex flex-wrap gap-1.5">
@@ -284,6 +314,47 @@ export default function Dashboard() {
           )}
         </Panel>
       </div>
+
+      {/* Recent Downloads */}
+      {recentDownloads.length > 0 && (
+        <Panel title="Recent Downloads" className="mt-4 animate-fade-in" style={{ animationDelay: '200ms' } as React.CSSProperties}>
+          <div className="space-y-1">
+            {recentDownloads.map(item => (
+              <div key={item.id} className="flex items-center gap-3 py-1.5 group">
+                <Thumb
+                  src={item.metadata.thumbnail}
+                  className="w-16 h-9"
+                  fallbackIcon={<CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-foreground truncate">{item.metadata.title}</p>
+                  <p className="text-[10px] text-muted-foreground tabular-nums">
+                    {formatBytes(item.fileSize)} · {new Date(item.completedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                {item.filePath && (
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                      title="Play"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                      title="Show in folder"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {/* RainaCorp Branding */}
       <a
