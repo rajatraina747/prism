@@ -74,15 +74,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Subscriptions** — watch channels and playlists; new videos are queued automatically on a configurable interval (only videos published after you subscribe)
-            - **SponsorBlock** — mark sponsor segments as chapters, or cut them out entirely (Settings → Downloads)
-            - **Quiet hours** — hold or throttle downloads during part of the day (Settings → Queue)
-            - **Firefox extension** — send pages and links to Prism from the browser (`extension/firefox/` in the repo)
-            - Engine self-updates are now verified against yt-dlp's official SHA-256 checksums
-            - Fixed: repeat audio downloads colliding with existing files instead of auto-numbering
-            - Fixed: ETA display for downloads longer than an hour
-            - Fixed: speed limits under 1 MB/s being ignored
-            - Under the hood: rewritten queue state machine — pause/cancel now reliably wins races with retries and completions; far fewer disk writes during downloads
+            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
+            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
+            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
+            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
+            - **Linux support** — first release with AppImage, deb, and rpm packages
+            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
+            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
 
             ## Install
 
@@ -137,15 +135,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Subscriptions** — watch channels and playlists; new videos are queued automatically on a configurable interval (only videos published after you subscribe)
-            - **SponsorBlock** — mark sponsor segments as chapters, or cut them out entirely (Settings → Downloads)
-            - **Quiet hours** — hold or throttle downloads during part of the day (Settings → Queue)
-            - **Firefox extension** — send pages and links to Prism from the browser (`extension/firefox/` in the repo)
-            - Engine self-updates are now verified against yt-dlp's official SHA-256 checksums
-            - Fixed: repeat audio downloads colliding with existing files instead of auto-numbering
-            - Fixed: ETA display for downloads longer than an hour
-            - Fixed: speed limits under 1 MB/s being ignored
-            - Under the hood: rewritten queue state machine — pause/cancel now reliably wins races with retries and completions; far fewer disk writes during downloads
+            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
+            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
+            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
+            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
+            - **Linux support** — first release with AppImage, deb, and rpm packages
+            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
+            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
 
             ## Install
 
@@ -207,8 +203,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: |
-            Linux builds (AppImage / deb / rpm) start with this release — see the notes above.
-
-            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
+            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached. Linux builds start with this release.
           releaseDraft: true
           prerelease: false
