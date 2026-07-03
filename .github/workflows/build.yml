@@ -74,13 +74,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
-            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
-            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
-            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
-            - **Linux support** — first release with AppImage, deb, and rpm packages
-            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
-            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
+            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
+            - **Thumbnails in History** — every past download now shows its video thumbnail
+            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
+            - Release notes now render cleanly in the in-app updater
+            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
+            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
+            - Download history is now capped at 2,000 entries to keep startup fast
 
             ## Install
 
@@ -136,13 +136,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
-            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
-            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
-            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
-            - **Linux support** — first release with AppImage, deb, and rpm packages
-            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
-            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
+            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
+            - **Thumbnails in History** — every past download now shows its video thumbnail
+            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
+            - Release notes now render cleanly in the in-app updater
+            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
+            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
+            - Download history is now capped at 2,000 entries to keep startup fast
 
             ## Install
 
@@ -209,13 +209,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Menu bar quick-add** — Prism now lives in your menu bar/tray: Paste & Download grabs the URL on your clipboard without opening the window first
-            - **Drag-and-drop** — drag a link from any browser onto the Prism window to fetch it
-            - **Audio format choice** — audio-only downloads as MP3, M4A (AAC), or Opus (Settings → Downloads)
-            - **History upgrades** — re-download any past item with its original settings; play or reveal completed files right from History
-            - **Linux support** — first release with AppImage, deb, and rpm packages
-            - **Opt-in crash reporting** — strictly off by default; enable in Settings → Diagnostics if you want crashes reported (no personal data or download history)
-            - Homebrew: `brew tap rajatraina747/prism && brew install --cask prism`
+            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
+            - **Thumbnails in History** — every past download now shows its video thumbnail
+            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
+            - Release notes now render cleanly in the in-app updater
+            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
+            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
+            - Download history is now capped at 2,000 entries to keep startup fast
 
             ## Install
 
