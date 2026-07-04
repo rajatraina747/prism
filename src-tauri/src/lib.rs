@@ -115,6 +115,10 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         parse_args.push("--cookies-from-browser".into());
         parse_args.push(browser);
     }
+    if let Some(proxy) = proxy_url(&app) {
+        parse_args.push("--proxy".into());
+        parse_args.push(proxy);
+    }
     // `--` terminates options so a URL starting with `-` can't be parsed as a
     // yt-dlp flag (e.g. `--exec`). Defense-in-depth against arg injection.
     parse_args.push("--".into());
@@ -252,6 +256,10 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         playlist_args.push("--cookies-from-browser".into());
         playlist_args.push(browser);
     }
+    if let Some(proxy) = proxy_url(&app) {
+        playlist_args.push("--proxy".into());
+        playlist_args.push(proxy);
+    }
     playlist_args.push("--".into()); // options terminator — see parse_url
     playlist_args.push(url.clone());
 
@@ -387,8 +395,9 @@ async fn start_torrent(
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
     let policy = seeding_policy(&app);
+    let proxy = proxy_url(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files);
+    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files, proxy);
     Ok(())
 }
 
@@ -401,8 +410,9 @@ async fn parse_torrent(
     output_path: String,
 ) -> Result<Vec<torrent::TorrentFileEntry>, String> {
     let dir = validate_download_path(&output_path)?;
+    let proxy = proxy_url(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.list_files(magnet, dir).await
+    manager.list_files(magnet, dir, proxy).await
 }
 
 #[tauri::command]
@@ -544,6 +554,22 @@ pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
         Some("seed") => torrent::SeedingPolicy::Forever,
         _ => torrent::SeedingPolicy::Ratio(1.0),
     }
+}
+
+/// Proxy URL from settings, accepted only for known proxy schemes so a corrupted
+/// settings file can't inject an arbitrary yt-dlp argument.
+pub fn proxy_url(app: &AppHandle) -> Option<String> {
+    read_setting(app, "proxyUrl")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .map(|s| s.trim().to_string())
+        .filter(|s| {
+            let l = s.to_ascii_lowercase();
+            l.starts_with("http://")
+                || l.starts_with("https://")
+                || l.starts_with("socks5://")
+                || l.starts_with("socks5h://")
+                || l.starts_with("socks4://")
+        })
 }
 
 /// SponsorBlock preference ("mark" | "remove"), whitelisted; else off.

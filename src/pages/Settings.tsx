@@ -68,6 +68,20 @@ function NumberInput({ value, onChange, min, max }: { value: number; onChange: (
   );
 }
 
+function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      spellCheck={false}
+      autoComplete="off"
+      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+    />
+  );
+}
+
 const SECTIONS = [
   { id: 'downloads', label: 'Downloads', icon: Download },
   { id: 'queue', label: 'Queue', icon: Gauge },
@@ -175,6 +189,13 @@ export default function Settings() {
                       { value: 'seed', label: 'Seed until stopped' },
                     ]}
                     onChange={v => updatePreference('seedingPolicy', v as any)}
+                  />
+                </SettingRow>
+                <SettingRow label="Proxy" description="Route traffic through a proxy. e.g. socks5://127.0.0.1:9050 (Tor) or http://host:port. Torrents only use socks5. Leave empty for a direct connection">
+                  <TextInput
+                    value={p.proxyUrl}
+                    onChange={v => updatePreference('proxyUrl', v)}
+                    placeholder="socks5://127.0.0.1:9050"
                   />
                 </SettingRow>
               </div>

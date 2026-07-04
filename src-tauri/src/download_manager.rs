@@ -143,6 +143,11 @@ impl DownloadManager {
                 args.push(browser);
             }
 
+            if let Some(proxy) = crate::proxy_url(&app) {
+                args.push("--proxy".into());
+                args.push(proxy);
+            }
+
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
             let ffmpeg = find_ffmpeg();
             if let Some(ref ffmpeg_path) = ffmpeg {

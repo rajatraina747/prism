@@ -123,6 +123,7 @@ async fn ensure_session(
     slot: &SessionSlot,
     default_dir: &str,
     limits: LimitsConfig,
+    socks_proxy: Option<String>,
 ) -> anyhow::Result<Arc<Session>> {
     let mut guard = slot.lock().await;
     if let Some(s) = guard.as_ref() {
@@ -133,6 +134,8 @@ async fn ensure_session(
         listen_port_range: Some(TORRENT_PORT_RANGE),
         fastresume: true,
         ratelimits: limits,
+        // librqbit only supports socks5; http proxies are ignored for torrents.
+        socks_proxy_url: socks_proxy.filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
         ..Default::default()
     };
     let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
@@ -163,9 +166,14 @@ impl TorrentManager {
     /// Resolve a torrent's file list *without* downloading (list-only add). For a
     /// magnet this fetches metadata from peers/DHT first, so it can take a few
     /// seconds — hence the timeout. Used to populate the file-selection modal.
-    pub async fn list_files(&self, magnet: String, output_dir: String) -> Result<Vec<TorrentFileEntry>, String> {
+    pub async fn list_files(
+        &self,
+        magnet: String,
+        output_dir: String,
+        socks_proxy: Option<String>,
+    ) -> Result<Vec<TorrentFileEntry>, String> {
         let current_limits = *self.limits.lock().await;
-        let session = ensure_session(&self.session, &output_dir, current_limits)
+        let session = ensure_session(&self.session, &output_dir, current_limits, socks_proxy)
             .await
             .map_err(|e| format!("Failed to start torrent engine: {e}"))?;
 
@@ -212,6 +220,7 @@ impl TorrentManager {
 
     /// Start (or resume) a magnet/`.torrent` download into `output_dir`. Emits
     /// progress until the seed policy is satisfied, then a completion event.
+    #[allow(clippy::too_many_arguments)]
     pub fn start_torrent(
         &self,
         app: AppHandle,
@@ -220,6 +229,7 @@ impl TorrentManager {
         output_dir: String,
         policy: SeedingPolicy,
         only_files: Option<Vec<usize>>,
+        socks_proxy: Option<String>,
     ) {
         let session_slot = self.session.clone();
         let active = self.active.clone();
@@ -228,7 +238,7 @@ impl TorrentManager {
 
         tauri::async_runtime::spawn(async move {
             let current_limits = *limits_slot.lock().await;
-            let session = match ensure_session(&session_slot, &output_dir, current_limits).await {
+            let session = match ensure_session(&session_slot, &output_dir, current_limits, socks_proxy).await {
                 Ok(s) => s,
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };

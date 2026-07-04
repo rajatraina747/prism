@@ -160,6 +160,9 @@ export interface AppPreferences {
   // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
   // Read by the Rust side from settings.json (whitelisted), like audioFormat.
   seedingPolicy: 'stop' | 'ratio' | 'seed';
+  // Optional proxy for all traffic. yt-dlp accepts http(s)/socks; torrents only
+  // use it when it's a socks5:// URL. Empty = direct. Validated Rust-side.
+  proxyUrl: string;
 }
 
 export interface DiagnosticsEntry {
@@ -219,6 +222,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   crashReportingEnabled: false,
   audioFormat: 'mp3',
   seedingPolicy: 'ratio',
+  proxyUrl: '',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [
