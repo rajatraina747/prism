@@ -377,7 +377,12 @@ export class TauriPrismService implements IPrismService {
 
     saveQueue: (items: DownloadItem[]) => {
       this.persistence._queueCache = items;
-      if (this._initDone) writeJson(FILES.queue, items).catch(() => {});
+      if (this._initDone) {
+        // Don't persist the (potentially large) per-file torrent breakdown — it's
+        // runtime detail that repopulates from progress events on the next run.
+        const slim = items.map(({ files: _files, ...rest }) => rest);
+        writeJson(FILES.queue, slim).catch(() => {});
+      }
     },
 
     loadHistory(): HistoryItem[] {

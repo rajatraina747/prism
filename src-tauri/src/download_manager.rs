@@ -65,8 +65,9 @@ impl DownloadManager {
         let downloads = self.downloads.clone();
 
         tauri::async_runtime::spawn(async move {
+            // URL is appended last (after a `--` terminator) so it can't be
+            // parsed as a yt-dlp option — see the note in lib::parse_url.
             let mut args = vec![
-                url.clone(),
                 "-o".into(),
                 output_path.clone(),
                 "--newline".into(),
@@ -174,6 +175,10 @@ impl DownloadManager {
                     _ => {}
                 }
             }
+
+            // Options terminator + URL last (arg-injection defense; see lib::parse_url).
+            args.push("--".into());
+            args.push(url.clone());
 
             let cmd = match crate::engine::ytdlp_command(&app) {
                 Ok(c) => c.args(&args),

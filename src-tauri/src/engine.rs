@@ -124,7 +124,13 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
         return Err("Downloaded yt-dlp failed checksum verification — keeping current engine. Please try again.".into());
     }
 
-    let staging = target.with_extension("download");
+    // Unique staging name so two concurrent updates can't clobber each other's
+    // partial download before the atomic rename.
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let staging = target.with_extension(format!("download-{unique}"));
     std::fs::write(&staging, &bytes).map_err(|e| format!("Failed to write yt-dlp: {}", e))?;
 
     #[cfg(unix)]

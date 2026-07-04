@@ -8,18 +8,12 @@
   "permissions": [
     "core:default",
     "deep-link:default",
-    "shell:allow-open",
-    "shell:allow-spawn",
-    "shell:allow-stdin-write",
-    "shell:allow-kill",
     "dialog:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "fs:default",
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write-recursive",
-    "fs:allow-download-read-recursive",
-    "fs:allow-download-write-recursive",
     "updater:default",
     "process:allow-restart",
     "process:allow-exit"

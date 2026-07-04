@@ -115,6 +115,9 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         parse_args.push("--cookies-from-browser".into());
         parse_args.push(browser);
     }
+    // `--` terminates options so a URL starting with `-` can't be parsed as a
+    // yt-dlp flag (e.g. `--exec`). Defense-in-depth against arg injection.
+    parse_args.push("--".into());
     parse_args.push(url.clone());
 
     let output = engine::ytdlp_command(&app)?
@@ -249,6 +252,7 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         playlist_args.push("--cookies-from-browser".into());
         playlist_args.push(browser);
     }
+    playlist_args.push("--".into()); // options terminator — see parse_url
     playlist_args.push(url.clone());
 
     let output = engine::ytdlp_command(&app)?
