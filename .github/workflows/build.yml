@@ -74,13 +74,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Security hardening — no user-facing changes, just a tighter, safer app:
+            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
+            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
+            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
+            - Fixed the torrent file-picker title overflowing behind the close button on long release names
 
-            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
-            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
-            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
 
             ## Install
 
@@ -136,13 +135,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Security hardening — no user-facing changes, just a tighter, safer app:
+            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
+            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
+            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
+            - Fixed the torrent file-picker title overflowing behind the close button on long release names
 
-            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
-            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
-            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
 
             ## Install
 
@@ -209,13 +207,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Security hardening — no user-facing changes, just a tighter, safer app:
+            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
+            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
+            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
+            - Fixed the torrent file-picker title overflowing behind the close button on long release names
 
-            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
-            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
-            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
 
             ## Install
 
