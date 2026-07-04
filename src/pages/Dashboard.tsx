@@ -9,7 +9,8 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey } from '@/services';
+import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { cn } from '@/lib/utils';
@@ -72,6 +73,16 @@ function buildTorrentItem(url: string, destination: string, selectedFiles?: numb
     retryAttempt: 0,
     kind: 'torrent',
   };
+}
+
+const ACTIVE_STATUSES: DownloadStatus[] = ['queued', 'parsing', 'ready', 'downloading', 'seeding', 'paused'];
+
+/** Is this source already in the active queue or completed history? */
+function findDuplicate(url: string, queue: DownloadItem[], history: HistoryItem[]): 'queue' | 'completed' | null {
+  const key = sourceKey(url);
+  if (queue.some(i => ACTIVE_STATUSES.includes(i.status) && sourceKey(i.metadata.source.url) === key)) return 'queue';
+  if (history.some(i => i.status === 'completed' && sourceKey(i.metadata.source.url) === key)) return 'completed';
+  return null;
 }
 
 /** Detect if a URL looks like a playlist (heuristic). */
@@ -142,6 +153,11 @@ export default function Dashboard() {
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
+    // Skip an exact re-add of something already downloading; warn (but allow) a
+    // re-download of something already in history.
+    const dup = findDuplicate(url, queueItems, historyItems);
+    if (dup === 'queue') { toast.warning('That’s already in your queue'); return; }
+    if (dup === 'completed') { toast.info('You’ve downloaded this before — fetching again'); }
     // Torrents skip yt-dlp entirely. Fetch the file list first so the user can
     // pick which files to download, then queue on confirm.
     if (isTorrentUrl(url)) {
@@ -187,7 +203,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, [service, addToQueue, preferences.defaultSaveFolder]);
+  }, [service, addToQueue, preferences.defaultSaveFolder, queueItems, historyItems]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
@@ -198,10 +214,21 @@ export default function Dashboard() {
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
 
+    const added: DownloadItem[] = [];
+    let skipped = 0;
     for (let i = 0; i < urls.length; i++) {
       try {
+        // Skip anything already downloading — including earlier entries in this
+        // same batch (queueItems state hasn't re-rendered mid-loop).
+        if (findDuplicate(urls[i], [...queueItems, ...added], []) === 'queue') {
+          skipped++;
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
         if (isTorrentUrl(urls[i])) {
-          addToQueue(buildTorrentItem(urls[i], preferences.defaultSaveFolder));
+          const t = buildTorrentItem(urls[i], preferences.defaultSaveFolder);
+          added.push(t);
+          addToQueue(t);
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
@@ -226,6 +253,7 @@ export default function Dashboard() {
           totalBytes: format?.fileSize || 500_000_000,
           retryAttempt: 0,
         };
+        added.push(item);
         addToQueue(item);
       } catch {
         // Skip failed URLs in batch
@@ -234,7 +262,8 @@ export default function Dashboard() {
     }
 
     setBatchProgress(null);
-  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset]);
+    if (skipped > 0) toast.info(`Skipped ${skipped} already in your queue`);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, queueItems]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);

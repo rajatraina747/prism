@@ -66,6 +66,15 @@ export function isTorrentUrl(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
+/** Canonical key for de-duplicating a source: a magnet's info-hash (so the same
+ * torrent matches regardless of trackers/display-name), else the trimmed URL. */
+export function sourceKey(url: string): string {
+  const trimmed = url.trim();
+  const m = trimmed.match(/xt=urn:btih:([a-z0-9]+)/i);
+  if (m) return `btih:${m[1].toLowerCase()}`;
+  return trimmed;
+}
+
 /** Best-effort human title for a torrent source: the magnet `dn` (display name)
  * or the `.torrent` filename, falling back to a generic label. */
 export function torrentDisplayName(url: string): string {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName, sourceKey } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -171,5 +171,19 @@ describe('torrentDisplayName', () => {
 
   it('falls back for magnets without dn', () => {
     expect(torrentDisplayName('magnet:?xt=urn:btih:abc')).toBe('Torrent download');
+  });
+});
+
+describe('sourceKey (dedupe)', () => {
+  it('keys magnets by info-hash, ignoring trackers/display name', () => {
+    const a = 'magnet:?xt=urn:btih:ABCDEF123&dn=Ubuntu&tr=udp://x';
+    const b = 'magnet:?xt=urn:btih:abcdef123&dn=Different&tr=udp://y';
+    expect(sourceKey(a)).toBe('btih:abcdef123');
+    expect(sourceKey(a)).toBe(sourceKey(b));
+  });
+
+  it('keys plain URLs by the trimmed URL', () => {
+    expect(sourceKey('  https://youtube.com/watch?v=abc  ')).toBe('https://youtube.com/watch?v=abc');
+    expect(sourceKey('https://a.com/x')).not.toBe(sourceKey('https://a.com/y'));
   });
 });
