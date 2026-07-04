@@ -51,10 +51,10 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="glass-strong max-w-lg border-border/40 bg-card/95 p-0 gap-0">
-        <DialogHeader className="p-5 pb-0">
-          <div className="flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-primary" />
-            <DialogTitle className="text-base font-semibold text-foreground pr-6 leading-snug truncate">
+        <DialogHeader className="p-5 pb-0 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 pr-10">
+            <FolderTree className="w-4 h-4 text-primary shrink-0" />
+            <DialogTitle className="min-w-0 flex-1 truncate text-base font-semibold text-foreground leading-snug" title={title}>
               {title}
             </DialogTitle>
           </div>
