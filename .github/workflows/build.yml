@@ -74,13 +74,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
-            - **Thumbnails in History** — every past download now shows its video thumbnail
-            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
-            - Release notes now render cleanly in the in-app updater
-            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
-            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
-            - Download history is now capped at 2,000 entries to keep startup fast
+            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
+            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
+            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
+            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
+            - Better peer connectivity behind home routers via UPnP port forwarding
+            - Reveal finished torrents in your file manager, just like video downloads
 
             ## Install
 
@@ -136,13 +135,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
-            - **Thumbnails in History** — every past download now shows its video thumbnail
-            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
-            - Release notes now render cleanly in the in-app updater
-            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
-            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
-            - Download history is now capped at 2,000 entries to keep startup fast
+            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
+            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
+            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
+            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
+            - Better peer connectivity behind home routers via UPnP port forwarding
+            - Reveal finished torrents in your file manager, just like video downloads
 
             ## Install
 
@@ -209,13 +207,12 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Dashboard, reimagined** — live stats (active downloads, combined speed, completed count, total downloaded) and a Recent Downloads panel with thumbnails and quick play/reveal actions
-            - **Thumbnails in History** — every past download now shows its video thumbnail
-            - **Live queue summary** — the Queue header shows downloading count and combined speed in real time
-            - Release notes now render cleanly in the in-app updater
-            - Sturdier subscriptions: feed checks are much lighter on big channels, and duplicate subscriptions are rejected
-            - Security: TLS certificate-validation fixes in the update/engine download stack; file open/reveal hardened against invalid paths
-            - Download history is now capped at 2,000 entries to keep startup fast
+            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
+            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
+            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
+            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
+            - Better peer connectivity behind home routers via UPnP port forwarding
+            - Reveal finished torrents in your file manager, just like video downloads
 
             ## Install
 
