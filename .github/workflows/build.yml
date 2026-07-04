@@ -74,12 +74,11 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
-            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
-            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
-            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
-            - Better peer connectivity behind home routers via UPnP port forwarding
-            - Reveal finished torrents in your file manager, just like video downloads
+            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
+            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
+            - Fixed a race where the torrent file picker could flash open and close instantly
+
+            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
 
             ## Install
 
@@ -135,12 +134,11 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
-            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
-            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
-            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
-            - Better peer connectivity behind home routers via UPnP port forwarding
-            - Reveal finished torrents in your file manager, just like video downloads
+            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
+            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
+            - Fixed a race where the torrent file picker could flash open and close instantly
+
+            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
 
             ## Install
 
@@ -207,12 +205,11 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Torrent downloads** — paste a magnet link or `.torrent` URL and Prism downloads it alongside your videos, in the same queue
-            - **Seeding controls** — torrents keep sharing after they finish; choose Stop at 100%, seed to ratio 1.0, or seed until you stop it (Settings → Downloads)
-            - **Live swarm stats** — peers, upload speed, and share ratio per torrent, plus a per-file breakdown for multi-file torrents
-            - **Quiet Hours covers torrents** — the speed limit now throttles torrent transfers and seeding too
-            - Better peer connectivity behind home routers via UPnP port forwarding
-            - Reveal finished torrents in your file manager, just like video downloads
+            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
+            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
+            - Fixed a race where the torrent file picker could flash open and close instantly
+
+            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
 
             ## Install
 

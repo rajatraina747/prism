@@ -5,8 +5,9 @@
 <h1 align="center">Prism</h1>
 
 <p align="center">
-  <strong>Premium video downloader for macOS, Windows, and Linux</strong><br/>
-  Download from YouTube, Instagram, TikTok, and 1000+ sites — powered by yt-dlp.<br/>
+  <strong>Premium media downloader for macOS, Windows, and Linux</strong><br/>
+  Download from YouTube, Instagram, TikTok, and 1000+ sites — plus magnet links and <code>.torrent</code> files.<br/>
+  Powered by yt-dlp and librqbit.<br/>
   <em>by RainaCorp</em>
 </p>
 
@@ -29,6 +30,7 @@
 ## Features
 
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p. H.264/AAC for native QuickTime playback.
+- **BitTorrent downloads** — Paste a magnet link or `.torrent` file and download it in the same queue as your videos. Pick which files to grab, watch peers and share ratio live, and control seeding (stop at 100%, seed to ratio 1.0, or seed until you stop). UPnP port forwarding for peers behind a router; Quiet Hours throttles torrents too.
 - **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
 - **Quiet hours** — Hold or throttle downloads during part of the day; full speed the rest of the time.
 - **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
@@ -88,13 +90,19 @@ javascript:location.href='prism://add?url='+encodeURIComponent(location.href)
 
 Either way, Prism opens (or comes to the front), fetches the video, and shows the quality picker.
 
+**Magnet & .torrent links** — Prism registers as a handler for `magnet:` links
+and `.torrent` files. After installing, set Prism as your default in your OS's
+default-apps settings (an existing client like µTorrent keeps the default until
+you change it), then clicking a magnet on a torrent site opens Prism with the
+file picker. You can also just paste a magnet into the URL box any time.
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18, TypeScript, Tailwind CSS, shadcn/ui |
 | Desktop | Tauri v2 (Rust backend) |
-| Download Engine | yt-dlp + Deno (bundled as sidecars) |
+| Download Engines | yt-dlp + Deno (bundled sidecars) · librqbit (embedded BitTorrent) |
 | Build | Vite 5 |
 
 ## Development
