@@ -163,6 +163,9 @@ export interface AppPreferences {
   // Optional proxy for all traffic. yt-dlp accepts http(s)/socks; torrents only
   // use it when it's a socks5:// URL. Empty = direct. Validated Rust-side.
   proxyUrl: string;
+  // Remembered quality preset per domain (host -> preset id). When you add a URL
+  // from a site you've used before, its last-used preset is pre-selected.
+  perSitePresets: Record<string, string>;
 }
 
 export interface DiagnosticsEntry {
@@ -223,6 +226,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   audioFormat: 'mp3',
   seedingPolicy: 'ratio',
   proxyUrl: '',
+  perSitePresets: {},
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

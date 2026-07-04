@@ -77,6 +77,11 @@ function buildTorrentItem(url: string, destination: string, selectedFiles?: numb
 
 const ACTIVE_STATUSES: DownloadStatus[] = ['queued', 'parsing', 'ready', 'downloading', 'seeding', 'paused'];
 
+/** Hostname of a URL, or null for magnets/invalid input. */
+function hostOf(url: string): string | null {
+  try { return new URL(url).hostname || null; } catch { return null; }
+}
+
 /** Is this source already in the active queue or completed history? */
 function findDuplicate(url: string, queue: DownloadItem[], history: HistoryItem[]): 'queue' | 'completed' | null {
   const key = sourceKey(url);
@@ -102,7 +107,7 @@ function looksLikePlaylist(url: string): boolean {
 export default function Dashboard() {
   const { items: queueItems, addToQueue } = useQueue();
   const { items: historyItems } = useHistory();
-  const { preferences } = useSettings();
+  const { preferences, updatePreference } = useSettings();
   const service = useService();
   const navigate = useNavigate();
   const [parseError, setParseError] = useState<string | null>(null);
@@ -177,6 +182,13 @@ export default function Dashboard() {
         });
       return;
     }
+    // Pre-select this site's last-used quality preset before the details modal opens.
+    const host = hostOf(url);
+    const rememberedId = host ? preferences.perSitePresets[host] : undefined;
+    if (rememberedId) {
+      const remembered = DEFAULT_PRESETS.find(p => p.id === rememberedId);
+      if (remembered) setSelectedPreset(remembered);
+    }
     setIsParsing(true);
     try {
       // Check if it looks like a playlist
@@ -203,7 +215,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, [service, addToQueue, preferences.defaultSaveFolder, queueItems, historyItems]);
+  }, [service, addToQueue, preferences.defaultSaveFolder, preferences.perSitePresets, queueItems, historyItems]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
@@ -268,7 +280,12 @@ export default function Dashboard() {
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);
     setParsedMetadata(null);
-  }, [addToQueue]);
+    // Remember this site's quality preset for next time.
+    const host = item.metadata.source.domain;
+    if (host && !item.settings.audioOnly && item.kind !== 'torrent') {
+      updatePreference('perSitePresets', { ...preferences.perSitePresets, [host]: selectedPreset.id });
+    }
+  }, [addToQueue, updatePreference, preferences.perSitePresets, selectedPreset.id]);
 
   const handleTorrentConfirm = useCallback((indices: number[]) => {
     // All files selected → leave selectedFiles undefined (download everything).
