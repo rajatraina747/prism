@@ -40,9 +40,12 @@ extraction.
 
 ### Phased
 
-- [ ] **Spike.** Add `librqbit` to the Rust backend; get a single magnet link
-  downloading to disk with progress logged to console. No UI. Go/no-go gate on
-  the whole arc — validates integration effort before committing.
+- [x] **Spike — GO.** `librqbit` 8.x embeds cleanly in `src-tauri` (`torrent.rs` +
+  `examples/torrent_spike.rs`): builds against the Tauri dep tree, passes
+  `clippy -D warnings`, and downloaded the Debian 13.5 netinst torrent to
+  completion with per-second progress — final ISO SHA-256 matched Debian's
+  published checksum. `AddTorrent::from_url` handles both magnets and `.torrent`
+  HTTP URLs. No conflict with the Tauri async runtime.
 - [ ] **Networking.** Inbound listen port + UPnP/NAT-PMP port mapping for peer
   connectivity; graceful fallback when mapping fails.
 - [ ] **Progress model.** Torrents carry peers, seeds/leechers, ratio, up/down

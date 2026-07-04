@@ -1,5 +1,6 @@
 mod download_manager;
 mod engine;
+pub mod torrent;
 
 use std::path::PathBuf;
 
@@ -789,6 +790,7 @@ pub fn run() {
             engine::get_ytdlp_version,
             engine::update_ytdlp,
             engine::reset_ytdlp,
+            torrent::torrent_spike,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
