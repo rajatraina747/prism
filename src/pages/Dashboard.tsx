@@ -8,7 +8,7 @@ import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal'
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { Panel, ProgressBar, Thumb } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
-import { generateId, formatBytes, formatSpeed } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { cn } from '@/lib/utils';
@@ -37,6 +37,39 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
   if (preset.resolution === 'Best') return formats[0]; // formats are sorted descending
   return formats.find(f => f.resolution === preset.resolution) || formats[0];
+}
+
+/** Build a queue item for a magnet/.torrent source. Skips yt-dlp parsing —
+ * librqbit resolves the real name/size once peers deliver the metadata. */
+function buildTorrentItem(url: string, destination: string): DownloadItem {
+  const title = torrentDisplayName(url);
+  let domain = 'torrent';
+  try { domain = new URL(url).hostname || 'magnet'; } catch { /* magnet has no host */ }
+  return {
+    id: generateId(),
+    metadata: {
+      title,
+      duration: 0,
+      thumbnail: '',
+      source: { url, domain, addedAt: new Date().toISOString() },
+      formats: [],
+    },
+    settings: {
+      format: null,
+      destination,
+      filename: title,
+      retryCount: 0,
+      startImmediately: true,
+    },
+    status: 'queued',
+    progress: 0,
+    speed: 0,
+    eta: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    retryAttempt: 0,
+    kind: 'torrent',
+  };
 }
 
 /** Detect if a URL looks like a playlist (heuristic). */
@@ -99,6 +132,13 @@ export default function Dashboard() {
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
+    // Torrents skip yt-dlp entirely — queue directly and let librqbit resolve.
+    if (isTorrentUrl(url)) {
+      const item = buildTorrentItem(url, preferences.defaultSaveFolder);
+      addToQueue(item);
+      toast.success(`Added torrent: ${item.metadata.title}`);
+      return;
+    }
     setIsParsing(true);
     try {
       // Check if it looks like a playlist
@@ -125,7 +165,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, [service]);
+  }, [service, addToQueue, preferences.defaultSaveFolder]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
@@ -138,6 +178,11 @@ export default function Dashboard() {
 
     for (let i = 0; i < urls.length; i++) {
       try {
+        if (isTorrentUrl(urls[i])) {
+          addToQueue(buildTorrentItem(urls[i], preferences.defaultSaveFolder));
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
         const metadata = await service.parseUrl(urls[i]);
         const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
         const item: DownloadItem = {

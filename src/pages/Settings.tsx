@@ -166,6 +166,17 @@ export default function Settings() {
                     onChange={v => updatePreference('sponsorBlock', v as any)}
                   />
                 </SettingRow>
+                <SettingRow label="Torrent seeding" description="After a torrent finishes, how long to keep uploading to the swarm. Seeding to ratio 1.0 shares back roughly what you downloaded">
+                  <Select
+                    value={p.seedingPolicy}
+                    options={[
+                      { value: 'stop', label: "Stop at 100%" },
+                      { value: 'ratio', label: 'Seed to ratio 1.0' },
+                      { value: 'seed', label: 'Seed until stopped' },
+                    ]}
+                    onChange={v => updatePreference('seedingPolicy', v as any)}
+                  />
+                </SettingRow>
               </div>
             )}
 

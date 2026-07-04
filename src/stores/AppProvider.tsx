@@ -241,7 +241,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const cleanup = service.startDownload(
         effectiveItem,
         (data) => {
-          dispatch({ type: 'progress', id: item.id, data });
+          // seeding is a status signal, not an item field — split it out so the
+          // reducer can drive the downloading→seeding transition.
+          const { seeding, ...rest } = data;
+          dispatch({ type: 'progress', id: item.id, data: rest, seeding });
         },
         (success, errorMsg, filePath, fileSize) => {
           startedRef.current.delete(item.id);

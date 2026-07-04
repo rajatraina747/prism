@@ -83,7 +83,11 @@ export class TauriPrismService implements IPrismService {
     let completeUnlisten: UnlistenFn | null = null;
     let cancelled = false;
 
+    const isTorrent = item.kind === 'torrent';
+
     const setup = async () => {
+      // The torrent engine emits the same event with extra swarm fields; HTTP
+      // downloads simply leave them undefined.
       progressUnlisten = await listen<{
         id: string;
         downloaded_bytes: number;
@@ -91,6 +95,11 @@ export class TauriPrismService implements IPrismService {
         progress: number;
         speed: number;
         eta: number;
+        upload_speed?: number;
+        peers?: number;
+        seeds?: number;
+        ratio?: number;
+        seeding?: boolean;
       }>(`download-progress-${item.id}`, (event) => {
         if (cancelled) return;
         onProgress({
@@ -99,6 +108,11 @@ export class TauriPrismService implements IPrismService {
           progress: event.payload.progress,
           speed: event.payload.speed,
           eta: event.payload.eta,
+          uploadSpeed: event.payload.upload_speed,
+          peers: event.payload.peers,
+          seeds: event.payload.seeds,
+          ratio: event.payload.ratio,
+          seeding: event.payload.seeding,
         });
       });
 
@@ -114,9 +128,21 @@ export class TauriPrismService implements IPrismService {
         onComplete(event.payload.success, event.payload.error ?? undefined, event.payload.file_path ?? undefined, event.payload.file_size ?? undefined);
       });
 
+      const dest = item.settings.destination || '~/Downloads/Prism';
+
+      if (isTorrent) {
+        // Torrents download into the destination *directory*; librqbit names the
+        // files from the torrent metadata. The magnet/.torrent URL is the source.
+        await invoke('start_torrent', {
+          id: item.id,
+          magnet: item.metadata.source.url,
+          outputPath: dest,
+        });
+        return;
+      }
+
       // Use %(ext)s template so yt-dlp can download video+audio separately
       // then merge them. --merge-output-format mp4 ensures final output is .mp4
-      const dest = item.settings.destination || '~/Downloads/Prism';
       const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
       const outputPath = `${dest}/${filename}.%(ext)s`;
 
@@ -158,7 +184,12 @@ export class TauriPrismService implements IPrismService {
   }
 
   async cancelDownload(id: string): Promise<void> {
-    await invoke('cancel_download', { id });
+    // The caller doesn't track which engine owns the id, so signal both. Each is
+    // a no-op for an id it doesn't own (yt-dlp child kill / librqbit session drop).
+    await Promise.all([
+      invoke('cancel_download', { id }).catch(() => {}),
+      invoke('cancel_torrent', { id }).catch(() => {}),
+    ]);
   }
 
   async openFile(filePath: string): Promise<void> {

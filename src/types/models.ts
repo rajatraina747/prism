@@ -3,10 +3,18 @@ export type DownloadStatus =
   | 'parsing'
   | 'ready'
   | 'downloading'
+  // Torrent-only: download hit 100% but is still uploading to the swarm.
+  // Terminal-ish — transitions to 'completed' when seeding stops (ratio met
+  // or user action). See seedingPolicy.
+  | 'seeding'
   | 'paused'
   | 'completed'
   | 'failed'
   | 'canceled';
+
+// How an item is fetched. Absent = 'http' (yt-dlp), the default for every
+// existing item. 'torrent' routes through the librqbit engine instead.
+export type DownloadKind = 'http' | 'torrent';
 
 export interface MediaSource {
   url: string;
@@ -73,6 +81,13 @@ export interface DownloadItem {
   filePath?: string;
   error?: DownloadError;
   retryAttempt: number;
+  // Source engine. Absent/'http' = yt-dlp; 'torrent' = librqbit. The torrent
+  // fields below are only populated while kind === 'torrent'.
+  kind?: DownloadKind;
+  peers?: number;
+  seeds?: number;
+  uploadSpeed?: number; // bytes per second
+  ratio?: number; // uploaded / downloaded
 }
 
 export interface DownloadError {
@@ -123,6 +138,11 @@ export interface AppPreferences {
   // Container/codec for audio-only downloads. Read by the Rust side from
   // settings.json (whitelisted), like cookiesFromBrowser.
   audioFormat: 'mp3' | 'm4a' | 'opus';
+  // Torrent seeding: what to do once a torrent finishes downloading.
+  // 'stop' = stop uploading immediately, 'ratio' = seed until share ratio 1.0
+  // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
+  // Read by the Rust side from settings.json (whitelisted), like audioFormat.
+  seedingPolicy: 'stop' | 'ratio' | 'seed';
 }
 
 export interface DiagnosticsEntry {
@@ -181,6 +201,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   scheduleLimitMBps: 5,
   crashReportingEnabled: false,
   audioFormat: 'mp3',
+  seedingPolicy: 'ratio',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

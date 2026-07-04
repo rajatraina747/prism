@@ -12,7 +12,19 @@ import type { DownloadItem, DownloadError } from '@/types/models';
 export type QueueAction =
   | { type: 'add'; item: DownloadItem }
   | { type: 'markStarted'; id: string; startedAt: string }
-  | { type: 'progress'; id: string; data: Partial<Pick<DownloadItem, 'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes'>> }
+  | {
+      type: 'progress';
+      id: string;
+      data: Partial<
+        Pick<
+          DownloadItem,
+          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'peers' | 'seeds' | 'uploadSpeed' | 'ratio'
+        >
+      >;
+      // Torrent-only: the download finished and the item is now uploading.
+      // Drives the 'downloading' → 'seeding' transition. HTTP items never set it.
+      seeding?: boolean;
+    }
   | { type: 'completed'; id: string; completedAt: string; filePath?: string; fileSize?: number }
   | { type: 'failed'; id: string; error: DownloadError }
   | { type: 'requeueForRetry'; id: string }
@@ -50,19 +62,30 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
       );
 
     case 'progress':
-      return update(queue, action.id, i =>
-        i.status === 'downloading' ? { ...i, ...action.data } : i,
-      );
+      return update(queue, action.id, i => {
+        // A torrent that hit 100% moves to 'seeding'; from there we keep
+        // applying swarm-stat updates but never fall back to 'downloading'.
+        if (i.status === 'downloading') {
+          return { ...i, ...action.data, status: action.seeding ? 'seeding' : 'downloading' };
+        }
+        if (i.status === 'seeding') {
+          return { ...i, ...action.data };
+        }
+        return i;
+      });
 
     case 'completed':
+      // Torrents reach this from 'seeding' (once the seed policy is satisfied
+      // or the user stops), HTTP items from 'downloading'.
       return update(queue, action.id, i =>
-        i.status === 'downloading'
+        i.status === 'downloading' || i.status === 'seeding'
           ? {
               ...i,
               status: 'completed',
               progress: 100,
               speed: 0,
               eta: 0,
+              uploadSpeed: 0,
               completedAt: action.completedAt,
               filePath: action.filePath,
               totalBytes: action.fileSize ?? i.totalBytes,
@@ -88,8 +111,8 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
 
     case 'pause':
       return update(queue, action.id, i =>
-        i.status === 'queued' || i.status === 'downloading'
-          ? { ...i, status: 'paused', speed: 0, eta: 0 }
+        i.status === 'queued' || i.status === 'downloading' || i.status === 'seeding'
+          ? { ...i, status: 'paused', speed: 0, eta: 0, uploadSpeed: 0 }
           : i,
       );
 
@@ -128,7 +151,9 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
 
     case 'pauseAll':
       return queue.map(i =>
-        i.status === 'downloading' ? { ...i, status: 'paused' as const, speed: 0, eta: 0 } : i,
+        i.status === 'downloading' || i.status === 'seeding'
+          ? { ...i, status: 'paused' as const, speed: 0, eta: 0, uploadSpeed: 0 }
+          : i,
       );
 
     case 'reorder': {

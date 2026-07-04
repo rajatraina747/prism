@@ -6,6 +6,13 @@ export type ProgressCallback = (data: {
   progress: number;
   speed: number;
   eta: number;
+  // Torrent-only swarm stats; undefined for HTTP downloads.
+  uploadSpeed?: number;
+  peers?: number;
+  seeds?: number;
+  ratio?: number;
+  // Torrent-only: download finished, now seeding. Drives downloading→seeding.
+  seeding?: boolean;
 }) => void;
 
 export type CompletionCallback = (success: boolean, error?: string, filePath?: string, fileSize?: number) => void;

@@ -31,6 +31,7 @@ const STATUS_CONFIG: Record<DownloadStatus, { label: string; className: string }
   parsing: { label: 'Parsing', className: 'bg-warning/15 text-warning animate-pulse-soft' },
   ready: { label: 'Ready', className: 'bg-primary/15 text-primary' },
   downloading: { label: 'Downloading', className: 'bg-primary/15 text-primary animate-pulse-soft' },
+  seeding: { label: 'Seeding', className: 'bg-success/15 text-success animate-pulse-soft' },
   paused: { label: 'Paused', className: 'bg-warning/15 text-warning' },
   completed: { label: 'Completed', className: 'bg-success/15 text-success' },
   failed: { label: 'Failed', className: 'bg-destructive/15 text-destructive' },

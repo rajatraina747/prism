@@ -92,9 +92,11 @@ export class MockPrismService implements IPrismService {
     onProgress: ProgressCallback,
     onComplete: CompletionCallback,
   ): () => void {
+    const isTorrent = item.kind === 'torrent';
     let downloaded = item.downloadedBytes || 0;
     const total = item.totalBytes || 500_000_000;
-    const failChance = 0.08;
+    const failChance = isTorrent ? 0 : 0.08; // torrents self-heal via peers
+    let seedTicks = 0; // once finished, a torrent seeds briefly before completing
 
     const interval = setInterval(() => {
       const chunk = Math.random() * 3_000_000 + 800_000;
@@ -102,16 +104,40 @@ export class MockPrismService implements IPrismService {
       const progress = (downloaded / total) * 100;
       const speed = chunk * 5;
       const eta = speed > 0 ? (total - downloaded) / speed : 0;
+      const swarm = isTorrent
+        ? {
+            uploadSpeed: chunk * 1.5,
+            peers: 8 + Math.floor(Math.random() * 20),
+            seeds: 3 + Math.floor(Math.random() * 10),
+            ratio: downloaded > 0 ? (downloaded * 0.2) / total : 0,
+          }
+        : {};
 
-      onProgress({ downloadedBytes: downloaded, totalBytes: total, progress, speed, eta });
+      if (downloaded < total) {
+        onProgress({ downloadedBytes: downloaded, totalBytes: total, progress, speed, eta, ...swarm });
+        return;
+      }
 
-      if (downloaded >= total) {
-        clearInterval(interval);
-        if (Math.random() < failChance) {
-          onComplete(false, 'Connection interrupted during final transfer');
-        } else {
-          onComplete(true);
-        }
+      if (isTorrent && seedTicks < 3) {
+        // Seeding phase: full progress, uploading only.
+        seedTicks += 1;
+        onProgress({
+          downloadedBytes: total,
+          totalBytes: total,
+          progress: 100,
+          speed: 0,
+          eta: 0,
+          ...swarm,
+          seeding: true,
+        });
+        return;
+      }
+
+      clearInterval(interval);
+      if (Math.random() < failChance) {
+        onComplete(false, 'Connection interrupted during final transfer');
+      } else {
+        onComplete(true);
       }
     }, 180);
 

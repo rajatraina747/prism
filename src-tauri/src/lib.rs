@@ -1,5 +1,6 @@
 mod download_manager;
 mod engine;
+pub mod torrent;
 
 use std::path::PathBuf;
 
@@ -369,6 +370,30 @@ async fn cancel_download(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn start_torrent(
+    app: AppHandle,
+    id: String,
+    magnet: String,
+    output_path: String,
+) -> Result<(), String> {
+    // output_path is the destination *directory* for the torrent's files.
+    let dir = validate_download_path(&output_path)?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create download directory: {}", e))?;
+    let policy = seeding_policy(&app);
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.start_torrent(app.clone(), id, magnet, dir, policy);
+    Ok(())
+}
+
+#[tauri::command]
+async fn cancel_torrent(app: AppHandle, id: String) -> Result<(), String> {
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.cancel_torrent(&id).await;
+    Ok(())
+}
+
 /// Validate a path the frontend asks us to open/reveal: must be an existing
 /// file (not a URL or directory) inside the same allowed roots as downloads.
 /// Defense-in-depth — the frontend only passes stored download paths, but a
@@ -473,6 +498,18 @@ pub fn audio_format(app: &AppHandle) -> String {
         .and_then(|v| v.as_str().map(str::to_string))
         .filter(|f| matches!(f.as_str(), "mp3" | "m4a" | "opus"))
         .unwrap_or_else(|| "mp3".to_string())
+}
+
+/// Torrent seeding policy, whitelisted; defaults to seed-to-ratio-1.0.
+pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
+    match read_setting(app, "seedingPolicy")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .as_deref()
+    {
+        Some("stop") => torrent::SeedingPolicy::Stop,
+        Some("seed") => torrent::SeedingPolicy::Forever,
+        _ => torrent::SeedingPolicy::Ratio(1.0),
+    }
 }
 
 /// SponsorBlock preference ("mark" | "remove"), whitelisted; else off.
@@ -742,6 +779,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(DownloadManager::new())
+        .manage(torrent::TorrentManager::new())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -782,6 +820,8 @@ pub fn run() {
             parse_playlist,
             start_download,
             cancel_download,
+            start_torrent,
+            cancel_torrent,
             open_file,
             show_in_folder,
             get_default_download_path,
