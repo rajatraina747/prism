@@ -1,8 +1,12 @@
-//! BitTorrent engine spike (go/no-go). Wraps librqbit to download a magnet/torrent
-//! URL to disk while reporting progress. Deliberately UI-less: this exists to prove
-//! the library integrates against our toolchain and Tauri dep tree, and that a real
-//! magnet resolves via DHT and completes, before we commit to the second-engine arc.
-//! See ROADMAP.md → "Second engine: BitTorrent".
+//! BitTorrent engine. Wraps librqbit behind a `TorrentManager` that mirrors
+//! `download_manager::DownloadManager`: it emits the same `download-progress-{id}` /
+//! `download-complete-{id}` events so torrents flow through the existing queue, plus
+//! torrent-only swarm stats and a `seeding` flag. See ROADMAP.md → "Second engine".
+//!
+//! Trust boundary: file names inside a torrent come from untrusted metadata. Writes
+//! are confined to `output_folder` and librqbit is responsible for rejecting
+//! path-traversal (`../`) entries — we never join those names ourselves except for
+//! the top-level torrent name (also librqbit-provided) when resolving an open path.
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
@@ -10,59 +14,37 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use librqbit::api::TorrentIdOrHash;
-use librqbit::limits::LimitsConfig;
-use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session, SessionOptions,
-};
-
-/// Fixed listen-port range so the UPnP mapping and DHT stay stable across runs.
-const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
-
-/// librqbit's handle type (not re-exported at the crate root in 8.x).
-type ManagedTorrentHandle = Arc<ManagedTorrent>;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
+use librqbit::api::TorrentIdOrHash;
+use librqbit::limits::LimitsConfig;
+use librqbit::{
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session, SessionOptions,
+    TorrentStatsState,
+};
+
 use crate::download_manager::DownloadComplete;
+
+/// Fixed listen-port range so the UPnP mapping and DHT stay stable across runs.
+const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
 
 const BYTES_PER_MIB: f64 = 1024.0 * 1024.0;
 
-/// Download a magnet or `.torrent` URL into `output_dir`, calling `on_progress`
-/// with (downloaded_bytes, total_bytes) roughly once a second until complete.
-/// Returns the output directory on success.
-pub async fn download_magnet<F: Fn(u64, u64)>(
-    magnet: &str,
-    output_dir: PathBuf,
-    on_progress: F,
-) -> anyhow::Result<PathBuf> {
-    let session = Session::new(output_dir.clone()).await?;
-    let handle = session
-        .add_torrent(AddTorrent::from_url(magnet), None)
-        .await?
-        .into_handle()
-        .ok_or_else(|| anyhow::anyhow!("torrent was added in list-only mode"))?;
+/// How long a torrent may make zero download progress before we call it stalled.
+/// Mirrors the HTTP engine's inactivity kill; a live seeding torrent is exempt
+/// (it's `finished`, handled separately).
+const STALL_TIMEOUT_SECS: u64 = 300;
 
-    loop {
-        let stats = handle.stats();
-        on_progress(stats.progress_bytes, stats.total_bytes);
-        if stats.finished {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
+/// Re-send the (static) file list at most this often — per-file progress refreshes
+/// on this cadence while the cheap top-line stats update every second.
+const FILE_LIST_EMIT_EVERY_SECS: u64 = 5;
 
-    Ok(output_dir)
-}
+/// librqbit's handle type (not re-exported at the crate root in 8.x).
+type ManagedTorrentHandle = Arc<ManagedTorrent>;
 
-// ── Production engine: TorrentManager ────────────────────────────────────
-//
-// Mirrors download_manager::DownloadManager but backed by librqbit. It emits the
-// same `download-progress-{id}` / `download-complete-{id}` events the frontend
-// already listens to, so torrents flow through the existing queue. The progress
-// payload carries extra swarm stats (upload speed, peers, ratio) and a `seeding`
-// flag that drives the queue's downloading→seeding transition.
+// ── TorrentManager ───────────────────────────────────────────────────────
 
 /// What to do once a torrent finishes downloading. Sourced from the user's
 /// `seedingPolicy` setting (see lib::seeding_policy).
@@ -106,14 +88,19 @@ pub struct TorrentProgress {
     pub eta: f64,
     pub upload_speed: f64,
     pub peers: u32,
-    pub seeds: u32,
     pub ratio: f64,
     pub seeding: bool,
-    /// The torrent's files with per-file progress. Empty until metadata resolves.
+    /// The torrent's files with per-file progress. Omitted (not just empty) on
+    /// ticks where we don't re-send the list, so the frontend keeps the last one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<TorrentFile>,
 }
 
 type SessionSlot = Arc<Mutex<Option<Arc<Session>>>>;
+
+/// Cap on cached parsed-torrent metadata so parsing many torrents without
+/// downloading them can't grow memory without bound.
+const RESOLVED_CACHE_CAP: usize = 16;
 
 pub struct TorrentManager {
     /// One librqbit session for the whole app, created lazily on first torrent.
@@ -123,6 +110,10 @@ pub struct TorrentManager {
     /// Session-wide rate limits (download + upload). Applied at session creation
     /// and updated live — this is how Quiet Hours throttles torrents.
     limits: Arc<Mutex<LimitsConfig>>,
+    /// `.torrent` bytes resolved by `list_files`, keyed by source URL, so
+    /// `start_torrent` can add from bytes instead of re-fetching magnet metadata
+    /// from peers. Consumed (removed) on use.
+    resolved: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 /// Lazily create and cache the shared librqbit session. Enables UPnP port
@@ -155,6 +146,7 @@ impl TorrentManager {
             session: Arc::new(Mutex::new(None)),
             active: Arc::new(Mutex::new(HashMap::new())),
             limits: Arc::new(Mutex::new(LimitsConfig::default())),
+            resolved: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -192,15 +184,27 @@ impl TorrentManager {
 
         match resp {
             AddTorrentResponse::ListOnly(lo) => {
-                let details = lo.info.iter_file_details().map_err(|e| e.to_string())?;
-                Ok(details
+                let entries: Vec<TorrentFileEntry> = lo
+                    .info
+                    .iter_file_details()
+                    .map_err(|e| e.to_string())?
                     .enumerate()
                     .map(|(index, d)| TorrentFileEntry {
                         index,
                         name: d.filename.to_string().unwrap_or_else(|_| format!("file {index}")),
                         size: d.len,
                     })
-                    .collect())
+                    .collect();
+                // Cache the parsed .torrent so start_torrent skips a second metadata
+                // fetch. Bounded; consumed on use.
+                let mut cache = self.resolved.lock().await;
+                if cache.len() >= RESOLVED_CACHE_CAP {
+                    if let Some(k) = cache.keys().next().cloned() {
+                        cache.remove(&k);
+                    }
+                }
+                cache.insert(magnet, lo.torrent_bytes.to_vec());
+                Ok(entries)
             }
             _ => Err("Torrent did not return a file list".into()),
         }
@@ -220,6 +224,7 @@ impl TorrentManager {
         let session_slot = self.session.clone();
         let active = self.active.clone();
         let limits_slot = self.limits.clone();
+        let resolved = self.resolved.clone();
 
         tauri::async_runtime::spawn(async move {
             let current_limits = *limits_slot.lock().await;
@@ -228,21 +233,35 @@ impl TorrentManager {
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };
 
+            // Prefer metadata already resolved by the file picker; fall back to the URL.
+            let add = match resolved.lock().await.remove(&magnet) {
+                Some(bytes) => AddTorrent::from_bytes(bytes),
+                None => AddTorrent::from_url(&magnet),
+            };
             let opts = AddTorrentOptions {
                 output_folder: Some(output_dir.clone()),
                 // None = all files; Some(indices) downloads only the picked ones.
                 only_files: only_files.clone(),
                 ..Default::default()
             };
-            let handle = match session.add_torrent(AddTorrent::from_url(&magnet), Some(opts)).await {
-                Ok(resp) => match resp.into_handle() {
-                    Some(h) => h,
-                    None => return emit_failure(&app, &id, "Torrent added in list-only mode".into()),
-                },
+            // Distinguish Added from AlreadyManaged: a duplicate would otherwise
+            // hand back a shared handle, so cancelling one queue item would delete
+            // the torrent out from under the other.
+            let handle = match session.add_torrent(add, Some(opts)).await {
+                Ok(AddTorrentResponse::Added(_, h)) => h,
+                Ok(AddTorrentResponse::AlreadyManaged(_, _)) => {
+                    return emit_failure(&app, &id, "This torrent is already in the queue.".into())
+                }
+                Ok(AddTorrentResponse::ListOnly(_)) => {
+                    return emit_failure(&app, &id, "Torrent added in list-only mode".into())
+                }
                 Err(e) => return emit_failure(&app, &id, format!("Failed to add torrent: {e}")),
             };
 
             active.lock().await.insert(id.clone(), handle.clone());
+
+            let mut ticks: u64 = 0;
+            let mut stall = StallWatch::new(STALL_TIMEOUT_SECS);
 
             loop {
                 // Removal from the map is the cancel signal — exit without emitting
@@ -252,17 +271,34 @@ impl TorrentManager {
                 }
 
                 let stats = handle.stats();
-                let (speed, upload_speed, peers, seeds) = match &stats.live {
+
+                // Fail fast on an engine error (disk full, unrecoverable, …).
+                if matches!(stats.state, TorrentStatsState::Error) {
+                    active.lock().await.remove(&id);
+                    let msg = stats.error.unwrap_or_else(|| "Torrent failed".to_string());
+                    return emit_failure(&app, &id, msg);
+                }
+
+                let (speed, upload_speed, peers) = match &stats.live {
                     Some(l) => (
                         l.download_speed.mbps * BYTES_PER_MIB,
                         l.upload_speed.mbps * BYTES_PER_MIB,
                         l.snapshot.peer_stats.live as u32,
-                        // librqbit's aggregate stats don't split seeds from peers;
-                        // "seen" is the closest available count of known peers.
-                        l.snapshot.peer_stats.seen as u32,
                     ),
-                    None => (0.0, 0.0, 0, 0),
+                    None => (0.0, 0.0, 0),
                 };
+
+                // Stall watchdog: give up if a still-downloading torrent makes no
+                // progress for STALL_TIMEOUT_SECS (dead magnet / no seeders).
+                if stall.tick(stats.progress_bytes, stats.finished) {
+                    active.lock().await.remove(&id);
+                    return emit_failure(
+                        &app,
+                        &id,
+                        "Stalled — no data received for 5 minutes (no seeders?)".into(),
+                    );
+                }
+
                 let progress = if stats.total_bytes > 0 {
                     stats.progress_bytes as f64 / stats.total_bytes as f64 * 100.0
                 } else {
@@ -279,28 +315,13 @@ impl TorrentManager {
                     0.0
                 };
 
-                // Per-file breakdown (empty until metadata resolves). file_progress
-                // is parallel to file_infos.
-                let files = handle
-                    .with_metadata(|m| {
-                        m.file_infos
-                            .iter()
-                            .enumerate()
-                            .map(|(i, fi)| {
-                                let done = stats.file_progress.get(i).copied().unwrap_or(0);
-                                TorrentFile {
-                                    name: fi.relative_filename.to_string_lossy().into_owned(),
-                                    size: fi.len,
-                                    progress: if fi.len > 0 {
-                                        done as f64 / fi.len as f64 * 100.0
-                                    } else {
-                                        100.0
-                                    },
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
+                // The file list is static; only re-send it periodically (and when
+                // finished) to avoid re-allocating/serialising it every second.
+                let files = if ticks % FILE_LIST_EMIT_EVERY_SECS == 0 || stats.finished {
+                    file_breakdown(&handle, &stats.file_progress)
+                } else {
+                    Vec::new()
+                };
 
                 let _ = app.emit(
                     &format!("download-progress-{id}"),
@@ -313,24 +334,17 @@ impl TorrentManager {
                         eta,
                         upload_speed,
                         peers,
-                        seeds,
                         ratio,
                         seeding: stats.finished,
                         files,
                     },
                 );
 
-                if stats.finished {
-                    let done = match policy {
-                        SeedingPolicy::Stop => true,
-                        SeedingPolicy::Ratio(target) => ratio >= target,
-                        SeedingPolicy::Forever => false,
-                    };
-                    if done {
-                        break;
-                    }
+                if stats.finished && seeding_complete(policy, ratio) {
+                    break;
                 }
 
+                ticks += 1;
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
 
@@ -378,6 +392,70 @@ impl Default for TorrentManager {
     }
 }
 
+/// Whether seeding is done and the item should complete, per the user's policy.
+fn seeding_complete(policy: SeedingPolicy, ratio: f64) -> bool {
+    match policy {
+        SeedingPolicy::Stop => true,
+        SeedingPolicy::Ratio(target) => ratio >= target,
+        SeedingPolicy::Forever => false,
+    }
+}
+
+/// Detects a stalled download: `tick` is called once per second with the current
+/// downloaded byte count; it returns true once a *still-downloading* torrent has
+/// made zero progress for `timeout_secs` consecutive ticks. A `finished` torrent
+/// (seeding) never stalls.
+struct StallWatch {
+    last: u64,
+    idle: u64,
+    timeout: u64,
+}
+
+impl StallWatch {
+    fn new(timeout_secs: u64) -> Self {
+        Self { last: 0, idle: 0, timeout: timeout_secs }
+    }
+
+    fn tick(&mut self, progress_bytes: u64, finished: bool) -> bool {
+        if finished {
+            self.idle = 0;
+            return false;
+        }
+        if progress_bytes > self.last {
+            self.last = progress_bytes;
+            self.idle = 0;
+        } else {
+            self.idle += 1;
+        }
+        self.idle >= self.timeout
+    }
+}
+
+/// Per-file breakdown for a torrent (empty until metadata resolves).
+/// `file_progress` is parallel to the metadata's `file_infos`.
+fn file_breakdown(handle: &ManagedTorrentHandle, file_progress: &[u64]) -> Vec<TorrentFile> {
+    handle
+        .with_metadata(|m| {
+            m.file_infos
+                .iter()
+                .enumerate()
+                .map(|(i, fi)| {
+                    let done = file_progress.get(i).copied().unwrap_or(0);
+                    TorrentFile {
+                        name: fi.relative_filename.to_string_lossy().into_owned(),
+                        size: fi.len,
+                        progress: if fi.len > 0 {
+                            done as f64 / fi.len as f64 * 100.0
+                        } else {
+                            100.0
+                        },
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
 fn emit_failure(app: &AppHandle, id: &str, message: String) {
     let _ = app.emit(
         &format!("download-complete-{id}"),
@@ -389,4 +467,46 @@ fn emit_failure(app: &AppHandle, id: &str, message: String) {
             file_size: None,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seeding_policy_decisions() {
+        assert!(seeding_complete(SeedingPolicy::Stop, 0.0));
+        assert!(!seeding_complete(SeedingPolicy::Forever, 999.0));
+        assert!(!seeding_complete(SeedingPolicy::Ratio(1.0), 0.99));
+        assert!(seeding_complete(SeedingPolicy::Ratio(1.0), 1.0));
+        assert!(seeding_complete(SeedingPolicy::Ratio(1.0), 2.5));
+    }
+
+    #[test]
+    fn stall_fires_only_after_timeout_of_no_progress() {
+        let mut w = StallWatch::new(3);
+        // Progress each tick → never stalls.
+        assert!(!w.tick(10, false));
+        assert!(!w.tick(20, false));
+        assert!(!w.tick(30, false));
+        // Now frozen: needs 3 consecutive idle ticks.
+        assert!(!w.tick(30, false)); // idle 1
+        assert!(!w.tick(30, false)); // idle 2
+        assert!(w.tick(30, false)); // idle 3 → stalled
+    }
+
+    #[test]
+    fn stall_resets_on_progress_and_ignores_finished() {
+        let mut w = StallWatch::new(2);
+        assert!(!w.tick(0, false)); // idle 1
+        assert!(!w.tick(100, false)); // progress → reset
+        assert!(!w.tick(100, false)); // idle 1
+        // A finished (seeding) torrent never stalls, even sitting at the same bytes.
+        assert!(!w.tick(100, true));
+        assert!(!w.tick(100, true));
+        assert!(!w.tick(100, true));
+        // Back to downloading with no progress: two idle ticks → stalls.
+        assert!(!w.tick(100, false)); // idle 1
+        assert!(w.tick(100, false)); // idle 2 → stalled
+    }
 }

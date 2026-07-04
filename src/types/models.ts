@@ -102,7 +102,6 @@ export interface DownloadItem {
   // fields below are only populated while kind === 'torrent'.
   kind?: DownloadKind;
   peers?: number;
-  seeds?: number;
   uploadSpeed?: number; // bytes per second
   ratio?: number; // uploaded / downloaded
   files?: TorrentFileInfo[]; // multi-file torrent breakdown

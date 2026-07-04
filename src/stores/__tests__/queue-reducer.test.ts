@@ -155,7 +155,7 @@ describe('queueReducer', () => {
       const next = queueReducer(items, {
         type: 'progress',
         id: 't',
-        data: { progress: 100, speed: 0, uploadSpeed: 2048, peers: 12, seeds: 4, ratio: 0.3 },
+        data: { progress: 100, speed: 0, uploadSpeed: 2048, peers: 12, ratio: 0.3 },
         seeding: true,
       });
       expect(next[0].status).toBe('seeding');

@@ -101,24 +101,25 @@ export class TauriPrismService implements IPrismService {
         eta: number;
         upload_speed?: number;
         peers?: number;
-        seeds?: number;
         ratio?: number;
         seeding?: boolean;
         files?: { name: string; size: number; progress: number }[];
       }>(`download-progress-${item.id}`, (event) => {
         if (cancelled) return;
+        const p = event.payload;
         onProgress({
-          downloadedBytes: event.payload.downloaded_bytes,
-          totalBytes: event.payload.total_bytes,
-          progress: event.payload.progress,
-          speed: event.payload.speed,
-          eta: event.payload.eta,
-          uploadSpeed: event.payload.upload_speed,
-          peers: event.payload.peers,
-          seeds: event.payload.seeds,
-          ratio: event.payload.ratio,
-          seeding: event.payload.seeding,
-          files: event.payload.files,
+          downloadedBytes: p.downloaded_bytes,
+          totalBytes: p.total_bytes,
+          progress: p.progress,
+          speed: p.speed,
+          eta: p.eta,
+          uploadSpeed: p.upload_speed,
+          peers: p.peers,
+          ratio: p.ratio,
+          seeding: p.seeding,
+          // Only present on periodic ticks; omit the key otherwise so the reducer
+          // keeps the last file list instead of clearing it.
+          ...(p.files !== undefined ? { files: p.files } : {}),
         });
       });
 

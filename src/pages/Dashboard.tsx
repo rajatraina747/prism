@@ -120,6 +120,9 @@ export default function Dashboard() {
 
   // Ref indirection so the clipboard watcher callback stays stable
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
+  // Monotonic token so a slow parseTorrent (up to ~45s) can't populate or close a
+  // modal the user has since moved on from. Bumped on new parse / close / confirm.
+  const torrentParseIdRef = useRef(0);
 
   // prism://add?url=... deep links (bookmarklet / "send to Prism"), buffered
   // by AppShell so links arriving on other pages aren't lost
@@ -142,6 +145,7 @@ export default function Dashboard() {
     // Torrents skip yt-dlp entirely. Fetch the file list first so the user can
     // pick which files to download, then queue on confirm.
     if (isTorrentUrl(url)) {
+      const parseId = ++torrentParseIdRef.current;
       setTorrentUrl(url);
       setTorrentFiles(null); // loading
       // Defer the open past the current Enter/click event — opening a Radix
@@ -149,8 +153,9 @@ export default function Dashboard() {
       // trailing interaction and close it instantly.
       setTimeout(() => setShowTorrentModal(true), 0);
       service.parseTorrent(url, preferences.defaultSaveFolder)
-        .then(files => setTorrentFiles(files))
+        .then(files => { if (torrentParseIdRef.current === parseId) setTorrentFiles(files); })
         .catch((err) => {
+          if (torrentParseIdRef.current !== parseId) return; // superseded — ignore
           setShowTorrentModal(false);
           toast.error(typeof err === 'string' ? err : (err?.message || 'Could not read torrent'));
         });
@@ -242,6 +247,7 @@ export default function Dashboard() {
     const item = buildTorrentItem(torrentUrl, preferences.defaultSaveFolder, allSelected ? undefined : indices);
     addToQueue(item);
     toast.success(`Added torrent: ${item.metadata.title}`);
+    torrentParseIdRef.current++; // invalidate any in-flight parse
     setShowTorrentModal(false);
     setTorrentFiles(null);
     setTorrentUrl('');
@@ -468,7 +474,7 @@ export default function Dashboard() {
       {/* Torrent file picker */}
       <TorrentFilesModal
         open={showTorrentModal}
-        onClose={() => { setShowTorrentModal(false); setTorrentFiles(null); setTorrentUrl(''); }}
+        onClose={() => { torrentParseIdRef.current++; setShowTorrentModal(false); setTorrentFiles(null); setTorrentUrl(''); }}
         title={torrentDisplayName(torrentUrl)}
         files={torrentFiles}
         onConfirm={handleTorrentConfirm}

@@ -9,7 +9,6 @@ export type ProgressCallback = (data: {
   // Torrent-only swarm stats; undefined for HTTP downloads.
   uploadSpeed?: number;
   peers?: number;
-  seeds?: number;
   ratio?: number;
   files?: TorrentFileInfo[];
   // Torrent-only: download finished, now seeding. Drives downloading→seeding.

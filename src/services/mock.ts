@@ -120,7 +120,6 @@ export class MockPrismService implements IPrismService {
         ? {
             uploadSpeed: chunk * 1.5,
             peers: 8 + Math.floor(Math.random() * 20),
-            seeds: 3 + Math.floor(Math.random() * 10),
             ratio: downloaded > 0 ? (downloaded * 0.2) / total : 0,
             // Simulated multi-file breakdown: the first file fills before the second.
             files: [
