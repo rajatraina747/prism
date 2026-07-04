@@ -54,17 +54,16 @@ export function formatEta(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
 }
 
-/** A magnet link or an http(s) URL pointing at a .torrent file — handled by the
- * torrent engine (librqbit) rather than yt-dlp. */
+/** A magnet link, or a .torrent file (http(s) URL, file:// URL, or local path) —
+ * handled by the torrent engine (librqbit) rather than yt-dlp. */
 export function isTorrentUrl(url: string): boolean {
   const trimmed = url.trim();
+  if (!trimmed || /\s/.test(trimmed)) return false;
   if (/^magnet:\?/i.test(trimmed)) return true;
-  try {
-    const u = new URL(trimmed);
-    return (u.protocol === 'http:' || u.protocol === 'https:') && /\.torrent$/i.test(u.pathname);
-  } catch {
-    return false;
-  }
+  // Ends in .torrent, ignoring any query string. Covers https://…/x.torrent,
+  // file:///…/x.torrent, and bare paths like /Users/me/x.torrent.
+  const pathPart = trimmed.split(/[?#]/)[0];
+  return /\.torrent$/i.test(pathPart);
 }
 
 /** Best-effort human title for a torrent source: the magnet `dn` (display name)

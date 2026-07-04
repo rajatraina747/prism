@@ -144,9 +144,12 @@ describe('isTorrentUrl', () => {
     expect(isTorrentUrl('  MAGNET:?xt=urn:btih:abc  ')).toBe(true);
   });
 
-  it('matches http(s) .torrent URLs', () => {
+  it('matches .torrent files across schemes and bare paths', () => {
     expect(isTorrentUrl('https://example.com/files/debian.iso.torrent')).toBe(true);
     expect(isTorrentUrl('http://x.org/a.torrent')).toBe(true);
+    expect(isTorrentUrl('http://x.org/a.torrent?token=1')).toBe(true);
+    expect(isTorrentUrl('file:///Users/me/Downloads/ubuntu.torrent')).toBe(true);
+    expect(isTorrentUrl('/Users/me/Downloads/ubuntu.torrent')).toBe(true);
   });
 
   it('rejects ordinary video URLs and junk', () => {

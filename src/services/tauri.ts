@@ -9,7 +9,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
-import { sanitizeFilename } from './utils';
+import { sanitizeFilename, isTorrentUrl } from './utils';
 
 // Persistence file names (stored in app data directory)
 const FILES = {
@@ -236,6 +236,14 @@ export class TauriPrismService implements IPrismService {
     const extract = (urls: string[]) => {
       if (cancelled) return;
       for (const raw of urls) {
+        const trimmed = raw.trim();
+        // Magnet links / .torrent files opened from the browser or OS go straight
+        // to the add flow (which shows the file picker). Everything else must be
+        // a prism://add?url=... deep link.
+        if (isTorrentUrl(trimmed)) {
+          handler(trimmed);
+          continue;
+        }
         const url = parsePrismDeepLink(raw);
         if (url) handler(url);
       }
@@ -255,7 +263,7 @@ export class TauriPrismService implements IPrismService {
       if (cancelled) return;
       try {
         const u = new URL(event.payload);
-        if (u.protocol === 'http:' || u.protocol === 'https:') handler(event.payload);
+        if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'magnet:') handler(event.payload);
       } catch { /* not a URL — ignore */ }
     }).then(fn => {
       if (cancelled) fn();

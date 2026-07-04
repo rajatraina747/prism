@@ -77,9 +77,16 @@ extraction.
 - [x] **Multi-file breakdown.** Per-file names + sizes + progress emitted in the
   torrent progress event and shown as an expandable "N files" list in the queue
   row.
-- [ ] **Per-file select (deselection).** Choosing which files to download before
-  starting — needs a metadata-preview/parse step + modal (librqbit
-  `AddTorrentOptions.only_files`). Own arc; not started.
+- [x] **Per-file select (deselection).** `parse_torrent` lists files via a
+  list-only add (resolves magnet metadata from peers) → `TorrentFilesModal`
+  checkbox picker (sizes, select-all, running total) → chosen indices flow through
+  as `AddTorrentOptions.only_files`. All files selected by default.
+- [x] **OS magnet/.torrent handling.** Registered the `magnet:` scheme + a
+  `.torrent` file association (tauri.conf.json); the deep-link/tray handlers route
+  magnets and .torrent files into the add flow. NOTE: the OS still won't make
+  Prism the *default* magnet handler automatically — the user picks it (µTorrent
+  etc. hold the default until changed). Takes effect after install of a build
+  carrying this config.
 - [ ] **Sparse/preallocated file control.** librqbit defaults are fine; expose
   only if users need it.
 
