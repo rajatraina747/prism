@@ -74,14 +74,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Reliability fixes for torrents:
+            Security hardening — no user-facing changes, just a tighter, safer app:
 
-            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
-            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
-            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
-            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
+            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
+            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
 
-            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
 
             ## Install
 
@@ -137,14 +136,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Reliability fixes for torrents:
+            Security hardening — no user-facing changes, just a tighter, safer app:
 
-            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
-            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
-            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
-            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
+            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
+            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
 
-            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
 
             ## Install
 
@@ -211,14 +209,13 @@ jobs:
           releaseBody: |
             ## What's New
 
-            Reliability fixes for torrents:
+            Security hardening — no user-facing changes, just a tighter, safer app:
 
-            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
-            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
-            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
-            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+            - **Least-privilege permissions** — the app window no longer holds process-spawning or broad file-system permissions it never used, shrinking the attack surface
+            - **Argument-injection defense** — URLs are always passed to the download engine as data, never as options
+            - A couple of smaller robustness fixes (engine-update safety, lighter on-disk queue)
 
-            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
+            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, and self-updating engines.
 
             ## Install
 
