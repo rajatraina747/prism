@@ -106,8 +106,10 @@ const QueueRow = React.memo(function QueueRow({
 }) {
   const isActive = item.status === 'downloading';
   const isPaused = item.status === 'paused';
+  const isSeeding = item.status === 'seeding';
   const isFailed = item.status === 'failed';
   const isTerminal = item.status === 'completed' || item.status === 'canceled';
+  const isTorrent = item.kind === 'torrent';
 
   return (
     <div
@@ -139,8 +141,8 @@ const QueueRow = React.memo(function QueueRow({
             <StatusBadge status={item.status} />
           </div>
 
-          {/* Progress bar for active/paused */}
-          {(isActive || isPaused) && (
+          {/* Progress bar for active/paused/seeding */}
+          {(isActive || isPaused || isSeeding) && (
             <ProgressBar value={item.progress} className="mb-1.5" />
           )}
 
@@ -160,6 +162,15 @@ const QueueRow = React.memo(function QueueRow({
                 <span>{formatSpeed(item.speed)}</span>
                 <span>ETA {formatEta(item.eta)}</span>
                 <span>{item.progress.toFixed(1)}%</span>
+                {isTorrent && <span>{item.peers ?? 0} peers</span>}
+              </>
+            )}
+            {isSeeding && (
+              <>
+                <span className="text-success">Seeding</span>
+                <span>↑ {formatSpeed(item.uploadSpeed ?? 0)}</span>
+                <span>{item.peers ?? 0} peers</span>
+                <span>ratio {(item.ratio ?? 0).toFixed(2)}</span>
               </>
             )}
             {isPaused && (
@@ -182,8 +193,8 @@ const QueueRow = React.memo(function QueueRow({
           {isFailed && (
             <ActionButton icon={RotateCcw} onClick={() => onRetry(item.id)} tooltip="Retry" />
           )}
-          {(isActive || isPaused || item.status === 'queued') && (
-            <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip="Cancel" />
+          {(isActive || isPaused || isSeeding || item.status === 'queued') && (
+            <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip={isSeeding ? 'Stop seeding' : 'Cancel'} />
           )}
           {isTerminal && (
             <ActionButton icon={Trash2} onClick={() => onRemove(item.id)} tooltip="Remove" />

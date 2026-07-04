@@ -46,18 +46,31 @@ extraction.
   completion with per-second progress — final ISO SHA-256 matched Debian's
   published checksum. `AddTorrent::from_url` handles both magnets and `.torrent`
   HTTP URLs. No conflict with the Tauri async runtime.
+- [x] **Queue integration.** `TorrentManager` (`src-tauri/src/torrent.rs`) mirrors
+  `DownloadManager`: one librqbit session, a handle map, a poll loop emitting the
+  same `download-progress-{id}` / `download-complete-{id}` events. A `kind`
+  discriminant + optional swarm fields (peers/seeds/uploadSpeed/ratio) and a new
+  `seeding` status were added to the model; the reducer drives downloading→seeding
+  and completes from either (6 new reducer tests). `start_torrent`/`cancel_torrent`
+  commands; the frontend service branches on `kind`, cancel signals both engines.
+- [x] **Progress model.** Extended the existing queue item rather than forking a
+  parallel one — QueueTable renders peers while downloading and a Seeding row
+  (↑ speed / peers / ratio) with a stop-seeding control.
+- [x] **Input paths.** `magnet:` and http(s) `.torrent` URLs detected at the add
+  boundary (`isTorrentUrl`) and routed straight to the torrent engine, skipping
+  yt-dlp; wired into single add + batch paste. (Deep-link/clipboard/tray still
+  filter to http(s) — magnets go through the URL box for now.)
+- [x] **Seeding policy + UI.** User setting (Settings → Downloads): stop at 100% /
+  seed to ratio 1.0 (default) / seed until stopped. Read Rust-side from
+  settings.json (whitelisted), like audioFormat.
 - [ ] **Networking.** Inbound listen port + UPnP/NAT-PMP port mapping for peer
-  connectivity; graceful fallback when mapping fails.
-- [ ] **Progress model.** Torrents carry peers, seeds/leechers, ratio, up/down
-  speed — richer than yt-dlp's linear progress. Likely a new queue item variant
-  rather than overloading the existing one (respect the reducer contract in
-  `src/stores/queue-reducer.ts`).
-- [ ] **Input paths.** `.torrent` file open + `magnet:` link handling, wired into
-  the existing add flows (clipboard watcher, deep link, drag-and-drop).
+  connectivity; graceful fallback when mapping fails. (librqbit's defaults work on
+  open networks; explicit port mapping still todo for NAT'd users.)
 - [ ] **Storage.** Multi-file torrents, sparse/preallocated files, per-file
-  select.
-- [ ] **Seeding policy + UI.** Seed-ratio limits, pause-on-complete, stop-seeding
-  controls. Reuse Quiet Hours (`src/stores/schedule.ts`) for upload throttling.
+  select. Also: resolve a single openable path so Play / Show-in-Folder light up
+  for torrents (completion currently leaves file_path unset).
+- [ ] **Upload throttling in Quiet Hours.** Reuse `src/stores/schedule.ts` to cap
+  seed upload during quiet windows (download throttle already applies).
 
 ## Explicitly deferred
 

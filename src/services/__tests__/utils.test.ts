@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -135,5 +135,38 @@ describe('formatReleaseNotes', () => {
     expect(out).not.toContain('`');
     expect(out).not.toContain('Install');
     expect(out).not.toContain('.dmg');
+  });
+});
+
+describe('isTorrentUrl', () => {
+  it('matches magnet links', () => {
+    expect(isTorrentUrl('magnet:?xt=urn:btih:abc123&dn=Ubuntu')).toBe(true);
+    expect(isTorrentUrl('  MAGNET:?xt=urn:btih:abc  ')).toBe(true);
+  });
+
+  it('matches http(s) .torrent URLs', () => {
+    expect(isTorrentUrl('https://example.com/files/debian.iso.torrent')).toBe(true);
+    expect(isTorrentUrl('http://x.org/a.torrent')).toBe(true);
+  });
+
+  it('rejects ordinary video URLs and junk', () => {
+    expect(isTorrentUrl('https://youtube.com/watch?v=abc')).toBe(false);
+    expect(isTorrentUrl('https://example.com/torrent-guide')).toBe(false);
+    expect(isTorrentUrl('not a url')).toBe(false);
+    expect(isTorrentUrl('')).toBe(false);
+  });
+});
+
+describe('torrentDisplayName', () => {
+  it('uses the magnet display name', () => {
+    expect(torrentDisplayName('magnet:?xt=urn:btih:abc&dn=Debian%2013')).toBe('Debian 13');
+  });
+
+  it('uses the .torrent filename', () => {
+    expect(torrentDisplayName('https://x.org/path/ubuntu-24.04.torrent')).toBe('ubuntu-24.04');
+  });
+
+  it('falls back for magnets without dn', () => {
+    expect(torrentDisplayName('magnet:?xt=urn:btih:abc')).toBe('Torrent download');
   });
 });

@@ -148,4 +148,53 @@ describe('queueReducer', () => {
     const next = queueReducer(items, { type: 'cancel', id: 'a' });
     expect(next[1].status).toBe('downloading');
   });
+
+  describe('torrents / seeding', () => {
+    it('progress with seeding flag moves a downloading torrent to seeding and applies swarm stats', () => {
+      const items = [makeItem({ id: 't', kind: 'torrent', status: 'downloading' })];
+      const next = queueReducer(items, {
+        type: 'progress',
+        id: 't',
+        data: { progress: 100, speed: 0, uploadSpeed: 2048, peers: 12, seeds: 4, ratio: 0.3 },
+        seeding: true,
+      });
+      expect(next[0].status).toBe('seeding');
+      expect(next[0].uploadSpeed).toBe(2048);
+      expect(next[0].peers).toBe(12);
+      expect(next[0].ratio).toBe(0.3);
+    });
+
+    it('keeps applying stats while seeding without reverting to downloading', () => {
+      const items = [makeItem({ id: 't', kind: 'torrent', status: 'seeding', ratio: 0.5 })];
+      const next = queueReducer(items, { type: 'progress', id: 't', data: { ratio: 0.9, peers: 3 } });
+      expect(next[0].status).toBe('seeding');
+      expect(next[0].ratio).toBe(0.9);
+    });
+
+    it('completes from seeding and zeroes the upload speed', () => {
+      const items = [makeItem({ id: 't', kind: 'torrent', status: 'seeding', uploadSpeed: 5000 })];
+      const next = queueReducer(items, { type: 'completed', id: 't', completedAt: 'now', filePath: '/x.iso' });
+      expect(next[0].status).toBe('completed');
+      expect(next[0].uploadSpeed).toBe(0);
+      expect(next[0].filePath).toBe('/x.iso');
+    });
+
+    it('pause and pauseAll stop a seeding torrent', () => {
+      const seeding = [makeItem({ id: 't', kind: 'torrent', status: 'seeding', uploadSpeed: 5000 })];
+      expect(queueReducer(seeding, { type: 'pause', id: 't' })[0].status).toBe('paused');
+      expect(queueReducer(seeding, { type: 'pauseAll' })[0].status).toBe('paused');
+      expect(queueReducer(seeding, { type: 'pause', id: 't' })[0].uploadSpeed).toBe(0);
+    });
+
+    it('cancel wins over a seeding torrent', () => {
+      const items = [makeItem({ id: 't', kind: 'torrent', status: 'seeding' })];
+      expect(queueReducer(items, { type: 'cancel', id: 't' })[0].status).toBe('canceled');
+    });
+
+    it('does not start seeding for a paused item that gets a stray progress event', () => {
+      const items = [makeItem({ id: 't', kind: 'torrent', status: 'paused' })];
+      const next = queueReducer(items, { type: 'progress', id: 't', data: { progress: 100 }, seeding: true });
+      expect(next[0].status).toBe('paused');
+    });
+  });
 });
