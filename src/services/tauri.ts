@@ -100,6 +100,7 @@ export class TauriPrismService implements IPrismService {
         seeds?: number;
         ratio?: number;
         seeding?: boolean;
+        files?: { name: string; size: number; progress: number }[];
       }>(`download-progress-${item.id}`, (event) => {
         if (cancelled) return;
         onProgress({
@@ -113,6 +114,7 @@ export class TauriPrismService implements IPrismService {
           seeds: event.payload.seeds,
           ratio: event.payload.ratio,
           seeding: event.payload.seeding,
+          files: event.payload.files,
         });
       });
 
@@ -190,6 +192,10 @@ export class TauriPrismService implements IPrismService {
       invoke('cancel_download', { id }).catch(() => {}),
       invoke('cancel_torrent', { id }).catch(() => {}),
     ]);
+  }
+
+  async setTorrentRateLimit(bytesPerSec: number | null): Promise<void> {
+    await invoke('set_torrent_rate_limit', { bytesPerSec: bytesPerSec ?? null });
   }
 
   async openFile(filePath: string): Promise<void> {

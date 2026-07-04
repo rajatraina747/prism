@@ -104,12 +104,18 @@ export class MockPrismService implements IPrismService {
       const progress = (downloaded / total) * 100;
       const speed = chunk * 5;
       const eta = speed > 0 ? (total - downloaded) / speed : 0;
+      const pct = (downloaded / total) * 100;
       const swarm = isTorrent
         ? {
             uploadSpeed: chunk * 1.5,
             peers: 8 + Math.floor(Math.random() * 20),
             seeds: 3 + Math.floor(Math.random() * 10),
             ratio: downloaded > 0 ? (downloaded * 0.2) / total : 0,
+            // Simulated multi-file breakdown: the first file fills before the second.
+            files: [
+              { name: `${item.metadata.title}/disc1.iso`, size: total * 0.7, progress: Math.min(100, pct / 0.7) },
+              { name: `${item.metadata.title}/README.txt`, size: total * 0.3, progress: Math.max(0, (pct - 70) / 0.3) },
+            ],
           }
         : {};
 
@@ -150,6 +156,10 @@ export class MockPrismService implements IPrismService {
 
   async cancelDownload(_id: string): Promise<void> {
     // Mock: no-op — cancellation is handled by clearing the interval in AppProvider
+  }
+
+  async setTorrentRateLimit(_bytesPerSec: number | null): Promise<void> {
+    // Mock: no torrent engine to throttle
   }
 
   async openFile(filePath: string): Promise<void> {

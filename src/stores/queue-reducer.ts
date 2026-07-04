@@ -18,7 +18,7 @@ export type QueueAction =
       data: Partial<
         Pick<
           DownloadItem,
-          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'peers' | 'seeds' | 'uploadSpeed' | 'ratio'
+          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'peers' | 'seeds' | 'uploadSpeed' | 'ratio' | 'files'
         >
       >;
       // Torrent-only: the download finished and the item is now uploading.

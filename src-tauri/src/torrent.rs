@@ -5,12 +5,17 @@
 //! See ROADMAP.md → "Second engine: BitTorrent".
 
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use librqbit::api::TorrentIdOrHash;
-use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session};
+use librqbit::limits::LimitsConfig;
+use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session, SessionOptions};
+
+/// Fixed listen-port range so the UPnP mapping and DHT stay stable across runs.
+const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
 
 /// librqbit's handle type (not re-exported at the crate root in 8.x).
 type ManagedTorrentHandle = Arc<ManagedTorrent>;
@@ -69,6 +74,15 @@ pub enum SeedingPolicy {
     Forever,
 }
 
+/// One entry in a multi-file torrent. Field names are single words so they map
+/// 1:1 to the frontend model with no camelCase translation.
+#[derive(Clone, Serialize)]
+pub struct TorrentFile {
+    pub name: String,
+    pub size: u64,
+    pub progress: f64,
+}
+
 /// Progress payload. Field names match download_manager::DownloadProgress so the
 /// frontend's existing listener reads the shared fields, plus torrent-only extras.
 #[derive(Clone, Serialize)]
@@ -84,6 +98,8 @@ pub struct TorrentProgress {
     pub seeds: u32,
     pub ratio: f64,
     pub seeding: bool,
+    /// The torrent's files with per-file progress. Empty until metadata resolves.
+    pub files: Vec<TorrentFile>,
 }
 
 type SessionSlot = Arc<Mutex<Option<Arc<Session>>>>;
@@ -93,15 +109,31 @@ pub struct TorrentManager {
     session: SessionSlot,
     /// Active torrents by queue id. Removal is the cancel signal for the poll loop.
     active: Arc<Mutex<HashMap<String, ManagedTorrentHandle>>>,
+    /// Session-wide rate limits (download + upload). Applied at session creation
+    /// and updated live — this is how Quiet Hours throttles torrents.
+    limits: Arc<Mutex<LimitsConfig>>,
 }
 
-/// Lazily create and cache the shared librqbit session.
-async fn ensure_session(slot: &SessionSlot, default_dir: &str) -> anyhow::Result<Arc<Session>> {
+/// Lazily create and cache the shared librqbit session. Enables UPnP port
+/// forwarding + a stable listen port so NAT'd users get inbound peers, and
+/// fastresume so restarts pick up where they left off.
+async fn ensure_session(
+    slot: &SessionSlot,
+    default_dir: &str,
+    limits: LimitsConfig,
+) -> anyhow::Result<Arc<Session>> {
     let mut guard = slot.lock().await;
     if let Some(s) = guard.as_ref() {
         return Ok(s.clone());
     }
-    let session = Session::new(PathBuf::from(default_dir)).await?;
+    let opts = SessionOptions {
+        enable_upnp_port_forwarding: true,
+        listen_port_range: Some(TORRENT_PORT_RANGE),
+        fastresume: true,
+        ratelimits: limits,
+        ..Default::default()
+    };
+    let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
     *guard = Some(session.clone());
     Ok(session)
 }
@@ -111,6 +143,17 @@ impl TorrentManager {
         Self {
             session: Arc::new(Mutex::new(None)),
             active: Arc::new(Mutex::new(HashMap::new())),
+            limits: Arc::new(Mutex::new(LimitsConfig::default())),
+        }
+    }
+
+    /// Set the session-wide download/upload rate limits (bytes/sec; None = unlimited).
+    /// Applies live if a session exists, and is remembered for the next one.
+    pub async fn set_rate_limit(&self, download_bps: Option<NonZeroU32>, upload_bps: Option<NonZeroU32>) {
+        *self.limits.lock().await = LimitsConfig { upload_bps, download_bps };
+        if let Some(session) = self.session.lock().await.as_ref() {
+            session.ratelimits.set_download_bps(download_bps);
+            session.ratelimits.set_upload_bps(upload_bps);
         }
     }
 
@@ -126,9 +169,11 @@ impl TorrentManager {
     ) {
         let session_slot = self.session.clone();
         let active = self.active.clone();
+        let limits_slot = self.limits.clone();
 
         tauri::async_runtime::spawn(async move {
-            let session = match ensure_session(&session_slot, &output_dir).await {
+            let current_limits = *limits_slot.lock().await;
+            let session = match ensure_session(&session_slot, &output_dir, current_limits).await {
                 Ok(s) => s,
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };
@@ -182,6 +227,29 @@ impl TorrentManager {
                     0.0
                 };
 
+                // Per-file breakdown (empty until metadata resolves). file_progress
+                // is parallel to file_infos.
+                let files = handle
+                    .with_metadata(|m| {
+                        m.file_infos
+                            .iter()
+                            .enumerate()
+                            .map(|(i, fi)| {
+                                let done = stats.file_progress.get(i).copied().unwrap_or(0);
+                                TorrentFile {
+                                    name: fi.relative_filename.to_string_lossy().into_owned(),
+                                    size: fi.len,
+                                    progress: if fi.len > 0 {
+                                        done as f64 / fi.len as f64 * 100.0
+                                    } else {
+                                        100.0
+                                    },
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+
                 let _ = app.emit(
                     &format!("download-progress-{id}"),
                     TorrentProgress {
@@ -196,6 +264,7 @@ impl TorrentManager {
                         seeds,
                         ratio,
                         seeding: stats.finished,
+                        files,
                     },
                 );
 
@@ -215,15 +284,20 @@ impl TorrentManager {
 
             active.lock().await.remove(&id);
             let total = handle.stats().total_bytes;
-            // file_path is left None for now: torrents can be multi-file/dir, so we
-            // don't yet resolve a single openable path for Play/Show-in-Folder.
+            // Resolve an openable path: <output_dir>/<torrent name>. For a
+            // single-file torrent that's the file (Play works); for a multi-file
+            // torrent it's the top-level folder (Show-in-Folder reveals it).
+            let file_path = handle
+                .name()
+                .map(|name| PathBuf::from(&output_dir).join(name).to_string_lossy().into_owned())
+                .filter(|p| std::path::Path::new(p).exists());
             let _ = app.emit(
                 &format!("download-complete-{id}"),
                 DownloadComplete {
                     id: id.clone(),
                     success: true,
                     error: None,
-                    file_path: None,
+                    file_path,
                     file_size: Some(total),
                 },
             );
