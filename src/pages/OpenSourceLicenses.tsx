@@ -11,6 +11,7 @@ const LICENSES = [
   { name: 'Tailwind CSS', version: '3.x', license: 'MIT', url: 'https://github.com/tailwindlabs/tailwindcss' },
   { name: 'shadcn/ui', version: '—', license: 'MIT', url: 'https://github.com/shadcn-ui/ui' },
   { name: 'yt-dlp', version: 'latest', license: 'Unlicense', url: 'https://github.com/yt-dlp/yt-dlp' },
+  { name: 'librqbit', version: '8.x', license: 'Apache-2.0', url: 'https://github.com/ikatson/rqbit' },
   { name: 'React Router', version: '6.x', license: 'MIT', url: 'https://github.com/remix-run/react-router' },
   { name: 'TanStack Query', version: '5.x', license: 'MIT', url: 'https://github.com/TanStack/query' },
   { name: 'Lucide Icons', version: '0.x', license: 'ISC', url: 'https://github.com/lucide-icons/lucide' },

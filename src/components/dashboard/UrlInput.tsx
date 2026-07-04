@@ -147,8 +147,8 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error }: UrlInput
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handleInputPaste}
-            aria-label="Video URL"
-            placeholder="Paste a video URL to download..."
+            aria-label="Video URL or magnet link"
+            placeholder="Paste a video URL or magnet link..."
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
             disabled={isLoading}
           />

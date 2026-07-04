@@ -276,7 +276,7 @@ export default function Dashboard() {
     <div className="page-container max-w-3xl mx-auto">
       <div className="page-header text-center">
         <h2 className="page-title">Dashboard</h2>
-        <p className="page-subtitle">Paste a video URL to get started</p>
+        <p className="page-subtitle">Paste a video URL or magnet link to get started</p>
       </div>
 
       {/* URL Input */}
