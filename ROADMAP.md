@@ -63,14 +63,25 @@ extraction.
 - [x] **Seeding policy + UI.** User setting (Settings → Downloads): stop at 100% /
   seed to ratio 1.0 (default) / seed until stopped. Read Rust-side from
   settings.json (whitelisted), like audioFormat.
-- [ ] **Networking.** Inbound listen port + UPnP/NAT-PMP port mapping for peer
-  connectivity; graceful fallback when mapping fails. (librqbit's defaults work on
-  open networks; explicit port mapping still todo for NAT'd users.)
-- [ ] **Storage.** Multi-file torrents, sparse/preallocated files, per-file
-  select. Also: resolve a single openable path so Play / Show-in-Folder light up
-  for torrents (completion currently leaves file_path unset).
-- [ ] **Upload throttling in Quiet Hours.** Reuse `src/stores/schedule.ts` to cap
-  seed upload during quiet windows (download throttle already applies).
+- [x] **Networking.** Session created with `enable_upnp_port_forwarding` + a
+  stable listen-port range (4240–4260) + fastresume, so NAT'd users get inbound
+  peers and restarts resume.
+- [x] **Openable paths.** Completion resolves `<output_dir>/<torrent name>` —
+  the file for single-file torrents (Play works), the top-level folder for
+  multi-file (Show-in-Folder reveals it; `validate_open_path` now allows dirs for
+  reveal). Play is hidden for torrents in the Downloads list.
+- [x] **Upload throttling in Quiet Hours.** `set_torrent_rate_limit` command
+  drives librqbit's live session rate limits (download + upload, so it caps
+  seeding); an AppProvider effect pushes the `scheduleGate` limit whenever the
+  window flips.
+- [x] **Multi-file breakdown.** Per-file names + sizes + progress emitted in the
+  torrent progress event and shown as an expandable "N files" list in the queue
+  row.
+- [ ] **Per-file select (deselection).** Choosing which files to download before
+  starting — needs a metadata-preview/parse step + modal (librqbit
+  `AddTorrentOptions.only_files`). Own arc; not started.
+- [ ] **Sparse/preallocated file control.** librqbit defaults are fine; expose
+  only if users need it.
 
 ## Explicitly deferred
 

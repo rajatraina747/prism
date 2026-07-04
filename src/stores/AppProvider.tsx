@@ -213,6 +213,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [settings.scheduleEnabled]);
 
+  // Push the quiet-hours throttle to the torrent engine (session-wide, so it
+  // also caps seeding). yt-dlp downloads get the limit per-item at start time;
+  // torrents run in a persistent session, so the limit is applied out-of-band.
+  useEffect(() => {
+    void scheduleTick;
+    const gate = scheduleGate(settings, new Date());
+    service.setTorrentRateLimit(gate.blockStarts ? null : gate.speedLimitOverrideBytes).catch(() => {});
+  }, [settings, scheduleTick, service]);
+
   // Auto-start queued items
   useEffect(() => {
     void scheduleTick; // dep only: minute tick re-runs the gate below

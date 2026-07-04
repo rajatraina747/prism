@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useHistory } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Panel } from '@/components/common';
-import { formatBytes, formatDuration } from '@/services';
+import { formatBytes, formatDuration, isTorrentUrl } from '@/services';
 import { toast } from 'sonner';
 import {
   CheckCircle2, FolderOpen, RotateCcw, Trash2, ExternalLink,
@@ -65,12 +65,16 @@ export default function Downloads() {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button title="Open file" onClick={() => {
-                  if (!item.filePath) { toast.error('File path not available'); return; }
-                  service.openFile(item.filePath).catch(() => toast.error('Could not open file'));
-                }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
+                {/* Torrents may resolve to a folder (multi-file), which the OS
+                    can't "open" as a file — Show-in-Folder covers both. */}
+                {!isTorrentUrl(item.metadata.source.url) && (
+                  <button title="Open file" onClick={() => {
+                    if (!item.filePath) { toast.error('File path not available'); return; }
+                    service.openFile(item.filePath).catch(() => toast.error('Could not open file'));
+                  }} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button title="Show in folder" onClick={() => {
                   if (!item.filePath) { toast.error('File path not available'); return; }
                   service.showInFolder(item.filePath).catch(() => toast.error('Could not open folder'));

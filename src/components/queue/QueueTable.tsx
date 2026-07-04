@@ -110,6 +110,8 @@ const QueueRow = React.memo(function QueueRow({
   const isFailed = item.status === 'failed';
   const isTerminal = item.status === 'completed' || item.status === 'canceled';
   const isTorrent = item.kind === 'torrent';
+  const [showFiles, setShowFiles] = useState(false);
+  const files = item.files ?? [];
 
   return (
     <div
@@ -180,6 +182,29 @@ const QueueRow = React.memo(function QueueRow({
               <span className="text-destructive">{item.error.message}</span>
             )}
           </div>
+
+          {/* Multi-file torrent breakdown */}
+          {isTorrent && files.length > 1 && (isActive || isSeeding || isPaused) && (
+            <div className="mt-1.5">
+              <button
+                onClick={() => setShowFiles(v => !v)}
+                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showFiles ? '▾' : '▸'} {files.length} files
+              </button>
+              {showFiles && (
+                <div className="mt-1 space-y-0.5">
+                  {files.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
+                      <span className="truncate flex-1" title={f.name}>{f.name.split('/').pop()}</span>
+                      <span>{formatBytes(f.size)}</span>
+                      <span className="w-9 text-right">{f.progress.toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions */}

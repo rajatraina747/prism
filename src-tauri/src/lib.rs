@@ -394,14 +394,30 @@ async fn cancel_torrent(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Throttle (or clear) the session-wide torrent rate limit — the same limit is
+/// applied to download and upload, so it caps seeding too. Driven by Quiet Hours.
+#[tauri::command]
+async fn set_torrent_rate_limit(app: AppHandle, bytes_per_sec: Option<u64>) -> Result<(), String> {
+    let limit = bytes_per_sec
+        .filter(|b| *b > 0)
+        .and_then(|b| u32::try_from(b).ok())
+        .and_then(std::num::NonZeroU32::new);
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.set_rate_limit(limit, limit).await;
+    Ok(())
+}
+
 /// Validate a path the frontend asks us to open/reveal: must be an existing
 /// file (not a URL or directory) inside the same allowed roots as downloads.
 /// Defense-in-depth — the frontend only passes stored download paths, but a
 /// compromised webview shouldn't be able to launch arbitrary targets.
-fn validate_open_path(path: &str) -> Result<String, String> {
+/// `allow_dir` lets Show-in-Folder accept a directory (multi-file torrents
+/// resolve to a folder); Play/open stays file-only.
+fn validate_open_path(path: &str, allow_dir: bool) -> Result<String, String> {
     let expanded = expand_tilde(path);
     let p = std::path::Path::new(&expanded);
-    if !p.is_absolute() || !p.is_file() {
+    let kind_ok = p.is_file() || (allow_dir && p.is_dir());
+    if !p.is_absolute() || !kind_ok {
         return Err("File not found".into());
     }
     let resolved = p
@@ -420,14 +436,14 @@ fn validate_open_path(path: &str) -> Result<String, String> {
 
 #[tauri::command]
 async fn open_file(path: String) -> Result<(), String> {
-    let expanded = validate_open_path(&path)?;
+    let expanded = validate_open_path(&path, false)?;
     opener::open(&expanded).map_err(|e| format!("Failed to open file: {}", e))
 }
 
 #[tauri::command]
 #[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
 async fn show_in_folder(path: String) -> Result<(), String> {
-    let expanded = validate_open_path(&path)?;
+    let expanded = validate_open_path(&path, true)?;
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -822,6 +838,7 @@ pub fn run() {
             cancel_download,
             start_torrent,
             cancel_torrent,
+            set_torrent_rate_limit,
             open_file,
             show_in_folder,
             get_default_download_path,
@@ -868,14 +885,17 @@ mod tests {
 
     #[test]
     fn open_path_rejects_urls_dirs_and_outside_paths() {
-        assert!(validate_open_path("https://example.com/x").is_err());
-        assert!(validate_open_path("/etc/passwd").is_err()); // outside allowed roots
+        assert!(validate_open_path("https://example.com/x", false).is_err());
+        assert!(validate_open_path("/etc/passwd", false).is_err()); // outside allowed roots
         let home = dirs::home_dir().unwrap();
-        assert!(validate_open_path(&home.to_string_lossy()).is_err()); // dir, not file
-        // A real file under home passes
+        // A directory is rejected for open (file-only) but allowed for reveal.
+        assert!(validate_open_path(&home.to_string_lossy(), false).is_err());
+        assert!(validate_open_path(&home.to_string_lossy(), true).is_ok());
+        // A real file under home passes either way.
         let f = home.join(".prism-open-test");
         std::fs::write(&f, b"x").unwrap();
-        assert!(validate_open_path(&f.to_string_lossy()).is_ok());
+        assert!(validate_open_path(&f.to_string_lossy(), false).is_ok());
+        assert!(validate_open_path(&f.to_string_lossy(), true).is_ok());
         std::fs::remove_file(&f).unwrap();
     }
 

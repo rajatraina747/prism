@@ -16,6 +16,13 @@ export type DownloadStatus =
 // existing item. 'torrent' routes through the librqbit engine instead.
 export type DownloadKind = 'http' | 'torrent';
 
+// One file inside a (multi-file) torrent, with per-file progress percent.
+export interface TorrentFileInfo {
+  name: string;
+  size: number;
+  progress: number;
+}
+
 export interface MediaSource {
   url: string;
   domain: string;
@@ -88,6 +95,7 @@ export interface DownloadItem {
   seeds?: number;
   uploadSpeed?: number; // bytes per second
   ratio?: number; // uploaded / downloaded
+  files?: TorrentFileInfo[]; // multi-file torrent breakdown
 }
 
 export interface DownloadError {

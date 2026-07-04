@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo } from '@/types/models';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -11,6 +11,7 @@ export type ProgressCallback = (data: {
   peers?: number;
   seeds?: number;
   ratio?: number;
+  files?: TorrentFileInfo[];
   // Torrent-only: download finished, now seeding. Drives downloading→seeding.
   seeding?: boolean;
 }) => void;
@@ -43,6 +44,9 @@ export interface IPrismService {
 
   pauseDownload(id: string): Promise<void>;
   cancelDownload(id: string): Promise<void>;
+  /** Throttle the torrent engine session-wide (bytes/sec; null = unlimited).
+   * Applies to download and seed upload. Driven by Quiet Hours. */
+  setTorrentRateLimit(bytesPerSec: number | null): Promise<void>;
 
   // File system operations
   openFile(filePath: string): Promise<void>;
