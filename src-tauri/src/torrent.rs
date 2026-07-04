@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::limits::LimitsConfig;
-use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session, SessionOptions};
+use librqbit::{
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session, SessionOptions,
+};
 
 /// Fixed listen-port range so the UPnP mapping and DHT stay stable across runs.
 const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
@@ -81,6 +83,15 @@ pub struct TorrentFile {
     pub name: String,
     pub size: u64,
     pub progress: f64,
+}
+
+/// A file listed from a torrent's metadata before downloading — used by the
+/// file-selection modal. `index` is what librqbit's `only_files` expects.
+#[derive(Clone, Serialize)]
+pub struct TorrentFileEntry {
+    pub index: usize,
+    pub name: String,
+    pub size: u64,
 }
 
 /// Progress payload. Field names match download_manager::DownloadProgress so the
@@ -157,6 +168,44 @@ impl TorrentManager {
         }
     }
 
+    /// Resolve a torrent's file list *without* downloading (list-only add). For a
+    /// magnet this fetches metadata from peers/DHT first, so it can take a few
+    /// seconds — hence the timeout. Used to populate the file-selection modal.
+    pub async fn list_files(&self, magnet: String, output_dir: String) -> Result<Vec<TorrentFileEntry>, String> {
+        let current_limits = *self.limits.lock().await;
+        let session = ensure_session(&self.session, &output_dir, current_limits)
+            .await
+            .map_err(|e| format!("Failed to start torrent engine: {e}"))?;
+
+        let opts = AddTorrentOptions {
+            list_only: true,
+            output_folder: Some(output_dir),
+            ..Default::default()
+        };
+        let resp = tokio::time::timeout(
+            Duration::from_secs(45),
+            session.add_torrent(AddTorrent::from_url(&magnet), Some(opts)),
+        )
+        .await
+        .map_err(|_| "Timed out fetching torrent metadata (no peers?)".to_string())?
+        .map_err(|e| format!("Failed to read torrent: {e}"))?;
+
+        match resp {
+            AddTorrentResponse::ListOnly(lo) => {
+                let details = lo.info.iter_file_details().map_err(|e| e.to_string())?;
+                Ok(details
+                    .enumerate()
+                    .map(|(index, d)| TorrentFileEntry {
+                        index,
+                        name: d.filename.to_string().unwrap_or_else(|_| format!("file {index}")),
+                        size: d.len,
+                    })
+                    .collect())
+            }
+            _ => Err("Torrent did not return a file list".into()),
+        }
+    }
+
     /// Start (or resume) a magnet/`.torrent` download into `output_dir`. Emits
     /// progress until the seed policy is satisfied, then a completion event.
     pub fn start_torrent(
@@ -166,6 +215,7 @@ impl TorrentManager {
         magnet: String,
         output_dir: String,
         policy: SeedingPolicy,
+        only_files: Option<Vec<usize>>,
     ) {
         let session_slot = self.session.clone();
         let active = self.active.clone();
@@ -180,6 +230,8 @@ impl TorrentManager {
 
             let opts = AddTorrentOptions {
                 output_folder: Some(output_dir.clone()),
+                // None = all files; Some(indices) downloads only the picked ones.
+                only_files: only_files.clone(),
                 ..Default::default()
             };
             let handle = match session.add_torrent(AddTorrent::from_url(&magnet), Some(opts)).await {

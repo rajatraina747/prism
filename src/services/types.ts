@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry } from '@/types/models';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -34,6 +34,9 @@ export interface IPrismService {
   /** Flat-parse a playlist/channel feed. `limit` caps to the newest N entries
    * (used by subscription polling; omit for full imports). */
   parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo>;
+  /** List a torrent's files without downloading (for the file picker). `dest`
+   * is the intended destination directory. */
+  parseTorrent(magnet: string, dest: string): Promise<TorrentFileEntry[]>;
 
   // Download lifecycle — returns a cancel/cleanup function
   startDownload(

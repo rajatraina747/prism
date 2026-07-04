@@ -23,6 +23,14 @@ export interface TorrentFileInfo {
   progress: number;
 }
 
+// A file listed from a torrent's metadata before downloading (file picker).
+// `index` is what the engine's file selection expects.
+export interface TorrentFileEntry {
+  index: number;
+  name: string;
+  size: number;
+}
+
 export interface MediaSource {
   url: string;
   domain: string;
@@ -59,6 +67,8 @@ export interface DownloadSettings {
   downloadSubtitles?: boolean;
   subtitleLanguage?: string;
   speedLimit?: number; // bytes per second, 0 = unlimited
+  // Torrent-only: indices of files to download. Undefined = all files.
+  selectedFiles?: number[];
 }
 
 export interface PlaylistEntry {

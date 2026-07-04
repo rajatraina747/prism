@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback } from './types';
 import { generateId } from './utils';
 
@@ -57,6 +57,17 @@ export class MockPrismService implements IPrismService {
       thumbnail: `https://picsum.photos/seed/${generateId()}/320/180`,
     }));
     return { title: `Mock Playlist (${count} videos)`, entries };
+  }
+
+  async parseTorrent(_magnet: string, _dest: string): Promise<TorrentFileEntry[]> {
+    await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+    const GB = 1024 * 1024 * 1024;
+    return [
+      { index: 0, name: 'Ubuntu 24.04/ubuntu-24.04-desktop-amd64.iso', size: 5.9 * GB },
+      { index: 1, name: 'Ubuntu 24.04/SHA256SUMS', size: 512 },
+      { index: 2, name: 'Ubuntu 24.04/SHA256SUMS.gpg', size: 833 },
+      { index: 3, name: 'Ubuntu 24.04/README.txt', size: 3421 },
+    ];
   }
 
   async parseUrl(url: string): Promise<MediaMetadata> {

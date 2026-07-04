@@ -376,6 +376,7 @@ async fn start_torrent(
     id: String,
     magnet: String,
     output_path: String,
+    only_files: Option<Vec<usize>>,
 ) -> Result<(), String> {
     // output_path is the destination *directory* for the torrent's files.
     let dir = validate_download_path(&output_path)?;
@@ -383,8 +384,21 @@ async fn start_torrent(
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
     let policy = seeding_policy(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.start_torrent(app.clone(), id, magnet, dir, policy);
+    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files);
     Ok(())
+}
+
+/// Resolve a torrent's file list without downloading — feeds the file-selection
+/// modal. For magnets this fetches metadata from peers, so it can take a moment.
+#[tauri::command]
+async fn parse_torrent(
+    app: AppHandle,
+    magnet: String,
+    output_path: String,
+) -> Result<Vec<torrent::TorrentFileEntry>, String> {
+    let dir = validate_download_path(&output_path)?;
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.list_files(magnet, dir).await
 }
 
 #[tauri::command]
@@ -838,6 +852,7 @@ pub fn run() {
             cancel_download,
             start_torrent,
             cancel_torrent,
+            parse_torrent,
             set_torrent_rate_limit,
             open_file,
             show_in_folder,

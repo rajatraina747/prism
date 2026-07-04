@@ -6,8 +6,9 @@ import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
+import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
 import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
@@ -41,7 +42,7 @@ function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): F
 
 /** Build a queue item for a magnet/.torrent source. Skips yt-dlp parsing —
  * librqbit resolves the real name/size once peers deliver the metadata. */
-function buildTorrentItem(url: string, destination: string): DownloadItem {
+function buildTorrentItem(url: string, destination: string, selectedFiles?: number[]): DownloadItem {
   const title = torrentDisplayName(url);
   let domain = 'torrent';
   try { domain = new URL(url).hostname || 'magnet'; } catch { /* magnet has no host */ }
@@ -60,6 +61,7 @@ function buildTorrentItem(url: string, destination: string): DownloadItem {
       filename: title,
       retryCount: 0,
       startImmediately: true,
+      selectedFiles,
     },
     status: 'queued',
     progress: 0,
@@ -105,6 +107,11 @@ export default function Dashboard() {
   const [playlistProcessing, setPlaylistProcessing] = useState(false);
   const [playlistProcessedCount, setPlaylistProcessedCount] = useState(0);
 
+  // Torrent file-picker state
+  const [showTorrentModal, setShowTorrentModal] = useState(false);
+  const [torrentUrl, setTorrentUrl] = useState<string>('');
+  const [torrentFiles, setTorrentFiles] = useState<TorrentFileEntry[] | null>(null); // null = loading
+
   const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
   const totalSpeed = useMemo(() => activeDownloads.reduce((s, i) => s + (i.speed || 0), 0), [activeDownloads]);
   const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
@@ -132,11 +139,21 @@ export default function Dashboard() {
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
-    // Torrents skip yt-dlp entirely — queue directly and let librqbit resolve.
+    // Torrents skip yt-dlp entirely. Fetch the file list first so the user can
+    // pick which files to download, then queue on confirm.
     if (isTorrentUrl(url)) {
-      const item = buildTorrentItem(url, preferences.defaultSaveFolder);
-      addToQueue(item);
-      toast.success(`Added torrent: ${item.metadata.title}`);
+      setTorrentUrl(url);
+      setTorrentFiles(null); // loading
+      // Defer the open past the current Enter/click event — opening a Radix
+      // dialog synchronously in the same event lets its dismiss layer catch the
+      // trailing interaction and close it instantly.
+      setTimeout(() => setShowTorrentModal(true), 0);
+      service.parseTorrent(url, preferences.defaultSaveFolder)
+        .then(files => setTorrentFiles(files))
+        .catch((err) => {
+          setShowTorrentModal(false);
+          toast.error(typeof err === 'string' ? err : (err?.message || 'Could not read torrent'));
+        });
       return;
     }
     setIsParsing(true);
@@ -218,6 +235,17 @@ export default function Dashboard() {
     addToQueue(item);
     setParsedMetadata(null);
   }, [addToQueue]);
+
+  const handleTorrentConfirm = useCallback((indices: number[]) => {
+    // All files selected → leave selectedFiles undefined (download everything).
+    const allSelected = torrentFiles ? indices.length === torrentFiles.length : true;
+    const item = buildTorrentItem(torrentUrl, preferences.defaultSaveFolder, allSelected ? undefined : indices);
+    addToQueue(item);
+    toast.success(`Added torrent: ${item.metadata.title}`);
+    setShowTorrentModal(false);
+    setTorrentFiles(null);
+    setTorrentUrl('');
+  }, [torrentUrl, torrentFiles, preferences.defaultSaveFolder, addToQueue]);
 
   const handlePlaylistQueue = useCallback(async (entries: PlaylistEntry[]) => {
     setPlaylistProcessing(true);
@@ -435,6 +463,15 @@ export default function Dashboard() {
         onQueueSelected={handlePlaylistQueue}
         isProcessing={playlistProcessing}
         processedCount={playlistProcessedCount}
+      />
+
+      {/* Torrent file picker */}
+      <TorrentFilesModal
+        open={showTorrentModal}
+        onClose={() => { setShowTorrentModal(false); setTorrentFiles(null); setTorrentUrl(''); }}
+        title={torrentDisplayName(torrentUrl)}
+        files={torrentFiles}
+        onConfirm={handleTorrentConfirm}
       />
     </div>
   );

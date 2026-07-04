@@ -7,7 +7,7 @@ import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
 import { sanitizeFilename } from './utils';
 
@@ -72,6 +72,10 @@ export class TauriPrismService implements IPrismService {
 
   async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
     return invoke<PlaylistInfo>('parse_playlist', { url, limit: limit ?? null });
+  }
+
+  async parseTorrent(magnet: string, dest: string): Promise<TorrentFileEntry[]> {
+    return invoke<TorrentFileEntry[]>('parse_torrent', { magnet, outputPath: dest });
   }
 
   startDownload(
@@ -139,6 +143,7 @@ export class TauriPrismService implements IPrismService {
           id: item.id,
           magnet: item.metadata.source.url,
           outputPath: dest,
+          onlyFiles: item.settings.selectedFiles ?? null,
         });
         return;
       }
