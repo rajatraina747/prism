@@ -74,11 +74,14 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
-            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
-            - Fixed a race where the torrent file picker could flash open and close instantly
+            Reliability fixes for torrents:
 
-            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
+            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
+            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
+            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
+            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+
+            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
 
             ## Install
 
@@ -134,11 +137,14 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
-            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
-            - Fixed a race where the torrent file picker could flash open and close instantly
+            Reliability fixes for torrents:
 
-            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
+            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
+            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
+            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
+            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+
+            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
 
             ## Install
 
@@ -205,11 +211,14 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Choose which files to download** — for multi-file torrents, a picker lets you select exactly the files you want before it starts (all selected by default)
-            - **Open magnet links straight into Prism** — Prism now registers as a handler for `magnet:` links and `.torrent` files. Set it as your default in your OS's default-apps settings, then clicking a magnet on a torrent site opens Prism with the file picker
-            - Fixed a race where the torrent file picker could flash open and close instantly
+            Reliability fixes for torrents:
 
-            Includes everything from the torrent release: magnet/.torrent downloads in the same queue, seeding controls, live peers/ratio, per-file progress, UPnP, and Quiet-Hours throttling.
+            - **Dead magnets now fail cleanly** — a torrent with no seeders (or a disk error) reports a failure after stalling instead of sitting at 0% forever
+            - **Adding the same torrent twice is handled gracefully** — no more two queue items fighting over one download
+            - **The file picker starts downloading instantly** after you choose — no second wait to re-fetch metadata
+            - Smoother progress updates and a fix for the picker occasionally showing the wrong file list
+
+            Includes everything from recent releases: magnet/.torrent downloads with a file picker, seeding controls, live peers/ratio, per-file progress, UPnP, Quiet-Hours throttling, and magnet-link handling.
 
             ## Install
 
