@@ -225,7 +225,11 @@ impl DownloadManager {
             }
 
             let mut success = false;
+            // Prefer the last explicit "ERROR:" line for the failure message —
+            // the last stderr line in general can be a progress fragment or
+            // postprocessor chatter rather than the actual cause.
             let mut last_error = String::new();
+            let mut last_stderr = String::new();
 
             loop {
                 match tokio::time::timeout(std::time::Duration::from_secs(300), rx.recv()).await {
@@ -240,7 +244,10 @@ impl DownloadManager {
                             let line = String::from_utf8_lossy(&data);
                             let trimmed = line.trim();
                             if !trimmed.is_empty() {
-                                last_error = trimmed.to_string();
+                                last_stderr = trimmed.to_string();
+                                if trimmed.starts_with("ERROR") {
+                                    last_error = trimmed.to_string();
+                                }
                             }
                             if let Some(p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
                                 let _ = app.emit(&format!("download-progress-{}", id), p);
@@ -269,6 +276,10 @@ impl DownloadManager {
             {
                 let mut map = downloads.lock().await;
                 map.remove(&id);
+            }
+
+            if last_error.is_empty() {
+                last_error = last_stderr;
             }
 
             let final_path = if success {

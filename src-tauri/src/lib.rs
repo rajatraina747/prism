@@ -103,6 +103,40 @@ struct YtDlpThumbnail {
 
 // ── Commands ─────────────────────────────────────────────────────────
 
+/// Run a yt-dlp command to completion with a hard timeout, killing the child
+/// if it expires. Without this a hung extractor (dead site, stuck challenge
+/// solver) leaves the frontend spinner stuck forever.
+/// Returns (exit_code, stdout, stderr).
+async fn run_ytdlp_capture(
+    cmd: tauri_plugin_shell::process::Command,
+    timeout_secs: u64,
+) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), String> {
+    use tauri_plugin_shell::process::CommandEvent;
+
+    let (mut rx, child) = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+    let mut stdout: Vec<u8> = Vec::new();
+    let mut stderr: Vec<u8> = Vec::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    loop {
+        match tokio::time::timeout_at(deadline, rx.recv()).await {
+            Ok(Some(CommandEvent::Stdout(d))) => stdout.extend_from_slice(&d),
+            Ok(Some(CommandEvent::Stderr(d))) => stderr.extend_from_slice(&d),
+            Ok(Some(CommandEvent::Terminated(t))) => return Ok((t.code, stdout, stderr)),
+            Ok(Some(_)) => {}
+            Ok(None) => return Ok((None, stdout, stderr)),
+            Err(_) => {
+                let _ = child.kill();
+                return Err(format!(
+                    "yt-dlp did not respond within {} seconds — the site may be blocking or down",
+                    timeout_secs
+                ));
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String> {
     let mut parse_args: Vec<String> = vec![
@@ -124,18 +158,15 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
     parse_args.push("--".into());
     parse_args.push(url.clone());
 
-    let output = engine::ytdlp_command(&app)?
-        .args(&parse_args)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+    let (code, stdout, stderr) =
+        run_ytdlp_capture(engine::ytdlp_command(&app)?.args(&parse_args), 120).await?;
 
-    if output.status.code() != Some(0) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if code != Some(0) {
+        let stderr = String::from_utf8_lossy(&stderr);
         return Err(format!("yt-dlp error: {}", stderr.trim()));
     }
 
-    let info: YtDlpInfo = serde_json::from_slice(&output.stdout)
+    let info: YtDlpInfo = serde_json::from_slice(&stdout)
         .map_err(|e| format!("Failed to parse yt-dlp output: {}", e))?;
 
     let domain = info
@@ -263,18 +294,18 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
     playlist_args.push("--".into()); // options terminator — see parse_url
     playlist_args.push(url.clone());
 
-    let output = engine::ytdlp_command(&app)?
-        .args(&playlist_args)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+    // Flat playlist dumps of large channels are slow but bounded; give the full
+    // (un-limited) import path more headroom than a single-video parse.
+    let timeout = if limit.is_some() { 120 } else { 600 };
+    let (code, stdout, stderr) =
+        run_ytdlp_capture(engine::ytdlp_command(&app)?.args(&playlist_args), timeout).await?;
 
-    if output.status.code() != Some(0) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if code != Some(0) {
+        let stderr = String::from_utf8_lossy(&stderr);
         return Err(format!("yt-dlp error: {}", stderr.trim()));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&stdout);
     let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
 
     if lines.is_empty() {
@@ -418,7 +449,7 @@ async fn parse_torrent(
 #[tauri::command]
 async fn cancel_torrent(app: AppHandle, id: String) -> Result<(), String> {
     let manager = app.state::<torrent::TorrentManager>();
-    manager.cancel_torrent(&id).await;
+    manager.cancel_torrent(&app, &id).await;
     Ok(())
 }
 
@@ -509,6 +540,14 @@ async fn get_default_download_path() -> Result<String, String> {
 #[tauri::command]
 async fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Whether ffmpeg is installed. Merging video+audio streams, thumbnail/metadata
+/// embedding, and SponsorBlock all silently degrade without it — the frontend
+/// surfaces a warning instead of leaving users guessing.
+#[tauri::command]
+async fn ffmpeg_available() -> bool {
+    find_ffmpeg().is_some()
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -731,6 +770,18 @@ pub fn augmented_path() -> String {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(home) = dirs::home_dir() {
+            for rel in [".deno/bin", ".local/bin", ".volta/bin"] {
+                let bin = home.join(rel);
+                if bin.exists() {
+                    extra.push(bin.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
     if extra.is_empty() {
         return base;
     }
@@ -846,6 +897,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
+        // Remembers window size/position across launches.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -888,6 +942,7 @@ pub fn run() {
             show_in_folder,
             get_default_download_path,
             get_app_version,
+            ffmpeg_available,
             engine::get_ytdlp_version,
             engine::update_ytdlp,
             engine::reset_ytdlp,

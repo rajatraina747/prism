@@ -200,6 +200,10 @@ export class MockPrismService implements IPrismService {
     }
   }
 
+  async notify(_title: string, _body: string): Promise<void> {
+    // Web demo: in-app toasts cover it.
+  }
+
   onDeepLink(_handler: (url: string) => void): () => void {
     // Deep links only exist in the desktop app
     return () => {};
@@ -213,6 +217,10 @@ export class MockPrismService implements IPrismService {
     a.download = 'prism-logs.json';
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async ffmpegAvailable(): Promise<boolean> {
+    return true;
   }
 
   async checkForUpdates() {

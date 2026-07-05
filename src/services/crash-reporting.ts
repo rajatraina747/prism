@@ -22,7 +22,6 @@ export function syncCrashReporting(enabled: boolean, appVersion?: string): void 
       // Crashes only — no performance tracing, no session replay, no PII.
       tracesSampleRate: 0,
       sendDefaultPii: false,
-      autoSessionTracking: false,
     });
     active = true;
   } else if (!enabled && active) {

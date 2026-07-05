@@ -1,10 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useQueue, useHistory } from '@/stores/AppProvider';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { EmptyState } from '@/components/common';
 import { formatSpeed } from '@/services';
 import { toast } from 'sonner';
-import { ArrowDownToLine, Pause, Play } from 'lucide-react';
+import { ArrowDownToLine, Pause, Play, Search } from 'lucide-react';
 
 export default function Queue() {
   const { items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, startAll, pauseAll, reorderQueue } = useQueue();
@@ -14,6 +14,12 @@ export default function Queue() {
   // dialog, but give a few seconds to undo (undo restarts from the top).
   const cancelWithUndo = useCallback((id: string) => {
     const item = items.find(i => i.id === id);
+    if (item?.status === 'seeding') {
+      // Stopping a seed completes the (already fully downloaded) item — nothing
+      // to undo, and the completion toast covers the feedback.
+      cancelDownload(id);
+      return;
+    }
     cancelDownload(id);
     toast(`Canceled: ${item?.metadata.title ?? 'download'}`, {
       action: {
@@ -40,7 +46,13 @@ export default function Queue() {
     });
   }, [items, cancelDownload, removeFromQueue, removeFromHistory, addToQueue]);
 
+  const [search, setSearch] = useState('');
   const activeItems = items.filter(i => !['completed', 'canceled'].includes(i.status));
+  // Reordering while a search filter is active would map filtered indexes onto
+  // the full queue — only offer search-as-filter, and reorder on the full list.
+  const visibleItems = search
+    ? activeItems.filter(i => i.metadata.title.toLowerCase().includes(search.toLowerCase()))
+    : activeItems;
   const downloading = items.filter(i => i.status === 'downloading');
   const hasActive = downloading.length > 0;
   const hasPaused = items.some(i => i.status === 'paused' || i.status === 'queued');
@@ -73,21 +85,41 @@ export default function Queue() {
         </div>
       </div>
 
+      {activeItems.length > 3 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40 mb-4 max-w-sm">
+          <Search className="w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Filter queue..."
+            aria-label="Filter queue"
+            className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+          />
+        </div>
+      )}
+
       {activeItems.length === 0 ? (
         <EmptyState
           icon={ArrowDownToLine}
           title="Queue is empty"
           description="Downloads you add will appear here. Paste a URL on the Dashboard to get started."
         />
+      ) : visibleItems.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No matches"
+          description={`Nothing in the queue matches “${search}”.`}
+        />
       ) : (
         <QueueTable
-          items={activeItems}
+          items={visibleItems}
           onPause={pauseDownload}
           onResume={resumeDownload}
           onCancel={cancelWithUndo}
           onRetry={retryDownload}
           onRemove={removeFromQueue}
-          onReorder={reorderQueue}
+          onReorder={search ? undefined : reorderQueue}
         />
       )}
     </div>

@@ -72,7 +72,7 @@ describe('entryToDownloadItem', () => {
       audioOnly: true,
       speedLimit: 2 * 1024 * 1024,
     });
-    expect(item.settings.filename).toBe('My_Video');
+    expect(item.settings.filename).toBe('My Video!');
   });
 
   it('omits audioOnly and speedLimit when unset', () => {
@@ -81,8 +81,15 @@ describe('entryToDownloadItem', () => {
     expect(item.settings.speedLimit).toBeUndefined();
   });
 
-  it('falls back to a safe filename for symbol-only titles', () => {
-    const item = entryToDownloadItem(entry('https://y/1', '!!!'), makeSub(), prefs);
+  it('keeps unicode titles and neutralizes path separators', () => {
+    const cjk = entryToDownloadItem(entry('https://y/1', '日本語のタイトル'), makeSub(), prefs);
+    expect(cjk.settings.filename).toBe('日本語のタイトル');
+    const tricky = entryToDownloadItem(entry('https://y/2', 'a/b\\c %(ext)s'), makeSub(), prefs);
+    expect(tricky.settings.filename).toBe('a-b-c %%(ext)s');
+  });
+
+  it('falls back to a safe filename for empty titles', () => {
+    const item = entryToDownloadItem(entry('https://y/1', '  '), makeSub(), prefs);
     expect(item.settings.filename).toBe('video');
   });
 });

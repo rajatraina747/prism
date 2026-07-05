@@ -60,12 +60,19 @@ export interface IPrismService {
   copyToClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;
 
+  /** OS-level notification — reaches the user when the window is hidden or in
+   * the tray, where in-app toasts are invisible. Best-effort (no-op if the OS
+   * denies permission). */
+  notify(title: string, body: string): Promise<void>;
+
   // Deep links (prism://add?url=...) — handler receives the extracted video URL.
   // Returns an unsubscribe function.
   onDeepLink(handler: (url: string) => void): () => void;
 
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
+  /** Whether ffmpeg is installed — merges, embedding, and SponsorBlock need it. */
+  ffmpegAvailable(): Promise<boolean>;
   checkForUpdates(): Promise<UpdateCheckResult>;
   installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void>;
   getAppVersion(): Promise<string>;

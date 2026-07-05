@@ -4,6 +4,7 @@ import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
 import { generateId, formatBytes, formatDuration, sanitizeFilename } from '@/services';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { useSettings } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
 import { cn } from '@/lib/utils';
 import {
   Clock, Film, User, ChevronDown, ChevronUp,
@@ -35,6 +36,7 @@ interface MediaDetailsModalProps {
 
 export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, preferredResolution }: MediaDetailsModalProps) {
   const { preferences } = useSettings();
+  const service = useService();
   const [selectedFormat, setSelectedFormat] = useState<FormatOption | null>(null);
   const [filename, setFilename] = useState('');
   const [startImmediately, setStartImmediately] = useState(true);
@@ -42,9 +44,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
   const [audioOnly, setAudioOnly] = useState(false);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [subtitleLanguage, setSubtitleLanguage] = useState('en');
+  // Per-download destination override; null = use the Settings default.
+  const [destination, setDestination] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (metadata) {
+      setDestination(null);
       let pick: FormatOption | null = null;
       if (preferredResolution && preferredResolution !== 'Best') {
         pick = metadata.formats.find(f => f.resolution === preferredResolution) || null;
@@ -71,7 +76,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       metadata,
       settings: {
         format: audioOnly ? null : selectedFormat,
-        destination: preferences.defaultSaveFolder,
+        destination: destination ?? preferences.defaultSaveFolder,
         filename,
         retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
         startImmediately,
@@ -151,13 +156,16 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               {/* Cap the list — some sites return a dozen formats, which would
                   otherwise push the dialog (and its Add button) off-screen. */}
               <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                {/* Key/compare by label — labels are unique (the backend de-dupes
+                    by label), while ids are yt-dlp filter strings that can
+                    collide when two labels resolve to the same height. */}
                 {metadata.formats.map(fmt => (
                   <button
-                    key={fmt.id}
+                    key={fmt.label}
                     onClick={() => setSelectedFormat(fmt)}
                     className={cn(
                       'flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors active:scale-[0.98]',
-                      selectedFormat?.id === fmt.id
+                      selectedFormat?.label === fmt.label
                         ? 'bg-primary/12 border border-primary/30 text-foreground'
                         : 'bg-secondary/50 border border-transparent text-secondary-foreground hover:bg-secondary'
                     )}
@@ -166,7 +174,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                     <span className="flex items-center gap-3 text-muted-foreground">
                       <span>{fmt.resolution}</span>
                       <span className="uppercase">{fmt.container}</span>
-                      <span className="tabular-nums">{formatBytes(fmt.fileSize)}</span>
+                      <span className="tabular-nums">{fmt.fileSize > 0 ? formatBytes(fmt.fileSize) : '—'}</span>
                     </span>
                   </button>
                 ))}
@@ -180,7 +188,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               <Music className="w-4 h-4 text-primary" />
               <div>
                 <p className="text-xs font-medium text-foreground">{preferences.audioFormat.toUpperCase()} Audio</p>
-                <p className="text-[10px] text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
+                <p className="text-[11px] text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
               </div>
             </div>
           )}
@@ -196,7 +204,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 onChange={(e) => setFilename(e.target.value)}
                 className="flex-1 bg-transparent text-xs text-foreground outline-none"
               />
-              <span className="text-[10px] text-muted-foreground">.{fileExtension}</span>
+              <span className="text-[11px] text-muted-foreground">.{fileExtension}</span>
             </div>
           </div>
 
@@ -237,14 +245,25 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {showAdvanced && (
             <div className="space-y-3 pl-1 animate-fade-in">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
+                <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40">
-                  <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">{preferences.defaultSaveFolder}</span>
+                  <FolderOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+                    {destination ?? preferences.defaultSaveFolder}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const dir = await service.pickDirectory().catch(() => null);
+                      if (dir) setDestination(dir);
+                    }}
+                    className="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors active:scale-[0.97]"
+                  >
+                    Change…
+                  </button>
                 </div>
               </div>
               {preferences.bandwidthLimit > 0 && (
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-[11px] text-muted-foreground">
                   Speed limited to {preferences.bandwidthLimit} MB/s (from Settings)
                 </div>
               )}

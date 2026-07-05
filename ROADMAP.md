@@ -8,10 +8,12 @@ what remains open is below. Completed items live in git history.
 
 ## Open items
 
-- [ ] **Signed auto-updates via Tauri updater keys** (minisign — free, no Apple cert).
+- [x] **Signed auto-updates via Tauri updater keys** (minisign pubkey in
+  tauri.conf.json; releases carry `latest.json` signatures).
 - [ ] **winget manifest.** Needs a PR to microsoft/winget-pkgs; worth doing
   once there's a stable Windows user base.
-- [ ] **Per-site smart preset** that remembers last-used settings per domain.
+- [x] **Per-site smart preset** that remembers last-used settings per domain
+  (`perSitePresets`, keyed via `siteKey`).
 
 ## Candidate arc — Second engine: BitTorrent (needs a go/no-go)
 

@@ -79,6 +79,13 @@
   html {
     scroll-behavior: smooth;
   }
+  /* Keyboard navigation must be visible: many controls use outline-none for
+     mouse aesthetics, so restore a ring for :focus-visible only. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
 @layer utilities {

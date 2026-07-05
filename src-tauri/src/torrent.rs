@@ -105,8 +105,9 @@ const RESOLVED_CACHE_CAP: usize = 16;
 pub struct TorrentManager {
     /// One librqbit session for the whole app, created lazily on first torrent.
     session: SessionSlot,
-    /// Active torrents by queue id. Removal is the cancel signal for the poll loop.
-    active: Arc<Mutex<HashMap<String, ManagedTorrentHandle>>>,
+    /// Active torrents by queue id (handle + output dir). Removal is the cancel
+    /// signal for the poll loop; the dir lets cancel resolve an openable path.
+    active: Arc<Mutex<HashMap<String, (ManagedTorrentHandle, String)>>>,
     /// Session-wide rate limits (download + upload). Applied at session creation
     /// and updated live — this is how Quiet Hours throttles torrents.
     limits: Arc<Mutex<LimitsConfig>>,
@@ -243,32 +244,54 @@ impl TorrentManager {
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };
 
-            // Prefer metadata already resolved by the file picker; fall back to the URL.
-            let add = match resolved.lock().await.remove(&magnet) {
-                Some(bytes) => AddTorrent::from_bytes(bytes),
-                None => AddTorrent::from_url(&magnet),
-            };
-            let opts = AddTorrentOptions {
-                output_folder: Some(output_dir.clone()),
-                // None = all files; Some(indices) downloads only the picked ones.
-                only_files: only_files.clone(),
-                ..Default::default()
-            };
-            // Distinguish Added from AlreadyManaged: a duplicate would otherwise
-            // hand back a shared handle, so cancelling one queue item would delete
-            // the torrent out from under the other.
-            let handle = match session.add_torrent(add, Some(opts)).await {
-                Ok(AddTorrentResponse::Added(_, h)) => h,
-                Ok(AddTorrentResponse::AlreadyManaged(_, _)) => {
-                    return emit_failure(&app, &id, "This torrent is already in the queue.".into())
+            // Up to 2 attempts: a resume can race the previous pause's session
+            // delete and come back AlreadyManaged — reclaim the orphan and retry.
+            let mut attempt = 0;
+            let handle = loop {
+                attempt += 1;
+                // Prefer metadata already resolved by the file picker (consumed on
+                // first use); fall back to the URL.
+                let add = match resolved.lock().await.remove(&magnet) {
+                    Some(bytes) => AddTorrent::from_bytes(bytes),
+                    None => AddTorrent::from_url(&magnet),
+                };
+                let opts = AddTorrentOptions {
+                    output_folder: Some(output_dir.clone()),
+                    // None = all files; Some(indices) downloads only the picked ones.
+                    only_files: only_files.clone(),
+                    // Resume-after-pause re-adds a torrent whose partial files are
+                    // already on disk; librqbit's storage otherwise opens files with
+                    // create_new and fails with "file exists". Existing data is
+                    // hash-checked on add, not blindly trusted or truncated.
+                    overwrite: true,
+                    ..Default::default()
+                };
+                match session.add_torrent(add, Some(opts)).await {
+                    Ok(AddTorrentResponse::Added(_, h)) => break h,
+                    Ok(AddTorrentResponse::AlreadyManaged(managed_id, _)) => {
+                        // A handle owned by another queue item is a genuine
+                        // duplicate — cancelling one item must not delete the
+                        // torrent out from under the other. A session entry no
+                        // queue item owns is leftover state (paused run whose
+                        // delete hasn't settled): drop it and retry once.
+                        let owned_elsewhere = active
+                            .lock()
+                            .await
+                            .values()
+                            .any(|(h, _)| h.id() == managed_id);
+                        if owned_elsewhere || attempt >= 2 {
+                            return emit_failure(&app, &id, "This torrent is already in the queue.".into());
+                        }
+                        let _ = session.delete(TorrentIdOrHash::from(managed_id), false).await;
+                    }
+                    Ok(AddTorrentResponse::ListOnly(_)) => {
+                        return emit_failure(&app, &id, "Torrent added in list-only mode".into())
+                    }
+                    Err(e) => return emit_failure(&app, &id, format!("Failed to add torrent: {e}")),
                 }
-                Ok(AddTorrentResponse::ListOnly(_)) => {
-                    return emit_failure(&app, &id, "Torrent added in list-only mode".into())
-                }
-                Err(e) => return emit_failure(&app, &id, format!("Failed to add torrent: {e}")),
             };
 
-            active.lock().await.insert(id.clone(), handle.clone());
+            active.lock().await.insert(id.clone(), (handle.clone(), output_dir.clone()));
 
             let mut ticks: u64 = 0;
             let mut stall = StallWatch::new(STALL_TIMEOUT_SECS);
@@ -382,10 +405,32 @@ impl TorrentManager {
 
     /// Stop a torrent and drop it from the session (does not delete files, so a
     /// later re-add resumes from what's on disk). Returns whether it was active.
-    pub async fn cancel_torrent(&self, id: &str) -> bool {
-        let handle = self.active.lock().await.remove(id);
-        match handle {
-            Some(h) => {
+    ///
+    /// Stopping a *finished* (seeding) torrent is a success, not a cancel: the
+    /// download itself completed, the user is only ending the upload phase — so
+    /// emit the same success completion the poll loop would, letting the
+    /// frontend record it as completed with an openable path.
+    pub async fn cancel_torrent(&self, app: &AppHandle, id: &str) -> bool {
+        let entry = self.active.lock().await.remove(id);
+        match entry {
+            Some((h, output_dir)) => {
+                let stats = h.stats();
+                if stats.finished {
+                    let file_path = h
+                        .name()
+                        .map(|name| PathBuf::from(&output_dir).join(name).to_string_lossy().into_owned())
+                        .filter(|p| std::path::Path::new(p).exists());
+                    let _ = app.emit(
+                        &format!("download-complete-{id}"),
+                        DownloadComplete {
+                            id: id.to_string(),
+                            success: true,
+                            error: None,
+                            file_path,
+                            file_size: Some(stats.total_bytes),
+                        },
+                    );
+                }
                 if let Some(session) = self.session.lock().await.as_ref() {
                     let _ = session.delete(TorrentIdOrHash::from(h.id()), false).await;
                 }

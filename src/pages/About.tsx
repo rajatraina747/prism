@@ -4,20 +4,6 @@ import { useService } from '@/services/ServiceProvider';
 import { Panel } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
-const LATEST_RELEASE = {
-  version: '1.0.14',
-  date: 'March 2026',
-  highlights: [
-    'Security hardening — scoped permissions, CSP, path traversal protection',
-    'Better error messages — real yt-dlp errors shown instead of generic messages',
-    'Stalled download timeout — kills inactive downloads after 5 minutes',
-    'Smart error classification — permission, storage, network, and parse errors',
-    'Dead code cleanup — removed ~29KB from bundle',
-    'Accessibility improvements — screen reader labels, ARIA roles',
-    'Performance — memoized components and lazy-compiled regexes',
-  ],
-};
-
 export default function About() {
   const service = useService();
   const navigate = useNavigate();
@@ -33,7 +19,7 @@ export default function About() {
         <img src="/logo-nobg.png" alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
         <h2 className="page-title">Prism</h2>
         <p className="page-subtitle">Premium Video Downloader</p>
-        <p className="text-[10px] text-muted-foreground/60 mt-1">
+        <p className="text-[11px] text-muted-foreground/60 mt-1">
           by{' '}
           <a href="https://www.rainacorp.co.uk" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors">
             RainaCorp
@@ -45,33 +31,23 @@ export default function About() {
         <div className="divide-y divide-border/30">
           <InfoRow label="Version" value={`v${version}`} />
           <InfoRow label="Channel" value="Stable" />
-          <InfoRow label="License" value="Personal Use" />
-        </div>
-      </Panel>
-
-      {/* What's New */}
-      <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '80ms' } as React.CSSProperties}>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
-            <h3 className="text-xs font-semibold text-foreground">What's New</h3>
-            <span className="text-[10px] text-muted-foreground ml-auto">{LATEST_RELEASE.date}</span>
-          </div>
-          <div className="text-xs text-muted-foreground space-y-1.5 leading-relaxed">
-            {LATEST_RELEASE.highlights.map((item, i) => (
-              <p key={i}>&#8226; {item}</p>
-            ))}
-          </div>
+          <InfoRow label="License" value="MIT (open source)" />
         </div>
       </Panel>
 
       <Panel className="mt-4 animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
         <div className="space-y-2">
+          <LinkRow
+            icon={Sparkles}
+            label="Release notes"
+            description="What changed in each version"
+            href="https://github.com/rajatraina747/prism/releases"
+          />
           <button onClick={() => navigate('/privacy')} className="w-full text-left">
             <LinkRow icon={Shield} label="Privacy Policy" description="How Prism handles your data — spoiler: it stays on your device" />
           </button>
           <LinkRow icon={BookOpen} label="RainaCorp" description="Visit our website" href="https://www.rainacorp.co.uk" />
-          <LinkRow icon={Heart} label="Credits" description="Built with React, TypeScript, Tailwind CSS, Tauri, and yt-dlp" />
+          <LinkRow icon={Heart} label="Credits" description="Built with React, TypeScript, Tailwind CSS, Tauri, yt-dlp, and librqbit" />
         </div>
       </Panel>
     </div>
@@ -95,7 +71,7 @@ function LinkRow({ icon: Icon, label, description, href }: { icon: React.Element
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-foreground">{label}</p>
-        <p className="text-[10px] text-muted-foreground">{description}</p>
+        <p className="text-[11px] text-muted-foreground">{description}</p>
       </div>
       {href && <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />}
     </>

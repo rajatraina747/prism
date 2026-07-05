@@ -36,7 +36,9 @@ function classifyError(msg: string): { category: DownloadError['category']; sugg
     return { category: 'network', suggestion: 'Check your connection' };
   if (lower.includes('not found') || lower.includes('unsupported') || lower.includes('unable to extract'))
     return { category: 'parse', suggestion: 'This URL may not be supported' };
-  return { category: 'network', suggestion: 'Check your connection and retry' };
+  // Unknown errors must NOT classify as 'network' — that category triggers
+  // automatic retries, which is wrong for failures we can't identify.
+  return { category: 'unknown', suggestion: 'Check the URL, then retry' };
 }
 
 let audioCtx: AudioContext | null = null;
@@ -263,6 +265,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize });
             if (settings.notificationsEnabled) {
               toast.success(`Downloaded: ${item.metadata.title}`);
+              // Toasts are invisible when the window is hidden/in the tray —
+              // that's exactly when a finished download needs an OS notification.
+              if (!document.hasFocus()) {
+                service.notify('Download complete', item.metadata.title).catch(() => {});
+              }
             }
             if (settings.soundEnabled) playNotificationSound();
           } else {
@@ -283,6 +290,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });
             if (settings.notificationsEnabled) {
               toast.error(`Failed: ${item.metadata.title}`);
+              if (!document.hasFocus()) {
+                service.notify('Download failed', item.metadata.title).catch(() => {});
+              }
             }
             const err: DownloadError = {
               code: 'DOWNLOAD_FAILED',
@@ -327,9 +337,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const cancelDownload = useCallback((id: string) => {
+    const item = queue.find(i => i.id === id);
+    if (item?.status === 'seeding') {
+      // Stopping a seed is a success, not a cancel: the download finished, the
+      // user is just ending the upload. The backend emits a success completion
+      // for a finished torrent, which drives seeding → completed through the
+      // still-attached listener. Keep listeners alive; don't kill via stopDownload.
+      const hasListener = cleanupRefs.current.has(id);
+      service.cancelDownload(id).catch(() => {});
+      if (!hasListener) {
+        // No live listener (shouldn't happen for a seeding item) — complete directly.
+        startedRef.current.delete(id);
+        dispatch({ type: 'completed', id, completedAt: new Date().toISOString() });
+      }
+      return;
+    }
     stopDownload(id);
     dispatch({ type: 'cancel', id });
-  }, [stopDownload]);
+  }, [queue, service, stopDownload]);
 
   const retryDownload = useCallback((id: string) => {
     stopDownload(id);

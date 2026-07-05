@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName, sourceKey } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName, sourceKey, siteKey } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -183,7 +183,31 @@ describe('sourceKey (dedupe)', () => {
   });
 
   it('keys plain URLs by the trimmed URL', () => {
-    expect(sourceKey('  https://youtube.com/watch?v=abc  ')).toBe('https://youtube.com/watch?v=abc');
+    expect(sourceKey('  https://vimeo.com/12345  ')).toBe('https://vimeo.com/12345');
     expect(sourceKey('https://a.com/x')).not.toBe(sourceKey('https://a.com/y'));
+  });
+
+  it('normalizes YouTube video URL variants to the same key', () => {
+    const key = sourceKey('https://www.youtube.com/watch?v=abc123');
+    expect(key).toBe('yt:abc123');
+    expect(sourceKey('https://youtu.be/abc123')).toBe(key);
+    expect(sourceKey('https://m.youtube.com/watch?v=abc123&list=PLx')).toBe(key);
+    expect(sourceKey('https://www.youtube.com/shorts/abc123')).toBe(key);
+    expect(sourceKey('https://youtube.com/watch?v=other')).not.toBe(key);
+  });
+});
+
+describe('siteKey (per-site preset memory)', () => {
+  it('normalizes URLs and bare hosts to the same key', () => {
+    expect(siteKey('https://www.youtube.com/watch?v=x')).toBe('youtube.com');
+    expect(siteKey('youtube.com')).toBe('youtube.com');
+    expect(siteKey('www.youtube.com')).toBe('youtube.com');
+    expect(siteKey('m.youtube.com')).toBe('youtube.com');
+  });
+
+  it('returns null for magnets and junk', () => {
+    expect(siteKey('magnet:?xt=urn:btih:abc')).toBeNull();
+    expect(siteKey('not a url')).toBeNull();
+    expect(siteKey('')).toBeNull();
   });
 });

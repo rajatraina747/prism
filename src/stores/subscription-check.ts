@@ -1,5 +1,5 @@
 import type { Subscription, PlaylistEntry, DownloadItem, AppPreferences } from '@/types/models';
-import { generateId } from '@/services/utils';
+import { generateId, sanitizeFilename } from '@/services/utils';
 
 // Pure logic for a subscription check: diff the feed against what we've seen
 // and build queue items for the new entries. IO (parsePlaylist, addToQueue,
@@ -51,7 +51,9 @@ export function entryToDownloadItem(
     settings: {
       format: null,
       destination: prefs.defaultSaveFolder,
-      filename: entry.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_') || 'video',
+      // sanitizeFilename keeps unicode titles (CJK, Cyrillic, …) intact — the
+      // old \w-only strip reduced them to 'video' and collided on dedupe.
+      filename: sanitizeFilename(entry.title),
       retryCount: prefs.defaultRetryCount,
       startImmediately: true,
       audioOnly: sub.audioOnly || undefined,

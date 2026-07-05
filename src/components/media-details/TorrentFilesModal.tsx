@@ -105,7 +105,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                   <span className="flex-1 min-w-0 text-xs font-medium text-foreground truncate" title={file.name}>
                     {file.name.split('/').pop()}
                   </span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                  <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
                     {formatBytes(file.size)}
                   </span>
                 </button>

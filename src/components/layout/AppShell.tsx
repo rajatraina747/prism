@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useQueue } from '@/stores/AppProvider';
+import { useQueue, useHistory } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useUrlDrop } from '@/hooks/use-url-drop';
@@ -9,9 +9,7 @@ import { pushDeepLink } from '@/lib/deep-link-bus';
 import {
   LayoutDashboard,
   ArrowDownToLine,
-  CheckCircle2,
-  XCircle,
-  Clock,
+  Library as LibraryIcon,
   Rss,
   Settings2,
   Info,
@@ -19,11 +17,9 @@ import {
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/queue', icon: ArrowDownToLine, label: 'Queue', badgeKey: 'queue' as const },
+  { path: '/queue', icon: ArrowDownToLine, label: 'Queue' },
   { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
-  { path: '/downloads', icon: CheckCircle2, label: 'Downloads' },
-  { path: '/failed', icon: XCircle, label: 'Failed' },
-  { path: '/history', icon: Clock, label: 'History' },
+  { path: '/library', icon: LibraryIcon, label: 'Library' },
 ] as const;
 
 const BOTTOM_ITEMS = [
@@ -33,7 +29,9 @@ const BOTTOM_ITEMS = [
 
 function SidebarNav() {
   const { items: queueItems } = useQueue();
+  const { items: historyItems } = useHistory();
   const activeCount = queueItems.filter(i => i.status === 'downloading' || i.status === 'queued').length;
+  const failedCount = historyItems.filter(i => i.status === 'failed').length;
 
   return (
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
@@ -41,7 +39,7 @@ function SidebarNav() {
       <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
         <img src="/logo-nobg.png" alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
-        <span className="text-[10px] text-muted-foreground/60">by RainaCorp</span>
+        <span className="text-[11px] text-muted-foreground/60">by RainaCorp</span>
       </div>
 
       {/* Main Nav */}
@@ -61,8 +59,16 @@ function SidebarNav() {
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span>{item.label}</span>
             {item.path === '/queue' && activeCount > 0 && (
-              <span className="ml-auto text-[10px] tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
+              <span className="ml-auto text-[11px] tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
                 {activeCount}
+              </span>
+            )}
+            {item.path === '/library' && failedCount > 0 && (
+              <span
+                title={`${failedCount} failed download${failedCount !== 1 ? 's' : ''}`}
+                className="ml-auto text-[11px] tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md"
+              >
+                {failedCount}
               </span>
             )}
           </NavLink>
@@ -98,9 +104,7 @@ function PageHeader() {
     '/': 'Dashboard',
     '/queue': 'Download Queue',
     '/subscriptions': 'Subscriptions',
-    '/downloads': 'Completed Downloads',
-    '/failed': 'Failed Downloads',
-    '/history': 'History',
+    '/library': 'Library',
     '/settings': 'Settings',
     '/about': 'About Prism',
     '/privacy': 'Privacy Policy',

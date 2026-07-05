@@ -9,14 +9,16 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey, sanitizeFilename } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { cn } from '@/lib/utils';
 import {
   Sparkles, Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen,
+  Film, ListMusic,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
   return (
@@ -29,7 +31,7 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
       </div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-foreground tabular-nums truncate">{value}</p>
-        <p className="text-[10px] text-muted-foreground">{label}</p>
+        <p className="text-[11px] text-muted-foreground">{label}</p>
       </div>
     </div>
   );
@@ -39,6 +41,24 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
   if (preset.resolution === 'Best') return formats[0]; // formats are sorted descending
   return formats.find(f => f.resolution === preset.resolution) || formats[0];
+}
+
+/** Synthesize a FormatOption for a preset without a per-video format list —
+ * the id mirrors the backend's H.264/AAC-first yt-dlp filter chain, capped at
+ * the preset's height. 'Best' returns null (backend default = best available). */
+function presetToFormat(preset: DownloadPreset): FormatOption | null {
+  if (preset.resolution === 'Best') return null;
+  const h = parseInt(preset.resolution, 10);
+  if (!h) return null;
+  return {
+    id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`,
+    label: `${preset.resolution} MP4`,
+    resolution: preset.resolution,
+    container: 'mp4',
+    codec: 'h264/aac',
+    fileSize: 0,
+    quality: (preset.quality as FormatOption['quality']) || 'high',
+  };
 }
 
 /** Build a queue item for a magnet/.torrent source. Skips yt-dlp parsing —
@@ -77,17 +97,33 @@ function buildTorrentItem(url: string, destination: string, selectedFiles?: numb
 
 const ACTIVE_STATUSES: DownloadStatus[] = ['queued', 'parsing', 'ready', 'downloading', 'seeding', 'paused'];
 
-/** Hostname of a URL, or null for magnets/invalid input. */
-function hostOf(url: string): string | null {
-  try { return new URL(url).hostname || null; } catch { return null; }
-}
-
 /** Is this source already in the active queue or completed history? */
 function findDuplicate(url: string, queue: DownloadItem[], history: HistoryItem[]): 'queue' | 'completed' | null {
   const key = sourceKey(url);
   if (queue.some(i => ACTIVE_STATUSES.includes(i.status) && sourceKey(i.metadata.source.url) === key)) return 'queue';
   if (history.some(i => i.status === 'completed' && sourceKey(i.metadata.source.url) === key)) return 'completed';
   return null;
+}
+
+/** A YouTube watch URL that also carries a playlist: return both "just this
+ * video" and "whole playlist" forms so the user can choose. Null when the URL
+ * isn't ambiguous. Mix/radio pseudo-playlists (list=RD…) aren't real playlists
+ * — treat those as plain videos. */
+function watchWithListInfo(url: string): { videoUrl: string; playlistUrl: string } | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase().replace(/^(www|m)\./, '');
+    if (host !== 'youtube.com' && host !== 'music.youtube.com') return null;
+    const v = u.searchParams.get('v');
+    const list = u.searchParams.get('list');
+    if (!v || !list || list.startsWith('RD')) return null;
+    return {
+      videoUrl: `https://www.youtube.com/watch?v=${v}`,
+      playlistUrl: `https://www.youtube.com/playlist?list=${list}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Detect if a URL looks like a playlist (heuristic). */
@@ -120,13 +156,14 @@ export default function Dashboard() {
   // Playlist state
   const [parsedPlaylist, setParsedPlaylist] = useState<PlaylistInfo | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
-  const [playlistProcessing, setPlaylistProcessing] = useState(false);
-  const [playlistProcessedCount, setPlaylistProcessedCount] = useState(0);
 
   // Torrent file-picker state
   const [showTorrentModal, setShowTorrentModal] = useState(false);
   const [torrentUrl, setTorrentUrl] = useState<string>('');
   const [torrentFiles, setTorrentFiles] = useState<TorrentFileEntry[] | null>(null); // null = loading
+
+  // A watch URL that also names a playlist — ask which the user meant.
+  const [listChoice, setListChoice] = useState<{ videoUrl: string; playlistUrl: string } | null>(null);
 
   const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
   const totalSpeed = useMemo(() => activeDownloads.reduce((s, i) => s + (i.speed || 0), 0), [activeDownloads]);
@@ -185,8 +222,16 @@ export default function Dashboard() {
         });
       return;
     }
+    // Ambiguous watch-page URL that also names a playlist: ask before parsing.
+    // Both answers re-enter this handler with an unambiguous URL (a bare watch
+    // URL or a /playlist URL), so neither can re-trigger the prompt.
+    const ambiguous = watchWithListInfo(url);
+    if (ambiguous) {
+      setListChoice(ambiguous);
+      return;
+    }
     // Pre-select this site's last-used quality preset before the details modal opens.
-    const host = hostOf(url);
+    const host = siteKey(url);
     const rememberedId = host ? preferences.perSitePresets[host] : undefined;
     if (rememberedId) {
       const remembered = DEFAULT_PRESETS.find(p => p.id === rememberedId);
@@ -218,7 +263,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, [service, addToQueue, preferences.defaultSaveFolder, preferences.perSitePresets, queueItems, historyItems]);
+  }, [service, preferences.defaultSaveFolder, preferences.perSitePresets, queueItems, historyItems]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
@@ -293,8 +338,10 @@ export default function Dashboard() {
     toast.success(`Added to queue: ${item.metadata.title}`, {
       action: { label: 'View queue', onClick: () => navigate('/queue') },
     });
-    // Remember this site's quality preset for next time.
-    const host = item.metadata.source.domain;
+    // Remember this site's quality preset for next time. Key through siteKey so
+    // the read path (raw input URL) and write path (yt-dlp's webpage_url_domain)
+    // agree on the same normalized host.
+    const host = siteKey(item.metadata.source.domain);
     if (host && !item.settings.audioOnly && item.kind !== 'torrent') {
       updatePreference('perSitePresets', { ...preferences.perSitePresets, [host]: selectedPreset.id });
     }
@@ -312,67 +359,49 @@ export default function Dashboard() {
     setTorrentUrl('');
   }, [torrentUrl, torrentFiles, preferences.defaultSaveFolder, addToQueue]);
 
-  const handlePlaylistQueue = useCallback(async (entries: PlaylistEntry[]) => {
-    setPlaylistProcessing(true);
-    setPlaylistProcessedCount(0);
-    abortBulkRef.current = false;
-
+  // Queue playlist entries instantly from the flat-parse data (title, duration,
+  // thumbnail are already known). No per-video yt-dlp round-trips — the selected
+  // preset becomes a synthesized format filter, and each item resolves the rest
+  // when its download starts. A 100-video playlist queues in one click.
+  const handlePlaylistQueue = useCallback((entries: PlaylistEntry[]) => {
     const speedLimitBytes = preferences.bandwidthLimit > 0
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
+    const format = presetToFormat(selectedPreset);
 
-    let queued = 0;
-    let failed = 0;
-    for (let i = 0; i < entries.length; i++) {
-      if (abortBulkRef.current) break;
-      try {
-        const metadata = await service.parseUrl(entries[i].url);
-        const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
-        const item: DownloadItem = {
-          id: generateId(),
-          metadata,
-          settings: {
-            format,
-            destination: preferences.defaultSaveFolder,
-            filename: sanitizeFilename(metadata.title),
-            retryCount: preferences.defaultRetryCount,
-            startImmediately: true,
-            speedLimit: speedLimitBytes || undefined,
-          },
-          status: 'queued',
-          progress: 0,
-          speed: 0,
-          eta: 0,
-          downloadedBytes: 0,
-          totalBytes: format?.fileSize || 500_000_000,
-          retryAttempt: 0,
-        };
-        addToQueue(item);
-        queued++;
-      } catch {
-        failed++;
-      }
-      setPlaylistProcessedCount(i + 1);
+    for (const entry of entries) {
+      addToQueue({
+        id: generateId(),
+        metadata: {
+          title: entry.title,
+          duration: entry.duration,
+          thumbnail: entry.thumbnail,
+          source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
+          formats: [],
+        },
+        settings: {
+          format,
+          destination: preferences.defaultSaveFolder,
+          filename: sanitizeFilename(entry.title),
+          retryCount: preferences.defaultRetryCount,
+          startImmediately: true,
+          speedLimit: speedLimitBytes || undefined,
+        },
+        status: 'queued',
+        progress: 0,
+        speed: 0,
+        eta: 0,
+        downloadedBytes: 0,
+        totalBytes: 500_000_000,
+        retryAttempt: 0,
+      });
     }
 
-    const aborted = abortBulkRef.current;
-    setPlaylistProcessing(false);
     setShowPlaylistModal(false);
     setParsedPlaylist(null);
-    setPlaylistProcessedCount(0);
-
-    if (queued > 0) {
-      const parts = [`${queued} video${queued !== 1 ? 's' : ''} added`];
-      if (failed > 0) parts.push(`${failed} failed to parse`);
-      if (aborted) parts.push('stopped early');
-      (failed > 0 ? toast.warning : toast.success)(parts.join(' · '));
-      navigate('/queue');
-    } else if (aborted) {
-      toast.info('Stopped — nothing was queued');
-    } else {
-      toast.error('Failed to queue any videos');
-    }
-  }, [addToQueue, service, preferences.bandwidthLimit, selectedPreset, navigate]);
+    toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
+    navigate('/queue');
+  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, navigate]);
 
   return (
     <div className="page-container max-w-3xl mx-auto">
@@ -456,13 +485,13 @@ export default function Dashboard() {
                     <p className="text-[11px] text-foreground truncate">{item.metadata.title}</p>
                     <ProgressBar value={item.progress} className="mt-1" />
                   </div>
-                  <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
+                  <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
                     {item.progress.toFixed(0)}%
                   </span>
                 </div>
               ))}
               {activeDownloads.length > 3 && (
-                <p className="text-[10px] text-muted-foreground">+{activeDownloads.length - 3} more</p>
+                <p className="text-[11px] text-muted-foreground">+{activeDownloads.length - 3} more</p>
               )}
             </div>
           )}
@@ -482,7 +511,7 @@ export default function Dashboard() {
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-medium text-foreground truncate">{item.metadata.title}</p>
-                  <p className="text-[10px] text-muted-foreground tabular-nums">
+                  <p className="text-[11px] text-muted-foreground tabular-nums">
                     {formatBytes(item.fileSize)} · {new Date(item.completedAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -491,6 +520,7 @@ export default function Dashboard() {
                     <button
                       onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
                       title="Play"
+                      aria-label="Play"
                       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                     >
                       <Play className="w-3.5 h-3.5" />
@@ -498,6 +528,7 @@ export default function Dashboard() {
                     <button
                       onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
                       title="Show in folder"
+                      aria-label="Show in folder"
                       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                     >
                       <FolderOpen className="w-3.5 h-3.5" />
@@ -523,7 +554,7 @@ export default function Dashboard() {
           <p className="text-[11px] font-semibold tracking-wide text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
             A RAINACORP PRODUCT
           </p>
-          <p className="text-[10px] text-muted-foreground/40 mt-0.5">rainacorp.co.uk</p>
+          <p className="text-[11px] text-muted-foreground/40 mt-0.5">rainacorp.co.uk</p>
         </div>
       </a>
 
@@ -542,10 +573,41 @@ export default function Dashboard() {
         onClose={() => { setShowPlaylistModal(false); setParsedPlaylist(null); }}
         playlist={parsedPlaylist}
         onQueueSelected={handlePlaylistQueue}
-        isProcessing={playlistProcessing}
-        processedCount={playlistProcessedCount}
-        onAbort={() => { abortBulkRef.current = true; }}
       />
+
+      {/* Video-or-playlist choice for ambiguous watch?v=…&list=… links */}
+      <Dialog open={!!listChoice} onOpenChange={(open) => { if (!open) setListChoice(null); }}>
+        <DialogContent className="glass-strong max-w-sm border-border/40 bg-card/95">
+          <DialogHeader>
+            <DialogTitle className="text-base">This link is part of a playlist</DialogTitle>
+            <DialogDescription className="text-xs">
+              Download just this video, or import the whole playlist?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-1">
+            <button
+              onClick={() => {
+                const target = listChoice!.videoUrl;
+                setListChoice(null);
+                handleUrlSubmitRef.current(target);
+              }}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.98]"
+            >
+              <Film className="w-3.5 h-3.5" /> Just this video
+            </button>
+            <button
+              onClick={() => {
+                const target = listChoice!.playlistUrl;
+                setListChoice(null);
+                handleUrlSubmitRef.current(target);
+              }}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.98]"
+            >
+              <ListMusic className="w-3.5 h-3.5" /> Whole playlist
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Torrent file picker */}
       <TorrentFilesModal

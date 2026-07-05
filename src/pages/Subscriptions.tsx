@@ -91,7 +91,7 @@ export default function Subscriptions() {
         {addError && (
           <p className="mt-2 text-[11px] text-destructive">{addError}</p>
         )}
-        <p className="mt-2 text-[10px] text-muted-foreground/70">
+        <p className="mt-2 text-[11px] text-muted-foreground/70">
           Only videos published after you subscribe are downloaded — the existing catalog is marked as seen.
         </p>
       </div>
@@ -118,15 +118,15 @@ export default function Subscriptions() {
                   <h4 className={`text-xs font-medium truncate ${sub.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {sub.title}
                   </h4>
-                  <p className="text-[10px] text-muted-foreground/70 truncate">{sub.url}</p>
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground/70 truncate">{sub.url}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
                     <span>Checked {formatRelative(sub.lastCheckedAt)}</span>
                     <span>·</span>
                     <span>{sub.audioOnly ? 'Audio only' : 'Video'}</span>
                     {!sub.enabled && (<><span>·</span><span>Paused</span></>)}
                   </div>
                   {sub.lastError && (
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-destructive">
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-destructive">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
                       <span className="truncate">{sub.lastError}</span>
                     </div>
@@ -136,6 +136,7 @@ export default function Subscriptions() {
                   <button
                     onClick={() => setAudioOnly(sub.id, !sub.audioOnly)}
                     title={sub.audioOnly ? 'Switch to video downloads' : 'Switch to audio-only downloads'}
+                    aria-label={sub.audioOnly ? 'Switch to video downloads' : 'Switch to audio-only downloads'}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                   >
                     {sub.audioOnly ? <Music className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
@@ -144,6 +145,7 @@ export default function Subscriptions() {
                     onClick={() => checkNow(sub.id)}
                     disabled={checking}
                     title="Check now"
+                    aria-label="Check now"
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95] disabled:opacity-50"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -151,6 +153,7 @@ export default function Subscriptions() {
                   <button
                     onClick={() => toggleSubscription(sub.id)}
                     title={sub.enabled ? 'Pause subscription' : 'Resume subscription'}
+                    aria-label={sub.enabled ? 'Pause subscription' : 'Resume subscription'}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                   >
                     {sub.enabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}

@@ -9,14 +9,12 @@ interface PlaylistModalProps {
   open: boolean;
   onClose: () => void;
   playlist: PlaylistInfo | null;
+  /** Queueing is instant (items are built from the flat-parse data), so the
+   * modal closes as soon as this is called. */
   onQueueSelected: (entries: PlaylistEntry[]) => void;
-  isProcessing: boolean;
-  processedCount: number;
-  /** Stop an in-flight queue run; already-queued entries are kept. */
-  onAbort?: () => void;
 }
 
-export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProcessing, processedCount, onAbort }: PlaylistModalProps) {
+export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const prevPlaylistRef = useRef<string | null>(null);
 
@@ -55,7 +53,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => { if (!isProcessing) onClose(); }}>
+    <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="glass-strong max-w-lg border-border/40 bg-card/95 p-0 gap-0">
         <DialogHeader className="p-5 pb-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -75,17 +73,11 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
                 checked={selected.size === playlist.entries.length}
                 onChange={toggleAll}
                 className="rounded border-border"
-                disabled={isProcessing}
               />
               <span className="text-xs text-muted-foreground">
                 Select all ({selected.size}/{playlist.entries.length})
               </span>
             </label>
-            {isProcessing && (
-              <span className="text-xs text-primary font-medium">
-                Processing {processedCount}/{selected.size}...
-              </span>
-            )}
           </div>
 
           {/* Entry list */}
@@ -93,14 +85,12 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
             {playlist.entries.map((entry, i) => (
               <button
                 key={i}
-                onClick={() => !isProcessing && toggleEntry(i)}
-                disabled={isProcessing}
+                onClick={() => toggleEntry(i)}
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
                   selected.has(i)
                     ? 'bg-primary/8 border border-primary/20'
                     : 'bg-secondary/30 border border-transparent hover:bg-secondary/50',
-                  isProcessing && 'opacity-60 cursor-not-allowed'
                 )}
               >
                 <div className={cn(
@@ -112,7 +102,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{entry.title}</p>
                   {entry.duration > 0 && (
-                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
                       <Clock className="w-2.5 h-2.5" />
                       {formatDuration(entry.duration)}
                     </p>
@@ -125,17 +115,17 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">
             <button
-              onClick={isProcessing ? onAbort : onClose}
+              onClick={onClose}
               className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              {isProcessing ? 'Stop' : 'Cancel'}
+              Cancel
             </button>
             <button
               onClick={handleQueue}
-              disabled={selected.size === 0 || isProcessing}
+              disabled={selected.size === 0}
               className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
             >
-              {isProcessing ? 'Queuing...' : `Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
+              {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
             </button>
           </div>
         </div>

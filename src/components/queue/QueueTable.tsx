@@ -1,10 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
 import type { DownloadItem } from '@/types/models';
-import { StatusBadge, ProgressBar } from '@/components/common';
+import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
 import { cn } from '@/lib/utils';
 import {
-  Pause, Play, X, RotateCcw, Trash2, GripVertical,
+  Pause, Play, X, RotateCcw, Trash2, GripVertical, ArrowDownToLine,
 } from 'lucide-react';
 
 interface QueueTableProps {
@@ -82,12 +82,13 @@ export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemo
             <QueueRow
               item={item}
               index={index}
+              count={items.length}
               onPause={onPause}
               onResume={onResume}
               onCancel={onCancel}
               onRetry={onRetry}
               onRemove={onRemove}
-              showDragHandle={!!onReorder}
+              onReorder={onReorder}
             />
           </div>
         );
@@ -97,12 +98,13 @@ export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemo
 }
 
 const QueueRow = React.memo(function QueueRow({
-  item, index, onPause, onResume, onCancel, onRetry, onRemove, showDragHandle,
+  item, index, count, onPause, onResume, onCancel, onRetry, onRemove, onReorder,
 }: {
-  item: DownloadItem; index: number;
+  item: DownloadItem; index: number; count: number;
   onPause: (id: string) => void; onResume: (id: string) => void;
   onCancel: (id: string) => void; onRetry: (id: string) => void;
-  onRemove: (id: string) => void; showDragHandle: boolean;
+  onRemove: (id: string) => void;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
 }) {
   const isActive = item.status === 'downloading';
   const isPaused = item.status === 'paused';
@@ -119,21 +121,33 @@ const QueueRow = React.memo(function QueueRow({
       style={{ animationDelay: `${index * 60}ms` }}
     >
       <div className="flex items-start gap-3">
-        {/* Drag Handle */}
-        {showDragHandle && (
+        {/* Drag Handle — also a keyboard control: focus it and use arrow keys */}
+        {onReorder && (
           <div
-            className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-            title="Drag to reorder"
+            role="button"
+            tabIndex={0}
+            className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground focus:text-muted-foreground transition-colors"
+            title="Drag to reorder (or focus and use arrow keys)"
+            aria-label={`Reorder ${item.metadata.title} — position ${index + 1} of ${count}. Use arrow keys to move.`}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp' && index > 0) {
+                e.preventDefault();
+                onReorder(index, index - 1);
+              } else if (e.key === 'ArrowDown' && index < count - 1) {
+                e.preventDefault();
+                onReorder(index, index + 1);
+              }
+            }}
           >
             <GripVertical className="w-4 h-4" strokeWidth={1.5} />
           </div>
         )}
 
-        {/* Thumbnail */}
-        <img
+        {/* Thumbnail — Thumb falls back to a neutral tile (torrents have none) */}
+        <Thumb
           src={item.metadata.thumbnail}
-          alt=""
-          className="w-20 h-12 rounded-md object-cover bg-secondary shrink-0"
+          className="w-20 h-12"
+          fallbackIcon={<ArrowDownToLine className="w-4 h-4 text-muted-foreground/50" />}
         />
 
         {/* Info */}
@@ -149,7 +163,7 @@ const QueueRow = React.memo(function QueueRow({
           )}
 
           {/* Stats row */}
-          <div className="flex items-center gap-4 text-[10px] text-muted-foreground tabular-nums">
+          <div className="flex items-center gap-4 text-[11px] text-muted-foreground tabular-nums">
             {item.settings.audioOnly ? (
               <span className="text-primary/80">Audio only</span>
             ) : item.settings.format ? (
@@ -188,14 +202,14 @@ const QueueRow = React.memo(function QueueRow({
             <div className="mt-1.5">
               <button
                 onClick={() => setShowFiles(v => !v)}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showFiles ? '▾' : '▸'} {files.length} files
               </button>
               {showFiles && (
                 <div className="mt-1 space-y-0.5">
                   {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[10px] text-muted-foreground tabular-nums">
+                    <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
                       <span className="truncate flex-1" title={f.name}>{f.name.split('/').pop()}</span>
                       <span>{formatBytes(f.size)}</span>
                       <span className="w-9 text-right">{f.progress.toFixed(0)}%</span>

@@ -66,12 +66,40 @@ export function isTorrentUrl(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
+/** Canonical per-site key (hostname without www./m.) for preset memory.
+ * Accepts a full URL or a bare hostname; null when neither parses to a host. */
+export function siteKey(urlOrHost: string): string | null {
+  let host = urlOrHost.trim();
+  try { host = new URL(host).hostname; } catch { /* already a bare hostname */ }
+  host = host.toLowerCase().replace(/^(www|m)\./, '');
+  // A bare hostname has no slashes/spaces and at least one dot.
+  if (!host || /[/\s]/.test(host) || !host.includes('.')) return null;
+  return host;
+}
+
 /** Canonical key for de-duplicating a source: a magnet's info-hash (so the same
- * torrent matches regardless of trackers/display-name), else the trimmed URL. */
+ * torrent matches regardless of trackers/display-name), a YouTube video id (so
+ * youtu.be/ID, watch?v=ID, and shorts/ID all match), else the trimmed URL. */
 export function sourceKey(url: string): string {
   const trimmed = url.trim();
   const m = trimmed.match(/xt=urn:btih:([a-z0-9]+)/i);
   if (m) return `btih:${m[1].toLowerCase()}`;
+  try {
+    const u = new URL(trimmed);
+    const host = u.hostname.toLowerCase().replace(/^(www|m)\./, '');
+    if (host === 'youtu.be') {
+      const id = u.pathname.split('/').filter(Boolean)[0];
+      if (id) return `yt:${id}`;
+    }
+    if (host === 'youtube.com' || host === 'music.youtube.com') {
+      const v = u.searchParams.get('v');
+      if (v) return `yt:${v}`;
+      const parts = u.pathname.split('/').filter(Boolean);
+      if ((parts[0] === 'shorts' || parts[0] === 'live' || parts[0] === 'embed') && parts[1]) {
+        return `yt:${parts[1]}`;
+      }
+    }
+  } catch { /* not a URL — fall through to the raw string */ }
   return trimmed;
 }
 

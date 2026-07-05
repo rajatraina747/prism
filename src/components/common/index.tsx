@@ -89,7 +89,7 @@ const STATUS_CONFIG: Record<DownloadStatus, { label: string; className: string }
 export function StatusBadge({ status }: { status: DownloadStatus }) {
   const config = STATUS_CONFIG[status];
   return (
-    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase', config.className)}>
+    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase', config.className)}>
       {config.label}
     </span>
   );

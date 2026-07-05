@@ -15,7 +15,7 @@ function extractUrls(text: string): string[] {
   return text
     .split(/[\n\r]+/)
     .map(line => line.trim())
-    .filter(line => line.length > 4 && /^https?:\/\//i.test(line));
+    .filter(line => line.length > 4 && /^(https?:\/\/|magnet:\?)/i.test(line));
 }
 
 export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorClear }: UrlInputProps) {
@@ -168,6 +168,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorCle
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
             title="Import URLs from text file"
+            aria-label="Import URLs from text file"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
           >
             <FileText className="w-3.5 h-3.5" />

@@ -12,10 +12,17 @@ test.describe('Navigation', () => {
     await expect(page.locator('h2')).toContainText('Queue');
   });
 
-  test('navigates to Downloads page', async ({ page }) => {
+  test('navigates to Library page', async ({ page }) => {
     await page.goto('/');
-    await page.click('a[href="/downloads"]');
-    await expect(page.locator('h2')).toContainText('Completed Downloads');
+    await page.click('a[href="/library"]');
+    await expect(page.locator('h2')).toContainText('Library');
+  });
+
+  test('old routes redirect to Library', async ({ page }) => {
+    for (const old of ['/downloads', '/failed', '/history']) {
+      await page.goto(old);
+      await expect(page.locator('h2')).toContainText('Library');
+    }
   });
 
   test('navigates to Settings page', async ({ page }) => {

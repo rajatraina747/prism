@@ -54,9 +54,9 @@ export default function OpenSourceLicenses() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground">{lib.name}</p>
-                <p className="text-[10px] text-muted-foreground">v{lib.version}</p>
+                <p className="text-[11px] text-muted-foreground">v{lib.version}</p>
               </div>
-              <span className="text-[10px] font-medium text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded">
+              <span className="text-[11px] font-medium text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded">
                 {lib.license}
               </span>
               <ExternalLink className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />

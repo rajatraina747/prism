@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   FolderOpen, Download, Gauge, Bell, Palette, HardDrive,
-  RefreshCw, Bug, Shield, ChevronRight, Loader2,
+  RefreshCw, Bug, Shield, ChevronRight, Loader2, AlertTriangle,
 } from 'lucide-react';
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
@@ -17,7 +17,7 @@ function SettingRow({ label, description, children }: { label: string; descripti
     <div className="flex items-center justify-between py-2.5 min-h-[40px]">
       <div className="flex-1 min-w-0 mr-4">
         <p className="text-xs font-medium text-foreground">{label}</p>
-        {description && <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>}
+        {description && <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -111,11 +111,16 @@ export default function Settings() {
   const [engineVersion, setEngineVersion] = React.useState<string | null>(null);
   const [engineUpdating, setEngineUpdating] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
+  const [ffmpegOk, setFfmpegOk] = React.useState(true);
 
   React.useEffect(() => {
     if (activeSection !== 'updates') return;
     service.getEngineVersion().then(setEngineVersion).catch(() => setEngineVersion(null));
   }, [activeSection, service]);
+
+  React.useEffect(() => {
+    service.ffmpegAvailable().then(setFfmpegOk).catch(() => {});
+  }, [service]);
 
   return (
     <div className="page-container">
@@ -149,6 +154,19 @@ export default function Settings() {
           <Panel className="animate-fade-in" key={activeSection}>
             {activeSection === 'downloads' && (
               <div className="divide-y divide-border/30">
+                {!ffmpegOk && (
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 mb-1 rounded-lg bg-warning/10 border border-warning/25">
+                    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
+                        won't work. On macOS install it with <span className="font-mono">brew install ffmpeg</span>,
+                        then restart Prism.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <SettingRow label="Default retry count" description="Number of retry attempts on failure">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>
@@ -217,13 +235,13 @@ export default function Settings() {
                 <SettingRow label="Bandwidth limit" description="Maximum download speed (0 = unlimited)">
                   <div className="flex items-center gap-1.5">
                     <NumberInput value={p.bandwidthLimit} onChange={v => updatePreference('bandwidthLimit', v)} min={0} />
-                    <span className="text-[10px] text-muted-foreground">MB/s</span>
+                    <span className="text-[11px] text-muted-foreground">MB/s</span>
                   </div>
                 </SettingRow>
                 <SettingRow label="Subscription check interval" description="How often to check subscribed channels and playlists for new videos">
                   <div className="flex items-center gap-1.5">
                     <NumberInput value={p.subscriptionCheckIntervalMinutes} onChange={v => updatePreference('subscriptionCheckIntervalMinutes', Math.max(5, Math.min(1440, v)))} min={5} max={1440} />
-                    <span className="text-[10px] text-muted-foreground">min</span>
+                    <span className="text-[11px] text-muted-foreground">min</span>
                   </div>
                 </SettingRow>
                 <SettingRow label="Quiet hours" description="Hold or throttle new downloads during part of the day (applies when a download starts)">
@@ -234,9 +252,9 @@ export default function Settings() {
                     <SettingRow label="Window" description="Start and end hour (24h clock; wraps overnight)">
                       <div className="flex items-center gap-1.5">
                         <NumberInput value={p.scheduleStartHour} onChange={v => updatePreference('scheduleStartHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
-                        <span className="text-[10px] text-muted-foreground">to</span>
+                        <span className="text-[11px] text-muted-foreground">to</span>
                         <NumberInput value={p.scheduleEndHour} onChange={v => updatePreference('scheduleEndHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
-                        <span className="text-[10px] text-muted-foreground">h</span>
+                        <span className="text-[11px] text-muted-foreground">h</span>
                       </div>
                     </SettingRow>
                     <SettingRow label="During quiet hours" description="Hold downloads entirely, or start them at a reduced speed">
@@ -253,7 +271,7 @@ export default function Settings() {
                       <SettingRow label="Quiet-hours speed" description="Speed limit applied to downloads started during the window">
                         <div className="flex items-center gap-1.5">
                           <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', Math.max(1, Math.min(1000, v)))} min={1} max={1000} />
-                          <span className="text-[10px] text-muted-foreground">MB/s</span>
+                          <span className="text-[11px] text-muted-foreground">MB/s</span>
                         </div>
                       </SettingRow>
                     )}
@@ -370,8 +388,8 @@ export default function Settings() {
                 </SettingRow>
                 {updateState === 'available' && updateNotes && (
                   <div className="py-2.5">
-                    <p className="text-[10px] text-muted-foreground font-medium mb-1">Release Notes</p>
-                    <p className="text-[10px] text-muted-foreground/70 whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
+                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Release Notes</p>
+                    <p className="text-[11px] text-muted-foreground/70 whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
                   </div>
                 )}
                 <SettingRow

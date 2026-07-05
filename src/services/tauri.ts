@@ -1,11 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { writeTextFile, readTextFile, mkdir, exists, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
@@ -37,7 +38,14 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 
 async function writeJson(file: string, data: unknown): Promise<void> {
   await ensureAppData();
-  await writeTextFile(file, JSON.stringify(data), { baseDir: BaseDirectory.AppData });
+  // Write-then-rename so a crash mid-write can't corrupt the real file (a
+  // corrupted queue/history file silently resets to [] on next launch).
+  const tmp = `${file}.tmp`;
+  await writeTextFile(tmp, JSON.stringify(data), { baseDir: BaseDirectory.AppData });
+  await rename(tmp, file, {
+    oldPathBaseDir: BaseDirectory.AppData,
+    newPathBaseDir: BaseDirectory.AppData,
+  });
 }
 
 /** Extract the video URL from a `prism://add?url=...` deep link. */
@@ -229,6 +237,16 @@ export class TauriPrismService implements IPrismService {
     return (await readText()) ?? '';
   }
 
+  async notify(title: string, body: string): Promise<void> {
+    try {
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        granted = (await requestPermission()) === 'granted';
+      }
+      if (granted) sendNotification({ title, body });
+    } catch { /* notifications unavailable — in-app toast already covers it */ }
+  }
+
   onDeepLink(handler: (url: string) => void): () => void {
     let unlisten: UnlistenFn | null = null;
     let trayUnlisten: UnlistenFn | null = null;
@@ -288,6 +306,10 @@ export class TauriPrismService implements IPrismService {
     if (path) {
       await writeTextFile(path, JSON.stringify(logs, null, 2));
     }
+  }
+
+  async ffmpegAvailable(): Promise<boolean> {
+    return invoke<boolean>('ffmpeg_available').catch(() => true);
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
