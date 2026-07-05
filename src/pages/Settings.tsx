@@ -4,7 +4,7 @@ import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes } from '@/services';
-import { Panel } from '@/components/common';
+import { Panel, ConfirmDialog } from '@/components/common';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -56,11 +56,18 @@ function Select({ value, options, onChange }: { value: string; options: { value:
 }
 
 function NumberInput({ value, onChange, min, max }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  // Clamp on blur, not on change — clamping mid-keystroke fights the user
+  // (typing "10" with min 5 would snap the intermediate "1" to 5).
+  const clamp = (v: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
   return (
     <input
       type="number"
       value={value}
-      onChange={e => onChange(Number(e.target.value))}
+      onChange={e => {
+        const n = Number(e.target.value);
+        if (!Number.isNaN(n)) onChange(n);
+      }}
+      onBlur={() => onChange(clamp(value))}
       min={min}
       max={max}
       className="w-16 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none tabular-nums text-right"
@@ -103,6 +110,7 @@ export default function Settings() {
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
   const [engineVersion, setEngineVersion] = React.useState<string | null>(null);
   const [engineUpdating, setEngineUpdating] = React.useState(false);
+  const [confirmReset, setConfirmReset] = React.useState(false);
 
   React.useEffect(() => {
     if (activeSection !== 'updates') return;
@@ -452,7 +460,7 @@ export default function Settings() {
 
           <div className="mt-4 flex justify-end">
             <button
-              onClick={resetToDefaults}
+              onClick={() => setConfirmReset(true)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive transition-colors active:scale-[0.97]"
             >
               Reset to Defaults
@@ -460,6 +468,16 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title="Reset all settings?"
+        description="Every preference — download location, proxy, quiet hours, per-site quality memory — goes back to its default. This can't be undone."
+        confirmLabel="Reset Everything"
+        destructive
+        onConfirm={() => { resetToDefaults(); toast.success('Settings reset to defaults'); }}
+      />
     </div>
   );
 }

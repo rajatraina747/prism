@@ -1,12 +1,44 @@
-import React from 'react';
-import { useQueue } from '@/stores/AppProvider';
+import React, { useCallback } from 'react';
+import { useQueue, useHistory } from '@/stores/AppProvider';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { EmptyState } from '@/components/common';
 import { formatSpeed } from '@/services';
-import { ArrowDownToLine, Pause, Play, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowDownToLine, Pause, Play } from 'lucide-react';
 
 export default function Queue() {
-  const { items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, clearCompleted, startAll, pauseAll, reorderQueue } = useQueue();
+  const { items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, startAll, pauseAll, reorderQueue } = useQueue();
+  const { removeFromHistory } = useHistory();
+
+  // Cancel is a single click on a possibly hours-old download — no confirm
+  // dialog, but give a few seconds to undo (undo restarts from the top).
+  const cancelWithUndo = useCallback((id: string) => {
+    const item = items.find(i => i.id === id);
+    cancelDownload(id);
+    toast(`Canceled: ${item?.metadata.title ?? 'download'}`, {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          if (!item) return;
+          // The canceled item may still be in the queue, or already archived
+          // to history (that happens ~2s after cancel) — cover both: drop any
+          // trace of the canceled copy, then re-queue a fresh one.
+          removeFromQueue(id);
+          removeFromHistory(id);
+          addToQueue({
+            ...item,
+            status: 'queued',
+            progress: 0,
+            speed: 0,
+            eta: 0,
+            downloadedBytes: 0,
+            error: undefined,
+          });
+        },
+      },
+      duration: 6000,
+    });
+  }, [items, cancelDownload, removeFromQueue, removeFromHistory, addToQueue]);
 
   const activeItems = items.filter(i => !['completed', 'canceled'].includes(i.status));
   const downloading = items.filter(i => i.status === 'downloading');
@@ -52,7 +84,7 @@ export default function Queue() {
           items={activeItems}
           onPause={pauseDownload}
           onResume={resumeDownload}
-          onCancel={cancelDownload}
+          onCancel={cancelWithUndo}
           onRetry={retryDownload}
           onRemove={removeFromQueue}
           onReorder={reorderQueue}

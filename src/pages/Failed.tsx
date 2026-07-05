@@ -1,12 +1,35 @@
-import React from 'react';
-import { useHistory } from '@/stores/AppProvider';
-import { EmptyState } from '@/components/common';
-import { formatBytes } from '@/services';
+import React, { useCallback, useState } from 'react';
+import { useHistory, useQueue } from '@/stores/AppProvider';
+import { EmptyState, ConfirmDialog } from '@/components/common';
+import { generateId } from '@/services';
+import { toast } from 'sonner';
+import type { HistoryItem } from '@/types/models';
 import { XCircle, RotateCcw, Trash2, AlertTriangle } from 'lucide-react';
 
 export default function Failed() {
   const { items, removeFromHistory } = useHistory();
+  const { addToQueue } = useQueue();
+  const [confirmClear, setConfirmClear] = useState(false);
   const failed = items.filter(i => i.status === 'failed');
+
+  // Queue the item again with its original settings and drop the failed
+  // history entry — a successful retry shouldn't leave a stale failure behind.
+  const retry = useCallback((item: HistoryItem) => {
+    addToQueue({
+      id: generateId(),
+      metadata: item.metadata,
+      settings: item.settings,
+      status: 'queued',
+      progress: 0,
+      speed: 0,
+      eta: 0,
+      downloadedBytes: 0,
+      totalBytes: item.settings.format?.fileSize || 500_000_000,
+      retryAttempt: 0,
+    });
+    removeFromHistory(item.id);
+    toast.success(`Retrying: ${item.metadata.title}`);
+  }, [addToQueue, removeFromHistory]);
 
   return (
     <div className="page-container">
@@ -17,7 +40,7 @@ export default function Failed() {
         </div>
         {failed.length > 0 && (
           <button
-            onClick={() => failed.forEach(i => removeFromHistory(i.id))}
+            onClick={() => setConfirmClear(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
             <Trash2 className="w-3 h-3" /> Clear All
@@ -59,18 +82,39 @@ export default function Failed() {
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => removeFromHistory(item.id)}
-                  title="Remove"
-                  className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95] shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => retry(item)}
+                    title="Retry download"
+                    aria-label="Retry download"
+                    className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => removeFromHistory(item.id)}
+                    title="Remove"
+                    aria-label="Remove"
+                    className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Clear all failed downloads?"
+        description={`This removes ${failed.length} failed item${failed.length !== 1 ? 's' : ''} from the list. The originals can't be restored.`}
+        confirmLabel="Clear All"
+        destructive
+        onConfirm={() => failed.forEach(i => removeFromHistory(i.id))}
+      />
     </div>
   );
 }

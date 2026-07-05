@@ -151,7 +151,7 @@ const QueueRow = React.memo(function QueueRow({
           {/* Stats row */}
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground tabular-nums">
             {item.settings.audioOnly ? (
-              <span className="text-primary/80">MP3 Audio</span>
+              <span className="text-primary/80">Audio only</span>
             ) : item.settings.format ? (
               <span>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</span>
             ) : null}

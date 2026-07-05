@@ -59,7 +59,11 @@ export default function Downloads() {
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-                  <span>{item.settings.format?.resolution} · {item.settings.format?.container.toUpperCase()}</span>
+                  {item.settings.format ? (
+                    <span>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</span>
+                  ) : item.settings.audioOnly ? (
+                    <span>Audio</span>
+                  ) : null}
                   <span>{formatBytes(item.fileSize)}</span>
                   <span>{formatDuration(item.metadata.duration)}</span>
                 </div>

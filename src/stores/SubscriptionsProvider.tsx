@@ -13,6 +13,7 @@ interface SubscriptionActions {
    * are downloaded), and save. Throws if the URL can't be parsed as a feed. */
   addSubscription: (url: string) => Promise<Subscription>;
   removeSubscription: (id: string) => void;
+  restoreSubscription: (sub: Subscription) => void;
   toggleSubscription: (id: string) => void;
   setAudioOnly: (id: string, audioOnly: boolean) => void;
   /** Check one subscription (or all enabled ones) immediately. */
@@ -123,6 +124,12 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     setSubs(prev => prev.filter(s => s.id !== id));
   }, []);
 
+  // Put back a just-removed subscription unchanged (seenUrls intact), so an
+  // undo doesn't re-download the channel's back catalog.
+  const restoreSubscription = useCallback((sub: Subscription) => {
+    setSubs(prev => (prev.some(s => s.id === sub.id) ? prev : [...prev, sub]));
+  }, []);
+
   const toggleSubscription = useCallback((id: string) => {
     setSubs(prev => prev.map(s => (s.id === id ? { ...s, enabled: !s.enabled } : s)));
   }, []);
@@ -134,7 +141,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
   const checkNow = useCallback((id?: string) => runCheck(id), [runCheck]);
 
   return (
-    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, toggleSubscription, setAudioOnly, checkNow, checking }}>
+    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, checkNow, checking }}>
       {children}
     </SubscriptionsContext.Provider>
   );

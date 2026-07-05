@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
-import { generateId, formatBytes, formatDuration } from '@/services';
+import { generateId, formatBytes, formatDuration, sanitizeFilename } from '@/services';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { useSettings } from '@/stores/AppProvider';
 import { cn } from '@/lib/utils';
@@ -50,7 +50,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
         pick = metadata.formats.find(f => f.resolution === preferredResolution) || null;
       }
       setSelectedFormat(pick || metadata.formats[0] || null);
-      setFilename(metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'));
+      setFilename(sanitizeFilename(metadata.title));
       setAudioOnly(false);
       setDownloadSubtitles(false);
     }
@@ -58,7 +58,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
 
   if (!metadata) return null;
 
-  const fileExtension = audioOnly ? 'mp3' : (selectedFormat?.container || 'mp4');
+  const fileExtension = audioOnly ? preferences.audioFormat : (selectedFormat?.container || 'mp4');
 
   const handleAdd = () => {
     if (!audioOnly && !selectedFormat) return;
@@ -148,7 +148,9 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {!audioOnly && (
             <div>
               <label className="panel-header block">Quality & Format</label>
-              <div className="grid grid-cols-1 gap-1.5">
+              {/* Cap the list — some sites return a dozen formats, which would
+                  otherwise push the dialog (and its Add button) off-screen. */}
+              <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
                 {metadata.formats.map(fmt => (
                   <button
                     key={fmt.id}
@@ -177,8 +179,8 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
               <Music className="w-4 h-4 text-primary" />
               <div>
-                <p className="text-xs font-medium text-foreground">MP3 Audio</p>
-                <p className="text-[10px] text-muted-foreground">Best quality audio extracted from video</p>
+                <p className="text-xs font-medium text-foreground">{preferences.audioFormat.toUpperCase()} Audio</p>
+                <p className="text-[10px] text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
               </div>
             </div>
           )}

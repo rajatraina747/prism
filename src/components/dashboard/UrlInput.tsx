@@ -7,6 +7,8 @@ interface UrlInputProps {
   onBatchSubmit?: (urls: string[]) => void;
   isLoading?: boolean;
   error?: string | null;
+  /** Called when the user edits the URL, so a stale parse error can be dismissed. */
+  onErrorClear?: () => void;
 }
 
 function extractUrls(text: string): string[] {
@@ -16,7 +18,7 @@ function extractUrls(text: string): string[] {
     .filter(line => line.length > 4 && /^https?:\/\//i.test(line));
 }
 
-export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error }: UrlInputProps) {
+export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorClear }: UrlInputProps) {
   const [url, setUrl] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [batchCount, setBatchCount] = useState<number | null>(null);
@@ -144,7 +146,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error }: UrlInput
             ref={inputRef}
             type="text"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => { setUrl(e.target.value); if (error) onErrorClear?.(); }}
             onKeyDown={handleKeyDown}
             onPaste={handleInputPaste}
             aria-label="Video URL or magnet link"

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useHistory, useQueue } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
-import { EmptyState, Thumb } from '@/components/common';
+import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
 import { formatBytes, generateId } from '@/services';
 import { Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw, FolderOpen, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ export default function History() {
   const service = useService();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
 
   // Queue the same video again with the settings it was originally
   // downloaded with; the history entry stays put.
@@ -61,7 +62,7 @@ export default function History() {
         </div>
         {items.length > 0 && (
           <button
-            onClick={clearHistory}
+            onClick={() => setConfirmClear(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
             <Trash2 className="w-3 h-3" /> Clear History
@@ -168,6 +169,16 @@ export default function History() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title="Clear all history?"
+        description={`This removes all ${items.length} entries — completed, failed, and canceled — not just the current tab. Downloaded files stay on disk.`}
+        confirmLabel="Clear History"
+        destructive
+        onConfirm={clearHistory}
+      />
     </div>
   );
 }

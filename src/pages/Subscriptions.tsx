@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { EmptyState } from '@/components/common';
+import { toast } from 'sonner';
 import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play } from 'lucide-react';
 
 function formatRelative(iso?: string): string {
@@ -14,7 +15,16 @@ function formatRelative(iso?: string): string {
 }
 
 export default function Subscriptions() {
-  const { items, addSubscription, removeSubscription, toggleSubscription, setAudioOnly, checkNow, checking } = useSubscriptions();
+  const { items, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, checkNow, checking } = useSubscriptions();
+
+  // Per-item destructive action → undo toast rather than a confirm dialog.
+  const unsubscribeWithUndo = useCallback((sub: (typeof items)[number]) => {
+    removeSubscription(sub.id);
+    toast(`Unsubscribed from ${sub.title}`, {
+      action: { label: 'Undo', onClick: () => restoreSubscription(sub) },
+      duration: 6000,
+    });
+  }, [removeSubscription, restoreSubscription]);
   const [url, setUrl] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -146,8 +156,9 @@ export default function Subscriptions() {
                     {sub.enabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                   </button>
                   <button
-                    onClick={() => removeSubscription(sub.id)}
+                    onClick={() => unsubscribeWithUndo(sub)}
                     title="Unsubscribe"
+                    aria-label="Unsubscribe"
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

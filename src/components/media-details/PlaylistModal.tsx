@@ -12,9 +12,11 @@ interface PlaylistModalProps {
   onQueueSelected: (entries: PlaylistEntry[]) => void;
   isProcessing: boolean;
   processedCount: number;
+  /** Stop an in-flight queue run; already-queued entries are kept. */
+  onAbort?: () => void;
 }
 
-export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProcessing, processedCount }: PlaylistModalProps) {
+export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProcessing, processedCount, onAbort }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const prevPlaylistRef = useRef<string | null>(null);
 
@@ -123,11 +125,10 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">
             <button
-              onClick={onClose}
-              disabled={isProcessing}
-              className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-40"
+              onClick={isProcessing ? onAbort : onClose}
+              className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              Cancel
+              {isProcessing ? 'Stop' : 'Cancel'}
             </button>
             <button
               onClick={handleQueue}

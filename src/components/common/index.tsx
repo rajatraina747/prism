@@ -2,6 +2,54 @@ import React from 'react';
 import type { DownloadStatus } from '@/types/models';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+
+// ── Confirm Dialog ──
+// One-question confirmation for destructive actions. Prefer an undo toast for
+// per-item actions; use this for bulk/irreversible ones (clear all, reset).
+interface ConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+}
+
+export function ConfirmDialog({
+  open, onOpenChange, title, description, confirmLabel = 'Confirm', destructive, onConfirm,
+}: ConfirmDialogProps) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="glass-strong max-w-sm border-border/40 bg-card/95">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-base">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-xs">{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="px-4 py-2 h-auto rounded-lg bg-secondary border-0 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 hover:text-secondary-foreground">
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className={cn(
+              'px-4 py-2 h-auto rounded-lg text-xs font-semibold',
+              destructive
+                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90',
+            )}
+          >
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 // ── Empty State ──
 interface EmptyStateProps {

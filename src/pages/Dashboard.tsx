@@ -9,7 +9,7 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey, sanitizeFilename } from '@/services';
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
@@ -139,6 +139,9 @@ export default function Dashboard() {
   // Monotonic token so a slow parseTorrent (up to ~45s) can't populate or close a
   // modal the user has since moved on from. Bumped on new parse / close / confirm.
   const torrentParseIdRef = useRef(0);
+  // Set when the user cancels a playlist/batch run; the parse loops check it
+  // each iteration and stop, keeping whatever was queued so far.
+  const abortBulkRef = useRef(false);
 
   // prism://add?url=... deep links (bookmarklet / "send to Prism"), buffered
   // by AppShell so links arriving on other pages aren't lost
@@ -221,6 +224,7 @@ export default function Dashboard() {
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
     setParseError(null);
     setBatchProgress({ total: urls.length, done: 0 });
+    abortBulkRef.current = false;
 
     const speedLimitBytes = preferences.bandwidthLimit > 0
       ? preferences.bandwidthLimit * 1024 * 1024
@@ -228,7 +232,9 @@ export default function Dashboard() {
 
     const added: DownloadItem[] = [];
     let skipped = 0;
+    let failed = 0;
     for (let i = 0; i < urls.length; i++) {
+      if (abortBulkRef.current) break;
       try {
         // Skip anything already downloading — including earlier entries in this
         // same batch (queueItems state hasn't re-rendered mid-loop).
@@ -252,7 +258,7 @@ export default function Dashboard() {
           settings: {
             format,
             destination: preferences.defaultSaveFolder,
-            filename: metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'),
+            filename: sanitizeFilename(metadata.title),
             retryCount: preferences.defaultRetryCount,
             startImmediately: true,
             speedLimit: speedLimitBytes || undefined,
@@ -268,24 +274,31 @@ export default function Dashboard() {
         added.push(item);
         addToQueue(item);
       } catch {
-        // Skip failed URLs in batch
+        failed++;
       }
       setBatchProgress({ total: urls.length, done: i + 1 });
     }
 
     setBatchProgress(null);
-    if (skipped > 0) toast.info(`Skipped ${skipped} already in your queue`);
+    const parts = [`${added.length} added`];
+    if (skipped > 0) parts.push(`${skipped} already in queue`);
+    if (failed > 0) parts.push(`${failed} failed to parse`);
+    if (abortBulkRef.current) parts.push('stopped early');
+    (failed > 0 ? toast.warning : toast.info)(parts.join(' · '));
   }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, queueItems]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     addToQueue(item);
     setParsedMetadata(null);
+    toast.success(`Added to queue: ${item.metadata.title}`, {
+      action: { label: 'View queue', onClick: () => navigate('/queue') },
+    });
     // Remember this site's quality preset for next time.
     const host = item.metadata.source.domain;
     if (host && !item.settings.audioOnly && item.kind !== 'torrent') {
       updatePreference('perSitePresets', { ...preferences.perSitePresets, [host]: selectedPreset.id });
     }
-  }, [addToQueue, updatePreference, preferences.perSitePresets, selectedPreset.id]);
+  }, [addToQueue, updatePreference, preferences.perSitePresets, selectedPreset.id, navigate]);
 
   const handleTorrentConfirm = useCallback((indices: number[]) => {
     // All files selected → leave selectedFiles undefined (download everything).
@@ -302,13 +315,16 @@ export default function Dashboard() {
   const handlePlaylistQueue = useCallback(async (entries: PlaylistEntry[]) => {
     setPlaylistProcessing(true);
     setPlaylistProcessedCount(0);
+    abortBulkRef.current = false;
 
     const speedLimitBytes = preferences.bandwidthLimit > 0
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
 
     let queued = 0;
+    let failed = 0;
     for (let i = 0; i < entries.length; i++) {
+      if (abortBulkRef.current) break;
       try {
         const metadata = await service.parseUrl(entries[i].url);
         const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
@@ -318,7 +334,7 @@ export default function Dashboard() {
           settings: {
             format,
             destination: preferences.defaultSaveFolder,
-            filename: metadata.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_'),
+            filename: sanitizeFilename(metadata.title),
             retryCount: preferences.defaultRetryCount,
             startImmediately: true,
             speedLimit: speedLimitBytes || undefined,
@@ -334,19 +350,25 @@ export default function Dashboard() {
         addToQueue(item);
         queued++;
       } catch {
-        // Skip entries that fail to parse
+        failed++;
       }
       setPlaylistProcessedCount(i + 1);
     }
 
+    const aborted = abortBulkRef.current;
     setPlaylistProcessing(false);
     setShowPlaylistModal(false);
     setParsedPlaylist(null);
     setPlaylistProcessedCount(0);
 
     if (queued > 0) {
-      toast.success(`${queued} video${queued !== 1 ? 's' : ''} added to queue`);
+      const parts = [`${queued} video${queued !== 1 ? 's' : ''} added`];
+      if (failed > 0) parts.push(`${failed} failed to parse`);
+      if (aborted) parts.push('stopped early');
+      (failed > 0 ? toast.warning : toast.success)(parts.join(' · '));
       navigate('/queue');
+    } else if (aborted) {
+      toast.info('Stopped — nothing was queued');
     } else {
       toast.error('Failed to queue any videos');
     }
@@ -365,6 +387,7 @@ export default function Dashboard() {
         onBatchSubmit={handleBatchSubmit}
         isLoading={isParsing}
         error={parseError}
+        onErrorClear={() => setParseError(null)}
       />
 
       {/* Batch progress indicator */}
@@ -382,6 +405,12 @@ export default function Dashboard() {
               />
             </div>
           </div>
+          <button
+            onClick={() => { abortBulkRef.current = true; }}
+            className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
+          >
+            Stop
+          </button>
         </div>
       )}
 
@@ -515,6 +544,7 @@ export default function Dashboard() {
         onQueueSelected={handlePlaylistQueue}
         isProcessing={playlistProcessing}
         processedCount={playlistProcessedCount}
+        onAbort={() => { abortBulkRef.current = true; }}
       />
 
       {/* Torrent file picker */}
