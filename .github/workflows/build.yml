@@ -8,7 +8,29 @@ permissions:
   contents: write
 
 jobs:
+  # Read RELEASE_NOTES.md once so all three build jobs publish the same body.
+  # (They race to write the release; whichever finishes last wins, so the body
+  # must be identical — previously it was copy-pasted ×3 and went stale.)
+  notes:
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.read.outputs.body }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read release notes
+        id: read
+        # The leading <!-- --> header is instructions for editors, not release
+        # content — strip it so it doesn't show in the in-app updater notes.
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            awk 'NR==1 && /^<!--/ {skip=1} skip {if (/^-->/) skip=0; next} !p && /^[[:space:]]*$/ {next} {p=1; print}' RELEASE_NOTES.md
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
   build-macos:
+    needs: notes
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,25 +93,12 @@ jobs:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
-          releaseBody: |
-            ## What's New
-
-            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
-            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
-            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
-            - Fixed the torrent file-picker title overflowing behind the close button on long release names
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
-
-            ## Install
-
-            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
-            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
-            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
+          releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
 
   build-windows:
+    needs: notes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,25 +141,12 @@ jobs:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
-          releaseBody: |
-            ## What's New
-
-            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
-            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
-            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
-            - Fixed the torrent file-picker title overflowing behind the close button on long release names
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
-
-            ## Install
-
-            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
-            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
-            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
+          releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
 
   build-linux:
+    needs: notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -202,22 +198,6 @@ jobs:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Prism ${{ github.ref_name }}'
-          # Must match the other jobs: whichever job finishes last overwrites
-          # the release body AND latest.json's updater notes.
-          releaseBody: |
-            ## What's New
-
-            - **Proxy support** — route yt-dlp and torrents through a proxy (Settings → Downloads). Supports http/https and SOCKS5 (e.g. Tor at socks5://127.0.0.1:9050)
-            - **Duplicate detection** — Prism now skips re-adding something already in your queue and warns before re-downloading from history
-            - **Per-site quality memory** — the last quality preset you used on a site is pre-selected next time you download from it
-            - Fixed the torrent file-picker title overflowing behind the close button on long release names
-
-            Includes everything from recent releases: video downloads from 1000+ sites, magnet/.torrent downloads with a file picker, seeding controls, subscriptions, SponsorBlock, quiet hours, UPnP, and self-updating engines.
-
-            ## Install
-
-            **macOS**: Download the `.dmg` file, open it, and drag Prism to Applications. If macOS warns about an unidentified developer, right-click the app and choose "Open".
-            **Windows**: Download the `.exe` installer and run it. Windows may show a SmartScreen warning — click "More info" then "Run anyway".
-            **Linux**: The AppImage is the recommended download — `chmod +x` it and run. `.deb` and `.rpm` packages are also attached.
+          releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
