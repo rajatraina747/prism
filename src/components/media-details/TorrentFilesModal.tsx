@@ -61,12 +61,12 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
         </DialogHeader>
 
         {files === null ? (
-          <div className="p-10 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+          <div className="p-10 min-w-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span className="text-xs">Fetching file list from peers…</span>
           </div>
         ) : (
-          <div className="p-5 space-y-4">
+          <div className="p-5 min-w-0 space-y-4">
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

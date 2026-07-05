@@ -101,7 +101,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           </DialogTitle>
         </DialogHeader>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 min-w-0 space-y-4">
           {/* Thumbnail + Info */}
           <div className="flex gap-4">
             <img

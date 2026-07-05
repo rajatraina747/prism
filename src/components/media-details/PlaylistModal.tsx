@@ -56,15 +56,15 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, isProc
     <Dialog open={open} onOpenChange={() => { if (!isProcessing) onClose(); }}>
       <DialogContent className="glass-strong max-w-lg border-border/40 bg-card/95 p-0 gap-0">
         <DialogHeader className="p-5 pb-0">
-          <div className="flex items-center gap-2">
-            <ListMusic className="w-4 h-4 text-primary" />
-            <DialogTitle className="text-base font-semibold text-foreground pr-6 leading-snug">
+          <div className="flex items-center gap-2 min-w-0">
+            <ListMusic className="w-4 h-4 text-primary shrink-0" />
+            <DialogTitle className="min-w-0 flex-1 text-base font-semibold text-foreground pr-6 leading-snug">
               {playlist.title}
             </DialogTitle>
           </div>
         </DialogHeader>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 min-w-0 space-y-4">
           {/* Select all / count */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 cursor-pointer">
