@@ -369,10 +369,11 @@ async fn start_download(
     expected_size: Option<u64>,
 ) -> Result<(), String> {
     let expanded_path = validate_download_path(&output_path)?;
-    // Auto-number if the target .mp4 already exists
-    let deduped_path = dedupe_output_path(&expanded_path);
+    // Auto-numbering against disk + other active downloads happens inside the
+    // manager, atomically with reserving the template (two adds of the same
+    // title must never share intermediates).
     // Ensure the parent directory exists
-    if let Some(parent) = PathBuf::from(&deduped_path).parent() {
+    if let Some(parent) = PathBuf::from(&expanded_path).parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create download directory: {}", e))?;
 
@@ -396,13 +397,13 @@ async fn start_download(
         app.clone(),
         id,
         url,
-        deduped_path,
+        expanded_path,
         format_id,
         audio_only.unwrap_or(false),
         download_subtitles.unwrap_or(false),
         subtitle_language,
         speed_limit,
-    );
+    ).await;
     Ok(())
 }
 
@@ -420,6 +421,7 @@ async fn start_torrent(
     magnet: String,
     output_path: String,
     only_files: Option<Vec<usize>>,
+    speed_limit: Option<u64>,
 ) -> Result<(), String> {
     // output_path is the destination *directory* for the torrent's files.
     let dir = validate_download_path(&output_path)?;
@@ -427,8 +429,10 @@ async fn start_torrent(
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
     let policy = seeding_policy(&app);
     let proxy = proxy_url(&app);
+    let blocklist = blocklist_url(&app);
+    let trackers = extra_trackers(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files, proxy);
+    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files, proxy, blocklist, trackers, speed_limit);
     Ok(())
 }
 
@@ -442,8 +446,9 @@ async fn parse_torrent(
 ) -> Result<Vec<torrent::TorrentFileEntry>, String> {
     let dir = validate_download_path(&output_path)?;
     let proxy = proxy_url(&app);
+    let blocklist = blocklist_url(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.list_files(magnet, dir, proxy).await
+    manager.list_files(magnet, dir, proxy, blocklist).await
 }
 
 #[tauri::command]
@@ -451,6 +456,26 @@ async fn cancel_torrent(app: AppHandle, id: String) -> Result<(), String> {
     let manager = app.state::<torrent::TorrentManager>();
     manager.cancel_torrent(&app, &id).await;
     Ok(())
+}
+
+/// Change the downloaded-files subset of an active torrent.
+#[tauri::command]
+async fn update_torrent_files(app: AppHandle, id: String, only_files: Vec<usize>) -> Result<(), String> {
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.update_file_selection(&id, only_files).await
+}
+
+/// Pause a torrent in place (no session delete, so resume needs no re-hash).
+#[tauri::command]
+async fn pause_torrent(app: AppHandle, id: String) -> Result<(), String> {
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.pause_torrent(&id).await
+}
+
+#[tauri::command]
+async fn resume_torrent(app: AppHandle, id: String) -> Result<(), String> {
+    let manager = app.state::<torrent::TorrentManager>();
+    manager.resume_torrent(&id).await
 }
 
 /// Throttle (or clear) the session-wide torrent rate limit — the same limit is
@@ -595,6 +620,38 @@ pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
     }
 }
 
+/// Extra tracker URLs from settings, announced on every torrent add (the
+/// classic uTorrent "additional trackers" box). Newline- or comma-separated;
+/// only http(s)/udp announce URLs pass the filter.
+pub fn extra_trackers(app: &AppHandle) -> Vec<String> {
+    read_setting(app, "extraTrackers")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .map(|s| {
+            s.split(['\n', ','])
+                .map(str::trim)
+                .filter(|t| {
+                    let l = t.to_ascii_lowercase();
+                    l.starts_with("http://") || l.starts_with("https://") || l.starts_with("udp://")
+                })
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// IP blocklist URL for the torrent session (uTorrent's ipfilter equivalent;
+/// standard p2p blocklist formats, gz/zstd ok). Applied when the torrent
+/// engine starts, so changes take effect on the next app launch.
+pub fn blocklist_url(app: &AppHandle) -> Option<String> {
+    read_setting(app, "blocklistUrl")
+        .and_then(|v| v.as_str().map(str::to_string))
+        .map(|s| s.trim().to_string())
+        .filter(|s| {
+            let l = s.to_ascii_lowercase();
+            l.starts_with("http://") || l.starts_with("https://")
+        })
+}
+
 /// Proxy URL from settings, accepted only for known proxy schemes so a corrupted
 /// settings file can't inject an arbitrary yt-dlp argument.
 pub fn proxy_url(app: &AppHandle) -> Option<String> {
@@ -683,17 +740,24 @@ fn extract_domain(url: &str) -> String {
 
 /// Given an output path like `/path/to/video.%(ext)s`, check if a file with
 /// that name already exists under any of the extensions Prism can produce
-/// (video merges to .mp4, audio-only extracts to .mp3). If so, try
+/// (video merges to .mp4, audio-only extracts to .mp3), or if another active
+/// download has claimed the same template (`taken`). If so, try
 /// `video (1).%(ext)s`, `video (2).%(ext)s`, etc.
-fn dedupe_output_path(template: &str) -> String {
+///
+/// The `taken` check matters as much as the disk probe: two concurrent
+/// downloads of the same title would otherwise share intermediate files
+/// (`video.f137.mp4` etc.) — whichever merges first deletes them out from
+/// under the other, which then dies with "[Errno 2] No such file or directory".
+pub(crate) fn dedupe_output_path(template: &str, taken: &[String]) -> String {
     const PROBE_EXTS: [&str; 6] = ["mp4", "mp3", "m4a", "opus", "mkv", "webm"];
-    let exists_any = |tpl: &str| {
-        PROBE_EXTS
-            .iter()
-            .any(|ext| std::path::Path::new(&tpl.replace(".%(ext)s", &format!(".{}", ext))).exists())
+    let conflicts = |tpl: &str| {
+        taken.iter().any(|t| t == tpl)
+            || PROBE_EXTS
+                .iter()
+                .any(|ext| std::path::Path::new(&tpl.replace(".%(ext)s", &format!(".{}", ext))).exists())
     };
 
-    if !exists_any(template) {
+    if !conflicts(template) {
         return template.to_string();
     }
 
@@ -702,7 +766,7 @@ fn dedupe_output_path(template: &str) -> String {
 
     for n in 1..1000 {
         let candidate = format!("{} ({}).%(ext)s", base, n);
-        if !exists_any(&candidate) {
+        if !conflicts(&candidate) {
             return candidate;
         }
     }
@@ -936,6 +1000,9 @@ pub fn run() {
             cancel_download,
             start_torrent,
             cancel_torrent,
+            pause_torrent,
+            resume_torrent,
+            update_torrent_files,
             parse_torrent,
             set_torrent_rate_limit,
             open_file,
@@ -1005,17 +1072,36 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let template = dir.join("vid.%(ext)s").to_string_lossy().into_owned();
         // Nothing exists — unchanged
-        assert_eq!(dedupe_output_path(&template), template);
+        assert_eq!(dedupe_output_path(&template, &[]), template);
         // vid.mp4 exists — bumps to (1)
         std::fs::write(dir.join("vid.mp4"), b"x").unwrap();
         assert_eq!(
-            dedupe_output_path(&template),
+            dedupe_output_path(&template, &[]),
             dir.join("vid (1).%(ext)s").to_string_lossy().into_owned()
         );
         // vid (1).mp3 also exists (audio-only output) — bumps to (2)
         std::fs::write(dir.join("vid (1).mp3"), b"x").unwrap();
         assert_eq!(
-            dedupe_output_path(&template),
+            dedupe_output_path(&template, &[]),
+            dir.join("vid (2).%(ext)s").to_string_lossy().into_owned()
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn dedupes_against_active_download_templates() {
+        let dir = std::env::temp_dir().join(format!("prism-dedupe-taken-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let template = dir.join("vid.%(ext)s").to_string_lossy().into_owned();
+        // Nothing on disk, but another in-flight download claimed the same
+        // template — the concurrent-duplicate case that corrupted merges.
+        let taken = vec![template.clone()];
+        let deduped = dedupe_output_path(&template, &taken);
+        assert_eq!(deduped, dir.join("vid (1).%(ext)s").to_string_lossy().into_owned());
+        // A second duplicate must skip both claims.
+        let taken = vec![template.clone(), deduped];
+        assert_eq!(
+            dedupe_output_path(&template, &taken),
             dir.join("vid (2).%(ext)s").to_string_lossy().into_owned()
         );
         std::fs::remove_dir_all(&dir).unwrap();

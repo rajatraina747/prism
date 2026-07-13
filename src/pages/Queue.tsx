@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { ArrowDownToLine, Pause, Play, Search } from 'lucide-react';
 
 export default function Queue() {
-  const { items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, startAll, pauseAll, reorderQueue } = useQueue();
+  const { items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue, startAll, pauseAll, reorderQueue, updateTorrentFiles } = useQueue();
   const { removeFromHistory } = useHistory();
 
   // Cancel is a single click on a possibly hours-old download — no confirm
@@ -48,6 +48,17 @@ export default function Queue() {
 
   const [search, setSearch] = useState('');
   const activeItems = items.filter(i => !['completed', 'canceled'].includes(i.status));
+
+  // The table only shows active items, but reorderQueue splices the full queue
+  // (which can still hold completed/canceled items awaiting archival) — map
+  // visible indexes to full-queue indexes via item ids.
+  const reorderActive = useCallback((fromIndex: number, toIndex: number) => {
+    const fromId = activeItems[fromIndex]?.id;
+    const toId = activeItems[toIndex]?.id;
+    const from = items.findIndex(i => i.id === fromId);
+    const to = items.findIndex(i => i.id === toId);
+    if (from !== -1 && to !== -1) reorderQueue(from, to);
+  }, [items, activeItems, reorderQueue]);
   // Reordering while a search filter is active would map filtered indexes onto
   // the full queue — only offer search-as-filter, and reorder on the full list.
   const visibleItems = search
@@ -119,7 +130,8 @@ export default function Queue() {
           onCancel={cancelWithUndo}
           onRetry={retryDownload}
           onRemove={removeFromQueue}
-          onReorder={search ? undefined : reorderQueue}
+          onReorder={search ? undefined : reorderActive}
+          onUpdateFiles={updateTorrentFiles}
         />
       )}
     </div>

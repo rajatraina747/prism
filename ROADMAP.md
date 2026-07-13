@@ -92,6 +92,52 @@ extraction.
 - [ ] **Sparse/preallocated file control.** librqbit defaults are fine; expose
   only if users need it.
 
+## Arc — Classic client parity (July 2026)
+
+Features uTorrent/Vuze users expect, gated on what librqbit 8.x actually
+exposes. Shipped in one pass:
+
+- [x] **Native pause/resume.** `session.pause()/unpause()` through new
+  `pause_torrent`/`resume_torrent` commands; the poll loop survives a pause
+  (skips emits via `handle.is_paused()`). Resume no longer re-adds + re-hash-
+  checks; the delete/re-add path remains as fallback (and after app restart).
+  AppProvider branches per engine in pause/resume/pauseAll/startAll.
+- [x] **Extra trackers.** `extraTrackers` setting (Settings → Downloads) →
+  `AddTorrentOptions.trackers` on every add. Filtered Rust-side to
+  http(s)/udp.
+- [x] **Per-torrent speed limit.** `settings.speedLimit` now flows to torrents
+  (`AddTorrentOptions.ratelimits.download_bps`), on top of the session-wide
+  Quiet-Hours limit.
+- [x] **Editable file selection mid-download.** Checkboxes in the queue row's
+  file list → `update_torrent_files` → `session.update_only_files`; selection
+  persisted back into `settings.selectedFiles` so restarts keep the subset.
+- [x] **IP blocklist.** `blocklistUrl` setting → `SessionOptions.blocklist_url`
+  (standard p2p formats). Session-creation option: applies on next launch.
+- [x] **Copy magnet/source link** action on every queue row.
+- [x] **Swarm health readout.** peers_seen/peers_connecting from librqbit's
+  aggregate stats; the row distinguishes "searching for peers", "connecting",
+  "0 of N reachable" (NAT hint) and "N peers · M seen".
+- [ ] **Per-IP peer table.** BLOCKED upstream: librqbit 8.1.1 doesn't re-export
+  `PeerStatsFilter`/`PeerStatsSnapshot`, so `api_peer_stats` is uncallable from
+  outside the crate. Needs an upstream PR (or the http-api feature + local
+  port). Aggregate counts above cover the main diagnostic need meanwhile.
+- [ ] **Manual "update tracker" / force reannounce.** Not exposed by librqbit
+  8.x at all; `force_tracker_interval` at add time is the only knob. Upstream
+  PR territory.
+- [ ] **Stream-while-downloading (flagship candidate).** librqbit's
+  `FileStream` (AsyncRead+AsyncSeek, on-demand piece prioritization) served
+  over a localhost HTTP server (Range support) → "Play now" on a downloading
+  torrent. Design sketch: axum/hyper listener on 127.0.0.1:<random>, one route
+  per (torrent, file); Play button switches label while status=downloading;
+  CSP already allows localhost? verify `connect-src`/media loading. Biggest
+  remaining UI+backend lift; do as its own arc.
+- [ ] **Watch folder.** Poll a user-chosen dir for new `.torrent` files →
+  add flow. Cheap via `notify` crate or a 10s scan; needs dedupe against
+  already-added infohashes.
+- [ ] **Move completed to folder.** Post-completion rename into a "done" dir;
+  interacts with seeding (librqbit holds file handles while seeding — move on
+  seed-complete, not download-complete).
+
 ## Explicitly deferred
 
 - Paid Apple notarization (ad-hoc signing + Homebrew cask for now).

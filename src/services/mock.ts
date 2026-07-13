@@ -168,6 +168,19 @@ export class MockPrismService implements IPrismService {
     // Mock: no-op — cancellation is handled by clearing the interval in AppProvider
   }
 
+  async pauseTorrent(_id: string): Promise<void> {
+    // Mock: no-op — the sim keeps ticking but the reducer ignores progress
+    // while an item is paused, so the UI behaves the same.
+  }
+
+  async resumeTorrent(_id: string): Promise<void> {
+    // Mock: no-op
+  }
+
+  async updateTorrentFiles(_id: string, _onlyFiles: number[]): Promise<void> {
+    // Mock: no torrent engine
+  }
+
   async setTorrentRateLimit(_bytesPerSec: number | null): Promise<void> {
     // Mock: no torrent engine to throttle
   }

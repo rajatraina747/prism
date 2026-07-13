@@ -217,6 +217,20 @@ export default function Settings() {
                     onChange={v => updatePreference('seedingPolicy', v as any)}
                   />
                 </SettingRow>
+                <SettingRow label="Extra trackers" description="Announce URLs added to every torrent (comma or newline separated). Helps find peers when a magnet's own trackers are dead">
+                  <TextInput
+                    value={p.extraTrackers}
+                    onChange={v => updatePreference('extraTrackers', v)}
+                    placeholder="udp://tracker.example.org:1337/announce"
+                  />
+                </SettingRow>
+                <SettingRow label="IP blocklist" description="URL of a standard p2p blocklist for the torrent engine (gz supported). Takes effect on next launch. Leave empty to disable">
+                  <TextInput
+                    value={p.blocklistUrl}
+                    onChange={v => updatePreference('blocklistUrl', v)}
+                    placeholder="https://example.com/blocklist.p2p.gz"
+                  />
+                </SettingRow>
                 <SettingRow label="Proxy" description="Route traffic through a proxy. e.g. socks5://127.0.0.1:9050 (Tor) or http://host:port. Torrents only use socks5. Leave empty for a direct connection">
                   <TextInput
                     value={p.proxyUrl}

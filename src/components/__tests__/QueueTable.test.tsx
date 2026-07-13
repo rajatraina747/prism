@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { StaticServiceProvider } from '@/services/ServiceProvider';
+import { MockPrismService } from '@/services/mock';
 import { QueueTable } from '../queue/QueueTable';
 import type { DownloadItem } from '@/types/models';
+
+// QueueTable rows use the service (copy-link) — wrap renders in the provider.
+const mockService = new MockPrismService();
+const render = (ui: React.ReactElement) =>
+  rtlRender(<StaticServiceProvider service={mockService}>{ui}</StaticServiceProvider>);
 
 function makeItem(overrides: Partial<DownloadItem> = {}): DownloadItem {
   return {

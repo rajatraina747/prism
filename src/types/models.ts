@@ -98,10 +98,17 @@ export interface DownloadItem {
   filePath?: string;
   error?: DownloadError;
   retryAttempt: number;
+  // 'processing' while yt-dlp hands off to ffmpeg (merge/extract/embed) —
+  // bytes stop moving but the download isn't done. Absent otherwise.
+  stage?: 'processing';
   // Source engine. Absent/'http' = yt-dlp; 'torrent' = librqbit. The torrent
   // fields below are only populated while kind === 'torrent'.
   kind?: DownloadKind;
   peers?: number;
+  // Swarm health: peers discovered / mid-handshake. 0 connected + 0 seen =
+  // dead swarm; 0 connected + many seen = connectivity problem.
+  peersSeen?: number;
+  peersConnecting?: number;
   uploadSpeed?: number; // bytes per second
   ratio?: number; // uploaded / downloaded
   files?: TorrentFileInfo[]; // multi-file torrent breakdown
@@ -163,6 +170,13 @@ export interface AppPreferences {
   // Optional proxy for all traffic. yt-dlp accepts http(s)/socks; torrents only
   // use it when it's a socks5:// URL. Empty = direct. Validated Rust-side.
   proxyUrl: string;
+  // Extra tracker announce URLs added to every torrent (newline- or comma-
+  // separated). Helps peer discovery on magnets with dead/few trackers.
+  // Read by the Rust side from settings.json (filtered to http(s)/udp).
+  extraTrackers: string;
+  // IP blocklist URL for the torrent engine (standard p2p formats, gz ok).
+  // Applied when the engine starts — takes effect on next launch. Empty = off.
+  blocklistUrl: string;
   // Remembered quality preset per domain (host -> preset id). When you add a URL
   // from a site you've used before, its last-used preset is pre-selected.
   perSitePresets: Record<string, string>;
@@ -226,6 +240,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   audioFormat: 'mp3',
   seedingPolicy: 'ratio',
   proxyUrl: '',
+  extraTrackers: '',
+  blocklistUrl: '',
   perSitePresets: {},
 };
 

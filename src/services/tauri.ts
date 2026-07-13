@@ -107,8 +107,11 @@ export class TauriPrismService implements IPrismService {
         progress: number;
         speed: number;
         eta: number;
+        stage?: 'processing';
         upload_speed?: number;
         peers?: number;
+        peers_seen?: number;
+        peers_connecting?: number;
         ratio?: number;
         seeding?: boolean;
         files?: { name: string; size: number; progress: number }[];
@@ -121,8 +124,12 @@ export class TauriPrismService implements IPrismService {
           progress: p.progress,
           speed: p.speed,
           eta: p.eta,
+          // Deliberately present even when undefined: clears a stale stage.
+          stage: p.stage,
           uploadSpeed: p.upload_speed,
           peers: p.peers,
+          peersSeen: p.peers_seen,
+          peersConnecting: p.peers_connecting,
           ratio: p.ratio,
           seeding: p.seeding,
           // Only present on periodic ticks; omit the key otherwise so the reducer
@@ -153,6 +160,9 @@ export class TauriPrismService implements IPrismService {
           magnet: item.metadata.source.url,
           outputPath: dest,
           onlyFiles: item.settings.selectedFiles ?? null,
+          // Per-item cap (quiet-hours override flows in via effectiveItem);
+          // applies on top of the session-wide limit.
+          speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         });
         return;
       }
@@ -206,6 +216,18 @@ export class TauriPrismService implements IPrismService {
       invoke('cancel_download', { id }).catch(() => {}),
       invoke('cancel_torrent', { id }).catch(() => {}),
     ]);
+  }
+
+  async pauseTorrent(id: string): Promise<void> {
+    await invoke('pause_torrent', { id });
+  }
+
+  async resumeTorrent(id: string): Promise<void> {
+    await invoke('resume_torrent', { id });
+  }
+
+  async updateTorrentFiles(id: string, onlyFiles: number[]): Promise<void> {
+    await invoke('update_torrent_files', { id, onlyFiles });
   }
 
   async setTorrentRateLimit(bytesPerSec: number | null): Promise<void> {

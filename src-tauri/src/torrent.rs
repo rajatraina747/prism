@@ -32,9 +32,10 @@ const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
 
 const BYTES_PER_MIB: f64 = 1024.0 * 1024.0;
 
-/// How long a torrent may make zero download progress before we call it stalled.
-/// Mirrors the HTTP engine's inactivity kill; a live seeding torrent is exempt
-/// (it's `finished`, handled separately).
+/// How long a live torrent may sit with zero connected peers (and no progress)
+/// before we call it dead. Time spent initializing (hash-checking existing
+/// data) or connected-but-choked doesn't count — swarms routinely starve a
+/// peer for minutes and then resume, so only a peerless torrent ever fails.
 const STALL_TIMEOUT_SECS: u64 = 300;
 
 /// Re-send the (static) file list at most this often — per-file progress refreshes
@@ -88,6 +89,11 @@ pub struct TorrentProgress {
     pub eta: f64,
     pub upload_speed: f64,
     pub peers: u32,
+    /// Swarm-health detail: peers discovered (connected or not) and mid-
+    /// handshake. 0 connected / 0 seen = dead swarm; 0 connected / many seen
+    /// = connectivity problem. Distinguishing those is the point.
+    pub peers_seen: u32,
+    pub peers_connecting: u32,
     pub ratio: f64,
     pub seeding: bool,
     /// The torrent's files with per-file progress. Omitted (not just empty) on
@@ -125,6 +131,7 @@ async fn ensure_session(
     default_dir: &str,
     limits: LimitsConfig,
     socks_proxy: Option<String>,
+    blocklist_url: Option<String>,
 ) -> anyhow::Result<Arc<Session>> {
     let mut guard = slot.lock().await;
     if let Some(s) = guard.as_ref() {
@@ -137,6 +144,8 @@ async fn ensure_session(
         ratelimits: limits,
         // librqbit only supports socks5; http proxies are ignored for torrents.
         socks_proxy_url: socks_proxy.filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
+        // Standard p2p-format IP blocklist, fetched once per session.
+        blocklist_url,
         ..Default::default()
     };
     let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
@@ -172,9 +181,10 @@ impl TorrentManager {
         magnet: String,
         output_dir: String,
         socks_proxy: Option<String>,
+        blocklist: Option<String>,
     ) -> Result<Vec<TorrentFileEntry>, String> {
         let current_limits = *self.limits.lock().await;
-        let session = ensure_session(&self.session, &output_dir, current_limits, socks_proxy)
+        let session = ensure_session(&self.session, &output_dir, current_limits, socks_proxy, blocklist)
             .await
             .map_err(|e| format!("Failed to start torrent engine: {e}"))?;
 
@@ -221,6 +231,9 @@ impl TorrentManager {
 
     /// Start (or resume) a magnet/`.torrent` download into `output_dir`. Emits
     /// progress until the seed policy is satisfied, then a completion event.
+    /// `extra_trackers` are announced in addition to the torrent's own;
+    /// `download_limit` (bytes/sec) caps this torrent alone, on top of the
+    /// session-wide limit.
     #[allow(clippy::too_many_arguments)]
     pub fn start_torrent(
         &self,
@@ -231,6 +244,9 @@ impl TorrentManager {
         policy: SeedingPolicy,
         only_files: Option<Vec<usize>>,
         socks_proxy: Option<String>,
+        blocklist: Option<String>,
+        extra_trackers: Vec<String>,
+        download_limit: Option<u64>,
     ) {
         let session_slot = self.session.clone();
         let active = self.active.clone();
@@ -239,7 +255,7 @@ impl TorrentManager {
 
         tauri::async_runtime::spawn(async move {
             let current_limits = *limits_slot.lock().await;
-            let session = match ensure_session(&session_slot, &output_dir, current_limits, socks_proxy).await {
+            let session = match ensure_session(&session_slot, &output_dir, current_limits, socks_proxy, blocklist).await {
                 Ok(s) => s,
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };
@@ -264,6 +280,12 @@ impl TorrentManager {
                     // create_new and fails with "file exists". Existing data is
                     // hash-checked on add, not blindly trusted or truncated.
                     overwrite: true,
+                    trackers: (!extra_trackers.is_empty()).then(|| extra_trackers.clone()),
+                    ratelimits: LimitsConfig {
+                        download_bps: download_limit
+                            .and_then(|l| NonZeroU32::new(l.min(u32::MAX as u64) as u32)),
+                        upload_bps: None,
+                    },
                     ..Default::default()
                 };
                 match session.add_torrent(add, Some(opts)).await {
@@ -312,23 +334,37 @@ impl TorrentManager {
                     return emit_failure(&app, &id, msg);
                 }
 
-                let (speed, upload_speed, peers) = match &stats.live {
+                // A paused torrent stays in the loop (cancel and resume still
+                // work through the live handle) but emits nothing — the
+                // frontend already renders it as paused.
+                if handle.is_paused() {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+
+                let (speed, upload_speed, peers, peers_seen, peers_connecting) = match &stats.live {
                     Some(l) => (
                         l.download_speed.mbps * BYTES_PER_MIB,
                         l.upload_speed.mbps * BYTES_PER_MIB,
                         l.snapshot.peer_stats.live as u32,
+                        l.snapshot.peer_stats.seen as u32,
+                        l.snapshot.peer_stats.connecting as u32,
                     ),
-                    None => (0.0, 0.0, 0),
+                    None => (0.0, 0.0, 0, 0, 0),
                 };
 
-                // Stall watchdog: give up if a still-downloading torrent makes no
-                // progress for STALL_TIMEOUT_SECS (dead magnet / no seeders).
-                if stall.tick(stats.progress_bytes, stats.finished) {
+                // Stall watchdog: give up only on a torrent that is live yet
+                // can't find a single peer for STALL_TIMEOUT_SECS (dead magnet).
+                // Initializing (hash-check) and connected-but-idle don't count.
+                let starved = matches!(stats.state, TorrentStatsState::Live)
+                    && !stats.finished
+                    && peers == 0;
+                if stall.tick(stats.progress_bytes, starved) {
                     active.lock().await.remove(&id);
                     return emit_failure(
                         &app,
                         &id,
-                        "Stalled — no data received for 5 minutes (no seeders?)".into(),
+                        "No peers found for 5 minutes — the torrent appears to be dead".into(),
                     );
                 }
 
@@ -367,6 +403,8 @@ impl TorrentManager {
                         eta,
                         upload_speed,
                         peers,
+                        peers_seen,
+                        peers_connecting,
                         ratio,
                         seeding: stats.finished,
                         files,
@@ -401,6 +439,52 @@ impl TorrentManager {
                 },
             );
         });
+    }
+
+    /// Pause an active torrent in place. The handle stays in the session and
+    /// the poll loop keeps running, so resuming needs no re-add and no hash
+    /// re-check of what's already on disk (unlike cancel + re-add).
+    pub async fn pause_torrent(&self, id: &str) -> Result<(), String> {
+        let handle = match self.active.lock().await.get(id) {
+            Some((h, _)) => h.clone(),
+            None => return Err("Torrent is not active".into()),
+        };
+        let session = self.session.lock().await.clone();
+        match session {
+            Some(s) => s.pause(&handle).await.map_err(|e| e.to_string()),
+            None => Err("Torrent engine is not running".into()),
+        }
+    }
+
+    /// Resume a torrent paused with `pause_torrent`.
+    pub async fn resume_torrent(&self, id: &str) -> Result<(), String> {
+        let handle = match self.active.lock().await.get(id) {
+            Some((h, _)) => h.clone(),
+            None => return Err("Torrent is not active".into()),
+        };
+        let session = self.session.lock().await.clone();
+        match session {
+            Some(s) => s.unpause(&handle).await.map_err(|e| e.to_string()),
+            None => Err("Torrent engine is not running".into()),
+        }
+    }
+
+    /// Change which files of an active torrent are downloaded (the queue's
+    /// file list is editable mid-download, like uTorrent's per-file skip).
+    pub async fn update_file_selection(&self, id: &str, only_files: Vec<usize>) -> Result<(), String> {
+        if only_files.is_empty() {
+            return Err("At least one file must stay selected".into());
+        }
+        let handle = match self.active.lock().await.get(id) {
+            Some((h, _)) => h.clone(),
+            None => return Err("Torrent is not active".into()),
+        };
+        let session = self.session.lock().await.clone();
+        let set: std::collections::HashSet<usize> = only_files.into_iter().collect();
+        match session {
+            Some(s) => s.update_only_files(&handle, &set).await.map_err(|e| e.to_string()),
+            None => Err("Torrent engine is not running".into()),
+        }
     }
 
     /// Stop a torrent and drop it from the session (does not delete files, so a
@@ -456,10 +540,11 @@ fn seeding_complete(policy: SeedingPolicy, ratio: f64) -> bool {
     }
 }
 
-/// Detects a stalled download: `tick` is called once per second with the current
-/// downloaded byte count; it returns true once a *still-downloading* torrent has
-/// made zero progress for `timeout_secs` consecutive ticks. A `finished` torrent
-/// (seeding) never stalls.
+/// Detects a dead download: `tick` is called once per second with the current
+/// downloaded byte count and whether the torrent is currently *starved* (live,
+/// not finished, zero connected peers). It returns true after `timeout_secs`
+/// consecutive starved ticks with no progress; any progress or any non-starved
+/// tick (peers connected, hash-checking, seeding) resets the clock.
 struct StallWatch {
     last: u64,
     idle: u64,
@@ -471,17 +556,17 @@ impl StallWatch {
         Self { last: 0, idle: 0, timeout: timeout_secs }
     }
 
-    fn tick(&mut self, progress_bytes: u64, finished: bool) -> bool {
-        if finished {
-            self.idle = 0;
-            return false;
-        }
+    fn tick(&mut self, progress_bytes: u64, starved: bool) -> bool {
         if progress_bytes > self.last {
             self.last = progress_bytes;
             self.idle = 0;
-        } else {
-            self.idle += 1;
+            return false;
         }
+        if !starved {
+            self.idle = 0;
+            return false;
+        }
+        self.idle += 1;
         self.idle >= self.timeout
     }
 }
@@ -538,30 +623,31 @@ mod tests {
     }
 
     #[test]
-    fn stall_fires_only_after_timeout_of_no_progress() {
+    fn stall_fires_only_after_timeout_of_starved_ticks() {
         let mut w = StallWatch::new(3);
-        // Progress each tick → never stalls.
-        assert!(!w.tick(10, false));
-        assert!(!w.tick(20, false));
-        assert!(!w.tick(30, false));
-        // Now frozen: needs 3 consecutive idle ticks.
-        assert!(!w.tick(30, false)); // idle 1
-        assert!(!w.tick(30, false)); // idle 2
-        assert!(w.tick(30, false)); // idle 3 → stalled
+        // Progress each tick → never stalls, even with zero peers.
+        assert!(!w.tick(10, true));
+        assert!(!w.tick(20, true));
+        assert!(!w.tick(30, true));
+        // Frozen and peerless: needs 3 consecutive starved ticks.
+        assert!(!w.tick(30, true)); // starved 1
+        assert!(!w.tick(30, true)); // starved 2
+        assert!(w.tick(30, true)); // starved 3 → dead
     }
 
     #[test]
-    fn stall_resets_on_progress_and_ignores_finished() {
+    fn stall_resets_on_progress_or_non_starved_ticks() {
         let mut w = StallWatch::new(2);
-        assert!(!w.tick(0, false)); // idle 1
-        assert!(!w.tick(100, false)); // progress → reset
-        assert!(!w.tick(100, false)); // idle 1
-        // A finished (seeding) torrent never stalls, even sitting at the same bytes.
-        assert!(!w.tick(100, true));
-        assert!(!w.tick(100, true));
-        assert!(!w.tick(100, true));
-        // Back to downloading with no progress: two idle ticks → stalls.
-        assert!(!w.tick(100, false)); // idle 1
-        assert!(w.tick(100, false)); // idle 2 → stalled
+        assert!(!w.tick(0, true)); // starved 1
+        assert!(!w.tick(100, true)); // progress → reset
+        assert!(!w.tick(100, true)); // starved 1
+        // Peers connected / hash-checking / seeding (not starved) → clock resets
+        // and never advances, no matter how long the bytes sit still.
+        assert!(!w.tick(100, false));
+        assert!(!w.tick(100, false));
+        assert!(!w.tick(100, false));
+        // Peerless again with no progress: two starved ticks → dead.
+        assert!(!w.tick(100, true)); // starved 1
+        assert!(w.tick(100, true)); // starved 2 → dead
     }
 }

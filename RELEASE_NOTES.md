@@ -6,22 +6,17 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-- **Torrent pause & resume actually works** — resuming a paused torrent picks up the pieces already on disk instead of failing with a file error
-- **Stopping a seed counts as a success** — a fully downloaded torrent now lands in your library as completed (with Play and Show in Folder), not "canceled"
-- **New Library page** — Completed, Failed, and Canceled downloads live in one place with tabs, search, and failure reasons with one-click retry; the sidebar shows a badge when something fails
-- **Playlists queue instantly** — importing a playlist adds every selected video in one click instead of parsing them one by one while you wait
-- **System notifications** — get notified when a download finishes or fails while Prism is minimized or in the tray
-- **Pick a folder per download** — the download dialog's Advanced section now has a Change button for the destination
-- **Video or playlist?** — pasting a watch link that's part of a playlist now asks which one you meant
-- **ffmpeg check** — Settings warns you (with install instructions) if ffmpeg is missing, instead of features silently not working
-- Remembered per-site quality presets now work as intended
-- Magnet links are no longer skipped when pasting a list of URLs
-- Splash screen only shows on first launch; the window remembers its size and position
-- URL parsing can no longer hang forever on a dead site — it times out with a clear message
-- Downloads of videos with non-Latin titles (Japanese, Hindi, …) from subscriptions keep their real names
-- Sharper error messages: the real cause is shown instead of the last log line, and unknown errors no longer retry pointlessly
-- Accessibility: visible keyboard focus, larger text, screen-reader labels everywhere, and queue reordering via keyboard (focus the drag handle, use arrow keys)
-- Queue and history files are written crash-safely, YouTube link variants (youtu.be / shorts / watch) de-duplicate correctly, and duplicate-quality listings no longer double-highlight
+- **Drag-to-reorder actually drops** — reordering the queue silently did nothing because the app's native drag handler was swallowing the drop; dragging URLs into the window works properly now too
+- **Steady progress for merged downloads** — video + audio downloads no longer snap back to 0% halfway through; the bar and byte counts only move forward, and a "Processing — merging & finishing up…" label shows while ffmpeg works (long merges are no longer killed as inactive)
+- **Fixed "No such file or directory" at the end of a download** — two downloads of the same video could share temp files and destroy each other's merge; each download now claims its own filenames up front
+- **Instant torrent pause/resume** — pausing keeps the torrent in the engine, so resuming no longer re-checks gigabytes of data on disk; Pause All / Resume All handle torrents and seeds correctly
+- **Torrents only fail when the swarm is actually dead** — a torrent with connected peers waits patiently (like every other client) instead of giving up after 5 quiet minutes; resumes no longer die during the startup hash-check
+- **Swarm health at a glance** — queue rows now distinguish "searching for peers", "connecting…", "0 of 40 peers reachable" (a firewall hint) and "12 peers · 45 seen"
+- **Change file selection mid-torrent** — the file list in a queue row now has checkboxes; skip or add files while it downloads
+- **Extra trackers** — add announce URLs (Settings → Downloads) to every torrent, for magnets whose own trackers are dead
+- **Per-download speed limit now applies to torrents** — on top of the session-wide Quiet Hours cap
+- **IP blocklist** — point Settings at a standard p2p blocklist URL to keep known-bad peers out (applies on next launch)
+- **Copy link** — every queue row can copy its magnet or source URL
 
 ## Install
 

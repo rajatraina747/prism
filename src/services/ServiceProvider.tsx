@@ -28,6 +28,12 @@ async function createService(): Promise<IPrismService> {
   return service;
 }
 
+/** Provide an already-constructed service synchronously — no async init, no
+ * loading splash. For component tests that render service consumers. */
+export function StaticServiceProvider({ service, children }: { service: IPrismService; children: ReactNode }) {
+  return <ServiceContext.Provider value={service}>{children}</ServiceContext.Provider>;
+}
+
 export function ServiceProvider({ children }: { children: ReactNode }) {
   const [service, setService] = useState<IPrismService | null>(null);
 

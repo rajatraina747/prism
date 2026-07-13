@@ -2,9 +2,11 @@ import React, { useState, useRef, useCallback } from 'react';
 import type { DownloadItem } from '@/types/models';
 import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
+import { useService } from '@/services/ServiceProvider';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-  Pause, Play, X, RotateCcw, Trash2, GripVertical, ArrowDownToLine,
+  Pause, Play, X, RotateCcw, Trash2, GripVertical, ArrowDownToLine, Link,
 } from 'lucide-react';
 
 interface QueueTableProps {
@@ -15,9 +17,10 @@ interface QueueTableProps {
   onRetry: (id: string) => void;
   onRemove: (id: string) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
+  onUpdateFiles?: (id: string, onlyFiles: number[]) => void;
 }
 
-export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemove, onReorder }: QueueTableProps) {
+export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemove, onReorder, onUpdateFiles }: QueueTableProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +92,7 @@ export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemo
               onRetry={onRetry}
               onRemove={onRemove}
               onReorder={onReorder}
+              onUpdateFiles={onUpdateFiles}
             />
           </div>
         );
@@ -98,14 +102,22 @@ export function QueueTable({ items, onPause, onResume, onCancel, onRetry, onRemo
 }
 
 const QueueRow = React.memo(function QueueRow({
-  item, index, count, onPause, onResume, onCancel, onRetry, onRemove, onReorder,
+  item, index, count, onPause, onResume, onCancel, onRetry, onRemove, onReorder, onUpdateFiles,
 }: {
   item: DownloadItem; index: number; count: number;
   onPause: (id: string) => void; onResume: (id: string) => void;
   onCancel: (id: string) => void; onRetry: (id: string) => void;
   onRemove: (id: string) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
+  onUpdateFiles?: (id: string, onlyFiles: number[]) => void;
 }) {
+  const service = useService();
+  const copyLink = useCallback(() => {
+    service.copyToClipboard(item.metadata.source.url)
+      .then(() => toast.success(item.kind === 'torrent' ? 'Magnet link copied' : 'Link copied'))
+      .catch(() => toast.error('Could not copy link'));
+  }, [service, item.metadata.source.url, item.kind]);
+
   const isActive = item.status === 'downloading';
   const isPaused = item.status === 'paused';
   const isSeeding = item.status === 'seeding';
@@ -172,13 +184,15 @@ const QueueRow = React.memo(function QueueRow({
             {item.settings.downloadSubtitles && (
               <span className="text-muted-foreground/70">+ Subs</span>
             )}
-            {isActive && (
+            {isActive && item.stage === 'processing' ? (
+              <span className="text-primary/80">Processing — merging &amp; finishing up…</span>
+            ) : isActive && (
               <>
                 <span>{formatBytes(item.downloadedBytes)} / {formatBytes(item.totalBytes)}</span>
                 <span>{formatSpeed(item.speed)}</span>
                 <span>ETA {formatEta(item.eta)}</span>
                 <span>{item.progress.toFixed(1)}%</span>
-                {isTorrent && <span>{item.peers ?? 0} peers</span>}
+                {isTorrent && <SwarmHealth item={item} />}
               </>
             )}
             {isSeeding && (
@@ -208,13 +222,40 @@ const QueueRow = React.memo(function QueueRow({
               </button>
               {showFiles && (
                 <div className="mt-1 space-y-0.5">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
-                      <span className="truncate flex-1" title={f.name}>{f.name.split('/').pop()}</span>
-                      <span>{formatBytes(f.size)}</span>
-                      <span className="w-9 text-right">{f.progress.toFixed(0)}%</span>
-                    </div>
-                  ))}
+                  {files.map((f, i) => {
+                    // Selection is editable mid-download (uTorrent-style skip):
+                    // absent selectedFiles means "all files".
+                    const selected = item.settings.selectedFiles?.includes(i) ?? true;
+                    const canEdit = !!onUpdateFiles && (isActive || isPaused);
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+                        {canEdit && (
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            aria-label={`Download ${f.name.split('/').pop()}`}
+                            className="w-3 h-3 accent-primary shrink-0 cursor-pointer"
+                            onChange={() => {
+                              const current = item.settings.selectedFiles ?? files.map((_, idx) => idx);
+                              const next = selected
+                                ? current.filter(x => x !== i)
+                                : [...current, i].sort((a, b) => a - b);
+                              if (next.length === 0) {
+                                toast.error('At least one file must stay selected');
+                                return;
+                              }
+                              onUpdateFiles(item.id, next);
+                            }}
+                          />
+                        )}
+                        <span className={cn('truncate flex-1', !selected && 'line-through opacity-50')} title={f.name}>
+                          {f.name.split('/').pop()}
+                        </span>
+                        <span>{formatBytes(f.size)}</span>
+                        <span className="w-9 text-right">{selected ? `${f.progress.toFixed(0)}%` : '—'}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -223,6 +264,11 @@ const QueueRow = React.memo(function QueueRow({
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
+          <ActionButton
+            icon={Link}
+            onClick={copyLink}
+            tooltip={isTorrent ? 'Copy magnet link' : 'Copy source link'}
+          />
           {isActive && (
             <ActionButton icon={Pause} onClick={() => onPause(item.id)} tooltip="Pause" />
           )}
@@ -243,6 +289,24 @@ const QueueRow = React.memo(function QueueRow({
     </div>
   );
 });
+
+/// Peer count with swarm-health context. 0 connected reads very differently
+/// depending on whether the swarm has peers we just can't reach yet.
+function SwarmHealth({ item }: { item: DownloadItem }) {
+  const peers = item.peers ?? 0;
+  const seen = item.peersSeen ?? 0;
+  const connecting = item.peersConnecting ?? 0;
+  if (peers > 0) {
+    return <span title={`${seen} peers discovered in the swarm`}>{peers} peers{seen > peers ? ` · ${seen} seen` : ''}</span>;
+  }
+  if (connecting > 0) {
+    return <span className="text-primary/80">connecting to {connecting} peers…</span>;
+  }
+  if (seen > 0) {
+    return <span className="text-warning" title="Peers exist but none are reachable — possible NAT/firewall issue">0 of {seen} peers reachable</span>;
+  }
+  return <span className="text-muted-foreground/70">searching for peers…</span>;
+}
 
 function ActionButton({ icon: Icon, onClick, tooltip }: { icon: React.ElementType; onClick: () => void; tooltip: string }) {
   return (

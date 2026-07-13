@@ -18,7 +18,7 @@ export type QueueAction =
       data: Partial<
         Pick<
           DownloadItem,
-          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'peers' | 'uploadSpeed' | 'ratio' | 'files'
+          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'stage' | 'peers' | 'peersSeen' | 'peersConnecting' | 'uploadSpeed' | 'ratio' | 'files'
         >
       >;
       // Torrent-only: the download finished and the item is now uploading.
@@ -32,6 +32,7 @@ export type QueueAction =
   | { type: 'resume'; id: string }
   | { type: 'cancel'; id: string }
   | { type: 'retry'; id: string }
+  | { type: 'setSelectedFiles'; id: string; files: number[] }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -39,7 +40,7 @@ export type QueueAction =
   | { type: 'pauseAll' }
   | { type: 'reorder'; from: number; to: number };
 
-const IDLE_COUNTERS = { progress: 0, downloadedBytes: 0, speed: 0, eta: 0 } as const;
+const IDLE_COUNTERS = { progress: 0, downloadedBytes: 0, speed: 0, eta: 0, stage: undefined } as const;
 
 function update(
   queue: DownloadItem[],
@@ -133,6 +134,13 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
         retryAttempt: i.retryAttempt + 1,
         ...IDLE_COUNTERS,
         error: undefined,
+      }));
+
+    case 'setSelectedFiles':
+      // Persisted in settings so a restart/retry re-adds with the same subset.
+      return update(queue, action.id, i => ({
+        ...i,
+        settings: { ...i.settings, selectedFiles: action.files },
       }));
 
     case 'remove':

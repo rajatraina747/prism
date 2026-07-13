@@ -6,9 +6,14 @@ export type ProgressCallback = (data: {
   progress: number;
   speed: number;
   eta: number;
+  // HTTP-only: 'processing' while ffmpeg merges/extracts/embeds. The key is
+  // always sent (possibly undefined) so a stale stage clears on the next tick.
+  stage?: 'processing';
   // Torrent-only swarm stats; undefined for HTTP downloads.
   uploadSpeed?: number;
   peers?: number;
+  peersSeen?: number;
+  peersConnecting?: number;
   ratio?: number;
   files?: TorrentFileInfo[];
   // Torrent-only: download finished, now seeding. Drives downloading→seeding.
@@ -46,6 +51,14 @@ export interface IPrismService {
 
   pauseDownload(id: string): Promise<void>;
   cancelDownload(id: string): Promise<void>;
+  /** Torrent-only: pause/resume in place. The engine keeps the torrent in its
+   * session, so resuming needs no re-add and no hash re-check. Rejects if the
+   * torrent isn't active (caller falls back to the kill-and-requeue path). */
+  pauseTorrent(id: string): Promise<void>;
+  resumeTorrent(id: string): Promise<void>;
+  /** Torrent-only: change which files download, mid-torrent. Rejects when the
+   * torrent isn't active or the selection is empty. */
+  updateTorrentFiles(id: string, onlyFiles: number[]): Promise<void>;
   /** Throttle the torrent engine session-wide (bytes/sec; null = unlimited).
    * Applies to download and seed upload. Driven by Quiet Hours. */
   setTorrentRateLimit(bytesPerSec: number | null): Promise<void>;

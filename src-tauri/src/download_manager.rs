@@ -23,6 +23,10 @@ pub struct DownloadProgress {
     pub progress: f64,
     pub speed: f64,
     pub eta: f64,
+    /// Set to "processing" once yt-dlp hands off to ffmpeg (merge/extract/
+    /// embed); absent while bytes are still coming down.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage: Option<&'static str>,
 }
 
 #[derive(Clone, Serialize)]
@@ -40,17 +44,24 @@ struct ActiveDownload {
 
 pub struct DownloadManager {
     downloads: Arc<Mutex<HashMap<String, ActiveDownload>>>,
+    /// Output templates claimed by in-flight downloads (id → template).
+    /// Consulted by the dedupe so two concurrent downloads of the same title
+    /// never share intermediate files. Entries are removed when the download
+    /// ends, so a paused/failed item keeps its template on retry (resuming
+    /// its own `.part` files).
+    reserved: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl DownloadManager {
     pub fn new() -> Self {
         Self {
             downloads: Arc::new(Mutex::new(HashMap::new())),
+            reserved: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn start_download(
+    pub async fn start_download(
         &self,
         app: AppHandle,
         id: String,
@@ -63,6 +74,18 @@ impl DownloadManager {
         speed_limit: Option<u64>,
     ) {
         let downloads = self.downloads.clone();
+        let reserved = self.reserved.clone();
+
+        // Auto-number the template against disk AND other active downloads,
+        // atomically with claiming it — concurrent adds of the same title
+        // must land on distinct templates.
+        let output_path = {
+            let mut guard = reserved.lock().await;
+            let taken: Vec<String> = guard.values().cloned().collect();
+            let path = crate::dedupe_output_path(&output_path, &taken);
+            guard.insert(id.clone(), path.clone());
+            path
+        };
 
         tauri::async_runtime::spawn(async move {
             // URL is appended last (after a `--` terminator) so it can't be
@@ -188,6 +211,7 @@ impl DownloadManager {
             let cmd = match crate::engine::ytdlp_command(&app) {
                 Ok(c) => c.args(&args),
                 Err(e) => {
+                    reserved.lock().await.remove(&id);
                     let _ = app.emit(
                         &format!("download-complete-{}", id),
                         DownloadComplete {
@@ -205,6 +229,7 @@ impl DownloadManager {
             let (mut rx, child) = match cmd.spawn() {
                 Ok(pair) => pair,
                 Err(e) => {
+                    reserved.lock().await.remove(&id);
                     let _ = app.emit(
                         &format!("download-complete-{}", id),
                         DownloadComplete {
@@ -230,13 +255,21 @@ impl DownloadManager {
             // postprocessor chatter rather than the actual cause.
             let mut last_error = String::new();
             let mut last_stderr = String::new();
+            let mut agg = PhaseAggregator::new();
 
             loop {
-                match tokio::time::timeout(std::time::Duration::from_secs(300), rx.recv()).await {
+                // ffmpeg postprocessing (merging a multi-GB file) can be silent
+                // for a long time — don't kill it as inactive.
+                let inactivity = std::time::Duration::from_secs(if agg.processing { 1800 } else { 300 });
+                match tokio::time::timeout(inactivity, rx.recv()).await {
                     Ok(Some(event)) => match event {
                         CommandEvent::Stdout(data) => {
                             let line = String::from_utf8_lossy(&data);
-                            if let Some(p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                            if agg.on_line(&line) {
+                                let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                            }
+                            if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                agg.apply(&mut p);
                                 let _ = app.emit(&format!("download-progress-{}", id), p);
                             }
                         }
@@ -249,7 +282,11 @@ impl DownloadManager {
                                     last_error = trimmed.to_string();
                                 }
                             }
-                            if let Some(p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                            if agg.on_line(&line) {
+                                let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                            }
+                            if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                agg.apply(&mut p);
                                 let _ = app.emit(&format!("download-progress-{}", id), p);
                             }
                         }
@@ -261,7 +298,7 @@ impl DownloadManager {
                     },
                     Ok(None) => break,
                     Err(_) => {
-                        // 5-minute inactivity timeout
+                        // Inactivity timeout
                         let mut map = downloads.lock().await;
                         if let Some(dl) = map.remove(&id) {
                             let _ = dl.child.kill();
@@ -272,11 +309,12 @@ impl DownloadManager {
                 }
             }
 
-            // Remove from active downloads
+            // Remove from active downloads and release the template claim
             {
                 let mut map = downloads.lock().await;
                 map.remove(&id);
             }
+            reserved.lock().await.remove(&id);
 
             if last_error.is_empty() {
                 last_error = last_stderr;
@@ -316,6 +354,84 @@ impl DownloadManager {
             true
         } else {
             false
+        }
+    }
+}
+
+/// Folds yt-dlp's sequential per-file progress into one forward-only stream.
+/// A merged download fetches the video file, then the audio file (and possibly
+/// subtitles), each restarting at 0% with its own total — displayed raw, the
+/// bar snaps back and the size/ETA swing wildly at every boundary. This banks
+/// the bytes of each finished file and rewrites events cumulatively, and flags
+/// the trailing ffmpeg postprocessing (merge/extract/embed) so the UI can show
+/// a label instead of a frozen 100%.
+struct PhaseAggregator {
+    /// Bytes from files that already finished downloading.
+    done_prev: u64,
+    /// Progress of the file currently downloading.
+    cur_done: u64,
+    cur_total: u64,
+    processing: bool,
+}
+
+const POSTPROCESS_MARKERS: [&str; 7] = [
+    "[Merger]",
+    "[ExtractAudio]",
+    "[VideoRemuxer]",
+    "[EmbedThumbnail]",
+    "[Metadata]",
+    "[SponsorBlock]",
+    "[Fixup",
+];
+
+impl PhaseAggregator {
+    fn new() -> Self {
+        Self { done_prev: 0, cur_done: 0, cur_total: 0, processing: false }
+    }
+
+    /// Inspect a non-progress output line. Returns true when it flips the
+    /// download into postprocessing — the caller emits a synthetic event so
+    /// the UI switches immediately (ffmpeg may then be silent for minutes).
+    fn on_line(&mut self, line: &str) -> bool {
+        let l = line.trim();
+        if l.starts_with("[download] Destination:") {
+            // Next file starts: bank whatever the previous one downloaded.
+            self.done_prev += self.cur_done;
+            self.cur_done = 0;
+            self.cur_total = 0;
+            return false;
+        }
+        if !self.processing && POSTPROCESS_MARKERS.iter().any(|m| l.starts_with(m)) {
+            self.processing = true;
+            return true;
+        }
+        false
+    }
+
+    /// Rewrite a per-file progress event into cumulative terms.
+    fn apply(&mut self, p: &mut DownloadProgress) {
+        self.cur_done = p.downloaded_bytes;
+        self.cur_total = p.total_bytes;
+        p.downloaded_bytes = self.done_prev + self.cur_done;
+        // A stream with an unknown size reports total 0 — leave its raw
+        // percent alone rather than dividing by a bogus cumulative total.
+        if p.total_bytes > 0 {
+            p.total_bytes = self.done_prev + self.cur_total;
+            p.progress = (p.downloaded_bytes as f64 / p.total_bytes as f64 * 100.0).min(100.0);
+        }
+    }
+
+    /// Synthetic event marking the switch to ffmpeg postprocessing.
+    fn processing_event(&self, id: &str) -> DownloadProgress {
+        let done = self.done_prev + self.cur_done;
+        DownloadProgress {
+            id: id.to_string(),
+            downloaded_bytes: done,
+            total_bytes: done.max(self.done_prev + self.cur_total),
+            progress: 100.0,
+            speed: 0.0,
+            eta: 0.0,
+            stage: Some("processing"),
         }
     }
 }
@@ -370,6 +486,7 @@ fn parse_progress(
         progress: pct,
         speed,
         eta,
+        stage: None,
     })
 }
 
@@ -431,6 +548,56 @@ mod tests {
         assert_eq!(parse_size(1.0, "MiB"), 1024 * 1024);
         assert_eq!(parse_size(2.0, "GiB"), 2 * 1024 * 1024 * 1024);
         assert_eq!(parse_size(5.0, "??"), 5);
+    }
+
+    fn parsed(line: &str) -> DownloadProgress {
+        parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap()
+    }
+
+    #[test]
+    fn aggregator_makes_video_plus_audio_cumulative() {
+        const MIB: u64 = 1024 * 1024;
+        let mut agg = PhaseAggregator::new();
+
+        assert!(!agg.on_line("[download] Destination: clip.f616.mp4"));
+        let mut p = parsed(" 50.0% of 100.00MiB at 2.0MiB/s ETA 00:25");
+        agg.apply(&mut p);
+        assert_eq!(p.total_bytes, 100 * MIB);
+        assert!((p.progress - 50.0).abs() < 0.1);
+
+        let mut p = parsed("100.0% of 100.00MiB at 2.0MiB/s ETA 00:00");
+        agg.apply(&mut p);
+
+        // Audio file starts: bar must NOT reset — bytes and total accumulate.
+        assert!(!agg.on_line("[download] Destination: clip.f140.m4a"));
+        let mut p = parsed(" 10.0% of 10.00MiB at 1.0MiB/s ETA 00:09");
+        agg.apply(&mut p);
+        assert_eq!(p.downloaded_bytes, 101 * MIB);
+        assert_eq!(p.total_bytes, 110 * MIB);
+        assert!(p.progress > 90.0 && p.progress < 93.0);
+
+        let mut p = parsed("100.0% of 10.00MiB at 1.0MiB/s ETA 00:00");
+        agg.apply(&mut p);
+        assert!((p.progress - 100.0).abs() < 0.01);
+
+        // Merge begins: flips to processing exactly once, at 100%.
+        assert!(agg.on_line("[Merger] Merging formats into \"clip.mp4\""));
+        assert!(!agg.on_line("[Merger] Merging formats into \"clip.mp4\""));
+        let e = agg.processing_event("x");
+        assert_eq!(e.stage, Some("processing"));
+        assert_eq!(e.progress, 100.0);
+        assert_eq!(e.downloaded_bytes, 110 * MIB);
+    }
+
+    #[test]
+    fn aggregator_leaves_unknown_totals_alone() {
+        let mut agg = PhaseAggregator::new();
+        agg.on_line("[download] Destination: live.mp4");
+        // No "of <size>" → total 0; percent passes through untouched.
+        let mut p = parsed(" 37.5% at 1.0MiB/s ETA 00:09");
+        agg.apply(&mut p);
+        assert_eq!(p.total_bytes, 0);
+        assert!((p.progress - 37.5).abs() < 0.01);
     }
 
     #[test]

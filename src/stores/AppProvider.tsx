@@ -73,6 +73,7 @@ interface QueueActions {
   startAll: () => void;
   pauseAll: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
+  updateTorrentFiles: (id: string, onlyFiles: number[]) => void;
 }
 
 interface HistoryActions {
@@ -328,13 +329,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [stopDownload]);
 
   const pauseDownload = useCallback((id: string) => {
+    const item = queue.find(i => i.id === id);
+    // A torrent with a live listener pauses in place: the engine keeps the
+    // handle, so resume needs no re-add and no hash re-check of the data on
+    // disk. Falls back to kill-and-requeue if the native pause fails (e.g.
+    // the torrent is still initializing).
+    if (item?.kind === 'torrent' && cleanupRefs.current.has(id)) {
+      dispatch({ type: 'pause', id });
+      service.pauseTorrent(id).catch(() => stopDownload(id));
+      return;
+    }
     stopDownload(id);
     dispatch({ type: 'pause', id });
-  }, [stopDownload]);
+  }, [queue, service, stopDownload]);
 
   const resumeDownload = useCallback((id: string) => {
+    const item = queue.find(i => i.id === id);
+    // Natively-paused torrent: unpause and go straight back to downloading —
+    // the auto-start effect must not spawn a second add (startedRef still
+    // holds the id, so it won't).
+    if (item?.kind === 'torrent' && cleanupRefs.current.has(id)) {
+      service.resumeTorrent(id).then(() => {
+        dispatch({ type: 'resume', id });
+        dispatch({ type: 'markStarted', id, startedAt: item.startedAt ?? new Date().toISOString() });
+      }).catch(() => {
+        // Engine lost the handle — detach and take the fresh-add path.
+        stopDownload(id);
+        dispatch({ type: 'resume', id });
+      });
+      return;
+    }
     dispatch({ type: 'resume', id });
-  }, []);
+  }, [queue, service, stopDownload]);
 
   const cancelDownload = useCallback((id: string) => {
     const item = queue.find(i => i.id === id);
@@ -366,19 +392,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startAll = useCallback(() => {
-    dispatch({ type: 'startAll' });
-  }, []);
+    // Per-item rather than the bulk 'startAll' action: natively-paused
+    // torrents are still in startedRef, so the auto-start effect would skip
+    // them — resumeDownload routes each item down the right path.
+    queue.filter(i => i.status === 'paused').forEach(i => resumeDownload(i.id));
+  }, [queue, resumeDownload]);
 
   const pauseAll = useCallback(() => {
-    // Side effect stays outside the reducer: kill each active process, then
+    // Side effect stays outside the reducer: pause torrents natively (their
+    // handles survive, so resume is instant) and kill yt-dlp processes, then
     // let the (pure) transition flip statuses.
-    queue.filter(i => i.status === 'downloading').forEach(i => stopDownload(i.id));
+    queue
+      .filter(i => i.status === 'downloading' || i.status === 'seeding')
+      .forEach(i => {
+        if (i.kind === 'torrent' && cleanupRefs.current.has(i.id)) {
+          service.pauseTorrent(i.id).catch(() => stopDownload(i.id));
+        } else {
+          stopDownload(i.id);
+        }
+      });
     dispatch({ type: 'pauseAll' });
-  }, [queue, stopDownload]);
+  }, [queue, service, stopDownload]);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     dispatch({ type: 'reorder', from: fromIndex, to: toIndex });
   }, []);
+
+  const updateTorrentFiles = useCallback((id: string, onlyFiles: number[]) => {
+    // Engine first, then state — the selection in settings should only change
+    // once the swarm is actually downloading that subset.
+    service.updateTorrentFiles(id, onlyFiles)
+      .then(() => dispatch({ type: 'setSelectedFiles', id, files: onlyFiles }))
+      .catch((e) => toast.error(`Couldn't update file selection: ${e}`));
+  }, [service]);
 
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
@@ -394,7 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
           {children}
         </HistoryContext.Provider>
