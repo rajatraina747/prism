@@ -197,12 +197,16 @@ pub async fn fixup_player_video(_app: tauri::AppHandle) -> Result<Vec<String>, S
     Ok(Vec::new())
 }
 
-/// Whether the embedded player can run: the libmpv wrapper must sit next to
-/// the executable (dev builds stage it there — see build.rs). Bundled releases
-/// don't ship it yet (ROADMAP → In-app player → Distribution), so the UI uses
-/// this to hide "Play in Prism" instead of offering a player that can't start.
+/// Whether the embedded player can run: the libmpv wrapper must be reachable —
+/// next to the executable (dev builds stage it there, see build.rs) or in the
+/// bundled resources (releases ship it under resources/lib; the vendored
+/// plugin searches there too). The UI uses this to hide "Play in Prism"
+/// instead of offering a player that can't start (e.g. Linux, where window
+/// embedding isn't supported yet).
 #[tauri::command]
-pub fn player_available() -> bool {
+pub fn player_available(app: tauri::AppHandle) -> bool {
+    use tauri::Manager;
+
     #[cfg(target_os = "windows")]
     let name = "libmpv-wrapper.dll";
     #[cfg(target_os = "macos")]
@@ -210,9 +214,16 @@ pub fn player_available() -> bool {
     #[cfg(all(unix, not(target_os = "macos")))]
     let name = "libmpv-wrapper.so";
 
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|d| d.to_path_buf()))
-        .map(|dir| dir.join(name).exists() || dir.join("lib").join(name).exists())
-        .unwrap_or(false)
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            dirs.push(d.to_path_buf());
+            dirs.push(d.join("lib"));
+        }
+    }
+    if let Ok(res) = app.path().resource_dir() {
+        dirs.push(res.join("lib"));
+        dirs.push(res);
+    }
+    dirs.iter().any(|d| d.join(name).exists())
 }

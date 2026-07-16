@@ -4204,7 +4204,7 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6002,8 +6002,6 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-libmpv"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "447798aec64877a1e476c2ebc2360a8374740ccf32fdc31949e4942e3fef903e"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.13.0",

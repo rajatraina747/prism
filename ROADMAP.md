@@ -183,10 +183,16 @@ Phased:
 - [ ] **Phase 2 — converge with stream-while-downloading.** The localhost
   FileStream server (above) feeds the same player: "Play now" on a downloading
   torrent. mpv handles growing files / Range streams natively.
-- [ ] **Distribution.** Bundle libmpv per platform (mac: dylib; win:
-  mpv-2.dll; linux: system libmpv for deb/rpm, bundled for AppImage).
-  License audit: libmpv LGPLv2.1 → dynamic link, ship license text in the
-  OpenSourceLicenses page.
+- [x] **Distribution (v1.7.1).** macOS: `scripts/bundle-libmpv-macos.sh`
+  collects brew libmpv + full dep tree via dylibbundler (all references
+  rewritten to @loader_path, verified no /opt/homebrew remains, ~61 MB) into
+  resources/lib; the vendored plugin (`src-tauri/vendor/tauri-plugin-libmpv`,
+  MPL-2.0, patched to search the resource dir) loads it from there. Windows:
+  wrapper DLL + zhongfly's self-contained LGPL libmpv-2.dll under resources
+  lib/ (= exe-adjacent on Windows). Linux: still gated off via
+  `player_available` — upstream embedding doesn't work there yet. Licenses
+  page lists mpv (GPL2+ mac build / LGPL win build), wrapper (LGPL-2.1),
+  plugin (MPL-2.0).
 
 ## Hardening & performance backlog (July 2026 audit)
 

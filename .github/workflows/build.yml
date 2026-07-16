@@ -79,6 +79,15 @@ jobs:
           mv /tmp/deno-arm/deno src-tauri/binaries/deno-aarch64-apple-darwin
           chmod +x src-tauri/binaries/deno-aarch64-apple-darwin
 
+      # Embedded player: self-contained libmpv + wrapper shipped under
+      # resources/lib (tauri.macos.conf.json). The script rewrites every
+      # dependency to @loader_path and fails the build if anything still
+      # points at Homebrew.
+      - name: Bundle libmpv (embedded player)
+        run: |
+          brew install mpv dylibbundler
+          ./scripts/bundle-libmpv-macos.sh
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -128,6 +137,25 @@ jobs:
           curl -fL -o deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
           unzip -o deno.zip -d src-tauri/binaries/
           mv src-tauri/binaries/deno.exe src-tauri/binaries/deno-x86_64-pc-windows-msvc.exe
+
+      # Embedded player: wrapper DLL + zhongfly's self-contained LGPL libmpv,
+      # shipped under resources lib/ — which Windows installs next to the exe,
+      # exactly where the plugin looks. Asset names are dated, so resolve the
+      # latest via the API (excluding the -v3 CPU-variant builds).
+      - name: Bundle libmpv (embedded player)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/lib | Out-Null
+          curl -fL -o wrapper.zip "https://github.com/nini22P/libmpv-wrapper/releases/latest/download/libmpv-wrapper-windows-x86_64.zip"
+          Expand-Archive -Force wrapper.zip -DestinationPath wrapper-tmp
+          Copy-Item wrapper-tmp/bin/libmpv-wrapper.dll src-tauri/lib/
+          Copy-Item wrapper-tmp/LICENSE src-tauri/lib/libmpv-wrapper-LICENSE
+          $rel = Invoke-RestMethod "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest"
+          $asset = $rel.assets | Where-Object { $_.name -match '^mpv-dev-lgpl-x86_64-\d' } | Select-Object -First 1
+          if (-not $asset) { throw "no lgpl x86_64 mpv-dev asset found" }
+          curl -fL -o mpv-dev.7z $asset.browser_download_url
+          7z e mpv-dev.7z -osrc-tauri/lib libmpv-2.dll
+          if (-not (Test-Path src-tauri/lib/libmpv-2.dll)) { throw "libmpv-2.dll missing after extract" }
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

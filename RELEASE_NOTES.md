@@ -6,13 +6,11 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-- **Your chosen quality is now actually downloaded** — picking 2160p/1440p used to silently deliver 1080p on YouTube (the H.264-compatibility preference outranked your resolution choice, and YouTube's H.264 stops at 1080p). The chosen resolution now wins, in whatever codec the site offers it — including YouTube's 4K and HDR tiers.
-- **No more silent quality downgrades** — every download now records the resolution that was *actually* delivered. If it falls short of what you asked for, you get a warning the moment the download finishes, and the Library shows it in amber ("1080p (asked 2160p)") instead of repeating the label you clicked.
-- **Torrent downloads are reachable from the Library again** — torrents that write files straight into the download folder (no wrapper folder) used to complete with no Play/Show-in-Folder buttons at all; their paths now resolve correctly.
-- **Per-file access for torrents** — completed torrents in the Library expand into their file list, and every file has its own play, open, and reveal buttons. No more digging through Finder for episode 3.
-- **Older torrent entries** recorded without a path now get a Show-in-Folder button pointing at their download folder.
+- **The built-in player is here (macOS & Windows).** Play anything you've downloaded without leaving Prism — click the monitor icon on any Library item, or on any single file inside a torrent. Powered by an embedded mpv, so it plays what your system player can't: every codec and container (HEVC, VP9, AV1, mkv, webm), **true HDR** on HDR displays, multichannel audio with proper downmixing, and subtitle/audio track switching. Seek, volume, speed, fullscreen, keyboard shortcuts, and badges that tell you exactly what you're watching (resolution, HDR, 5.1). You can also open any local media file from inside the player.
+- Prism's downloads bundle everything the player needs — nothing to install, no dependencies.
+- Linux: the player arrives in a later release (the embedding layer isn't ready on Linux yet); everything else works as before.
 
-Also in this release: the groundwork for an embedded video player (all codecs, HDR, multichannel audio, powered by mpv). It runs in development builds today and ships to everyone once packaging is done — see ROADMAP.md.
+This builds on v1.7.0's honesty fixes: your chosen resolution is what gets downloaded (including 4K/HDR tiers), with a warning whenever a site delivers less.
 
 ## Install
 

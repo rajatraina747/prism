@@ -29,7 +29,8 @@
 
 ## Features
 
-- **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p. H.264/AAC for native QuickTime playback.
+- **Built-in player (macOS & Windows)** — Play any download inside Prism, powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching. Plays individual files inside torrents too.
+- **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p — and the resolution you pick is what you get, with a warning if a site delivers less.
 - **BitTorrent downloads** — Paste a magnet link or `.torrent` file and download it in the same queue as your videos. Pick which files to grab, watch peers and share ratio live, and control seeding (stop at 100%, seed to ratio 1.0, or seed until you stop). UPnP port forwarding for peers behind a router; Quiet Hours throttles torrents too.
 - **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
 - **Quiet hours** — Hold or throttle downloads during part of the day; full speed the rest of the time.

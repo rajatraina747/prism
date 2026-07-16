@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "1.7.0"
+version = "1.7.1"
 description = "Prism — Premium Video Downloader"
 authors = ["you"]
 license = "MIT"
@@ -42,8 +42,9 @@ sentry = { version = "0.48", default-features = false, features = ["backtrace", 
 anyhow = "1"
 # BitTorrent second-engine spike (go/no-go). See ROADMAP.md.
 librqbit = "8"
-# In-app player engine (embeds mpv). See ROADMAP.md → In-app player.
-tauri-plugin-libmpv = "0.3.2"
+# In-app player engine (embeds mpv). Vendored with a resource-dir search
+# patch so releases can bundle libmpv — see vendor/tauri-plugin-libmpv/README.md.
+tauri-plugin-libmpv = { path = "vendor/tauri-plugin-libmpv" }
 
 # macOS: patch mpv's --wid subview after init (fill, autoresize, z-order) —
 # see src/player.rs for why. Versions match the ones already in tauri's tree.
