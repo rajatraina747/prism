@@ -20,7 +20,7 @@ export type ProgressCallback = (data: {
   seeding?: boolean;
 }) => void;
 
-export type CompletionCallback = (success: boolean, error?: string, filePath?: string, fileSize?: number) => void;
+export type CompletionCallback = (success: boolean, error?: string, filePath?: string, fileSize?: number, actualHeight?: number) => void;
 
 export interface UpdateCheckResult {
   available: boolean;

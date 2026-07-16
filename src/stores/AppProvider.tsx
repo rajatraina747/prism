@@ -199,6 +199,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fileSize: i.status === 'completed' ? i.totalBytes : i.downloadedBytes,
         filePath: i.filePath,
         error: i.error,
+        // Torrents: keep the file list (names relative to the destination) so
+        // Library can play/reveal each file. Capped — a huge torrent's list
+        // shouldn't bloat history.json.
+        files: i.kind === 'torrent' && i.status === 'completed' && i.files?.length
+          ? i.files.slice(0, 500).map(({ name, size }) => ({ name, size }))
+          : undefined,
+        actualHeight: i.actualHeight,
       }));
       // Cap history so history.json can't grow (and load/render) unboundedly
       setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
@@ -258,12 +265,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { seeding, ...rest } = data;
           dispatch({ type: 'progress', id: item.id, data: rest, seeding });
         },
-        (success, errorMsg, filePath, fileSize) => {
+        (success, errorMsg, filePath, fileSize, actualHeight) => {
           startedRef.current.delete(item.id);
           cleanupRefs.current.delete(item.id);
           if (success) {
             diagnostics.log('info', `Download completed: ${item.metadata.title}`);
-            dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize });
+            dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize, actualHeight });
+            // Silent quality degradation is worth a loud flag: the site didn't
+            // deliver the resolution the user picked (e.g. it vanished, or
+            // only exists in a codec the extractor couldn't use).
+            const requestedHeight = parseInt(item.settings.format?.resolution ?? '', 10);
+            if (actualHeight && requestedHeight && actualHeight < requestedHeight) {
+              diagnostics.log('warn', `Quality mismatch: requested ${requestedHeight}p, got ${actualHeight}p`, { title: item.metadata.title });
+              toast.warning(`Downloaded at ${actualHeight}p — ${requestedHeight}p wasn't delivered`, {
+                description: item.metadata.title,
+                duration: 8000,
+              });
+            }
             if (settings.notificationsEnabled) {
               toast.success(`Downloaded: ${item.metadata.title}`);
               // Toasts are invisible when the window is hidden/in the tray —

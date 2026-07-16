@@ -5,7 +5,7 @@ import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
 import { formatBytes, generateId, isTorrentUrl } from '@/services';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
-  FolderOpen, Play, Copy, AlertTriangle,
+  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -24,6 +24,35 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// The embedded player needs the libmpv wrapper staged next to the executable,
+// which dev builds do and bundled releases don't yet (ROADMAP → In-app player
+// → Distribution) — ask the backend rather than assuming.
+function usePlayerAvailable(): boolean {
+  const [available, setAvailable] = useState(false);
+  React.useEffect(() => {
+    if (!('__TAURI__' in window)) return;
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<boolean>('player_available'))
+      .then(setAvailable)
+      .catch(() => {});
+  }, []);
+  return available;
+}
+
+function playInPrism(path: string, title: string) {
+  // Dynamic import keeps the Tauri window APIs out of the web-demo bundle path.
+  import('@/lib/player-window')
+    .then(({ openInPlayer }) => openInPlayer({ path, title }))
+    .catch((e) => toast.error(`Couldn't open the player: ${e instanceof Error ? e.message : e}`));
+}
+
+/** Absolute(ish) path of one file inside a torrent download — file names in
+ * history are relative to the item's destination folder. */
+function torrentFilePath(item: HistoryItem, name: string): string {
+  const dest = (item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
+  return `${dest}/${name}`;
+}
+
 /** One page for everything that has finished, one way or another: completed,
  * failed, and canceled downloads, in tabs. Replaces the old Downloads / Failed /
  * History trio, which showed the same records three ways. */
@@ -34,6 +63,9 @@ export default function Library() {
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  // Torrent row whose per-file list is expanded (one at a time keeps it tidy).
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const playerAvailable = usePlayerAvailable();
 
   // Queue the same video again with its original settings. For failed items the
   // stale failure entry is dropped (a successful retry shouldn't leave it
@@ -161,7 +193,17 @@ export default function Library() {
                     <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                    {item.settings.format && <span>{item.settings.format.resolution}</span>}
+                    {(() => {
+                      // Show what was actually delivered; call out a shortfall
+                      // vs the requested quality instead of hiding it.
+                      const requested = item.settings.format?.resolution;
+                      const actual = item.actualHeight ? `${item.actualHeight}p` : undefined;
+                      if (actual && requested && actual !== requested) {
+                        return <span className="text-amber-500" title={`Requested ${requested}, the site delivered ${actual}`}>{actual} (asked {requested})</span>;
+                      }
+                      const label = actual ?? requested;
+                      return label ? <span>{label}</span> : null;
+                    })()}
                     {item.settings.audioOnly && <span>Audio</span>}
                     {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
                     <span>{formatWhen(item.completedAt)}</span>
@@ -174,40 +216,111 @@ export default function Library() {
                       )}
                     </div>
                   )}
+                  {/* Torrent: expandable per-file list with per-file actions */}
+                  {item.status === 'completed' && item.files && item.files.length > 0 && (
+                    <div className="mt-1.5">
+                      <button
+                        onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        aria-expanded={expandedId === item.id}
+                      >
+                        <ChevronRight className={cn('w-3 h-3 transition-transform', expandedId === item.id && 'rotate-90')} />
+                        {item.files.length} {item.files.length === 1 ? 'file' : 'files'}
+                      </button>
+                      {expandedId === item.id && (
+                        <ul className="mt-1 space-y-0.5">
+                          {item.files.map((f) => (
+                            <li key={f.name} className="flex items-center gap-2 text-[11px] text-muted-foreground group">
+                              <span className="truncate flex-1" title={f.name}>{f.name}</span>
+                              <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
+                              {playerAvailable && (
+                                <button
+                                  onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
+                                  title="Play in Prism"
+                                  aria-label={`Play ${f.name} in Prism`}
+                                  className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                                >
+                                  <MonitorPlay className="w-3 h-3" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => service.openFile(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                                title="Open in default player"
+                                aria-label={`Open ${f.name}`}
+                                className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                              >
+                                <Play className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                                title="Show in folder"
+                                aria-label={`Show ${f.name} in folder`}
+                                className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                              >
+                                <FolderOpen className="w-3 h-3" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {item.status === 'completed' && item.filePath && (
-                    <>
-                      {/* Multi-file torrents resolve to a folder the OS can't
-                          "play" — Show in Folder covers those. */}
-                      {!isTorrentUrl(item.metadata.source.url) && (
+                  {item.status === 'completed' && (() => {
+                    const isTorrent = isTorrentUrl(item.metadata.source.url);
+                    // Older torrent completions (flat multi-file torrents)
+                    // were recorded without a path — falling back to the
+                    // destination folder keeps the files reachable.
+                    const revealTarget = item.filePath
+                      ?? (isTorrent ? item.settings.destination : undefined);
+                    return (
+                      <>
+                        {/* In-app player: mpv handles anything, including a
+                            multi-file torrent's folder (loaded as a playlist). */}
+                        {playerAvailable && item.filePath && (
+                          <button
+                            onClick={() => playInPrism(item.filePath!, item.metadata.title)}
+                            title="Play in Prism"
+                            aria-label="Play in Prism"
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                          >
+                            <MonitorPlay className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {/* Multi-file torrents resolve to a folder the OS can't
+                            "play" — Show in Folder covers those. */}
+                        {!isTorrent && item.filePath && (
+                          <button
+                            onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                            title="Open in default player"
+                            aria-label="Open in default player"
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {revealTarget && (
+                          <button
+                            onClick={() => service.showInFolder(revealTarget).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                            title="Show in folder"
+                            aria-label="Show in folder"
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                          title="Play"
-                          aria-label="Play"
+                          onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'))}
+                          title="Copy source URL"
+                          aria-label="Copy source URL"
                           className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                         >
-                          <Play className="w-3.5 h-3.5" />
+                          <Copy className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                      <button
-                        onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                        title="Show in folder"
-                        aria-label="Show in folder"
-                        className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                      >
-                        <FolderOpen className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'))}
-                        title="Copy source URL"
-                        aria-label="Copy source URL"
-                        className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  )}
+                      </>
+                    );
+                  })()}
                   <button
                     onClick={() => requeue(item)}
                     title={item.status === 'failed' ? 'Retry download' : 'Download again'}

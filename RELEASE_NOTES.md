@@ -6,17 +6,13 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-- **Drag-to-reorder actually drops** — reordering the queue silently did nothing because the app's native drag handler was swallowing the drop; dragging URLs into the window works properly now too
-- **Steady progress for merged downloads** — video + audio downloads no longer snap back to 0% halfway through; the bar and byte counts only move forward, and a "Processing — merging & finishing up…" label shows while ffmpeg works (long merges are no longer killed as inactive)
-- **Fixed "No such file or directory" at the end of a download** — two downloads of the same video could share temp files and destroy each other's merge; each download now claims its own filenames up front
-- **Instant torrent pause/resume** — pausing keeps the torrent in the engine, so resuming no longer re-checks gigabytes of data on disk; Pause All / Resume All handle torrents and seeds correctly
-- **Torrents only fail when the swarm is actually dead** — a torrent with connected peers waits patiently (like every other client) instead of giving up after 5 quiet minutes; resumes no longer die during the startup hash-check
-- **Swarm health at a glance** — queue rows now distinguish "searching for peers", "connecting…", "0 of 40 peers reachable" (a firewall hint) and "12 peers · 45 seen"
-- **Change file selection mid-torrent** — the file list in a queue row now has checkboxes; skip or add files while it downloads
-- **Extra trackers** — add announce URLs (Settings → Downloads) to every torrent, for magnets whose own trackers are dead
-- **Per-download speed limit now applies to torrents** — on top of the session-wide Quiet Hours cap
-- **IP blocklist** — point Settings at a standard p2p blocklist URL to keep known-bad peers out (applies on next launch)
-- **Copy link** — every queue row can copy its magnet or source URL
+- **Your chosen quality is now actually downloaded** — picking 2160p/1440p used to silently deliver 1080p on YouTube (the H.264-compatibility preference outranked your resolution choice, and YouTube's H.264 stops at 1080p). The chosen resolution now wins, in whatever codec the site offers it — including YouTube's 4K and HDR tiers.
+- **No more silent quality downgrades** — every download now records the resolution that was *actually* delivered. If it falls short of what you asked for, you get a warning the moment the download finishes, and the Library shows it in amber ("1080p (asked 2160p)") instead of repeating the label you clicked.
+- **Torrent downloads are reachable from the Library again** — torrents that write files straight into the download folder (no wrapper folder) used to complete with no Play/Show-in-Folder buttons at all; their paths now resolve correctly.
+- **Per-file access for torrents** — completed torrents in the Library expand into their file list, and every file has its own play, open, and reveal buttons. No more digging through Finder for episode 3.
+- **Older torrent entries** recorded without a path now get a Show-in-Folder button pointing at their download folder.
+
+Also in this release: the groundwork for an embedded video player (all codecs, HDR, multichannel audio, powered by mpv). It runs in development builds today and ships to everyone once packaging is done — see ROADMAP.md.
 
 ## Install
 

@@ -33,3 +33,4 @@ src-tauri/binaries/deno-*
 *.AppImage
 *.deb
 *.msi
+src-tauri/lib/

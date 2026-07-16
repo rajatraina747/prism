@@ -36,6 +36,11 @@ pub struct DownloadComplete {
     pub error: Option<String>,
     pub file_path: Option<String>,
     pub file_size: Option<u64>,
+    /// Video height actually delivered (yt-dlp's after_move print), so the UI
+    /// can flag silent quality degradation against the requested format.
+    /// None for audio-only, torrents, and failures.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_height: Option<u32>,
 }
 
 struct ActiveDownload {
@@ -123,6 +128,14 @@ impl DownloadManager {
                 // Prefer H.264/AAC for QuickTime compatibility
                 args.push("-S".into());
                 args.push("vcodec:h264,acodec:m4a".into());
+
+                // Report the height actually delivered (stdout line
+                // "PRISM:HEIGHT=N" once the file lands) so completion can
+                // carry it. --print implies --quiet, which would silence the
+                // progress lines the UI parses — --no-quiet restores them.
+                args.push("--print".into());
+                args.push("after_move:PRISM:HEIGHT=%(height)s".into());
+                args.push("--no-quiet".into());
             }
 
             if download_subtitles {
@@ -220,6 +233,7 @@ impl DownloadManager {
                             error: Some(format!("Failed to find yt-dlp sidecar: {}", e)),
                             file_path: None,
                             file_size: None,
+                            actual_height: None,
                         },
                     );
                     return;
@@ -238,6 +252,7 @@ impl DownloadManager {
                             error: Some(format!("Failed to start yt-dlp: {}", e)),
                             file_path: None,
                             file_size: None,
+                            actual_height: None,
                         },
                     );
                     return;
@@ -255,6 +270,7 @@ impl DownloadManager {
             // postprocessor chatter rather than the actual cause.
             let mut last_error = String::new();
             let mut last_stderr = String::new();
+            let mut actual_height: Option<u32> = None;
             let mut agg = PhaseAggregator::new();
 
             loop {
@@ -265,6 +281,9 @@ impl DownloadManager {
                     Ok(Some(event)) => match event {
                         CommandEvent::Stdout(data) => {
                             let line = String::from_utf8_lossy(&data);
+                            if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
+                                actual_height = h.parse().ok(); // "NA" → None
+                            }
                             if agg.on_line(&line) {
                                 let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
                             }
@@ -342,6 +361,7 @@ impl DownloadManager {
                     },
                     file_path: final_path,
                     file_size,
+                    actual_height: if success { actual_height } else { None },
                 },
             );
         });

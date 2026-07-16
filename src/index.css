@@ -86,6 +86,14 @@
     outline-offset: 2px;
     border-radius: 4px;
   }
+
+  /* Player window only: mpv renders beneath the webview in the same window,
+     so the page must be see-through wherever nothing is drawn. The class is
+     set by src/pages/Player.tsx on mount. */
+  html.player-window,
+  html.player-window body {
+    background: transparent !important;
+  }
 }
 
 @layer utilities {

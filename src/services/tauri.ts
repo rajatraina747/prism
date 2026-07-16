@@ -144,10 +144,17 @@ export class TauriPrismService implements IPrismService {
         error: string | null;
         file_path: string | null;
         file_size: number | null;
+        actual_height?: number | null;
       }>(`download-complete-${item.id}`, (event) => {
         if (cancelled) return;
         cleanup();
-        onComplete(event.payload.success, event.payload.error ?? undefined, event.payload.file_path ?? undefined, event.payload.file_size ?? undefined);
+        onComplete(
+          event.payload.success,
+          event.payload.error ?? undefined,
+          event.payload.file_path ?? undefined,
+          event.payload.file_size ?? undefined,
+          event.payload.actual_height ?? undefined,
+        );
       });
 
       const dest = item.settings.destination || '~/Downloads/Prism';

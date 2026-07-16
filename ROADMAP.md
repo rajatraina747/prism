@@ -138,6 +138,73 @@ exposes. Shipped in one pass:
   interacts with seeding (librqbit holds file handles while seeding — move on
   seed-complete, not download-complete).
 
+## Arc — In-app player (decided July 2026)
+
+Play downloaded files inside Prism — no Finder/Explorer round-trip, no external
+player. Requirement set is full-fat playback: arbitrary codecs/containers
+(H.264/HEVC/VP9/AV1, mkv/webm — torrent content especially), HDR and SDR,
+multichannel audio (5.1/7.1/stereo), subtitle tracks.
+
+**Engine decision: libmpv.** The requirements rule out the webview `<video>`
+tag (codec coverage varies per-platform webview; no HDR passthrough; flaky
+multichannel). libVLC was evaluated and rejected: no supported way to composite
+a native surface inside a Tauri webview (tauri discussions #6343/#7895),
+40–80 MB per platform, LGPL dynamic-linking overhead for less-maintained
+bindings. libmpv has a maintained integration path (`tauri-plugin-libmpv`,
+renders into the window via wid/render API), hardware decode, HDR
+tone-mapping/passthrough, and proper audio channel layouts. VLC's source
+(github.com/videolan/vlc) stays a UX/architecture reference only.
+
+Phased:
+
+- [x] **Spike — GO (July 2026), with a macOS caveat worth recording.** mpv's
+  `--wid` embedding is broken on macOS: instead of a subview, libmpv 0.41
+  creates its own borderless NSWindow. Solved by *adopting* that window as a
+  child of the player window ordered below it (`src-tauri/src/player.rs`):
+  frame pinned on resize, level + z-order re-asserted (simple fullscreen
+  changes window level), `ignoresMouseEvents` on the video window, and a 1%-
+  alpha webview surface so macOS never routes clicks through to it. Native
+  fullscreen (Spaces) is stripped from the player window — child windows
+  can't follow into a Space (stranded black desktop); ⤢ uses *simple*
+  fullscreen instead. **Acceptance criteria (non-negotiable, verify on
+  content that really has them): (a) true HDR output on an HDR display
+  (`target-colorspace-hint` is set; verify brightness pops vs an SDR player);
+  (b) 5.1 plays with correct layout (badge + track picker show channels);
+  (c) subtitle/audio track switching works.** Note: YouTube "4K HDR" titles
+  downloaded as H.264 are 1080p SDR stereo — test with HDR10 mkvs.
+- [x] **Phase 1 — Play completed files in-app (dev builds).** "Play in Prism"
+  on Library rows + per-torrent-file, separate transparent `player` window
+  (`src/pages/Player.tsx`; the player window must never mount AppProvider —
+  it would double-run the download orchestrator). Chrome: seek, volume,
+  speed, subtitle/audio pickers, HDR/resolution/channel badges, keyboard,
+  Open file…, simple fullscreen. Gated behind `player_available` (the libmpv
+  wrapper staged next to the exe — build.rs does this for dev) so release
+  builds hide the buttons until Distribution ships.
+- [ ] **Phase 2 — converge with stream-while-downloading.** The localhost
+  FileStream server (above) feeds the same player: "Play now" on a downloading
+  torrent. mpv handles growing files / Range streams natively.
+- [ ] **Distribution.** Bundle libmpv per platform (mac: dylib; win:
+  mpv-2.dll; linux: system libmpv for deb/rpm, bundled for AppImage).
+  License audit: libmpv LGPLv2.1 → dynamic link, ship license text in the
+  OpenSourceLicenses page.
+
+## Hardening & performance backlog (July 2026 audit)
+
+Full findings with file references in [docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md).
+Headlines:
+
+- [ ] `cargo update` to clear quick-xml RUSTSEC-2026-0194/0195 (DoS, CVSS 7.5)
+  once the Tauri/librqbit trees allow ≥0.41.
+- [ ] Exclude `~/Library` (and Windows autorun dirs) from allowed download
+  roots — torrent file names are untrusted metadata.
+- [ ] Require https for `blocklistUrl`; add an HTTP timeout to `update_ytdlp`.
+- [ ] Pass `-N 4` (concurrent fragment downloads) to yt-dlp — the single
+  biggest throughput win vs 4KVD/IDM-class tools.
+- [ ] Offer "keep original container" alongside forced-MP4 remux (VP9/AV1 in
+  mp4 confuses some players).
+- [ ] Throttle progress emits Rust-side (~4/s per item); virtualize/paginate
+  Library once history grows; debounce history writes; dynamic-import Sentry.
+
 ## Explicitly deferred
 
 - Paid Apple notarization (ad-hoc signing + Homebrew cask for now).

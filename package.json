@@ -1,8 +1,8 @@
 {
   "name": "prism",
   "private": true,
-  "version": "1.6.0",
-  "description": "Prism — Premium Video Downloader",
+  "version": "1.7.0",
+  "description": "Prism \u2014 Premium Video Downloader",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -61,7 +61,8 @@
     "react-router-dom": "^6.30.1",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "tauri-plugin-libmpv-api": "^0.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

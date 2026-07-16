@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -25,6 +25,13 @@ import NotFound from "@/pages/NotFound";
 // multi-second overlay is pure friction for a utility opened many times a day.
 const SPLASH_SEEN_KEY = 'prism_splash_seen';
 
+// The dedicated player window loads /player and must render ONLY the player:
+// mounting the app providers there would spawn a second download orchestrator
+// (AppProvider auto-start, subscription scheduler) alongside the main
+// window's. Lazy so the main window never loads the mpv API at startup.
+const PlayerWindow = lazy(() => import("@/pages/Player"));
+const isPlayerWindow = window.location.pathname.endsWith("/player");
+
 const App = () => {
   const [showSplash, setShowSplash] = useState(() => {
     try { return !localStorage.getItem(SPLASH_SEEN_KEY); } catch { return true; }
@@ -33,6 +40,14 @@ const App = () => {
     setShowSplash(false);
     try { localStorage.setItem(SPLASH_SEEN_KEY, '1'); } catch { /* private mode */ }
   }, []);
+
+  if (isPlayerWindow) {
+    return (
+      <Suspense fallback={null}>
+        <PlayerWindow />
+      </Suspense>
+    );
+  }
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

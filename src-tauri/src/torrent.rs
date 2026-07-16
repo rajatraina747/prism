@@ -421,13 +421,7 @@ impl TorrentManager {
 
             active.lock().await.remove(&id);
             let total = handle.stats().total_bytes;
-            // Resolve an openable path: <output_dir>/<torrent name>. For a
-            // single-file torrent that's the file (Play works); for a multi-file
-            // torrent it's the top-level folder (Show-in-Folder reveals it).
-            let file_path = handle
-                .name()
-                .map(|name| PathBuf::from(&output_dir).join(name).to_string_lossy().into_owned())
-                .filter(|p| std::path::Path::new(p).exists());
+            let file_path = resolve_completion_path(&handle, &output_dir);
             let _ = app.emit(
                 &format!("download-complete-{id}"),
                 DownloadComplete {
@@ -436,6 +430,7 @@ impl TorrentManager {
                     error: None,
                     file_path,
                     file_size: Some(total),
+                    actual_height: None,
                 },
             );
         });
@@ -500,10 +495,7 @@ impl TorrentManager {
             Some((h, output_dir)) => {
                 let stats = h.stats();
                 if stats.finished {
-                    let file_path = h
-                        .name()
-                        .map(|name| PathBuf::from(&output_dir).join(name).to_string_lossy().into_owned())
-                        .filter(|p| std::path::Path::new(p).exists());
+                    let file_path = resolve_completion_path(&h, &output_dir);
                     let _ = app.emit(
                         &format!("download-complete-{id}"),
                         DownloadComplete {
@@ -512,6 +504,7 @@ impl TorrentManager {
                             error: None,
                             file_path,
                             file_size: Some(stats.total_bytes),
+                            actual_height: None,
                         },
                     );
                 }
@@ -529,6 +522,52 @@ impl Default for TorrentManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Resolve an openable path for a finished torrent.
+///
+/// `<output_dir>/<torrent name>` covers single-file torrents (the file — Play
+/// works) and torrents with a root folder (Show-in-Folder reveals it). But a
+/// flat multi-file torrent writes its files *directly* into `output_dir`, so
+/// that path doesn't exist — fall back to the lone file, then to the files'
+/// shared top-level component, then to the output directory itself. A `None`
+/// here used to leave the Library row with no Play/reveal actions at all.
+fn resolve_completion_path(handle: &ManagedTorrentHandle, output_dir: &str) -> Option<String> {
+    let base = PathBuf::from(output_dir);
+    let existing = |p: PathBuf| p.exists().then(|| p.to_string_lossy().into_owned());
+
+    if let Some(name) = handle.name() {
+        if let Some(p) = existing(base.join(&name)) {
+            return Some(p);
+        }
+    }
+
+    let rels: Vec<PathBuf> = handle
+        .with_metadata(|m| {
+            m.file_infos
+                .iter()
+                .map(|fi| fi.relative_filename.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if let [only] = rels.as_slice() {
+        if let Some(p) = existing(base.join(only)) {
+            return Some(p);
+        }
+    }
+    let mut firsts = rels
+        .iter()
+        .filter_map(|r| r.components().next().map(|c| c.as_os_str().to_owned()));
+    if let Some(first) = firsts.next() {
+        if firsts.all(|f| f == first) {
+            if let Some(p) = existing(base.join(&first)) {
+                return Some(p);
+            }
+        }
+    }
+
+    existing(base)
 }
 
 /// Whether seeding is done and the item should complete, per the user's policy.
@@ -605,6 +644,7 @@ fn emit_failure(app: &AppHandle, id: &str, message: String) {
             error: Some(message),
             file_path: None,
             file_size: None,
+            actual_height: None,
         },
     );
 }

@@ -1,5 +1,6 @@
 mod download_manager;
 mod engine;
+mod player;
 pub mod torrent;
 
 use std::path::PathBuf;
@@ -237,7 +238,17 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
                 _ => "low",
             };
             FormatOption {
-                id: format!("bestvideo[height<={}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<={}][vcodec^=avc1]/bestvideo[height<={}]+bestaudio/best[height<={}]", r.height, r.height, r.height, r.height),
+                // The chosen resolution must win over codec compatibility:
+                // yt-dlp takes the FIRST satisfiable alternative, and a
+                // "<=H avc1" branch is satisfiable at 1080p even when the user
+                // picked 2160p (YouTube's H.264 stops at 1080p; 4K/HDR only
+                // exists as VP9/AV1) — silently degrading the download. Order:
+                // exact height with avc1 → exact height any codec → then the
+                // <=H fallbacks for when the exact height has vanished.
+                id: format!(
+                    "bestvideo[height={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height={h}]+bestaudio/bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]/best",
+                    h = r.height
+                ),
                 label: format!("{} MP4", r.label),
                 resolution: r.label.clone(),
                 container: "mp4".into(),
@@ -956,6 +967,9 @@ pub fn run() {
         .manage(DownloadManager::new())
         .manage(torrent::TorrentManager::new())
         .plugin(tauri_plugin_shell::init())
+        // Embedded player (separate "player" window). The plugin cleans up its
+        // mpv instance on window close; macOS embeds via the window's NSView.
+        .plugin(tauri_plugin_libmpv::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_fs::init())
@@ -964,6 +978,20 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         // Remembers window size/position across launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Keep mpv's adopted video window glued to the player window on
+        // resize (see player.rs module docs).
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if window.label() == "player"
+                && matches!(event, tauri::WindowEvent::Resized(_))
+            {
+                player::refit_player_children(window);
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = (window, event);
+            }
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -1013,6 +1041,8 @@ pub fn run() {
             engine::get_ytdlp_version,
             engine::update_ytdlp,
             engine::reset_ytdlp,
+            player::fixup_player_video,
+            player::player_available,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -96,6 +96,9 @@ export interface DownloadItem {
   startedAt?: string;
   completedAt?: string;
   filePath?: string;
+  /** Video height actually delivered (reported by yt-dlp at completion) —
+   * compared against settings.format to flag silent quality degradation. */
+  actualHeight?: number;
   error?: DownloadError;
   retryAttempt: number;
   // 'processing' while yt-dlp hands off to ffmpeg (merge/extract/embed) —
@@ -214,6 +217,12 @@ export interface HistoryItem {
   fileSize: number;
   filePath?: string;
   error?: DownloadError;
+  /** Torrent only: downloaded files (paths relative to settings.destination),
+   * so the Library can play/reveal each one individually. */
+  files?: { name: string; size: number }[];
+  /** Video height actually delivered, when it differs from what the format
+   * label promised (see DownloadItem.actualHeight). */
+  actualHeight?: number;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
