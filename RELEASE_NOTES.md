@@ -6,11 +6,10 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-- **The built-in player is here (macOS & Windows).** Play anything you've downloaded without leaving Prism — click the monitor icon on any Library item, or on any single file inside a torrent. Powered by an embedded mpv, so it plays what your system player can't: every codec and container (HEVC, VP9, AV1, mkv, webm), **true HDR** on HDR displays, multichannel audio with proper downmixing, and subtitle/audio track switching. Seek, volume, speed, fullscreen, keyboard shortcuts, and badges that tell you exactly what you're watching (resolution, HDR, 5.1). You can also open any local media file from inside the player.
-- Prism's downloads bundle everything the player needs — nothing to install, no dependencies.
-- Linux: the player arrives in a later release (the embedding layer isn't ready on Linux yet); everything else works as before.
+- **Fixed: the built-in player wouldn't start.** v1.7.1 shipped the embedded player, but a packaging defect (a duplicate library search path) meant it failed to launch on every attempt on macOS. It now works — click the monitor icon on any Library item to play it inside Prism, with full codec support, true HDR, and multichannel audio.
+- Hardened the player's startup path against a separate macOS threading issue that could make it hang instead of failing cleanly.
 
-This builds on v1.7.0's honesty fixes: your chosen resolution is what gets downloaded (including 4K/HDR tiers), with a warning whenever a site delivers less.
+If you already have v1.7.1, this is a quick, worthwhile update.
 
 ## Install
 

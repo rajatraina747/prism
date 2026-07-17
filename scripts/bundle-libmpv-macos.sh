@@ -46,6 +46,20 @@ dylibbundler -of -cd -b \
 # previous copies and fails EACCES on read-only targets. Normalize.
 chmod -R u+w "$LIB"
 
+# dylibbundler adds an `@loader_path/` rpath to its `-x` target without
+# checking whether Homebrew's original binary already carries one (common —
+# Homebrew bottles are increasingly built with relative rpaths for Cellar
+# relocatability). Two IDENTICAL LC_RPATH entries make the file entirely
+# unloadable: dyld refuses to dlopen a dylib with a duplicate rpath, so the
+# player silently failed to start on every launch. Collapse duplicates to one.
+echo "==> De-duplicating rpath entries"
+for dylib in "$LIB"/*.dylib; do
+  while [ "$(otool -l "$dylib" | grep -c 'cmd LC_RPATH')" -gt 1 ]; do
+    install_name_tool -delete_rpath "@loader_path/" "$dylib" 2>/dev/null \
+      || install_name_tool -delete_rpath "@loader_path" "$dylib"
+  done
+done
+
 echo "==> Ad-hoc signing the tree"
 find "$LIB" -name "*.dylib" -exec codesign --force --sign - {} \;
 

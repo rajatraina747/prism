@@ -1,8 +1,19 @@
 > **Vendored copy — Prism.** Upstream: https://github.com/nini22P/tauri-plugin-libmpv
-> at v0.3.2, MPL-2.0 (LICENSE retained). Local modification, marked
-> `PRISM VENDOR PATCH` in `src/desktop.rs`: the wrapper search path also
-> includes the Tauri resource directory (`resources/lib`), so bundled release
-> builds can ship libmpv without post-processing the app. Worth an upstream PR.
+> at v0.3.2, MPL-2.0 (LICENSE retained). Local modifications, marked
+> `PRISM VENDOR PATCH`:
+> - `src/desktop.rs`: the wrapper search path also includes the Tauri
+>   resource directory (`resources/lib`), so bundled release builds can ship
+>   libmpv without post-processing the app.
+> - `src/commands.rs`: every command now runs on the main thread via
+>   `AppHandle::run_on_main_thread`. Upstream ran `init` inline on whatever
+>   thread polls the async command and the rest via `spawn_blocking` — never
+>   the main thread. macOS AppKit/Cocoa window creation is main-thread-only;
+>   calling `mpv_wrapper_create` with `force-window`/`wid` off-main returns
+>   NULL. Intermittent in a dev build (worked most of the time by scheduling
+>   luck), 100% reproducible in a release build ("Failed to create mpv
+>   instance" on every attempt).
+>
+> Both worth an upstream PR.
 
 # Tauri Plugin libmpv
 

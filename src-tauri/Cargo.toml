@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "1.7.1"
+version = "1.7.2"
 description = "Prism — Premium Video Downloader"
 authors = ["you"]
 license = "MIT"
@@ -51,3 +51,10 @@ tauri-plugin-libmpv = { path = "vendor/tauri-plugin-libmpv" }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-core-foundation = "0.3"
+
+# Dev-only: examples/mpv_thread_repro.rs, a standalone verification harness
+# for the commands.rs main-thread patch (not part of the shipped app).
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+libloading = "0.8"
