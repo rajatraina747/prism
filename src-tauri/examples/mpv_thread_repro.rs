@@ -4,24 +4,44 @@
 // window-creating options from a background thread (the old, broken path)
 // and via a main-thread dispatch (the patched path), against the exact
 // bundled dylibs Prism ships.
+//
+// AppKit and libmpv make this macOS-only; its deps are declared under a macOS
+// target in Cargo.toml, so everything below is gated to keep `cargo clippy
+// --all-targets` (which builds examples) working on Linux CI.
+#[cfg(target_os = "macos")]
 use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+#[cfg(target_os = "macos")]
 use objc2_foundation::MainThreadMarker;
+#[cfg(target_os = "macos")]
 use std::ffi::{c_char, c_void, CString};
+#[cfg(target_os = "macos")]
 use std::os::raw::c_void as CVoid;
+#[cfg(target_os = "macos")]
 use std::sync::mpsc;
 
+#[cfg(target_os = "macos")]
 type Create = unsafe extern "C" fn(*const c_char, *const c_char, Option<unsafe extern "C" fn(*const c_char, *mut c_void)>, *mut c_void) -> *mut CVoid;
+#[cfg(target_os = "macos")]
 type Destroy = unsafe extern "C" fn(*mut CVoid);
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn on_event(_e: *const c_char, _u: *mut c_void) {}
 
+#[cfg(target_os = "macos")]
 fn call_create(create: Create, opts: &str) -> *mut CVoid {
     let c_opts = CString::new(opts).unwrap();
     let c_props = CString::new("{}").unwrap();
     unsafe { create(c_opts.as_ptr(), c_props.as_ptr(), Some(on_event), std::ptr::null_mut()) }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    eprintln!("mpv_thread_repro is macOS-only — it drives AppKit and the bundled libmpv.");
+}
+
+#[cfg(target_os = "macos")]
 fn main() {
     let lib_path = std::env::args().nth(1).expect("usage: mpv_thread_repro <path-to-libmpv-wrapper.dylib>");
     let lib = unsafe { libloading::Library::new(&lib_path) }.expect("load wrapper");
