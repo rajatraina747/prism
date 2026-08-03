@@ -132,9 +132,21 @@ export default function Player() {
 
       if (cancelled) return;
 
+      // mpv's own log — the only record of why a video output failed to come
+      // up (a black frame reports no error through the plugin). Lands beside
+      // the app's data so a user can send it: ~/Library/Application Support/
+      // com.prism.app/mpv.log on macOS, %APPDATA%\com.prism.app\mpv.log on
+      // Windows. Best-effort: no log file is not a reason to refuse to play.
+      let logFile: string | null = null;
+      try {
+        const { appDataDir, join } = await import('@tauri-apps/api/path');
+        logFile = await join(await appDataDir(), 'mpv.log');
+      } catch { /* path API unavailable — carry on without it */ }
+
       try {
         await init({
           initialOptions: {
+            ...(logFile ? { 'log-file': logFile } : {}),
             vo: 'gpu-next',
             hwdec: 'auto-safe',
             // Survive EOF so the user can replay instead of the window dying.

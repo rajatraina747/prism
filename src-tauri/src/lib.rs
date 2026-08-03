@@ -1012,13 +1012,15 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Release builds log too (the plugin's defaults are stdout + the
+            // OS log dir). This was debug-only, which left a player or engine
+            // failure on a user's machine undiagnosable: the plugin's
+            // "loading libmpv from …" line and its errors went nowhere.
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            )?;
 
             setup_tray(app)?;
 
