@@ -1,11 +1,46 @@
 import React from 'react';
 import type { DownloadStatus } from '@/types/models';
 import { cn } from '@/lib/utils';
+import { useService } from '@/services/ServiceProvider';
+import { toast } from 'sonner';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+
+// ── Outbound Link ──
+// Every link that leaves the app. A plain <a target="_blank"> does nothing in
+// the webview — wry only opens a new window if the app installs a handler, and
+// we don't — so the click is routed to the OS browser instead. It stays a real
+// <a href> so it still reads (and middle-clicks) as a link in the web demo.
+export function OutboundLink({
+  href, children, className, title, style,
+}: {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+  title?: string;
+  style?: React.CSSProperties;
+}) {
+  const service = useService();
+  return (
+    <a
+      href={href}
+      title={title}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      style={style}
+      onClick={(e) => {
+        e.preventDefault();
+        service.openExternal(href).catch(() => toast.error("Couldn't open that link"));
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 // ── Confirm Dialog ──
 // One-question confirmation for destructive actions. Prefer an undo toast for

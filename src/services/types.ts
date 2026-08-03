@@ -66,6 +66,9 @@ export interface IPrismService {
   // File system operations
   openFile(filePath: string): Promise<void>;
   showInFolder(filePath: string): Promise<void>;
+  /** Open an http(s) link in the user's browser — `target="_blank"` is inert
+   *  inside the webview, so every outbound link goes through this. */
+  openExternal(url: string): Promise<void>;
   pickDirectory(): Promise<string | null>;
   getDefaultDownloadPath(): Promise<string>;
 

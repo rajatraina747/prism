@@ -7,7 +7,7 @@ import { UrlInput } from '@/components/dashboard/UrlInput';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
-import { Panel, ProgressBar, Thumb } from '@/components/common';
+import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
 import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
 import type { DownloadStatus, HistoryItem } from '@/types/models';
@@ -542,10 +542,8 @@ export default function Dashboard() {
       )}
 
       {/* RainaCorp Branding */}
-      <a
+      <OutboundLink
         href="https://www.rainacorp.co.uk"
-        target="_blank"
-        rel="noopener noreferrer"
         className="mt-10 mb-2 flex flex-col items-center gap-2.5 py-5 group animate-fade-in"
         style={{ animationDelay: '220ms' } as React.CSSProperties}
       >
@@ -556,7 +554,7 @@ export default function Dashboard() {
           </p>
           <p className="text-[11px] text-muted-foreground/40 mt-0.5">rainacorp.co.uk</p>
         </div>
-      </a>
+      </OutboundLink>
 
       {/* Media Details Modal */}
       <MediaDetailsModal

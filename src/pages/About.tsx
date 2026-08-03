@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useService } from '@/services/ServiceProvider';
-import { Panel } from '@/components/common';
+import { Panel, OutboundLink } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
 
 export default function About() {
@@ -21,9 +21,9 @@ export default function About() {
         <p className="page-subtitle">Premium Video Downloader</p>
         <p className="text-[11px] text-muted-foreground/60 mt-1">
           by{' '}
-          <a href="https://www.rainacorp.co.uk" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors">
+          <OutboundLink href="https://www.rainacorp.co.uk" className="hover:text-muted-foreground transition-colors">
             RainaCorp
-          </a>
+          </OutboundLink>
         </p>
       </div>
 
@@ -79,19 +79,18 @@ function LinkRow({ icon: Icon, label, description, href }: { icon: React.Element
 
   if (href) {
     return (
-      <a
+      <OutboundLink
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
         className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group"
       >
         {content}
-      </a>
+      </OutboundLink>
     );
   }
 
+  // No link behind it (Credits) — don't dress it up as something to click.
   return (
-    <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group">
+    <div className="flex items-center gap-3 p-2.5 rounded-lg group">
       {content}
     </div>
   );

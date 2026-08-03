@@ -193,6 +193,11 @@ export class MockPrismService implements IPrismService {
     console.log('[Mock] Show in folder:', filePath);
   }
 
+  async openExternal(url: string): Promise<void> {
+    // Web demo: a normal browser tab is exactly right here.
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
   async pickDirectory(): Promise<string | null> {
     return prompt('Enter download path:') || null;
   }

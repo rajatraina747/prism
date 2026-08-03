@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel } from '@/components/common';
+import { Panel, OutboundLink } from '@/components/common';
 import { ArrowLeft } from 'lucide-react';
 
 export default function PrivacyPolicy() {
@@ -97,9 +97,9 @@ export default function PrivacyPolicy() {
             <h3 className="text-sm font-semibold text-foreground mb-2">Contact</h3>
             <p>
               For privacy-related questions, please contact us at{' '}
-              <a href="https://www.rainacorp.co.uk" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              <OutboundLink href="https://www.rainacorp.co.uk" className="text-primary hover:underline">
                 rainacorp.co.uk
-              </a>.
+              </OutboundLink>.
             </p>
           </section>
         </div>

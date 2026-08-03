@@ -536,6 +536,24 @@ async fn open_file(path: String) -> Result<(), String> {
     opener::open(&expanded).map_err(|e| format!("Failed to open file: {}", e))
 }
 
+/// Open a link in the user's real browser. `target="_blank"` does nothing in
+/// the webview — wry returns no new window unless the app installs a handler —
+/// so every outbound link in the UI routes through here. http(s) only: the
+/// webview must not be able to hand arbitrary schemes to the OS.
+fn validate_external_url(url: &str) -> Result<String, String> {
+    let parsed = url::Url::parse(url).map_err(|_| "Not a valid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("Refusing to open a {} link", parsed.scheme()));
+    }
+    Ok(parsed.to_string())
+}
+
+#[tauri::command]
+async fn open_external(url: String) -> Result<(), String> {
+    let safe = validate_external_url(&url)?;
+    opener::open_browser(&safe).map_err(|e| format!("Failed to open link: {}", e))
+}
+
 #[tauri::command]
 #[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
 async fn show_in_folder(path: String) -> Result<(), String> {
@@ -1035,6 +1053,7 @@ pub fn run() {
             parse_torrent,
             set_torrent_rate_limit,
             open_file,
+            open_external,
             show_in_folder,
             get_default_download_path,
             get_app_version,
@@ -1104,6 +1123,19 @@ mod tests {
         assert!(validate_open_path(&f.to_string_lossy(), false).is_ok());
         assert!(validate_open_path(&f.to_string_lossy(), true).is_ok());
         std::fs::remove_file(&f).unwrap();
+    }
+
+    #[test]
+    fn external_links_are_http_only() {
+        assert!(validate_external_url("https://www.rainacorp.co.uk").is_ok());
+        assert!(validate_external_url("http://example.com/a?b=c#d").is_ok());
+        // The webview must not be able to hand the OS anything else.
+        assert!(validate_external_url("file:///etc/passwd").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+        assert!(validate_external_url("mailto:x@y.z").is_err());
+        assert!(validate_external_url("prism://add?url=x").is_err());
+        assert!(validate_external_url("/Users/someone/secret.txt").is_err());
+        assert!(validate_external_url("not a url").is_err());
     }
 
     #[test]

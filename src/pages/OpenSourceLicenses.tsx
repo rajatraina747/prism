@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel } from '@/components/common';
+import { Panel, OutboundLink } from '@/components/common';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 
 const LICENSES = [
@@ -48,11 +48,9 @@ export default function OpenSourceLicenses() {
       <Panel className="animate-fade-in">
         <div className="divide-y divide-border/30">
           {LICENSES.map(lib => (
-            <a
+            <OutboundLink
               key={lib.name}
               href={lib.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="flex items-center gap-3 py-2.5 hover:bg-secondary/30 -mx-4 px-4 rounded-lg transition-colors group"
             >
               <div className="flex-1 min-w-0">
@@ -63,7 +61,7 @@ export default function OpenSourceLicenses() {
                 {lib.license}
               </span>
               <ExternalLink className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </a>
+            </OutboundLink>
           ))}
         </div>
       </Panel>

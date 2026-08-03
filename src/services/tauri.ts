@@ -262,6 +262,10 @@ export class TauriPrismService implements IPrismService {
     await invoke('show_in_folder', { path: filePath });
   }
 
+  async openExternal(url: string): Promise<void> {
+    await invoke('open_external', { url });
+  }
+
   async pickDirectory(): Promise<string | null> {
     const selected = await dialogOpen({ directory: true, multiple: false });
     return selected as string | null;
