@@ -56,6 +56,7 @@ interface VideoParams {
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 const IS_MAC = navigator.userAgent.includes('Mac');
+const IS_WINDOWS = navigator.userAgent.includes('Windows');
 
 function trackLabel(t: MpvTrack): string {
   const parts = [t.title, t.lang?.toUpperCase()].filter(Boolean);
@@ -304,9 +305,14 @@ export default function Player() {
           <AlertTriangle className="w-8 h-8 mx-auto text-amber-400" />
           <h1 className="text-sm font-semibold">The player engine failed to start</h1>
           <p className="text-xs text-white/70 break-words">{initError}</p>
+          {/* libmpv ships inside the app on macOS and Windows, so "install it
+              yourself" is only actionable advice on Linux. */}
           <p className="text-xs text-white/50">
-            Prism's player needs libmpv. On macOS install it with{' '}
-            <code className="bg-white/10 px-1 rounded">brew install mpv</code>, then reopen the player.
+            {IS_WINDOWS
+              ? 'Prism ships its own copy of libmpv — reinstalling Prism should restore it.'
+              : IS_MAC
+                ? <>Prism ships its own copy of libmpv. If it can't start, installing mpv with <code className="bg-white/10 px-1 rounded">brew install mpv</code> gives it a fallback.</>
+                : <>Prism's player needs libmpv — install it from your package manager (e.g. <code className="bg-white/10 px-1 rounded">libmpv2</code>), then reopen the player.</>}
           </p>
         </div>
       </div>

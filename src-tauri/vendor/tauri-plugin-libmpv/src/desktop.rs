@@ -437,6 +437,33 @@ impl<R: Runtime> Mpv<R> {
                 .map(|path| path.to_string_lossy().into_owned())
                 .unwrap_or_else(|| lib_name.to_string());
 
+            // PRISM VENDOR PATCH (Windows): the wrapper resolves libmpv at
+            // runtime with LoadLibraryExW("libmpv-2.dll") — a *bare* name,
+            // which Windows looks up next to the .exe and in the system dirs,
+            // never in the calling DLL's own directory. We ship libmpv beside
+            // the wrapper under resources/lib, so it would never be found.
+            // Loading it here by absolute path puts the module in the process
+            // under that base name; the wrapper's own load then resolves to
+            // it instead of searching. (macOS needs none of this: the bundling
+            // script rewrites the dylib's install name to @loader_path.)
+            #[cfg(target_os = "windows")]
+            {
+                static LIBMPV: OnceCell<libloading::Library> = OnceCell::new();
+                if let Some(dir) = std::path::Path::new(&valid_lib_path).parent() {
+                    let libmpv_path = dir.join("libmpv-2.dll");
+                    if libmpv_path.exists() {
+                        let _ = LIBMPV.get_or_try_init(|| {
+                            info!("Pre-loading libmpv from: {}", libmpv_path.display());
+                            unsafe { libloading::Library::new(&libmpv_path) }.inspect_err(|e| {
+                                warn!("Failed to pre-load libmpv from '{}': {:?}. The wrapper will fall back to the system search path.", libmpv_path.display(), e);
+                            })
+                        });
+                    } else {
+                        warn!("libmpv-2.dll not found next to the wrapper at '{}' — playback will fail unless it sits beside the executable.", dir.display());
+                    }
+                }
+            }
+
             info!("Attempting to load libmpv-wrapper from: {}", valid_lib_path);
             let result = unsafe { LibmpvWrapper::new(&valid_lib_path) };
 

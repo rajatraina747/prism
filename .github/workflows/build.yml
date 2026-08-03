@@ -139,9 +139,13 @@ jobs:
           mv src-tauri/binaries/deno.exe src-tauri/binaries/deno-x86_64-pc-windows-msvc.exe
 
       # Embedded player: wrapper DLL + zhongfly's self-contained LGPL libmpv,
-      # shipped under resources lib/ — which Windows installs next to the exe,
-      # exactly where the plugin looks. Asset names are dated, so resolve the
-      # latest via the API (excluding the -v3 CPU-variant builds).
+      # shipped under resources lib/ — installed to <install>\lib\, which is
+      # where the plugin looks for the wrapper. Both DLLs must land in the SAME
+      # directory: the wrapper resolves libmpv by bare name at runtime, so the
+      # plugin pre-loads it from beside the wrapper (see desktop.rs) because a
+      # bare-name LoadLibrary would only search the exe's directory.
+      # Asset names are dated, so resolve the latest via the API (excluding the
+      # -v3 CPU-variant builds).
       - name: Bundle libmpv (embedded player)
         shell: pwsh
         run: |
