@@ -123,6 +123,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppPreferences>(() => ({ ...DEFAULT_PREFERENCES, ...service.persistence.loadSettings() }));
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
+  // Items whose backend kill hasn't come back yet — see the auto-start effect.
+  const stoppingRef = useRef<Set<string>>(new Set());
+  const [stoppedTick, setStoppedTick] = useState(0);
 
   // Persist. Queue writes are debounced: progress events mutate the queue
   // several times per second, and each save serializes the whole list to disk.
@@ -243,7 +246,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (available <= 0) return;
 
     const toStart = queue
-      .filter(i => i.status === 'queued' && !startedRef.current.has(i.id))
+      // An item whose kill is still in flight has to wait for it: starting
+      // now means the backend kills the *new* process when the cancel lands,
+      // leaving the item 'downloading' with nothing behind it. stoppedTick
+      // re-runs this effect as each kill settles.
+      .filter(i => i.status === 'queued' && !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id))
       .slice(0, available);
 
     if (toStart.length === 0) return;
@@ -326,7 +333,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       cleanupRefs.current.set(item.id, cleanup);
     });
-  }, [queue, settings, scheduleTick, service]);
+  }, [queue, settings, scheduleTick, stoppedTick, service]);
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);
@@ -338,7 +345,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     cleanupRefs.current.get(id)?.();
     cleanupRefs.current.delete(id);
     startedRef.current.delete(id);
-    service.cancelDownload(id).catch(() => {});
+    stoppingRef.current.add(id);
+    service.cancelDownload(id).catch(() => {}).finally(() => {
+      stoppingRef.current.delete(id);
+      // Nudge the auto-start effect: an item resumed during the kill is
+      // startable now.
+      setStoppedTick(t => t + 1);
+    });
   }, [service]);
 
   const removeFromQueue = useCallback((id: string) => {

@@ -1,6 +1,7 @@
 mod download_manager;
 mod engine;
 mod player;
+mod proc;
 pub mod torrent;
 
 use std::path::PathBuf;
@@ -1044,8 +1045,17 @@ pub fn run() {
             player::fixup_player_video,
             player::player_available,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // Downloads must not outlive the app: yt-dlp's forked worker is
+            // reparented to init and keeps downloading otherwise, racing the
+            // next launch for the same files (see `proc`).
+            if matches!(event, tauri::RunEvent::Exit) {
+                let manager = app.state::<DownloadManager>();
+                tauri::async_runtime::block_on(manager.kill_all());
+            }
+        });
 }
 
 #[cfg(test)]

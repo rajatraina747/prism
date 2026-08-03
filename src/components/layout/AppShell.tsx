@@ -126,17 +126,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const service = useService();
   const navigate = useNavigate();
 
+  // react-router rebuilds `navigate` on every location change, so keep it in a
+  // ref: with it in the dep array the deep-link subscription would be torn down
+  // and rebuilt on every page switch.
+  const navigateRef = React.useRef(navigate);
+  React.useLayoutEffect(() => { navigateRef.current = navigate; }, [navigate]);
+
   // Deep links can arrive on any page; buffer them and jump to the Dashboard,
   // which drains the buffer and submits the URL.
   React.useEffect(() => service.onDeepLink((url) => {
     pushDeepLink(url);
-    navigate('/');
-  }), [service, navigate]);
+    navigateRef.current('/');
+  }), [service]);
 
   // URLs dragged onto the window take the same path.
   useUrlDrop((url) => {
     pushDeepLink(url);
-    navigate('/');
+    navigateRef.current('/');
   });
 
   return (

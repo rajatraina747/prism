@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
@@ -45,6 +46,27 @@ pub struct DownloadComplete {
 
 struct ActiveDownload {
     child: CommandChild,
+    /// Cleared when the run is cancelled or superseded. Its reader task checks
+    /// this before touching shared state or emitting: a process that outlived
+    /// its kill must not keep streaming progress under the item's id.
+    alive: Arc<AtomicBool>,
+}
+
+impl ActiveDownload {
+    /// Kill the process *tree* — see `crate::proc` for why the direct child
+    /// isn't enough.
+    fn kill(self) {
+        let pid = self.child.pid();
+        crate::proc::kill_tree(pid);
+        let _ = self.child.kill();
+    }
+
+    /// Kill it *and* disown the run, so its reader task goes quiet instead of
+    /// competing with whoever owns the id now.
+    fn stop(self) {
+        self.alive.store(false, Ordering::SeqCst);
+        self.kill();
+    }
 }
 
 pub struct DownloadManager {
@@ -80,6 +102,19 @@ impl DownloadManager {
     ) {
         let downloads = self.downloads.clone();
         let reserved = self.reserved.clone();
+
+        // One live download per item. A run for this id may still be going —
+        // a kill that didn't take, or a double start from the frontend — and
+        // two processes streaming progress under one id make the UI flicker
+        // between them while two copies of the file download in parallel.
+        // Superseding also frees the old template claim, so the replacement
+        // resumes the same `.part` instead of dedupe-ing to a fresh copy.
+        // (Bound the guard to this statement — killing a tree blocks.)
+        let superseded = downloads.lock().await.remove(&id);
+        if let Some(prev) = superseded {
+            prev.stop();
+            reserved.lock().await.remove(&id);
+        }
 
         // Auto-number the template against disk AND other active downloads,
         // atomically with claiming it — concurrent adds of the same title
@@ -259,9 +294,10 @@ impl DownloadManager {
                 }
             };
 
+            let alive = Arc::new(AtomicBool::new(true));
             {
                 let mut map = downloads.lock().await;
-                map.insert(id.clone(), ActiveDownload { child });
+                map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
             }
 
             let mut success = false;
@@ -274,6 +310,11 @@ impl DownloadManager {
             let mut agg = PhaseAggregator::new();
 
             loop {
+                // Cancelled, or superseded by a newer run for this id: stop
+                // reading rather than emit progress the item no longer owns.
+                if !alive.load(Ordering::Relaxed) {
+                    return;
+                }
                 // ffmpeg postprocessing (merging a multi-GB file) can be silent
                 // for a long time — don't kill it as inactive.
                 let inactivity = std::time::Duration::from_secs(if agg.processing { 1800 } else { 300 });
@@ -317,15 +358,24 @@ impl DownloadManager {
                     },
                     Ok(None) => break,
                     Err(_) => {
-                        // Inactivity timeout
-                        let mut map = downloads.lock().await;
-                        if let Some(dl) = map.remove(&id) {
-                            let _ = dl.child.kill();
+                        // Inactivity timeout. Stays "alive" — this run still
+                        // owns the id and reports its own failure, which is
+                        // what drives the frontend's retry.
+                        let timed_out = downloads.lock().await.remove(&id);
+                        if let Some(dl) = timed_out {
+                            dl.kill();
                         }
                         last_error = "Download timed out (no activity for 5 minutes)".to_string();
                         break;
                     }
                 }
+            }
+
+            // Cancelled or superseded while we were reading: the map entry and
+            // the template claim belong to whoever stopped us (or to the run
+            // that replaced us), and the completion is not ours to report.
+            if !alive.load(Ordering::SeqCst) {
+                return;
             }
 
             // Remove from active downloads and release the template claim
@@ -368,13 +418,35 @@ impl DownloadManager {
     }
 
     pub async fn cancel_download(&self, id: &str) -> bool {
-        let mut map = self.downloads.lock().await;
-        if let Some(dl) = map.remove(id) {
-            let _ = dl.child.kill();
-            true
-        } else {
-            false
+        let stopped = {
+            let mut map = self.downloads.lock().await;
+            match map.remove(id) {
+                Some(dl) => {
+                    dl.stop();
+                    true
+                }
+                None => false,
+            }
+        };
+        // Release the claim here rather than in the reader task: a stopped run
+        // returns without touching shared state, and a leaked claim would push
+        // the item's own retry onto a deduped path — a second copy of the file
+        // instead of a resume.
+        if stopped {
+            self.reserved.lock().await.remove(id);
         }
+        stopped
+    }
+
+    /// Kill every running download. Called on app exit: yt-dlp's forked worker
+    /// outlives the app otherwise, and keeps downloading (and writing into the
+    /// same files the next launch resumes) with nothing left to stop it.
+    pub async fn kill_all(&self) {
+        let running: Vec<ActiveDownload> = self.downloads.lock().await.drain().map(|(_, dl)| dl).collect();
+        for dl in running {
+            dl.stop();
+        }
+        self.reserved.lock().await.clear();
     }
 }
 

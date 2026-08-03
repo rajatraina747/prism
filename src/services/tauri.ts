@@ -65,6 +65,19 @@ function parsePrismDeepLink(raw: string): string | null {
   }
 }
 
+// The launch deep link belongs to the process, not to any one subscription:
+// `getCurrent()` keeps returning it on Windows/Linux (it is parsed from argv at
+// startup), so it is read once and handed to the first live subscriber.
+let launchLinksPromise: Promise<string[]> | null = null;
+let launchLinksDelivered = false;
+
+function readLaunchLinks(): Promise<string[]> {
+  launchLinksPromise ??= getCurrentDeepLinks()
+    .then(urls => urls ?? [])
+    .catch(() => []);
+  return launchLinksPromise;
+}
+
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
   private _pendingUpdate: Update | null = null;
@@ -297,8 +310,17 @@ export class TauriPrismService implements IPrismService {
       }
     };
 
-    // Link that launched the app (cold start)
-    getCurrentDeepLinks().then(urls => { if (urls) extract(urls); }).catch(() => {});
+    // Link that launched the app (cold start). On Windows/Linux the plugin
+    // keeps this value for the whole process lifetime, so a second read
+    // replays the launch link — deliver it exactly once. (Not marked delivered
+    // if this subscription was torn down first, so a remount still gets it.)
+    if (!launchLinksDelivered) {
+      readLaunchLinks().then(urls => {
+        if (cancelled || launchLinksDelivered) return;
+        launchLinksDelivered = true;
+        extract(urls);
+      });
+    }
     // Links arriving while running
     onOpenUrl(extract).then(fn => {
       if (cancelled) fn();

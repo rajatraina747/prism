@@ -1,8 +1,8 @@
 {
   "name": "prism",
   "private": true,
-  "version": "1.7.2",
-  "description": "Prism \u2014 Premium Video Downloader",
+  "version": "1.7.3",
+  "description": "Prism — Premium Video Downloader",
   "type": "module",
   "scripts": {
     "dev": "vite",

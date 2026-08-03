@@ -4225,12 +4225,13 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "1.7.2"
+version = "1.7.3"
 dependencies = [
  "anyhow",
  "chrono",
  "dirs",
  "fs2",
+ "libc",
  "libloading 0.8.9",
  "librqbit",
  "log",
