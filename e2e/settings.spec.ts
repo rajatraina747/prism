@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Settings', () => {
   test('displays settings sections', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.getByText('General')).toBeVisible();
-    await expect(page.getByText('Downloads')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Downloads' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Queue' })).toBeVisible();
     await expect(page.getByText('Appearance')).toBeVisible();
     await expect(page.getByText('Updates')).toBeVisible();
   });

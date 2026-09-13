@@ -112,11 +112,21 @@ function PageHeader() {
     '/licenses': 'Open Source Licenses',
   };
 
+  const service = useService();
+
   return (
     <header className="h-14 flex items-center px-6 border-b border-border/30 shrink-0">
       <h1 className="text-sm font-semibold text-foreground">
         {titles[location.pathname] || 'Prism'}
       </h1>
+      {service.isDemo && (
+        <span
+          title="Browser demo: downloads are simulated and nothing is saved to disk"
+          className="ml-3 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-[10px] font-semibold uppercase tracking-wide"
+        >
+          Demo
+        </span>
+      )}
     </header>
   );
 }

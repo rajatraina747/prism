@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
+import { save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, mkdir, exists, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
@@ -10,7 +10,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
-import { sanitizeFilename, isTorrentUrl } from './utils';
+import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory)
 const FILES = {
@@ -48,23 +48,6 @@ async function writeJson(file: string, data: unknown): Promise<void> {
   });
 }
 
-/** Extract the video URL from a `prism://add?url=...` deep link. */
-function parsePrismDeepLink(raw: string): string | null {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== 'prism:') return null;
-    // Accept both prism://add?url=... (host) and prism:/add?url=... (path)
-    const action = u.hostname || u.pathname.replace(/^\/+/, '');
-    if (action !== 'add') return null;
-    const target = u.searchParams.get('url');
-    if (!target) return null;
-    const t = new URL(target);
-    return (t.protocol === 'http:' || t.protocol === 'https:') ? target : null;
-  } catch {
-    return null;
-  }
-}
-
 // The launch deep link belongs to the process, not to any one subscription:
 // `getCurrent()` keeps returning it on Windows/Linux (it is parsed from argv at
 // startup), so it is read once and handed to the first live subscriber.
@@ -72,9 +55,20 @@ let launchLinksPromise: Promise<string[]> | null = null;
 let launchLinksDelivered = false;
 
 function readLaunchLinks(): Promise<string[]> {
-  launchLinksPromise ??= getCurrentDeepLinks()
-    .then(urls => urls ?? [])
-    .catch(() => []);
+  // Scheme deep links (prism://, magnet:) come from the deep-link plugin;
+  // `.torrent` files Prism was launched with arrive as plain argv on
+  // Windows/Linux and are reported by the Rust side (validated there again
+  // before the engine ever sees them).
+  launchLinksPromise ??= Promise.all([
+    getCurrentDeepLinks().then(urls => urls ?? []).catch(() => [] as string[]),
+    (async () => {
+      try {
+        return (await invoke<string[]>('get_launch_torrent_files')) ?? [];
+      } catch {
+        return [] as string[];
+      }
+    })(),
+  ]).then(([links, files]) => [...links, ...files]);
   return launchLinksPromise;
 }
 
@@ -267,8 +261,9 @@ export class TauriPrismService implements IPrismService {
   }
 
   async pickDirectory(): Promise<string | null> {
-    const selected = await dialogOpen({ directory: true, multiple: false });
-    return selected as string | null;
+    // The picker runs in Rust so the user's choice itself becomes an allowed
+    // download root (external drives, NAS) — see `pick_download_dir`.
+    return await invoke<string | null>('pick_download_dir');
   }
 
   async getDefaultDownloadPath(): Promise<string> {
@@ -296,6 +291,7 @@ export class TauriPrismService implements IPrismService {
   onDeepLink(handler: (url: string) => void): () => void {
     let unlisten: UnlistenFn | null = null;
     let trayUnlisten: UnlistenFn | null = null;
+    let fileUnlisten: UnlistenFn | null = null;
     let cancelled = false;
 
     const extract = (urls: string[]) => {
@@ -344,8 +340,21 @@ export class TauriPrismService implements IPrismService {
       else trayUnlisten = fn;
     }).catch(() => {});
 
+    // A .torrent opened while Prism is running (Windows/Linux second-instance
+    // argv, forwarded by the Rust single-instance handler). Same add flow as a
+    // magnet: file picker + confirmation; Rust re-validates the path.
+    listen<string>('open-torrent-file', (event) => {
+      if (cancelled) return;
+      if (isTorrentUrl(event.payload)) handler(event.payload.trim());
+    }).then(fn => {
+      if (cancelled) fn();
+      else fileUnlisten = fn;
+    }).catch(() => {});
+
     return () => {
       cancelled = true;
+      fileUnlisten?.();
+      fileUnlisten = null;
       unlisten?.();
       unlisten = null;
       trayUnlisten?.();

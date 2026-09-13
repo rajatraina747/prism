@@ -17,7 +17,7 @@ export default function TermsOfService() {
           Back to Settings
         </button>
         <h2 className="page-title">Terms of Service</h2>
-        <p className="page-subtitle">Last updated: March 2026</p>
+        <p className="page-subtitle">Last updated: September 2026</p>
       </div>
 
       <Panel className="animate-fade-in">
@@ -64,11 +64,14 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">5. Intellectual Property</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-2">5. Licensing and Trademarks</h3>
             <p>
-              The Prism application, including its design, code, and branding, is the intellectual property
-              of RainaCorp. You may not reproduce, distribute, modify, or create derivative works based on
-              the Application without prior written consent.
+              Prism's own source code is open source under the MIT License — you may use, copy, modify and
+              redistribute it under that license's terms. The application also bundles third-party
+              components under their own licenses (including LGPL- and GPL-licensed media libraries in the
+              macOS build); those terms govern the bundled builds and are listed under Settings → Legal →
+              Open Source Licenses. The Prism name, logo and RainaCorp branding are not covered by the MIT
+              License and may not be used to imply endorsement of modified versions.
             </p>
           </section>
 

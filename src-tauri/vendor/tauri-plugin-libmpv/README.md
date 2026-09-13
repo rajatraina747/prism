@@ -12,8 +12,20 @@
 >   NULL. Intermittent in a dev build (worked most of the time by scheduling
 >   luck), 100% reproducible in a release build ("Failed to create mpv
 >   instance" on every attempt).
+> - `src/desktop.rs` (Windows): pre-load `libmpv-2.dll` from beside the
+>   wrapper by absolute path, because the wrapper resolves it by bare name
+>   and Windows never searches the calling DLL's own directory.
+> - `src/desktop.rs`: on the null-handle error path, the event-userdata box
+>   was reconstituted as `Box<(AppHandle<R>, String)>` although it was
+>   allocated as `Box<EventUserData<R>>` (a different layout) — undefined
+>   behaviour exactly when mpv fails to start. Now dropped as the right type.
 >
-> Both worth an upstream PR.
+> Prism does NOT grant the plugin's `command`/`set_property`/`init`
+> passthrough to any window (see `src-tauri/capabilities/player.json`); mpv
+> is reached only through Prism's allowlisting commands in
+> `src-tauri/src/player.rs`.
+>
+> All worth an upstream PR.
 
 # Tauri Plugin libmpv
 

@@ -1,0 +1,7 @@
+# cargo-audit configuration (picked up when run from src-tauri/).
+#
+# CI fails on any vulnerability not listed here. Add an ID only with a
+# comment saying why it doesn't apply to Prism and when to re-check; keep
+# this list as short as possible.
+[advisories]
+ignore = []

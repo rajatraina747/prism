@@ -17,7 +17,7 @@ export default function PrivacyPolicy() {
           Back to Settings
         </button>
         <h2 className="page-title">Privacy Policy</h2>
-        <p className="page-subtitle">Last updated: March 2026</p>
+        <p className="page-subtitle">Last updated: September 2026</p>
       </div>
 
       <Panel className="animate-fade-in">
@@ -25,71 +25,88 @@ export default function PrivacyPolicy() {
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Overview</h3>
             <p>
-              Prism is a desktop application developed by RainaCorp. We are committed to protecting your privacy.
-              This policy explains what data Prism collects (or doesn't) and how it is handled.
+              Prism is a desktop application developed by RainaCorp. It runs on your machine and has no
+              accounts, no servers of its own, and no analytics. This policy states exactly what stays on
+              your device, what can leave it, and when.
             </p>
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Data Collection</h3>
-            <p>
-              Prism operates entirely on your local machine. We do <strong className="text-foreground">not</strong> collect,
-              transmit, or store any personal data on external servers. Specifically:
-            </p>
+            <h3 className="text-sm font-semibold text-foreground mb-2">What stays on your device</h3>
+            <p>Everything Prism knows about you lives in its application data folder:</p>
             <ul className="list-disc pl-4 space-y-1 mt-2">
-              <li>No analytics or telemetry data is collected</li>
-              <li>No account or registration is required</li>
-              <li>No browsing history, download history, or URLs are sent to any server</li>
-              <li>All application data (settings, queue, history) is stored locally on your device</li>
-            </ul>
-          </section>
-
-          <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Local Storage</h3>
-            <p>
-              Prism stores the following data locally on your device in the application data directory:
-            </p>
-            <ul className="list-disc pl-4 space-y-1 mt-2">
-              <li><strong className="text-foreground">Settings</strong> — Your application preferences (theme, download folder, etc.)</li>
-              <li><strong className="text-foreground">Download queue</strong> — Pending and active download items</li>
-              <li><strong className="text-foreground">History</strong> — Records of completed downloads</li>
-              <li><strong className="text-foreground">Diagnostic logs</strong> — Application logs stored in memory, cleared on restart</li>
+              <li><strong className="text-foreground">Settings</strong> — your preferences, including a proxy URL if you set one (stored as typed, so don't put credentials in it that you wouldn't store in a text file)</li>
+              <li><strong className="text-foreground">Queue and history</strong> — the URLs, titles, thumbnails and file paths of what you downloaded</li>
+              <li><strong className="text-foreground">Subscriptions</strong> — the channels/playlists you watch and which entries have been seen</li>
+              <li><strong className="text-foreground">Log files</strong> — an application log in the system log folder and, when the player is used, an mpv log (<span className="font-mono">mpv.log</span>) in the application data folder. Both can contain URLs and file paths, and both stay local unless you choose to send them to someone</li>
+              <li><strong className="text-foreground">Allowed folders</strong> — the download folders you picked in the folder dialog, kept in the system preferences folder</li>
             </ul>
             <p className="mt-2">
-              This data never leaves your device and can be deleted at any time by removing the application data folder
-              or using the "Reset to Defaults" option in Settings.
+              None of this is transmitted anywhere. Delete it at any time by removing the application data
+              folder or using "Reset to Defaults" in Settings.
             </p>
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Network Activity</h3>
-            <p>
-              Prism makes network requests only when:
-            </p>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Network activity</h3>
+            <p>Prism connects to the internet only for:</p>
             <ul className="list-disc pl-4 space-y-1 mt-2">
-              <li>Fetching video metadata from URLs you provide</li>
-              <li>Downloading video files you have explicitly requested</li>
-              <li>Checking for application updates (if enabled in Settings)</li>
+              <li>Fetching metadata and media for URLs you provide (or that a subscription you created has found)</li>
+              <li>BitTorrent transfers you start — a peer-to-peer protocol: other participants in a swarm can see your IP address, and by default Prism joins the DHT and asks your router to forward a port (both can be turned off in Settings → Downloads)</li>
+              <li>Checking for application updates and, when you ask, updating the yt-dlp engine (both from GitHub)</li>
+              <li>Fetching a torrent IP blocklist, if you configured one</li>
+              <li>Opt-in crash reporting (below)</li>
             </ul>
             <p className="mt-2">
-              All network activity is initiated by you. No background data collection occurs.
+              If you set a proxy, video downloads go through it entirely; for torrents only peer connections
+              do — DHT, trackers and UPnP still use your real address. The Settings page says so next to the field.
             </p>
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Third-Party Services</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Crash reporting (off by default)</h3>
             <p>
-              Prism uses yt-dlp as its download engine. yt-dlp is an open-source tool that connects directly
-              to video hosting platforms. Please refer to the privacy policies of the respective platforms for
-              information on how they handle your requests.
+              Settings → Diagnostics → Crash reporting sends a report to Sentry (a third-party error-tracking
+              service) when Prism crashes. It is <strong className="text-foreground">off</strong> unless you turn it
+              on. A report contains the error type and message, a stack trace of Prism's own code, the app version
+              and your operating system. Before sending, Prism removes anything that looks like a URL or a file
+              path, does not attach console output, browsing breadcrumbs or request data, and never includes your
+              queue, history or settings. You can turn it off again at any time; nothing is sent while it's off.
             </p>
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-foreground mb-2">Updates to This Policy</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Clipboard</h3>
             <p>
-              We may update this policy from time to time. Changes will be reflected in the "Last updated" date
-              above and included in application updates.
+              With "Clipboard link detection" on (Settings → Notifications), Prism reads the clipboard when its
+              window regains focus to offer a one-click fetch of a video link it finds there. The clipboard
+              contents are never stored or transmitted. Turn the setting off and Prism never reads the clipboard
+              on its own; the tray's "Paste &amp; Download" reads it only when you click it.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Browser cookies</h3>
+            <p>
+              If you choose a browser under Settings → Downloads → Browser cookies, the yt-dlp engine reads
+              that browser's cookie store locally so sign-in-required videos work. Cookies are sent only to the
+              site the video is on, exactly as your browser would send them, and never to RainaCorp or anyone else.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Third parties</h3>
+            <p>
+              Prism uses yt-dlp and an embedded BitTorrent engine to talk directly to the sites and swarms you
+              choose; their operators see those requests. Updates and the yt-dlp engine are downloaded from
+              GitHub. Crash reports, if enabled, go to Sentry. No other third party receives anything.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Updates to this policy</h3>
+            <p>
+              Changes are reflected in the "Last updated" date above and shipped with application updates.
             </p>
           </section>
 

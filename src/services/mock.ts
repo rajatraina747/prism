@@ -46,6 +46,7 @@ const STORAGE_KEYS = {
 // ── Mock Service Implementation ──
 
 export class MockPrismService implements IPrismService {
+  readonly isDemo = true;
   async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
     await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
     let count = 3 + Math.floor(Math.random() * 8);

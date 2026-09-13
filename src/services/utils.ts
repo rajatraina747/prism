@@ -54,6 +54,25 @@ export function formatEta(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
 }
 
+/** Extract the video URL from a `prism://add?url=...` deep link. Anything that
+ * isn't exactly that shape — another scheme, another action, a non-http(s)
+ * target — yields null. Pure, so it's unit-tested without the Tauri mocks. */
+export function parsePrismDeepLink(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'prism:') return null;
+    // Accept both prism://add?url=... (host) and prism:/add?url=... (path)
+    const action = u.hostname || u.pathname.replace(/^\/+/, '');
+    if (action !== 'add') return null;
+    const target = u.searchParams.get('url');
+    if (!target) return null;
+    const t = new URL(target);
+    return (t.protocol === 'http:' || t.protocol === 'https:') ? target : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A magnet link, or a .torrent file (http(s) URL, file:// URL, or local path) —
  * handled by the torrent engine (librqbit) rather than yt-dlp. */
 export function isTorrentUrl(url: string): boolean {

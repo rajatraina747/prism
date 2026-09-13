@@ -2,6 +2,7 @@ mod download_manager;
 mod engine;
 mod player;
 mod proc;
+mod quarantine;
 pub mod torrent;
 
 use std::path::PathBuf;
@@ -109,7 +110,7 @@ struct YtDlpThumbnail {
 /// if it expires. Without this a hung extractor (dead site, stuck challenge
 /// solver) leaves the frontend spinner stuck forever.
 /// Returns (exit_code, stdout, stderr).
-async fn run_ytdlp_capture(
+pub(crate) async fn run_ytdlp_capture(
     cmd: tauri_plugin_shell::process::Command,
     timeout_secs: u64,
 ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), String> {
@@ -129,6 +130,10 @@ async fn run_ytdlp_capture(
             Ok(Some(_)) => {}
             Ok(None) => return Ok((None, stdout, stderr)),
             Err(_) => {
+                // The whole tree, not just the PyInstaller launcher — the
+                // forked worker would otherwise outlive this timeout (the
+                // same bug v1.7.3 fixed for downloads; see `proc`).
+                proc::kill_tree(child.pid());
                 let _ = child.kill();
                 return Err(format!(
                     "yt-dlp did not respond within {} seconds — the site may be blocking or down",
@@ -380,7 +385,7 @@ async fn start_download(
     speed_limit: Option<u64>,
     expected_size: Option<u64>,
 ) -> Result<(), String> {
-    let expanded_path = validate_download_path(&output_path)?;
+    let expanded_path = validate_download_path(&output_path, &picked_dirs(&app))?;
     // Auto-numbering against disk + other active downloads happens inside the
     // manager, atomically with reserving the template (two adds of the same
     // title must never share intermediates).
@@ -436,15 +441,15 @@ async fn start_torrent(
     speed_limit: Option<u64>,
 ) -> Result<(), String> {
     // output_path is the destination *directory* for the torrent's files.
-    let dir = validate_download_path(&output_path)?;
+    let picked = picked_dirs(&app);
+    let dir = validate_download_path(&output_path, &picked)?;
+    let source = resolve_torrent_source(&magnet, &picked)?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
     let policy = seeding_policy(&app);
-    let proxy = proxy_url(&app);
-    let blocklist = blocklist_url(&app);
-    let trackers = extra_trackers(&app);
+    let cfg = torrent_session_config(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.start_torrent(app.clone(), id, magnet, dir, policy, only_files, proxy, blocklist, trackers, speed_limit);
+    manager.start_torrent(app.clone(), id, source, dir, policy, only_files, cfg, speed_limit);
     Ok(())
 }
 
@@ -456,11 +461,82 @@ async fn parse_torrent(
     magnet: String,
     output_path: String,
 ) -> Result<Vec<torrent::TorrentFileEntry>, String> {
-    let dir = validate_download_path(&output_path)?;
-    let proxy = proxy_url(&app);
-    let blocklist = blocklist_url(&app);
+    let picked = picked_dirs(&app);
+    let dir = validate_download_path(&output_path, &picked)?;
+    let source = resolve_torrent_source(&magnet, &picked)?;
+    let cfg = torrent_session_config(&app);
     let manager = app.state::<torrent::TorrentManager>();
-    manager.list_files(magnet, dir, proxy, blocklist).await
+    manager.list_files(source, dir, cfg).await
+}
+
+/// `.torrent` files Prism was *launched* with (double-click / "Open with" on
+/// Windows and Linux, where they arrive as plain argv rather than through the
+/// deep-link plugin). The frontend reads this once at startup, like the
+/// launch deep link. Only existing `.torrent` files are reported.
+#[tauri::command]
+fn get_launch_torrent_files() -> Vec<String> {
+    std::env::args().skip(1).filter(|a| is_torrent_file_arg(a)).collect()
+}
+
+fn is_torrent_file_arg(arg: &str) -> bool {
+    arg.to_ascii_lowercase().ends_with(".torrent") && std::path::Path::new(arg).is_file()
+}
+
+/// Session-wide torrent engine settings, each read through its whitelisting
+/// accessor. Applied when the engine starts (next launch after a change).
+fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
+    torrent::SessionConfig {
+        socks_proxy: proxy_url(app),
+        blocklist_url: blocklist_url(app),
+        upnp: torrent_upnp_enabled(app),
+        dht: torrent_dht_enabled(app),
+        trackers: extra_trackers(app),
+    }
+}
+
+/// Largest `.torrent` file we'll read into memory (real ones are KBs).
+const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The only way webview input becomes a torrent source. Accepts a `magnet:`
+/// link, an http(s) URL, or an existing `.torrent` file (as a `file://` URL
+/// or a bare path) inside the allowed roots — the frontend's `isTorrentUrl`
+/// deliberately lets paths through for the OS file association, so the
+/// check has to live here, not there.
+fn resolve_torrent_source(raw: &str, extra_roots: &[PathBuf]) -> Result<torrent::TorrentSource, String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err("No torrent link or file given".into());
+    }
+    // A Windows drive path (`C:\x.torrent`) parses as scheme "c" — treat any
+    // single-letter scheme as a path, not a URL.
+    if let Some(u) = url::Url::parse(s).ok().filter(|u| u.scheme().len() > 1) {
+        return match u.scheme() {
+            "magnet" | "http" | "https" => Ok(torrent::TorrentSource::Url(s.to_string())),
+            "file" => {
+                let p = u
+                    .to_file_path()
+                    .map_err(|_| "Invalid torrent file path".to_string())?;
+                read_local_torrent(&p.to_string_lossy(), extra_roots)
+            }
+            other => Err(format!("Unsupported torrent source: {} links are not accepted", other)),
+        };
+    }
+    read_local_torrent(s, extra_roots)
+}
+
+fn read_local_torrent(path: &str, extra_roots: &[PathBuf]) -> Result<torrent::TorrentSource, String> {
+    let validated = validate_open_path(path, false, extra_roots)?;
+    if !validated.to_ascii_lowercase().ends_with(".torrent") {
+        return Err("Only .torrent files can be opened as torrents".into());
+    }
+    let len = std::fs::metadata(&validated)
+        .map_err(|e| format!("Failed to read torrent file: {}", e))?
+        .len();
+    if len > MAX_TORRENT_FILE_BYTES {
+        return Err("Torrent file is too large to be a valid .torrent".into());
+    }
+    let bytes = std::fs::read(&validated).map_err(|e| format!("Failed to read torrent file: {}", e))?;
+    Ok(torrent::TorrentSource::Bytes { key: validated, bytes })
 }
 
 #[tauri::command]
@@ -504,12 +580,16 @@ async fn set_torrent_rate_limit(app: AppHandle, bytes_per_sec: Option<u64>) -> R
 }
 
 /// Validate a path the frontend asks us to open/reveal: must be an existing
-/// file (not a URL or directory) inside the same allowed roots as downloads.
-/// Defense-in-depth — the frontend only passes stored download paths, but a
-/// compromised webview shouldn't be able to launch arbitrary targets.
-/// `allow_dir` lets Show-in-Folder accept a directory (multi-file torrents
-/// resolve to a folder); Play/open stays file-only.
-fn validate_open_path(path: &str, allow_dir: bool) -> Result<String, String> {
+/// file (not a URL or directory) inside the allowed roots (see
+/// `path_is_allowed`). Defense-in-depth — the frontend only passes stored
+/// download paths, but a compromised webview shouldn't be able to launch
+/// arbitrary targets. `allow_dir` lets Show-in-Folder accept a directory
+/// (multi-file torrents resolve to a folder); Play/open stays file-only.
+pub(crate) fn validate_open_path(
+    path: &str,
+    allow_dir: bool,
+    extra_roots: &[PathBuf],
+) -> Result<String, String> {
     let expanded = expand_tilde(path);
     let p = std::path::Path::new(&expanded);
     let kind_ok = p.is_file() || (allow_dir && p.is_dir());
@@ -519,20 +599,47 @@ fn validate_open_path(path: &str, allow_dir: bool) -> Result<String, String> {
     let resolved = p
         .canonicalize()
         .map_err(|_| "File not found".to_string())?;
-    let allowed = [dirs::home_dir(), dirs::download_dir(), dirs::data_dir()];
-    let ok = allowed.iter().flatten().any(|base| {
-        let base = base.canonicalize().unwrap_or_else(|_| base.clone());
-        resolved.starts_with(&base)
-    });
-    if !ok {
-        return Err("File is outside the allowed directories".into());
-    }
+    path_is_allowed(&resolved, extra_roots)?;
     Ok(expanded)
 }
 
+/// File types Prism will hand to the OS default handler ("Open"/"Play").
+/// Anything else — an executable, a script, a shortcut, a disk image — is
+/// refused: downloads are written by yt-dlp/librqbit without a quarantine
+/// flag, and a torrent's file names are attacker-controlled, so "Open" must
+/// never be a way to run what a torrent delivered. Reveal-in-folder is not
+/// restricted (showing a file doesn't execute it).
+const OPENABLE_EXTENSIONS: &[&str] = &[
+    // video
+    "mp4", "m4v", "mkv", "webm", "mov", "avi", "flv", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts",
+    "3gp", "ogv", "vob",
+    // audio
+    "mp3", "m4a", "aac", "opus", "ogg", "oga", "wav", "flac", "aiff", "aif", "wma", "alac",
+    // subtitles / sidecars
+    "srt", "vtt", "ass", "ssa", "sub", "lrc",
+    // images (thumbnails, covers)
+    "jpg", "jpeg", "png", "webp", "gif", "bmp",
+    // documents commonly bundled with media
+    "pdf", "txt", "nfo", "md",
+];
+
+pub(crate) fn is_openable_media(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .is_some_and(|e| OPENABLE_EXTENSIONS.contains(&e.as_str()))
+}
+
 #[tauri::command]
-async fn open_file(path: String) -> Result<(), String> {
-    let expanded = validate_open_path(&path, false)?;
+async fn open_file(app: AppHandle, path: String) -> Result<(), String> {
+    let expanded = validate_open_path(&path, false, &picked_dirs(&app))?;
+    if !is_openable_media(&expanded) {
+        return Err(
+            "Prism only opens media, subtitle, image and text files. Use \"Show in Folder\" for anything else."
+                .into(),
+        );
+    }
     opener::open(&expanded).map_err(|e| format!("Failed to open file: {}", e))
 }
 
@@ -556,8 +663,8 @@ async fn open_external(url: String) -> Result<(), String> {
 
 #[tauri::command]
 #[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
-async fn show_in_folder(path: String) -> Result<(), String> {
-    let expanded = validate_open_path(&path, true)?;
+async fn show_in_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let expanded = validate_open_path(&path, true, &picked_dirs(&app))?;
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -638,6 +745,14 @@ pub fn audio_format(app: &AppHandle) -> String {
         .unwrap_or_else(|| "mp3".to_string())
 }
 
+/// "Keep original container": skip the forced MP4 remux/merge so VP9/AV1
+/// downloads stay in mkv/webm as yt-dlp produces them. Default off.
+pub fn keep_original_container(app: &AppHandle) -> bool {
+    read_setting(app, "keepOriginalContainer")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// Torrent seeding policy, whitelisted; defaults to seed-to-ratio-1.0.
 pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
     match read_setting(app, "seedingPolicy")
@@ -650,36 +765,53 @@ pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
     }
 }
 
+/// Upper bounds on the free-text tracker list: it comes from a user-editable
+/// file and feeds the torrent engine's announce set, so cap both the number
+/// of entries and each entry's length.
+const MAX_EXTRA_TRACKERS: usize = 32;
+const MAX_TRACKER_URL_LEN: usize = 512;
+
 /// Extra tracker URLs from settings, announced on every torrent add (the
 /// classic uTorrent "additional trackers" box). Newline- or comma-separated;
-/// only http(s)/udp announce URLs pass the filter.
+/// only well-formed http(s)/udp announce URLs pass the filter.
 pub fn extra_trackers(app: &AppHandle) -> Vec<String> {
     read_setting(app, "extraTrackers")
         .and_then(|v| v.as_str().map(str::to_string))
-        .map(|s| {
-            s.split(['\n', ','])
-                .map(str::trim)
-                .filter(|t| {
-                    let l = t.to_ascii_lowercase();
-                    l.starts_with("http://") || l.starts_with("https://") || l.starts_with("udp://")
-                })
-                .map(str::to_string)
-                .collect()
-        })
+        .map(|s| parse_extra_trackers(&s))
         .unwrap_or_default()
+}
+
+/// Pure half of `extra_trackers` (testable without an app handle).
+pub(crate) fn parse_extra_trackers(raw: &str) -> Vec<String> {
+    raw.split(['\n', ','])
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && t.len() <= MAX_TRACKER_URL_LEN)
+        .filter(|t| {
+            url::Url::parse(t)
+                .map(|u| matches!(u.scheme(), "http" | "https" | "udp") && u.host_str().is_some())
+                .unwrap_or(false)
+        })
+        .map(str::to_string)
+        .take(MAX_EXTRA_TRACKERS)
+        .collect()
 }
 
 /// IP blocklist URL for the torrent session (uTorrent's ipfilter equivalent;
 /// standard p2p blocklist formats, gz/zstd ok). Applied when the torrent
 /// engine starts, so changes take effect on the next app launch.
+/// https only: a blocklist fetched over plain http could be rewritten in
+/// transit to unblock exactly the peers it was meant to block.
 pub fn blocklist_url(app: &AppHandle) -> Option<String> {
     read_setting(app, "blocklistUrl")
         .and_then(|v| v.as_str().map(str::to_string))
-        .map(|s| s.trim().to_string())
-        .filter(|s| {
-            let l = s.to_ascii_lowercase();
-            l.starts_with("http://") || l.starts_with("https://")
-        })
+        .and_then(|s| parse_blocklist_url(&s))
+}
+
+/// Pure half of `blocklist_url` (testable without an app handle).
+pub(crate) fn parse_blocklist_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let parsed = url::Url::parse(s).ok()?;
+    (parsed.scheme() == "https" && parsed.host_str().is_some()).then(|| s.to_string())
 }
 
 /// Proxy URL from settings, accepted only for known proxy schemes so a corrupted
@@ -687,15 +819,35 @@ pub fn blocklist_url(app: &AppHandle) -> Option<String> {
 pub fn proxy_url(app: &AppHandle) -> Option<String> {
     read_setting(app, "proxyUrl")
         .and_then(|v| v.as_str().map(str::to_string))
-        .map(|s| s.trim().to_string())
-        .filter(|s| {
-            let l = s.to_ascii_lowercase();
-            l.starts_with("http://")
-                || l.starts_with("https://")
-                || l.starts_with("socks5://")
-                || l.starts_with("socks5h://")
-                || l.starts_with("socks4://")
-        })
+        .and_then(|s| parse_proxy_url(&s))
+}
+
+/// Pure half of `proxy_url` (testable without an app handle).
+pub(crate) fn parse_proxy_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let parsed = url::Url::parse(s).ok()?;
+    let ok = matches!(
+        parsed.scheme(),
+        "http" | "https" | "socks5" | "socks5h" | "socks4"
+    ) && parsed.host_str().is_some();
+    ok.then(|| s.to_string())
+}
+
+/// Whether the torrent engine may open a router port via UPnP. Defaults to
+/// on (inbound peers matter for swarm health) but is exposed as a setting
+/// because it publishes the machine's reachability to the LAN and, when a
+/// proxy is configured for privacy, defeats the point of the proxy.
+pub fn torrent_upnp_enabled(app: &AppHandle) -> bool {
+    read_setting(app, "torrentUpnp")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
+/// Whether the torrent engine joins the DHT. Off = tracker-only.
+pub fn torrent_dht_enabled(app: &AppHandle) -> bool {
+    read_setting(app, "torrentDht")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
 }
 
 /// SponsorBlock preference ("mark" | "remove"), whitelisted; else off.
@@ -714,8 +866,65 @@ fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
+/// Where Prism may read and write user files: the home directory, the OS
+/// Downloads directory, and any folder the user has explicitly picked in the
+/// native folder dialog (`pick_download_dir` — external drives, NAS mounts,
+/// a symlinked Downloads). Minus `denied_subtree`, which no download or
+/// torrent file name may ever land in, whatever the destination.
+fn path_is_allowed(resolved: &std::path::Path, extra_roots: &[PathBuf]) -> Result<(), String> {
+    let canon = |p: &PathBuf| p.canonicalize().unwrap_or_else(|_| p.clone());
+    let home = dirs::home_dir().map(|h| canon(&h));
+    let mut roots: Vec<PathBuf> = Vec::new();
+    roots.extend(home.clone());
+    roots.extend(dirs::download_dir().map(|d| canon(&d)));
+    roots.extend(extra_roots.iter().map(canon));
+
+    if !roots.iter().any(|base| resolved.starts_with(base)) {
+        return Err(
+            "Path is outside your home folder. Pick the folder in Settings → Download location to allow it."
+                .into(),
+        );
+    }
+    if let Some(home) = home {
+        if let Some(why) = denied_subtree(resolved, &home) {
+            return Err(format!("Prism won't write or open files in {} (system/config location)", why));
+        }
+    }
+    Ok(())
+}
+
+/// Sensitive locations under the home directory that must never receive a
+/// download or be opened from the app, even though they're "inside home":
+/// launch agents, shell rc files, SSH/GPG keys, browser profiles, Windows
+/// Startup. Returns a short description of the matched rule.
+fn denied_subtree(resolved: &std::path::Path, home: &std::path::Path) -> Option<String> {
+    // Any hidden entry directly under home: ~/.ssh, ~/.config, ~/.gnupg,
+    // ~/.zshrc, ~/.local/share/applications, ~/.config/autostart, ...
+    if let Ok(rel) = resolved.strip_prefix(home) {
+        if let Some(first) = rel.components().next() {
+            let name = first.as_os_str().to_string_lossy();
+            if name.starts_with('.') {
+                return Some(format!("~/{}", name));
+            }
+        }
+    }
+    let denied: &[&str] = if cfg!(target_os = "macos") {
+        // LaunchAgents, Preferences, Application Support, Keychains, Safari…
+        &["Library"]
+    } else if cfg!(target_os = "windows") {
+        // Roaming/Local AppData: Start Menu\Programs\Startup lives in here.
+        &["AppData"]
+    } else {
+        &[]
+    };
+    denied
+        .iter()
+        .find(|d| resolved.starts_with(home.join(d)))
+        .map(|d| format!("~/{}", d))
+}
+
 /// Validate that a download path doesn't escape allowed directories via traversal.
-fn validate_download_path(path: &str) -> Result<String, String> {
+pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Result<String, String> {
     let expanded = expand_tilde(path);
     let path_buf = PathBuf::from(&expanded);
 
@@ -732,32 +941,110 @@ fn validate_download_path(path: &str) -> Result<String, String> {
     }
 
     // Resolve symlinks on the deepest existing ancestor so the containment
-    // check applies to the real location, not a symlink into it.
+    // check applies to the real location, not a symlink into it. The
+    // not-yet-existing tail is re-appended so the deny-list sees the full
+    // target (e.g. `~/Library/LaunchAgents/x` before LaunchAgents exists).
     let mut existing = path_buf.as_path();
     while !existing.exists() {
         existing = existing
             .parent()
             .ok_or_else(|| "Invalid download path".to_string())?;
     }
-    let resolved = existing
+    let resolved_existing = existing
         .canonicalize()
         .map_err(|e| format!("Invalid download path: {}", e))?;
+    let tail = path_buf.strip_prefix(existing).unwrap_or(std::path::Path::new(""));
+    let resolved = resolved_existing.join(tail);
 
-    // Verify path is under home, downloads, or appdata
-    let allowed = [dirs::home_dir(), dirs::download_dir(), dirs::data_dir()];
-    let is_allowed = allowed.iter().flatten().any(|base| {
-        let base = base.canonicalize().unwrap_or_else(|_| base.clone());
-        resolved.starts_with(&base)
-    });
-
-    if !is_allowed {
-        return Err(format!(
-            "Download path must be within your home directory: {}",
-            expanded
-        ));
-    }
+    path_is_allowed(&resolved, extra_roots)
+        .map_err(|e| format!("Invalid download path: {} ({})", e, expanded))?;
 
     Ok(expanded)
+}
+
+// ── User-picked download roots ───────────────────────────────────────
+
+/// Folders the user chose in the native picker, so downloads can go to an
+/// external drive or NAS while everything else stays confined to home.
+/// Kept in Rust-managed state and persisted OUTSIDE the app-data dir (which
+/// the webview can write through the fs plugin) — the webview must not be
+/// able to grant itself new roots by editing a file.
+pub struct PickedDirs(std::sync::Mutex<Vec<PathBuf>>);
+
+fn picked_dirs_file() -> Option<PathBuf> {
+    dirs::preference_dir().map(|d| d.join("com.prism.app.allowed-dirs.json"))
+}
+
+fn load_picked_dirs() -> Vec<PathBuf> {
+    picked_dirs_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .collect()
+}
+
+fn save_picked_dirs(dirs: &[PathBuf]) {
+    if let Some(f) = picked_dirs_file() {
+        if let Some(parent) = f.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let list: Vec<String> = dirs.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        if let Ok(text) = serde_json::to_string_pretty(&list) {
+            let _ = std::fs::write(f, text);
+        }
+    }
+}
+
+/// Snapshot of the picked roots for a validation call.
+pub(crate) fn picked_dirs(app: &AppHandle) -> Vec<PathBuf> {
+    app.try_state::<PickedDirs>()
+        .map(|s| s.0.lock().map(|g| g.clone()).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+/// Native folder picker, run from Rust so the *choice itself* is the trust
+/// signal: whatever the user picks (minus the deny-list) becomes an allowed
+/// root for downloads and open/reveal. Returns None if cancelled.
+#[tauri::command]
+async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose where Prism saves downloads")
+        .pick_folder(move |picked| {
+            let _ = tx.send(picked);
+        });
+    let picked = match rx.await.map_err(|_| "Folder picker was closed".to_string())? {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    let path = picked
+        .into_path()
+        .map_err(|e| format!("Invalid folder: {}", e))?;
+    let resolved = path
+        .canonicalize()
+        .map_err(|e| format!("Invalid folder: {}", e))?;
+    if let Some(home) = dirs::home_dir().and_then(|h| h.canonicalize().ok()) {
+        if let Some(why) = denied_subtree(&resolved, &home) {
+            return Err(format!(
+                "Prism can't use {} as a download folder — it's a system/config location.",
+                why
+            ));
+        }
+    }
+    if let Some(state) = app.try_state::<PickedDirs>() {
+        let mut guard = state.0.lock().map_err(|_| "State lock poisoned".to_string())?;
+        if !guard.iter().any(|d| d == &resolved) {
+            guard.push(resolved.clone());
+            save_picked_dirs(&guard);
+        }
+    }
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 fn extract_domain(url: &str) -> String {
@@ -928,6 +1215,39 @@ pub fn find_ffmpeg() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+// ── Crash-report scrubbing ───────────────────────────────────────────
+
+static URL_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r#"(?i)\b(?:https?|magnet|file|ftp)://?[^\s'"<>]+"#).unwrap());
+static PATH_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?:/Users/|/home/|[A-Za-z]:\\Users\\)[^\s'":<>]*"#).unwrap()
+});
+
+/// Replace anything that looks like a URL or a home-relative path with a
+/// placeholder. Applied to every string a crash report could carry.
+pub(crate) fn scrub_text(s: &str) -> String {
+    let s = URL_RE.replace_all(s, "[url]");
+    PATH_RE.replace_all(&s, "[path]").into_owned()
+}
+
+fn scrub_sentry_event(mut event: sentry::protocol::Event<'static>) -> Option<sentry::protocol::Event<'static>> {
+    if let Some(m) = event.message.take() {
+        event.message = Some(scrub_text(&m));
+    }
+    for exc in event.exception.values.iter_mut() {
+        if let Some(v) = exc.value.take() {
+            exc.value = Some(scrub_text(&v));
+        }
+    }
+    for entry in event.logentry.iter_mut() {
+        entry.message = scrub_text(&entry.message);
+    }
+    // No request/breadcrumb context for a desktop app; drop them outright.
+    event.request = None;
+    event.breadcrumbs.values.clear();
+    Some(event)
+}
+
 // ── App setup ────────────────────────────────────────────────────────
 
 fn show_main_window(app: &AppHandle) {
@@ -977,7 +1297,14 @@ pub fn run() {
     tauri::Builder::default()
         // Must be first: relays argv (incl. deep links on Windows/Linux) from a
         // second launch to the running instance and refocuses its window.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A `.torrent` opened while Prism is already running reaches the
+            // second instance as plain argv on Windows/Linux (macOS routes it
+            // through the Opened event → deep-link plugin instead). Hand it
+            // to the frontend, which validates and confirms like a deep link.
+            for arg in args.iter().skip(1).filter(|a| is_torrent_file_arg(a)) {
+                let _ = app.emit("open-torrent-file", arg.clone());
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
@@ -985,6 +1312,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(DownloadManager::new())
         .manage(torrent::TorrentManager::new())
+        .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .plugin(tauri_plugin_shell::init())
         // Embedded player (separate "player" window). The plugin cleans up its
         // mpv instance on window close; macOS embeds via the window's NSView.
@@ -1034,6 +1362,10 @@ pub fn run() {
                         dsn,
                         sentry::ClientOptions {
                             release: sentry::release_name!(),
+                            // Crashes only: a panic message can embed a URL
+                            // or a file path (e.g. from a format!), and the
+                            // policy promises neither leaves the machine.
+                            before_send: Some(std::sync::Arc::new(scrub_sentry_event)),
                             ..Default::default()
                         },
                     ));
@@ -1058,6 +1390,8 @@ pub fn run() {
             open_external,
             show_in_folder,
             get_default_download_path,
+            get_launch_torrent_files,
+            pick_download_dir,
             get_app_version,
             ffmpeg_available,
             engine::get_ytdlp_version,
@@ -1065,6 +1399,11 @@ pub fn run() {
             engine::reset_ytdlp,
             player::fixup_player_video,
             player::player_available,
+            player::player_init,
+            player::player_destroy,
+            player::player_load,
+            player::player_seek,
+            player::player_set,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1093,38 +1432,140 @@ mod tests {
     fn validates_paths_under_home() {
         let home = dirs::home_dir().unwrap();
         let good = home.join("Downloads/Prism/video.%(ext)s");
-        assert!(validate_download_path(&good.to_string_lossy()).is_ok());
+        assert!(validate_download_path(&good.to_string_lossy(), &[]).is_ok());
         // Tilde expansion
-        assert!(validate_download_path("~/Downloads/Prism/video.%(ext)s").is_ok());
+        assert!(validate_download_path("~/Downloads/Prism/video.%(ext)s", &[]).is_ok());
     }
 
     #[test]
     fn rejects_traversal_and_outside_paths() {
-        assert!(validate_download_path("~/Downloads/../../etc/cron.d/x").is_err());
-        assert!(validate_download_path("/etc/passwd").is_err());
-        assert!(validate_download_path("relative/path.mp4").is_err());
+        assert!(validate_download_path("~/Downloads/../../etc/cron.d/x", &[]).is_err());
+        assert!(validate_download_path("/etc/passwd", &[]).is_err());
+        assert!(validate_download_path("relative/path.mp4", &[]).is_err());
     }
 
     #[test]
     fn allows_dotted_names_that_are_not_traversal() {
         let p = dirs::home_dir().unwrap().join("Downloads/my..videos/clip.%(ext)s");
-        assert!(validate_download_path(&p.to_string_lossy()).is_ok());
+        assert!(validate_download_path(&p.to_string_lossy(), &[]).is_ok());
+    }
+
+    /// Sensitive locations inside home are refused even though they're
+    /// "under home" — torrent file names are untrusted, destinations are
+    /// user-chosen, and none of these should ever receive a download.
+    #[test]
+    fn rejects_sensitive_locations_inside_home() {
+        // Hidden entries directly under home, on every OS.
+        assert!(validate_download_path("~/.ssh/authorized_keys", &[]).is_err());
+        assert!(validate_download_path("~/.config/autostart/evil.desktop", &[]).is_err());
+        assert!(validate_download_path("~/.zshrc", &[]).is_err());
+        // Bare home as a directory is fine; a dotfile inside it is not.
+        assert!(validate_download_path("~/Movies/clip.%(ext)s", &[]).is_ok());
+        assert!(validate_download_path("~/Downloads/.hidden-but-nested/x.mp4", &[]).is_ok());
+        #[cfg(target_os = "macos")]
+        {
+            assert!(validate_download_path("~/Library/LaunchAgents/com.evil.plist", &[]).is_err());
+            assert!(validate_download_path("~/Library/Application Support/x/y.mp4", &[]).is_err());
+        }
+        #[cfg(target_os = "windows")]
+        assert!(validate_download_path(
+            "~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/x.lnk",
+            &[]
+        )
+        .is_err());
+    }
+
+    /// A folder the user picked in the native dialog is an allowed root even
+    /// outside home (external drive, NAS) — the temp dir stands in for one.
+    #[test]
+    fn picked_directories_become_allowed_roots() {
+        let dir = std::env::temp_dir().join(format!("prism-picked-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("clip.%(ext)s");
+        let home = dirs::home_dir().unwrap().canonicalize().unwrap();
+        if !dir.canonicalize().unwrap().starts_with(&home) {
+            assert!(validate_download_path(&target.to_string_lossy(), &[]).is_err());
+        }
+        assert!(validate_download_path(&target.to_string_lossy(), std::slice::from_ref(&dir)).is_ok());
+        // Files under a picked root can be opened/revealed too.
+        let f = dir.join("clip.mp4");
+        std::fs::write(&f, b"x").unwrap();
+        assert!(validate_open_path(&f.to_string_lossy(), false, std::slice::from_ref(&dir)).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn open_path_rejects_urls_dirs_and_outside_paths() {
-        assert!(validate_open_path("https://example.com/x", false).is_err());
-        assert!(validate_open_path("/etc/passwd", false).is_err()); // outside allowed roots
+        assert!(validate_open_path("https://example.com/x", false, &[]).is_err());
+        assert!(validate_open_path("/etc/passwd", false, &[]).is_err()); // outside allowed roots
         let home = dirs::home_dir().unwrap();
         // A directory is rejected for open (file-only) but allowed for reveal.
-        assert!(validate_open_path(&home.to_string_lossy(), false).is_err());
-        assert!(validate_open_path(&home.to_string_lossy(), true).is_ok());
+        assert!(validate_open_path(&home.to_string_lossy(), false, &[]).is_err());
+        assert!(validate_open_path(&home.to_string_lossy(), true, &[]).is_ok());
         // A real file under home passes either way.
-        let f = home.join(".prism-open-test");
+        let dir = home.join("Downloads");
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join(format!(".prism-open-test-{}", std::process::id()));
         std::fs::write(&f, b"x").unwrap();
-        assert!(validate_open_path(&f.to_string_lossy(), false).is_ok());
-        assert!(validate_open_path(&f.to_string_lossy(), true).is_ok());
+        assert!(validate_open_path(&f.to_string_lossy(), false, &[]).is_ok());
+        assert!(validate_open_path(&f.to_string_lossy(), true, &[]).is_ok());
         std::fs::remove_file(&f).unwrap();
+        // A hidden file directly under home is not openable.
+        let dot = home.join(format!(".prism-dot-test-{}", std::process::id()));
+        std::fs::write(&dot, b"x").unwrap();
+        assert!(validate_open_path(&dot.to_string_lossy(), false, &[]).is_err());
+        std::fs::remove_file(&dot).unwrap();
+    }
+
+    #[test]
+    fn open_only_hands_media_to_the_os() {
+        for ok in ["/x/clip.mp4", "/x/CLIP.MKV", "/x/song.opus", "/x/subs.srt", "/x/cover.jpg", "/x/readme.txt"] {
+            assert!(is_openable_media(ok), "{ok} should be openable");
+        }
+        for bad in ["/x/setup.command", "/x/Evil.app", "/x/run.sh", "/x/x.jar", "/x/x.lnk", "/x/x.exe", "/x/x.dmg", "/x/x.scpt", "/x/noext"] {
+            assert!(!is_openable_media(bad), "{bad} must not be openable");
+        }
+    }
+
+    #[test]
+    fn torrent_sources_are_scheme_checked() {
+        assert!(matches!(
+            resolve_torrent_source("magnet:?xt=urn:btih:abc", &[]),
+            Ok(torrent::TorrentSource::Url(_))
+        ));
+        assert!(matches!(
+            resolve_torrent_source("https://example.com/x.torrent", &[]),
+            Ok(torrent::TorrentSource::Url(_))
+        ));
+        assert!(resolve_torrent_source("ftp://example.com/x.torrent", &[]).is_err());
+        assert!(resolve_torrent_source("javascript:alert(1)", &[]).is_err());
+        assert!(resolve_torrent_source("", &[]).is_err());
+        // Local files: must exist, be inside allowed roots, and be .torrent.
+        assert!(resolve_torrent_source("/etc/passwd", &[]).is_err());
+        assert!(resolve_torrent_source("file:///etc/passwd", &[]).is_err());
+        let dir = dirs::home_dir().unwrap().join("Downloads");
+        std::fs::create_dir_all(&dir).unwrap();
+        let not_torrent = dir.join(format!("prism-src-test-{}.txt", std::process::id()));
+        std::fs::write(&not_torrent, b"x").unwrap();
+        assert!(resolve_torrent_source(&not_torrent.to_string_lossy(), &[]).is_err());
+        std::fs::remove_file(&not_torrent).unwrap();
+        let t = dir.join(format!("prism-src-test-{}.torrent", std::process::id()));
+        std::fs::write(&t, b"d8:announce0:e").unwrap();
+        assert!(matches!(
+            resolve_torrent_source(&t.to_string_lossy(), &[]),
+            Ok(torrent::TorrentSource::Bytes { .. })
+        ));
+        std::fs::remove_file(&t).unwrap();
+    }
+
+    #[test]
+    fn crash_report_text_is_scrubbed() {
+        let s = scrub_text("failed https://youtube.com/watch?v=abc at /Users/me/Downloads/x.mp4 and C:\\Users\\me\\x");
+        assert!(!s.contains("youtube.com"), "{s}");
+        assert!(!s.contains("/Users/me"), "{s}");
+        assert!(!s.contains("C:\\Users\\me"), "{s}");
+        assert!(s.contains("[url]") && s.contains("[path]"), "{s}");
+        assert_eq!(scrub_text("plain panic message"), "plain panic message");
     }
 
     #[test]
@@ -1138,6 +1579,47 @@ mod tests {
         assert!(validate_external_url("prism://add?url=x").is_err());
         assert!(validate_external_url("/Users/someone/secret.txt").is_err());
         assert!(validate_external_url("not a url").is_err());
+    }
+
+    #[test]
+    fn extra_trackers_are_parsed_bounded_and_scheme_checked() {
+        let raw = "udp://tracker.example.org:1337/announce, https://t.example/announce\nftp://nope\nnot a url\n";
+        assert_eq!(
+            parse_extra_trackers(raw),
+            vec![
+                "udp://tracker.example.org:1337/announce".to_string(),
+                "https://t.example/announce".to_string(),
+            ]
+        );
+        // Count cap
+        let many: Vec<String> = (0..100).map(|i| format!("udp://t{i}.example:1/a")).collect();
+        assert_eq!(parse_extra_trackers(&many.join("\n")).len(), MAX_EXTRA_TRACKERS);
+        // Length cap
+        let long = format!("https://t.example/{}", "a".repeat(MAX_TRACKER_URL_LEN));
+        assert!(parse_extra_trackers(&long).is_empty());
+        assert!(parse_extra_trackers("").is_empty());
+    }
+
+    #[test]
+    fn blocklist_requires_https() {
+        assert_eq!(
+            parse_blocklist_url(" https://example.com/list.p2p.gz "),
+            Some("https://example.com/list.p2p.gz".into())
+        );
+        assert_eq!(parse_blocklist_url("http://example.com/list.p2p.gz"), None);
+        assert_eq!(parse_blocklist_url("file:///etc/hosts"), None);
+        assert_eq!(parse_blocklist_url(""), None);
+    }
+
+    #[test]
+    fn proxy_accepts_only_proxy_schemes() {
+        assert!(parse_proxy_url("socks5h://127.0.0.1:9050").is_some());
+        assert!(parse_proxy_url("http://user:pass@proxy.example:3128").is_some());
+        assert!(parse_proxy_url("HTTPS://proxy.example:443").is_some());
+        assert_eq!(parse_proxy_url("--exec rm -rf ~"), None);
+        assert_eq!(parse_proxy_url("file:///x"), None);
+        assert_eq!(parse_proxy_url("socks5://"), None);
+        assert_eq!(parse_proxy_url(""), None);
     }
 
     #[test]

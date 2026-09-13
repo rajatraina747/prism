@@ -7,6 +7,13 @@ on:
 permissions:
   contents: write
 
+# Every third-party binary that ends up inside a release (yt-dlp, Deno,
+# libmpv-wrapper, libmpv) is pinned by version AND SHA-256 in
+# scripts/sidecars.lock and fetched through scripts/fetch-sidecars.sh, which
+# refuses to continue on a mismatch. The minisign-signed updater vouches for
+# whatever we ship, so "latest at build time" is not acceptable here.
+#
+# Actions are pinned to commit SHAs (tag noted for humans).
 jobs:
   # Read RELEASE_NOTES.md once so all three build jobs publish the same body.
   # (They race to write the release; whichever finishes last wins, so the body
@@ -16,16 +23,28 @@ jobs:
     outputs:
       body: ${{ steps.read.outputs.body }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Read release notes
         id: read
         # The leading <!-- --> header is instructions for editors, not release
         # content — strip it so it doesn't show in the in-app updater notes.
+        # A "Bundled components" footer is appended from sidecars.lock so every
+        # release states exactly which third-party versions it carries.
         run: |
+          source scripts/sidecars.lock
           {
             echo 'body<<RELEASE_NOTES_EOF'
             awk 'NR==1 && /^<!--/ {skip=1} skip {if (/^-->/) skip=0; next} !p && /^[[:space:]]*$/ {next} {p=1; print}' RELEASE_NOTES.md
+            echo
+            echo '## Bundled components'
+            echo
+            echo "- yt-dlp ${YTDLP_VERSION} (self-updatable from Settings)"
+            echo "- Deno ${DENO_VERSION}"
+            echo "- libmpv-wrapper ${LIBMPV_WRAPPER_VERSION}"
+            echo "- libmpv: Windows — zhongfly/mpv-winbuild ${MPV_WINBUILD_TAG} (LGPL build); macOS — Homebrew mpv (exact versions in the bundle's resources/lib/VERSIONS.txt)"
+            echo
+            echo 'All pinned and checksum-verified at build time — see scripts/sidecars.lock.'
             echo 'RELEASE_NOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -33,63 +52,34 @@ jobs:
     needs: notes
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
       - run: npm ci
 
-      # Download yt-dlp sidecar for both architectures
-      - name: Download yt-dlp (x86_64)
-        run: |
-          mkdir -p src-tauri/binaries
-          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-apple-darwin \
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-          chmod +x src-tauri/binaries/yt-dlp-x86_64-apple-darwin
-
-      - name: Download yt-dlp (aarch64)
-        run: |
-          curl -fL -o src-tauri/binaries/yt-dlp-aarch64-apple-darwin \
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-          chmod +x src-tauri/binaries/yt-dlp-aarch64-apple-darwin
-
-      # Bundle Deno so yt-dlp can solve YouTube JS challenges (required since yt-dlp 2025.11.12)
-      - name: Download Deno (x86_64)
-        run: |
-          curl -fL -o /tmp/deno-x86.zip \
-            "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-apple-darwin.zip"
-          unzip -o /tmp/deno-x86.zip -d /tmp/deno-x86
-          mv /tmp/deno-x86/deno src-tauri/binaries/deno-x86_64-apple-darwin
-          chmod +x src-tauri/binaries/deno-x86_64-apple-darwin
-
-      - name: Download Deno (aarch64)
-        run: |
-          curl -fL -o /tmp/deno-arm.zip \
-            "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip"
-          unzip -o /tmp/deno-arm.zip -d /tmp/deno-arm
-          mv /tmp/deno-arm/deno src-tauri/binaries/deno-aarch64-apple-darwin
-          chmod +x src-tauri/binaries/deno-aarch64-apple-darwin
-
       # Embedded player: self-contained libmpv + wrapper shipped under
-      # resources/lib (tauri.macos.conf.json). The script rewrites every
+      # resources/lib (tauri.macos.conf.json). The bundle script rewrites every
       # dependency to @loader_path and fails the build if anything still
-      # points at Homebrew.
-      - name: Bundle libmpv (embedded player)
-        run: |
-          brew install mpv dylibbundler
-          ./scripts/bundle-libmpv-macos.sh
+      # points at Homebrew; it also records the Homebrew mpv/ffmpeg versions
+      # into resources/lib/VERSIONS.txt.
+      - name: Install player build tools
+        run: brew install mpv dylibbundler
+
+      - name: Fetch pinned, checksum-verified sidecars + player libraries
+        run: scripts/fetch-sidecars.sh macos --player
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -110,59 +100,31 @@ jobs:
     needs: notes
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
       - run: npm ci
 
-      # Download yt-dlp sidecar for Windows
-      - name: Download yt-dlp (Windows x86_64)
-        run: |
-          mkdir -p src-tauri/binaries
-          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-
-      # Bundle Deno so yt-dlp can solve YouTube JS challenges
-      - name: Download Deno (Windows x86_64)
-        run: |
-          curl -fL -o deno.zip "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
-          unzip -o deno.zip -d src-tauri/binaries/
-          mv src-tauri/binaries/deno.exe src-tauri/binaries/deno-x86_64-pc-windows-msvc.exe
-
-      # Embedded player: wrapper DLL + zhongfly's self-contained LGPL libmpv,
-      # shipped under resources lib/ — installed to <install>\lib\, which is
-      # where the plugin looks for the wrapper. Both DLLs must land in the SAME
-      # directory: the wrapper resolves libmpv by bare name at runtime, so the
-      # plugin pre-loads it from beside the wrapper (see desktop.rs) because a
-      # bare-name LoadLibrary would only search the exe's directory.
-      # Asset names are dated, so resolve the latest via the API (excluding the
-      # -v3 CPU-variant builds).
-      - name: Bundle libmpv (embedded player)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/lib | Out-Null
-          curl -fL -o wrapper.zip "https://github.com/nini22P/libmpv-wrapper/releases/latest/download/libmpv-wrapper-windows-x86_64.zip"
-          Expand-Archive -Force wrapper.zip -DestinationPath wrapper-tmp
-          Copy-Item wrapper-tmp/bin/libmpv-wrapper.dll src-tauri/lib/
-          Copy-Item wrapper-tmp/LICENSE src-tauri/lib/libmpv-wrapper-LICENSE
-          $rel = Invoke-RestMethod "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest"
-          $asset = $rel.assets | Where-Object { $_.name -match '^mpv-dev-lgpl-x86_64-\d' } | Select-Object -First 1
-          if (-not $asset) { throw "no lgpl x86_64 mpv-dev asset found" }
-          curl -fL -o mpv-dev.7z $asset.browser_download_url
-          7z e mpv-dev.7z -osrc-tauri/lib libmpv-2.dll
-          if (-not (Test-Path src-tauri/lib/libmpv-2.dll)) { throw "libmpv-2.dll missing after extract" }
+      # Embedded player: wrapper DLL + zhongfly's LGPL libmpv under resources
+      # lib/ — both DLLs must land in the SAME directory (the wrapper resolves
+      # libmpv by bare name; the vendored plugin pre-loads it from beside the
+      # wrapper, see vendor/tauri-plugin-libmpv/src/desktop.rs).
+      - name: Fetch pinned, checksum-verified sidecars + player libraries
+        shell: bash
+        run: scripts/fetch-sidecars.sh windows --player
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -181,16 +143,16 @@ jobs:
     needs: notes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
@@ -201,25 +163,11 @@ jobs:
 
       - run: npm ci
 
-      # Download yt-dlp sidecar for Linux
-      - name: Download yt-dlp (Linux x86_64)
-        run: |
-          mkdir -p src-tauri/binaries
-          curl -fL -o src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu \
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
-          chmod +x src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
-
-      # Bundle Deno so yt-dlp can solve YouTube JS challenges
-      - name: Download Deno (Linux x86_64)
-        run: |
-          curl -fL -o /tmp/deno.zip \
-            "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip"
-          unzip -o /tmp/deno.zip -d /tmp/deno
-          mv /tmp/deno/deno src-tauri/binaries/deno-x86_64-unknown-linux-gnu
-          chmod +x src-tauri/binaries/deno-x86_64-unknown-linux-gnu
+      - name: Fetch pinned, checksum-verified sidecars
+        run: scripts/fetch-sidecars.sh linux
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

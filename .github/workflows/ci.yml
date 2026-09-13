@@ -6,13 +6,22 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only token for every job; nothing here publishes anything.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Actions are pinned to commit SHAs (the tag is noted for humans). Bump the
+# SHA deliberately, not by letting a floating tag move under a release.
 jobs:
-  lint-test-build:
+  frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -34,40 +43,30 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
       # tauri-build requires the frontend dist and sidecar binaries to exist
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci && npm run build
 
-      - name: Fetch sidecar binaries
-        working-directory: src-tauri
-        run: |
-          mkdir -p binaries
-          curl -fsSL -o binaries/yt-dlp-x86_64-unknown-linux-gnu \
-            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
-          chmod +x binaries/yt-dlp-x86_64-unknown-linux-gnu
-          curl -fsSL -o /tmp/deno.zip \
-            https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip
-          unzip -o /tmp/deno.zip -d /tmp/deno-bin
-          mv /tmp/deno-bin/deno binaries/deno-x86_64-unknown-linux-gnu
-          chmod +x binaries/deno-x86_64-unknown-linux-gnu
+      - name: Fetch pinned, checksum-verified sidecars
+        run: scripts/fetch-sidecars.sh linux
 
       - name: Clippy (deny warnings)
         working-directory: src-tauri
@@ -76,3 +75,71 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test --lib
+
+  # The Linux job never compiles the macOS-only player integration (objc
+  # window adoption) or the Windows process/DLL paths. Type-check those on
+  # their own platforms so a cfg-gated compile error can't reach a tag.
+  rust-cross-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci && npm run build
+
+      - name: Fetch pinned, checksum-verified sidecars
+        shell: bash
+        run: scripts/fetch-sidecars.sh ${{ matrix.platform }}
+
+      - name: Clippy (deny warnings)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+          cache-bin: true
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit

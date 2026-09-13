@@ -31,7 +31,7 @@ export default function About() {
         <div className="divide-y divide-border/30">
           <InfoRow label="Version" value={`v${version}`} />
           <InfoRow label="Channel" value="Stable" />
-          <InfoRow label="License" value="MIT (open source)" />
+          <InfoRow label="License" value="MIT (Prism source) · bundled player libraries under their own licenses" />
         </div>
       </Panel>
 
@@ -47,7 +47,9 @@ export default function About() {
             <LinkRow icon={Shield} label="Privacy Policy" description="How Prism handles your data — spoiler: it stays on your device" />
           </button>
           <LinkRow icon={BookOpen} label="RainaCorp" description="Visit our website" href="https://www.rainacorp.co.uk" />
-          <LinkRow icon={Heart} label="Credits" description="Built with React, TypeScript, Tailwind CSS, Tauri, yt-dlp, and librqbit" />
+          <button onClick={() => navigate('/licenses')} className="w-full text-left">
+            <LinkRow icon={Heart} label="Credits & licenses" description="Tauri, React, yt-dlp, Deno, librqbit, mpv/FFmpeg and everything else Prism ships with" />
+          </button>
         </div>
       </Panel>
     </div>

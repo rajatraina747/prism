@@ -32,6 +32,9 @@ export interface UpdateCheckResult {
 export interface IPrismService {
   // Initialize the service (preload persistence data from disk)
   init?(): Promise<void>;
+  /** True for the browser demo (simulated downloads, localStorage). The
+   * shell shows a badge so a mock can never pass for the real app. */
+  readonly isDemo?: boolean;
 
   // URL parsing & metadata
   parseUrl(url: string): Promise<MediaMetadata>;

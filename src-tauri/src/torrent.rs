@@ -21,14 +21,70 @@ use tokio::sync::Mutex;
 use librqbit::api::TorrentIdOrHash;
 use librqbit::limits::LimitsConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ManagedTorrent, Session, SessionOptions,
-    TorrentStatsState,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, ListenerOptions,
+    ManagedTorrent, Session, SessionOptions, TorrentStatsState,
 };
 
 use crate::download_manager::DownloadComplete;
 
 /// Fixed listen-port range so the UPnP mapping and DHT stay stable across runs.
 const TORRENT_PORT_RANGE: std::ops::Range<u16> = 4240..4260;
+
+/// What the engine is allowed to receive as a torrent source. Built by
+/// `lib::resolve_torrent_source`, which is the only place raw webview input is
+/// turned into one of these — a bare string is never handed to librqbit.
+#[derive(Clone)]
+pub enum TorrentSource {
+    /// A `magnet:` link or an http(s) URL of a `.torrent` file.
+    Url(String),
+    /// A local `.torrent` file already path-validated and read by the caller
+    /// (OS file association). `key` identifies it for the metadata cache.
+    Bytes { key: String, bytes: Vec<u8> },
+}
+
+impl TorrentSource {
+    fn key(&self) -> &str {
+        match self {
+            TorrentSource::Url(u) => u,
+            TorrentSource::Bytes { key, .. } => key,
+        }
+    }
+
+    fn into_add(self) -> AddTorrent<'static> {
+        match self {
+            TorrentSource::Url(u) => AddTorrent::Url(std::borrow::Cow::Owned(u)),
+            TorrentSource::Bytes { bytes, .. } => AddTorrent::from_bytes(bytes),
+        }
+    }
+}
+
+/// Session-wide engine settings, read from settings.json at engine start
+/// (see `lib::torrent_session_config`). The session is created once per app
+/// run, so changes apply on the next launch.
+#[derive(Clone, Default)]
+pub struct SessionConfig {
+    /// socks5(h):// proxy for outgoing peer connections. librqbit proxies
+    /// peers only — DHT, trackers and the .torrent/blocklist fetches go
+    /// direct — which the Settings copy states explicitly.
+    pub socks_proxy: Option<String>,
+    pub blocklist_url: Option<String>,
+    /// Open a router port via UPnP for inbound peers.
+    pub upnp: bool,
+    /// Join the DHT (off = tracker-only).
+    pub dht: bool,
+    /// Extra announce URLs applied to every torrent.
+    pub trackers: Vec<String>,
+}
+
+/// First free port in the range (the mapping/DHT stay stable across runs as
+/// long as the same port is free); falls back to the range start.
+fn pick_listen_port(range: std::ops::Range<u16>) -> u16 {
+    let start = range.start;
+    range
+        .into_iter()
+        .find(|p| std::net::TcpListener::bind((std::net::Ipv6Addr::UNSPECIFIED, *p)).is_ok())
+        .unwrap_or(start)
+}
 
 const BYTES_PER_MIB: f64 = 1024.0 * 1024.0;
 
@@ -130,23 +186,39 @@ async fn ensure_session(
     slot: &SessionSlot,
     default_dir: &str,
     limits: LimitsConfig,
-    socks_proxy: Option<String>,
-    blocklist_url: Option<String>,
+    cfg: SessionConfig,
 ) -> anyhow::Result<Arc<Session>> {
     let mut guard = slot.lock().await;
     if let Some(s) = guard.as_ref() {
         return Ok(s.clone());
     }
+    let defaults = SessionOptions::default();
     let opts = SessionOptions {
-        enable_upnp_port_forwarding: true,
-        listen_port_range: Some(TORRENT_PORT_RANGE),
+        listen: Some(ListenerOptions {
+            listen_addr: (std::net::Ipv6Addr::UNSPECIFIED, pick_listen_port(TORRENT_PORT_RANGE)).into(),
+            enable_upnp_port_forwarding: cfg.upnp,
+            ..Default::default()
+        }),
+        connect: Some(ConnectionOptions {
+            // librqbit only supports socks5; http proxies are ignored for torrents.
+            proxy_url: cfg
+                .socks_proxy
+                .filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
+            ..Default::default()
+        }),
+        // Keep librqbit's default DHT config (with persistence) when enabled.
+        dht: if cfg.dht { defaults.dht } else { None },
         fastresume: true,
         ratelimits: limits,
-        // librqbit only supports socks5; http proxies are ignored for torrents.
-        socks_proxy_url: socks_proxy.filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
         // Standard p2p-format IP blocklist, fetched once per session.
-        blocklist_url,
-        ..Default::default()
+        blocklist_url: cfg.blocklist_url,
+        // Already scheme-checked and bounded in lib::parse_extra_trackers.
+        trackers: cfg
+            .trackers
+            .iter()
+            .filter_map(|t| url::Url::parse(t).ok())
+            .collect(),
+        ..defaults
     };
     let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
     *guard = Some(session.clone());
@@ -178,16 +250,16 @@ impl TorrentManager {
     /// seconds — hence the timeout. Used to populate the file-selection modal.
     pub async fn list_files(
         &self,
-        magnet: String,
+        source: TorrentSource,
         output_dir: String,
-        socks_proxy: Option<String>,
-        blocklist: Option<String>,
+        cfg: SessionConfig,
     ) -> Result<Vec<TorrentFileEntry>, String> {
         let current_limits = *self.limits.lock().await;
-        let session = ensure_session(&self.session, &output_dir, current_limits, socks_proxy, blocklist)
+        let session = ensure_session(&self.session, &output_dir, current_limits, cfg)
             .await
             .map_err(|e| format!("Failed to start torrent engine: {e}"))?;
 
+        let key = source.key().to_string();
         let opts = AddTorrentOptions {
             list_only: true,
             output_folder: Some(output_dir),
@@ -195,7 +267,7 @@ impl TorrentManager {
         };
         let resp = tokio::time::timeout(
             Duration::from_secs(45),
-            session.add_torrent(AddTorrent::from_url(&magnet), Some(opts)),
+            session.add_torrent(source.into_add(), Some(opts)),
         )
         .await
         .map_err(|_| "Timed out fetching torrent metadata (no peers?)".to_string())?
@@ -206,11 +278,10 @@ impl TorrentManager {
                 let entries: Vec<TorrentFileEntry> = lo
                     .info
                     .iter_file_details()
-                    .map_err(|e| e.to_string())?
                     .enumerate()
                     .map(|(index, d)| TorrentFileEntry {
                         index,
-                        name: d.filename.to_string().unwrap_or_else(|_| format!("file {index}")),
+                        name: d.filename.to_string(),
                         size: d.len,
                     })
                     .collect();
@@ -222,7 +293,7 @@ impl TorrentManager {
                         cache.remove(&k);
                     }
                 }
-                cache.insert(magnet, lo.torrent_bytes.to_vec());
+                cache.insert(key, lo.torrent_bytes.to_vec());
                 Ok(entries)
             }
             _ => Err("Torrent did not return a file list".into()),
@@ -231,21 +302,19 @@ impl TorrentManager {
 
     /// Start (or resume) a magnet/`.torrent` download into `output_dir`. Emits
     /// progress until the seed policy is satisfied, then a completion event.
-    /// `extra_trackers` are announced in addition to the torrent's own;
-    /// `download_limit` (bytes/sec) caps this torrent alone, on top of the
-    /// session-wide limit.
+    /// Extra trackers, proxy, blocklist, UPnP and DHT come from `cfg` (session-
+    /// wide); `download_limit` (bytes/sec) caps this torrent alone, on top of
+    /// the session-wide limit.
     #[allow(clippy::too_many_arguments)]
     pub fn start_torrent(
         &self,
         app: AppHandle,
         id: String,
-        magnet: String,
+        source: TorrentSource,
         output_dir: String,
         policy: SeedingPolicy,
         only_files: Option<Vec<usize>>,
-        socks_proxy: Option<String>,
-        blocklist: Option<String>,
-        extra_trackers: Vec<String>,
+        cfg: SessionConfig,
         download_limit: Option<u64>,
     ) {
         let session_slot = self.session.clone();
@@ -255,7 +324,7 @@ impl TorrentManager {
 
         tauri::async_runtime::spawn(async move {
             let current_limits = *limits_slot.lock().await;
-            let session = match ensure_session(&session_slot, &output_dir, current_limits, socks_proxy, blocklist).await {
+            let session = match ensure_session(&session_slot, &output_dir, current_limits, cfg).await {
                 Ok(s) => s,
                 Err(e) => return emit_failure(&app, &id, format!("Failed to start torrent engine: {e}")),
             };
@@ -266,10 +335,10 @@ impl TorrentManager {
             let handle = loop {
                 attempt += 1;
                 // Prefer metadata already resolved by the file picker (consumed on
-                // first use); fall back to the URL.
-                let add = match resolved.lock().await.remove(&magnet) {
+                // first use); fall back to the source itself.
+                let add = match resolved.lock().await.remove(source.key()) {
                     Some(bytes) => AddTorrent::from_bytes(bytes),
-                    None => AddTorrent::from_url(&magnet),
+                    None => source.clone().into_add(),
                 };
                 let opts = AddTorrentOptions {
                     output_folder: Some(output_dir.clone()),
@@ -280,7 +349,6 @@ impl TorrentManager {
                     // create_new and fails with "file exists". Existing data is
                     // hash-checked on add, not blindly trusted or truncated.
                     overwrite: true,
-                    trackers: (!extra_trackers.is_empty()).then(|| extra_trackers.clone()),
                     ratelimits: LimitsConfig {
                         download_bps: download_limit
                             .and_then(|l| NonZeroU32::new(l.min(u32::MAX as u64) as u32)),
@@ -346,9 +414,9 @@ impl TorrentManager {
                     Some(l) => (
                         l.download_speed.mbps * BYTES_PER_MIB,
                         l.upload_speed.mbps * BYTES_PER_MIB,
-                        l.snapshot.peer_stats.live as u32,
-                        l.snapshot.peer_stats.seen as u32,
-                        l.snapshot.peer_stats.connecting as u32,
+                        l.snapshot.peer_stats.live,
+                        l.snapshot.peer_stats.seen,
+                        l.snapshot.peer_stats.connecting,
                     ),
                     None => (0.0, 0.0, 0, 0, 0),
                 };
@@ -422,6 +490,7 @@ impl TorrentManager {
             active.lock().await.remove(&id);
             let total = handle.stats().total_bytes;
             let file_path = resolve_completion_path(&handle, &output_dir);
+            mark_torrent_files_downloaded(&handle, &output_dir);
             let _ = app.emit(
                 &format!("download-complete-{id}"),
                 DownloadComplete {
@@ -496,6 +565,7 @@ impl TorrentManager {
                 let stats = h.stats();
                 if stats.finished {
                     let file_path = resolve_completion_path(&h, &output_dir);
+                    mark_torrent_files_downloaded(&h, &output_dir);
                     let _ = app.emit(
                         &format!("download-complete-{id}"),
                         DownloadComplete {
@@ -568,6 +638,23 @@ fn resolve_completion_path(handle: &ManagedTorrentHandle, output_dir: &str) -> O
     }
 
     existing(base)
+}
+
+/// Quarantine-flag each file the torrent wrote (file names are untrusted
+/// metadata, so an executable payload gets the OS download checks when
+/// opened outside Prism). Per file rather than the whole output dir, which
+/// may be a folder the user shares with other things.
+fn mark_torrent_files_downloaded(handle: &ManagedTorrentHandle, output_dir: &str) {
+    let base = PathBuf::from(output_dir);
+    let rels: Vec<PathBuf> = handle
+        .with_metadata(|m| m.file_infos.iter().map(|fi| fi.relative_filename.clone()).collect())
+        .unwrap_or_default();
+    for rel in rels {
+        let p = base.join(rel);
+        if p.is_file() {
+            crate::quarantine::mark_downloaded(&p.to_string_lossy());
+        }
+    }
 }
 
 /// Whether seeding is done and the item should complete, per the user's policy.

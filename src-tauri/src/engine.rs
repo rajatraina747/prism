@@ -5,6 +5,7 @@
 //! over the bundled copy, decoupling "site broke" from "wait for a Prism release".
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::Command;
@@ -25,6 +26,18 @@ const RELEASE_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/down
 const RELEASE_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 
 const SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+
+/// yt-dlp's one-file builds are ~35 MB; anything past this is not a yt-dlp
+/// release and must not be buffered into memory.
+const MAX_BINARY_BYTES: u64 = 200 * 1024 * 1024;
+/// The checksum manifest is a few KB.
+const MAX_SUMS_BYTES: u64 = 1024 * 1024;
+/// Time to first byte, and total time for one request (body included).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+/// `--version` on a healthy binary returns in well under a second; a hang
+/// here used to leave the Settings page's engine row stuck forever.
+const VERSION_TIMEOUT_SECS: u64 = 20;
 
 /// Look up the expected SHA-256 for `asset` in the release's SHA2-256SUMS
 /// manifest (lines of `<hex>  <filename>`).
@@ -61,15 +74,65 @@ pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
 
 #[tauri::command]
 pub async fn get_ytdlp_version(app: AppHandle) -> Result<String, String> {
-    let output = ytdlp_command(&app)?
-        .args(["--version"])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
-    if output.status.code() != Some(0) {
+    let cmd = ytdlp_command(&app)?.args(["--version"]);
+    let (code, stdout, _stderr) = crate::run_ytdlp_capture(cmd, VERSION_TIMEOUT_SECS).await?;
+    if code != Some(0) {
         return Err("yt-dlp --version failed".into());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
+}
+
+/// HTTP client for release downloads: bounded connect + total time so a
+/// stalled GitHub fetch fails with a message instead of hanging the Settings
+/// action forever, and a UA so the request is attributable.
+fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+/// GET `url` into memory, refusing bodies larger than `cap` (checked against
+/// Content-Length up front and again while streaming, since the header can
+/// be absent or wrong).
+async fn fetch_capped(
+    client: &reqwest::Client,
+    url: &str,
+    cap: u64,
+    what: &str,
+) -> Result<Vec<u8>, String> {
+    let mut resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download {}: {}", what, e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Failed to download {}: HTTP {}", what, resp.status()));
+    }
+    let too_big = || {
+        format!(
+            "Refusing to download {}: larger than the {} MB limit",
+            what,
+            cap / 1_048_576
+        )
+    };
+    if resp.content_length().is_some_and(|len| len > cap) {
+        return Err(too_big());
+    }
+    let mut buf = Vec::with_capacity(resp.content_length().unwrap_or(0).min(cap) as usize);
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed to download {}: {}", what, e))?
+    {
+        if (buf.len() as u64).saturating_add(chunk.len() as u64) > cap {
+            return Err(too_big());
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
 }
 
 /// Download the latest official yt-dlp release into app-data, verify its
@@ -83,33 +146,14 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
             .map_err(|e| format!("Failed to create engine directory: {}", e))?;
     }
 
-    let resp = reqwest::get(RELEASE_URL)
-        .await
-        .map_err(|e| format!("Failed to download yt-dlp: {}", e))?;
-    if !resp.status().is_success() {
-        return Err(format!("Failed to download yt-dlp: HTTP {}", resp.status()));
-    }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to download yt-dlp: {}", e))?;
+    let client = http_client()?;
+    let bytes = fetch_capped(&client, RELEASE_URL, MAX_BINARY_BYTES, "yt-dlp").await?;
 
     // Verify against the release's published SHA-256 manifest. A mismatch can
     // also mean "latest" advanced between the two fetches — retrying resolves
     // that; a persistent mismatch means a corrupted or tampered download.
-    let sums_resp = reqwest::get(SUMS_URL)
-        .await
-        .map_err(|e| format!("Failed to fetch yt-dlp checksums: {}", e))?;
-    if !sums_resp.status().is_success() {
-        return Err(format!(
-            "Failed to fetch yt-dlp checksums: HTTP {}",
-            sums_resp.status()
-        ));
-    }
-    let sums = sums_resp
-        .text()
-        .await
-        .map_err(|e| format!("Failed to fetch yt-dlp checksums: {}", e))?;
+    let sums_bytes = fetch_capped(&client, SUMS_URL, MAX_SUMS_BYTES, "yt-dlp checksums").await?;
+    let sums = String::from_utf8_lossy(&sums_bytes);
     let asset = RELEASE_URL.rsplit('/').next().unwrap_or_default();
     let expected = expected_sha256(&sums, asset)
         .ok_or_else(|| format!("No checksum entry for {} in SHA2-256SUMS", asset))?;
@@ -169,6 +213,11 @@ cccc3333  yt-dlp.exe";
         assert_eq!(expected_sha256(sums, "yt-dlp_macos"), Some("bbbb2222".into()));
         assert_eq!(expected_sha256(sums, "yt-dlp.exe"), Some("cccc3333".into()));
         assert_eq!(expected_sha256(sums, "yt-dlp_linux_armv7l"), None);
+    }
+
+    #[test]
+    fn http_client_builds_with_timeouts() {
+        assert!(http_client().is_ok());
     }
 }
 

@@ -195,6 +195,9 @@ export default function Settings() {
                     onChange={v => updatePreference('audioFormat', v as any)}
                   />
                 </SettingRow>
+                <SettingRow label="Keep original container" description="Off (default): every video is remuxed to .mp4 for QuickTime/Finder compatibility. On: VP9/AV1 downloads stay in .mkv/.webm as the site serves them — better for VLC/mpv users and 4K/HDR sources">
+                  <Toggle checked={p.keepOriginalContainer} onChange={v => updatePreference('keepOriginalContainer', v)} />
+                </SettingRow>
                 <SettingRow label="SponsorBlock" description="Mark or remove sponsor segments using crowd-sourced data (requires ffmpeg)">
                   <Select
                     value={p.sponsorBlock}
@@ -231,12 +234,18 @@ export default function Settings() {
                     placeholder="https://example.com/blocklist.p2p.gz"
                   />
                 </SettingRow>
-                <SettingRow label="Proxy" description="Route traffic through a proxy. e.g. socks5://127.0.0.1:9050 (Tor) or http://host:port. Torrents only use socks5. Leave empty for a direct connection">
+                <SettingRow label="Proxy" description="Video downloads (yt-dlp) go fully through the proxy — use socks5h:// so DNS does too. Torrents route only peer connections through a socks5 proxy: DHT, trackers and UPnP still use your real address, and http proxies are ignored for torrents. Leave empty for a direct connection">
                   <TextInput
                     value={p.proxyUrl}
                     onChange={v => updatePreference('proxyUrl', v)}
-                    placeholder="socks5://127.0.0.1:9050"
+                    placeholder="socks5h://127.0.0.1:9050"
                   />
+                </SettingRow>
+                <SettingRow label="Torrent UPnP port forwarding" description="Ask your router to forward a port so other peers can reach you (faster swarms). Publishes this machine's reachability; turn off when using a proxy for privacy. Applies on next launch">
+                  <Toggle checked={p.torrentUpnp} onChange={v => updatePreference('torrentUpnp', v)} />
+                </SettingRow>
+                <SettingRow label="Torrent DHT" description="Find peers through the distributed hash table as well as trackers. Off = tracker-only. Applies on next launch">
+                  <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                 </SettingRow>
               </div>
             )}
@@ -302,6 +311,9 @@ export default function Settings() {
                 <SettingRow label="Sound effects" description="Play sounds on completion and errors">
                   <Toggle checked={p.soundEnabled} onChange={v => updatePreference('soundEnabled', v)} />
                 </SettingRow>
+                <SettingRow label="Clipboard link detection" description="When Prism regains focus, check the clipboard for a video link and offer a one-click fetch. Off = Prism never reads the clipboard on its own">
+                  <Toggle checked={p.clipboardWatchEnabled} onChange={v => updatePreference('clipboardWatchEnabled', v)} />
+                </SettingRow>
               </div>
             )}
 
@@ -315,7 +327,7 @@ export default function Settings() {
 
             {activeSection === 'storage' && (
               <div className="divide-y divide-border/30">
-                <SettingRow label="Download location" description="Primary storage path for downloads">
+                <SettingRow label="Download location" description="Where downloads are saved. Any folder you pick here — including external drives and network shares — is allowed; system folders (Library, AppData, dotfiles) never are">
                   <button
                     onClick={async () => {
                       const dir = await service.pickDirectory();

@@ -4,6 +4,7 @@ import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
+import { SetupCard } from '@/components/dashboard/SetupCard';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
@@ -187,14 +188,15 @@ export default function Dashboard() {
     handleUrlSubmitRef.current(url);
   }), []);
 
-  // Offer to fetch video URLs found on the clipboard when the app regains focus
+  // Offer to fetch video URLs found on the clipboard when the app regains
+  // focus — a user-controlled setting, since it means reading the clipboard.
   useClipboardWatcher(useCallback((url: string) => {
     toast('Video link on clipboard', {
       description: url,
       action: { label: 'Fetch', onClick: () => handleUrlSubmitRef.current(url) },
       duration: 8000,
     });
-  }, []));
+  }, []), preferences.clipboardWatchEnabled);
 
   const handleUrlSubmit = useCallback(async (url: string) => {
     setParseError(null);
@@ -419,6 +421,9 @@ export default function Dashboard() {
         onErrorClear={() => setParseError(null)}
       />
 
+      {/* First-run setup: destination, ffmpeg, cookies. Dismissible. */}
+      <SetupCard />
+
       {/* Batch progress indicator */}
       {batchProgress && (
         <div className="mt-3 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-primary/8 border border-primary/20 animate-fade-in">
@@ -518,7 +523,7 @@ export default function Dashboard() {
                 {item.filePath && (
                   <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                      onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
                       title="Play"
                       aria-label="Play"
                       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"

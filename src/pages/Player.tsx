@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  init,
-  destroy,
-  command,
-  setProperty,
-  observeProperties,
-  type MpvObservableProperty,
-} from 'tauri-plugin-libmpv-api';
+import { observeProperties, type MpvObservableProperty } from 'tauri-plugin-libmpv-api';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -23,6 +16,14 @@ import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
 // page is the chrome floating on top of the video. It must never mount the
 // app providers (AppProvider would spawn a second download orchestrator) —
 // App.tsx routes this window straight here.
+
+// mpv is driven only through Prism's allowlisting `player_*` commands
+// (src-tauri/src/player.rs): the plugin's raw command/property passthrough is
+// not granted to this window, and mpv starts with config, scripts and the
+// ytdl hook disabled. `observeProperties` is a plain event listener — the
+// observed set itself is fixed in Rust and must match this list.
+const setProp = (name: string, value: unknown) => invoke('player_set', { name, value });
+const seek = (seconds: number, relative = false) => invoke('player_seek', { seconds, relative });
 
 const OBSERVED = [
   ['pause', 'flag'],
@@ -92,8 +93,8 @@ export default function Player() {
       setTitle(src.title);
       getCurrentWindow().setTitle(src.title).catch(() => {});
     }
-    await command('loadfile', [src.path]);
-    await setProperty('pause', 'no');
+    // Rust validates the path (allowed roots + media type) and unpauses.
+    await invoke('player_load', { path: src.path });
     // Re-run the macOS adoption pass in case mpv (re)created its video window
     // for this load — idempotent, no-op elsewhere. See src-tauri/src/player.rs.
     invoke('fixup_player_video').catch(() => {});
@@ -132,39 +133,11 @@ export default function Player() {
 
       if (cancelled) return;
 
-      // mpv's own log — the only record of why a video output failed to come
-      // up (a black frame reports no error through the plugin). Lands beside
-      // the app's data so a user can send it: ~/Library/Application Support/
-      // com.prism.app/mpv.log on macOS, %APPDATA%\com.prism.app\mpv.log on
-      // Windows. Best-effort: no log file is not a reason to refuse to play.
-      let logFile: string | null = null;
+      // mpv options (vo, hwdec, HDR hint, lockdown) and the observed property
+      // set live in Rust — see player_mpv_config in src-tauri/src/player.rs.
+      // mpv's own log lands at <app data>/mpv.log.
       try {
-        const { appDataDir, join } = await import('@tauri-apps/api/path');
-        logFile = await join(await appDataDir(), 'mpv.log');
-      } catch { /* path API unavailable — carry on without it */ }
-
-      try {
-        await init({
-          initialOptions: {
-            ...(logFile ? { 'log-file': logFile } : {}),
-            vo: 'gpu-next',
-            hwdec: 'auto-safe',
-            // Survive EOF so the user can replay instead of the window dying.
-            'keep-open': 'yes',
-            'force-window': 'yes',
-            // mpv resizes its (adopted — see src-tauri/src/player.rs) window
-            // to each video's native size on load, breaking the frame pinning.
-            'auto-window-resize': 'no',
-            // HDR: hint the source's colorspace to the display. On macOS this
-            // drives EDR, so HDR content renders as true HDR on capable
-            // panels; SDR displays fall back to gpu-next tone mapping.
-            'target-colorspace-hint': 'yes',
-            // The webview owns all input and chrome.
-            'input-default-bindings': 'no',
-            osc: 'no',
-          },
-          observedProperties: OBSERVED,
-        });
+        await invoke('player_init');
       } catch (e) {
         if (!cancelled) setInitError(e instanceof Error ? e.message : String(e));
         return;
@@ -191,7 +164,7 @@ export default function Player() {
       unlisteners.forEach((fn) => fn());
       document.documentElement.classList.remove('player-window');
       // The plugin also destroys on window close; this covers HMR/unmount.
-      destroy().catch(() => {});
+      invoke('player_destroy').catch(() => {});
     };
   }, [loadFile]);
 
@@ -228,14 +201,14 @@ export default function Player() {
   const togglePause = useCallback(() => {
     if (eof) {
       // Replay from the start — with keep-open, unpausing at EOF is a no-op.
-      command('seek', [0, 'absolute']).then(() => setProperty('pause', 'no')).catch(() => {});
+      seek(0).then(() => setProp('pause', 'no')).catch(() => {});
       return;
     }
-    setProperty('pause', paused ? 'no' : 'yes').catch(() => {});
+    setProp('pause', paused ? 'no' : 'yes').catch(() => {});
   }, [paused, eof]);
 
   const seekTo = useCallback((secs: number) => {
-    command('seek', [secs, 'absolute']).catch(() => {});
+    seek(secs).catch(() => {});
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -288,11 +261,11 @@ export default function Player() {
       if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return;
       switch (e.key) {
         case ' ': e.preventDefault(); togglePause(); break;
-        case 'ArrowLeft': command('seek', [-5, 'relative']).catch(() => {}); break;
-        case 'ArrowRight': command('seek', [5, 'relative']).catch(() => {}); break;
-        case 'ArrowUp': setProperty('volume', Math.min(100, Math.round(volume) + 5)).catch(() => {}); break;
-        case 'ArrowDown': setProperty('volume', Math.max(0, Math.round(volume) - 5)).catch(() => {}); break;
-        case 'm': setProperty('mute', muted ? 'no' : 'yes').catch(() => {}); break;
+        case 'ArrowLeft': seek(-5, true).catch(() => {}); break;
+        case 'ArrowRight': seek(5, true).catch(() => {}); break;
+        case 'ArrowUp': setProp('volume', Math.min(100, Math.round(volume) + 5)).catch(() => {}); break;
+        case 'ArrowDown': setProp('volume', Math.max(0, Math.round(volume) - 5)).catch(() => {}); break;
+        case 'm': setProp('mute', muted ? 'no' : 'yes').catch(() => {}); break;
         case 'f': toggleFullscreen(); break;
         // Simple fullscreen has no OS-level Escape handling — provide it.
         case 'Escape': if (fullscreen) toggleFullscreen(); break;
@@ -399,7 +372,7 @@ export default function Player() {
 
           <div className="flex items-center gap-1.5 ml-1">
             <button
-              onClick={() => setProperty('mute', muted ? 'no' : 'yes').catch(() => {})}
+              onClick={() => setProp('mute', muted ? 'no' : 'yes').catch(() => {})}
               className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
               title={muted ? 'Unmute' : 'Mute'}
               aria-label={muted ? 'Unmute' : 'Mute'}
@@ -411,7 +384,7 @@ export default function Player() {
               min={0}
               max={100}
               step={1}
-              onValueChange={([v]) => setProperty('volume', v).catch(() => {})}
+              onValueChange={([v]) => setProp('volume', v).catch(() => {})}
               className="w-20"
               aria-label="Volume"
             />
@@ -424,7 +397,7 @@ export default function Player() {
               Audio
               <select
                 value={audioTracks.find((t) => t.selected)?.id ?? ''}
-                onChange={(e) => setProperty('aid', e.target.value).catch(() => {})}
+                onChange={(e) => setProp('aid', e.target.value).catch(() => {})}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-36"
               >
                 {audioTracks.map((t) => (
@@ -439,7 +412,7 @@ export default function Player() {
               Subs
               <select
                 value={subTracks.find((t) => t.selected)?.id ?? 'no'}
-                onChange={(e) => setProperty('sid', e.target.value).catch(() => {})}
+                onChange={(e) => setProp('sid', e.target.value).catch(() => {})}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-36"
               >
                 <option value="no">Off</option>
@@ -453,7 +426,7 @@ export default function Player() {
           <label className="flex items-center gap-1 text-[11px] text-white/80">
             <select
               value={speed}
-              onChange={(e) => setProperty('speed', Number(e.target.value)).catch(() => {})}
+              onChange={(e) => setProp('speed', Number(e.target.value)).catch(() => {})}
               className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white"
               aria-label="Playback speed"
             >

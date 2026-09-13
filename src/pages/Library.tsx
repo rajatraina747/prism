@@ -30,9 +30,8 @@ function formatWhen(iso: string): string {
 function usePlayerAvailable(): boolean {
   const [available, setAvailable] = useState(false);
   React.useEffect(() => {
-    if (!('__TAURI__' in window)) return;
     import('@tauri-apps/api/core')
-      .then(({ invoke }) => invoke<boolean>('player_available'))
+      .then(({ isTauri, invoke }) => (isTauri() ? invoke<boolean>('player_available') : false))
       .then(setAvailable)
       .catch(() => {});
   }, []);
@@ -244,7 +243,7 @@ export default function Library() {
                                 </button>
                               )}
                               <button
-                                onClick={() => service.openFile(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                                onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
                                 title="Open in default player"
                                 aria-label={`Open ${f.name}`}
                                 className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
@@ -292,7 +291,7 @@ export default function Library() {
                             "play" — Show in Folder covers those. */}
                         {!isTorrent && item.filePath && (
                           <button
-                            onClick={() => service.openFile(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                            onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
                             title="Open in default player"
                             aria-label="Open in default player"
                             className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"

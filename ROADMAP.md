@@ -194,22 +194,34 @@ Phased:
   page lists mpv (GPL2+ mac build / LGPL win build), wrapper (LGPL-2.1),
   plugin (MPL-2.0).
 
-## Hardening & performance backlog (July 2026 audit)
+## Hardening & performance backlog
 
-Full findings with file references in [docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md).
-Headlines:
+July 2026 audit ([docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md)) and the
+September 2026 third-party review ([docs/AUDIT-2026-09.md](docs/AUDIT-2026-09.md)).
+Everything below the line shipped in **v1.8.0**; what's left is open.
 
-- [ ] `cargo update` to clear quick-xml RUSTSEC-2026-0194/0195 (DoS, CVSS 7.5)
-  once the Tauri/librqbit trees allow ≥0.41.
-- [ ] Exclude `~/Library` (and Windows autorun dirs) from allowed download
-  roots — torrent file names are untrusted metadata.
-- [ ] Require https for `blocklistUrl`; add an HTTP timeout to `update_ytdlp`.
-- [ ] Pass `-N 4` (concurrent fragment downloads) to yt-dlp — the single
-  biggest throughput win vs 4KVD/IDM-class tools.
-- [ ] Offer "keep original container" alongside forced-MP4 remux (VP9/AV1 in
-  mp4 confuses some players).
-- [ ] Throttle progress emits Rust-side (~4/s per item); virtualize/paginate
-  Library once history grows; debounce history writes; dynamic-import Sentry.
+- [x] `cargo update` cleared quick-xml/h2/rkyv advisories (librqbit → 9.x);
+  `cargo audit` + `npm audit` are CI gates.
+- [x] Deny-list for sensitive home subtrees (`~/Library`, `AppData`, dotfiles)
+  + user-picked roots for external drives (`pick_download_dir`).
+- [x] https-only `blocklistUrl`; timeouts + size caps on `update_ytdlp`.
+- [x] `-N 4` fragment concurrency; progress emits throttled to 4/s; history
+  writes debounced; Sentry dynamically imported.
+- [x] "Keep original container" setting.
+- [x] Sidecars pinned + SHA-256-verified (`scripts/sidecars.lock`); actions
+  pinned to SHAs; macOS/Windows cargo check in CI.
+- [x] Player: mpv lockdown + Prism-owned allowlisting commands; plugin UB fix.
+- [x] Quarantine flag on downloads; media-only `open_file`.
+- [x] Legal pages, credits and bundled license texts.
+- [ ] **LGPL-only mpv/FFmpeg build for macOS** so the macOS bundle stops
+  carrying GPL x264/x265/rubberband (the player only decodes; nothing is
+  lost). Until then the macOS binary is distributed under GPL-2.0-or-later
+  terms with license texts + Homebrew source pointers shipped in-app.
+- [ ] Virtualize/paginate the Library once histories get long (2,000-row cap
+  today).
+- [ ] Spawn yt-dlp in its own process group (`tokio::process` +
+  `process_group`) instead of the `ps`-snapshot tree kill.
+- [ ] Run the Playwright suite in CI against the web demo.
 
 ## Explicitly deferred
 

@@ -147,11 +147,17 @@ impl DownloadManager {
                 args.push("--audio-quality".into());
                 args.push("0".into());
             } else {
-                // Video: merge to mp4
-                args.push("--merge-output-format".into());
-                args.push("mp4".into());
-                args.push("--remux-video".into());
-                args.push("mp4".into());
+                let keep_container = crate::keep_original_container(&app);
+                if !keep_container {
+                    // Default: everything lands in an .mp4 (QuickTime/Finder
+                    // friendly). VP9/AV1 in mp4 trips some players — the
+                    // "keep original container" setting skips the remux and
+                    // lets yt-dlp pick mkv/webm when the codecs need it.
+                    args.push("--merge-output-format".into());
+                    args.push("mp4".into());
+                    args.push("--remux-video".into());
+                    args.push("mp4".into());
+                }
 
                 if let Some(ref fmt) = format_id {
                     args.push("-f".into());
@@ -160,9 +166,11 @@ impl DownloadManager {
                     args.push("-f".into());
                     args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into());
                 }
-                // Prefer H.264/AAC for QuickTime compatibility
-                args.push("-S".into());
-                args.push("vcodec:h264,acodec:m4a".into());
+                if !keep_container {
+                    // Prefer H.264/AAC for QuickTime compatibility
+                    args.push("-S".into());
+                    args.push("vcodec:h264,acodec:m4a".into());
+                }
 
                 // Report the height actually delivered (stdout line
                 // "PRISM:HEIGHT=N" once the file lands) so completion can
@@ -208,6 +216,12 @@ impl DownloadManager {
             args.push("10".into());
 
             args.push("--force-ipv4".into());
+
+            // Fetch HLS/DASH fragments in parallel — the single biggest
+            // throughput win on segmented streams (2–4× vs one connection).
+            // Harmless for progressive downloads, where it's a no-op.
+            args.push("-N".into());
+            args.push("4".into());
 
             if let Some(browser) = crate::cookies_browser(&app) {
                 args.push("--cookies-from-browser".into());
@@ -308,6 +322,10 @@ impl DownloadManager {
             let mut last_stderr = String::new();
             let mut actual_height: Option<u32> = None;
             let mut agg = PhaseAggregator::new();
+            // yt-dlp prints a progress line per fragment/chunk — many per
+            // second with -N. Each emit is an IPC hop plus a reducer pass and
+            // a re-render, so cap the rate; the final 100% always goes out.
+            let mut throttle = EmitThrottle::new(std::time::Duration::from_millis(250));
 
             loop {
                 // Cancelled, or superseded by a newer run for this id: stop
@@ -330,7 +348,9 @@ impl DownloadManager {
                             }
                             if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
                                 agg.apply(&mut p);
-                                let _ = app.emit(&format!("download-progress-{}", id), p);
+                                if throttle.allow(p.progress) {
+                                    let _ = app.emit(&format!("download-progress-{}", id), p);
+                                }
                             }
                         }
                         CommandEvent::Stderr(data) => {
@@ -347,7 +367,9 @@ impl DownloadManager {
                             }
                             if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
                                 agg.apply(&mut p);
-                                let _ = app.emit(&format!("download-progress-{}", id), p);
+                                if throttle.allow(p.progress) {
+                                    let _ = app.emit(&format!("download-progress-{}", id), p);
+                                }
                             }
                         }
                         CommandEvent::Terminated(payload) => {
@@ -394,6 +416,11 @@ impl DownloadManager {
             } else {
                 None
             };
+            // Flag the finished file as an internet download so the OS
+            // applies its usual checks if it's opened outside Prism.
+            if let Some(p) = &final_path {
+                crate::quarantine::mark_downloaded(p);
+            }
 
             let file_size = final_path.as_ref().and_then(|p| {
                 std::fs::metadata(p).ok().map(|m| m.len())
@@ -447,6 +474,33 @@ impl DownloadManager {
             dl.stop();
         }
         self.reserved.lock().await.clear();
+    }
+}
+
+/// Rate-limits progress emits: at most one per `min_gap`, except that a
+/// 100% line is never dropped (it's the one the UI must see).
+struct EmitThrottle {
+    min_gap: std::time::Duration,
+    last: Option<std::time::Instant>,
+}
+
+impl EmitThrottle {
+    fn new(min_gap: std::time::Duration) -> Self {
+        Self { min_gap, last: None }
+    }
+
+    fn allow(&mut self, progress: f64) -> bool {
+        let now = std::time::Instant::now();
+        let due = match self.last {
+            None => true,
+            Some(t) => now.duration_since(t) >= self.min_gap,
+        };
+        if due || progress >= 100.0 {
+            self.last = Some(now);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -690,6 +744,18 @@ mod tests {
         agg.apply(&mut p);
         assert_eq!(p.total_bytes, 0);
         assert!((p.progress - 37.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn throttle_caps_rate_but_never_drops_completion() {
+        let mut t = EmitThrottle::new(std::time::Duration::from_secs(60));
+        assert!(t.allow(1.0)); // first always passes
+        assert!(!t.allow(2.0)); // too soon
+        assert!(!t.allow(50.0));
+        assert!(t.allow(100.0)); // completion passes regardless
+        let mut t = EmitThrottle::new(std::time::Duration::ZERO);
+        assert!(t.allow(1.0));
+        assert!(t.allow(2.0)); // zero gap → everything passes
     }
 
     #[test]

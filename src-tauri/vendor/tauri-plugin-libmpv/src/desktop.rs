@@ -145,7 +145,12 @@ impl<R: Runtime> Mpv<R> {
         };
 
         if mpv_handle.is_null() {
-            let _ = unsafe { Box::from_raw(event_userdata as *mut (AppHandle<R>, String)) };
+            // PRISM VENDOR PATCH: reclaim the box as the type it was allocated
+            // as. Upstream cast it to `(AppHandle<R>, String)`, whose layout
+            // differs from `EventUserData` (which also holds `free_fn`) —
+            // dropping through the wrong type is undefined behaviour on the
+            // exact path that runs when mpv fails to start.
+            let _ = unsafe { Box::from_raw(event_userdata as *mut EventUserData<R>) };
             return Err(crate::Error::CreateInstance);
         }
 

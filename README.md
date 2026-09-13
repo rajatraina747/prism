@@ -70,7 +70,18 @@ Or get the latest release for your platform:
 | Linux | [AppImage / deb / rpm](https://github.com/rajatraina747/prism/releases/latest) |
 | Web Demo | [Try in your browser](https://rajatraina747.github.io/prism/) |
 
-> **macOS note:** If macOS warns about an unidentified developer, right-click the app and choose "Open".
+> **macOS note:** Prism is signed but not notarized (no paid Apple developer account), so macOS
+> shows "Apple could not verify Prism is free of malware" the first time. On **macOS 15 and later**
+> the right-click → Open trick no longer works: open the app once, then go to
+> **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or, from a terminal:
+>
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/Prism.app
+> ```
+>
+> The Homebrew cask above avoids the dialog on most setups. In-app updates carry the same signature,
+> so this only happens on first install.
+>
 > **Windows note:** Windows may show a SmartScreen warning — click "More info" then "Run anyway".
 
 ## Send to Prism from your browser
@@ -125,6 +136,26 @@ npm test
 npm run build:tauri
 ```
 
+### Bundled binaries (yt-dlp, Deno, libmpv)
+
+Every third-party binary that ships inside a release is pinned by version **and SHA-256** in
+[`scripts/sidecars.lock`](scripts/sidecars.lock). Fetch them (verified) with:
+
+```bash
+scripts/fetch-sidecars.sh macos            # or windows / linux
+scripts/fetch-sidecars.sh macos --player   # also assembles the embedded player's libmpv tree
+```
+
+CI uses the same script, so a release can never pick up an unverified "latest" build. To move to newer
+upstream releases, run `scripts/update-sidecars.sh`, review the lockfile diff, and commit.
+
+### Release checklist
+
+- `npm audit --omit=dev --audit-level=high` and `cargo audit` (in `src-tauri/`) are CI gates.
+- `RELEASE_NOTES.md` is the release body — update it *before* tagging.
+- The npm `@tauri-apps/api` and Rust `tauri` crate must be on the same minor.
+- After the release is published, bump the Homebrew cask in `rajatraina747/homebrew-prism`.
+
 ## Project Structure
 
 ```
@@ -145,7 +176,14 @@ src-tauri/
 
 ## License
 
-[MIT](LICENSE) — Copyright 2025-2026 RainaCorp
+Prism's source code is [MIT](LICENSE) — Copyright 2025-2026 RainaCorp.
+
+The **release builds** also contain third-party software under its own licenses: yt-dlp (Unlicense),
+Deno (MIT), librqbit (Apache-2.0), and the embedded player's libraries. The macOS build bundles mpv from
+Homebrew together with a GPL-enabled FFmpeg, x264, x265 and Rubber Band, so the macOS binary as a whole is
+distributed under **GPL-2.0-or-later** terms; the Windows build uses an LGPL-only mpv. License texts ship
+inside the app (`resources/lib/licenses`, with a `MANIFEST.txt` and `VERSIONS.txt`), the full list is under
+Settings → Legal → Open Source Licenses, and the assembly recipe is `scripts/bundle-libmpv-macos.sh`.
 
 ---
 

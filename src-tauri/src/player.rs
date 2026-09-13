@@ -197,6 +197,241 @@ pub async fn fixup_player_video(_app: tauri::AppHandle) -> Result<Vec<String>, S
     Ok(Vec::new())
 }
 
+// ── Player commands ──────────────────────────────────────────────────
+//
+// The vendored plugin exposes a raw mpv passthrough (`command`, `set_property`,
+// `init` with arbitrary options). mpv's `run`/`subprocess` commands execute
+// programs, `loadfile ytdl://` shells out, `load-script` runs Lua — so a
+// script injection in the player window would have been code execution.
+// The player capability therefore grants NONE of the plugin's commands; the
+// webview only gets these, which allowlist every verb, property and value,
+// validate media paths like `open_file`, and start mpv with config files,
+// scripts and the ytdl hook disabled.
+
+use tauri::AppHandle;
+use tauri_plugin_libmpv::{MpvConfig, MpvExt};
+
+const PLAYER_LABEL: &str = "player";
+
+fn ensure_player_window(window: &tauri::Window) -> Result<(), String> {
+    if window.label() != PLAYER_LABEL {
+        return Err("Player commands are only available to the player window".into());
+    }
+    Ok(())
+}
+
+/// Every mpv FFI call must run on the main thread on macOS (see the vendor
+/// patch in commands.rs); this mirrors that without blocking a worker.
+async fn on_main<T: Send + 'static>(
+    app: &AppHandle,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(f());
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await
+        .map_err(|_| "main-thread task was dropped before completing".to_string())
+}
+
+/// Options mpv starts with. Fixed here, not in the webview.
+fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
+    use tauri::Manager;
+    let mut initial = serde_json::Map::new();
+    // mpv's own log — the only record of why a video output failed to come
+    // up. Lands beside the app's data so a user can send it.
+    if let Ok(dir) = app.path().app_data_dir() {
+        initial.insert(
+            "log-file".into(),
+            serde_json::json!(dir.join("mpv.log").to_string_lossy()),
+        );
+    }
+    let fixed: &[(&str, &str)] = &[
+        ("vo", "gpu-next"),
+        ("hwdec", "auto-safe"),
+        // Survive EOF so the user can replay instead of the window dying.
+        ("keep-open", "yes"),
+        ("force-window", "yes"),
+        // mpv resizes its (adopted — see above) window to each video's native
+        // size on load, breaking the frame pinning.
+        ("auto-window-resize", "no"),
+        // HDR: hint the source's colorspace to the display. On macOS this
+        // drives EDR, so HDR content renders as true HDR on capable panels.
+        ("target-colorspace-hint", "yes"),
+        // The webview owns all input and chrome.
+        ("input-default-bindings", "no"),
+        ("osc", "no"),
+        // Lockdown: no user config, no Lua/JS scripts, no youtube-dl hook.
+        // Playback is identical on every machine and nothing outside this
+        // binary can add behaviour to the player.
+        ("config", "no"),
+        ("load-scripts", "no"),
+        ("ytdl", "no"),
+    ];
+    for (k, v) in fixed {
+        initial.insert((*k).into(), serde_json::json!(v));
+    }
+    let observed = serde_json::json!({
+        "pause": "flag",
+        "time-pos": "double",
+        "duration": "double",
+        "volume": "double",
+        "mute": "flag",
+        "speed": "double",
+        "track-list": "node",
+        "media-title": "string",
+        "video-params": "node",
+        "eof-reached": "flag",
+    });
+    serde_json::from_value(serde_json::json!({
+        "initialOptions": initial,
+        "observedProperties": observed,
+    }))
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let cfg = player_mpv_config(&app)?;
+    let app2 = app.clone();
+    on_main(&app, move || {
+        app2.mpv()
+            .init(cfg, PLAYER_LABEL)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn player_destroy(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let app2 = app.clone();
+    on_main(&app, move || app2.mpv().destroy(PLAYER_LABEL).map_err(|e| e.to_string())).await?
+}
+
+/// Load a local media file and start playback. Same path rules as `open_file`:
+/// inside the allowed roots, not a system location, a media/subtitle type.
+#[tauri::command]
+pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let validated = crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?;
+    if !crate::is_openable_media(&validated) {
+        return Err("The player only opens media files".into());
+    }
+    let app2 = app.clone();
+    on_main(&app, move || {
+        let mpv = app2.mpv();
+        mpv.command("loadfile", &vec![serde_json::json!(validated)], PLAYER_LABEL)
+            .map_err(|e| e.to_string())?;
+        mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn player_seek(
+    app: AppHandle,
+    window: tauri::Window,
+    seconds: f64,
+    relative: bool,
+) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    if !seconds.is_finite() {
+        return Err("Invalid seek position".into());
+    }
+    let mode = if relative { "relative" } else { "absolute" };
+    let app2 = app.clone();
+    on_main(&app, move || {
+        app2.mpv()
+            .command(
+                "seek",
+                &vec![serde_json::json!(seconds), serde_json::json!(mode)],
+                PLAYER_LABEL,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// The only properties the UI may set, each with its value shape checked.
+pub(crate) fn validate_player_property(
+    name: &str,
+    value: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    use serde_json::Value;
+    let bad = || format!("Invalid value for player property '{}'", name);
+    match name {
+        "pause" | "mute" => match value {
+            Value::Bool(b) => Ok(Value::String(if *b { "yes" } else { "no" }.into())),
+            Value::String(s) if s == "yes" || s == "no" => Ok(value.clone()),
+            _ => Err(bad()),
+        },
+        "volume" => value
+            .as_f64()
+            .filter(|v| (0.0..=100.0).contains(v))
+            .map(|v| serde_json::json!(v))
+            .ok_or_else(bad),
+        "speed" => value
+            .as_f64()
+            .filter(|v| (0.1..=4.0).contains(v))
+            .map(|v| serde_json::json!(v))
+            .ok_or_else(bad),
+        // Track ids come from mpv's own track-list.
+        "aid" | "sid" => match value {
+            Value::String(s) if s == "no" || s == "auto" || s.parse::<u32>().is_ok() => {
+                Ok(value.clone())
+            }
+            Value::Number(n) if n.as_u64().is_some() => Ok(Value::String(n.to_string())),
+            _ => Err(bad()),
+        },
+        _ => Err(format!("Property '{}' is not settable from the player UI", name)),
+    }
+}
+
+#[tauri::command]
+pub async fn player_set(
+    app: AppHandle,
+    window: tauri::Window,
+    name: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let value = validate_player_property(&name, &value)?;
+    let app2 = app.clone();
+    on_main(&app, move || {
+        app2.mpv()
+            .set_property(&name, &value, PLAYER_LABEL)
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_player_property;
+    use serde_json::json;
+
+    #[test]
+    fn player_properties_are_allowlisted_and_shape_checked() {
+        assert_eq!(validate_player_property("pause", &json!(true)).unwrap(), json!("yes"));
+        assert_eq!(validate_player_property("mute", &json!("no")).unwrap(), json!("no"));
+        assert!(validate_player_property("pause", &json!("maybe")).is_err());
+        assert_eq!(validate_player_property("volume", &json!(50)).unwrap(), json!(50.0));
+        assert!(validate_player_property("volume", &json!(150)).is_err());
+        assert!(validate_player_property("speed", &json!(0.0)).is_err());
+        assert_eq!(validate_player_property("aid", &json!(2)).unwrap(), json!("2"));
+        assert!(validate_player_property("aid", &json!("../x")).is_err());
+        // The dangerous ones never pass, whatever the value.
+        for p in ["input-ipc-server", "ytdl", "script", "load-scripts", "config", "wid"] {
+            assert!(validate_player_property(p, &json!("x")).is_err(), "{p} must be rejected");
+        }
+    }
+}
+
 /// Whether the embedded player can run: the libmpv wrapper must be reachable —
 /// next to the executable (dev builds stage it there, see build.rs) or in the
 /// bundled resources (releases ship it under resources/lib; the vendored

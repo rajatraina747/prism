@@ -139,8 +139,6 @@ export interface AppPreferences {
   bandwidthLimit: number;
   defaultRetryCount: number;
   theme: 'dark' | 'light' | 'system';
-  launchOnStartup: boolean;
-  minimizeToTray: boolean;
   autoUpdate: boolean;
   logLevel: 'error' | 'warn' | 'info' | 'debug';
   notificationsEnabled: boolean;
@@ -165,14 +163,29 @@ export interface AppPreferences {
   // Container/codec for audio-only downloads. Read by the Rust side from
   // settings.json (whitelisted), like cookiesFromBrowser.
   audioFormat: 'mp3' | 'm4a' | 'opus';
+  // Video: skip the forced MP4 remux so VP9/AV1 stay in mkv/webm (some
+  // players mishandle those codecs inside .mp4). Read Rust-side. Default off.
+  keepOriginalContainer: boolean;
+  // First-run setup card on the Dashboard (destination, ffmpeg, cookies).
+  setupCardDismissed: boolean;
   // Torrent seeding: what to do once a torrent finishes downloading.
   // 'stop' = stop uploading immediately, 'ratio' = seed until share ratio 1.0
   // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
   // Read by the Rust side from settings.json (whitelisted), like audioFormat.
   seedingPolicy: 'stop' | 'ratio' | 'seed';
-  // Optional proxy for all traffic. yt-dlp accepts http(s)/socks; torrents only
-  // use it when it's a socks5:// URL. Empty = direct. Validated Rust-side.
+  // Optional proxy. yt-dlp routes everything through http(s)/socks proxies;
+  // the torrent engine routes only *peer connections* through a socks5://
+  // proxy (DHT, trackers and the .torrent/blocklist fetches go direct, and
+  // http proxies are ignored for torrents). Empty = direct. Validated Rust-side.
   proxyUrl: string;
+  // Torrent engine: open a router port via UPnP for inbound peers (better
+  // swarm health, but publishes this machine's reachability). Read Rust-side.
+  torrentUpnp: boolean;
+  // Torrent engine: join the DHT (off = tracker-only). Read Rust-side.
+  torrentDht: boolean;
+  // Offer to fetch video URLs found on the clipboard when the window regains
+  // focus. Reads the clipboard, so it's a user choice.
+  clipboardWatchEnabled: boolean;
   // Extra tracker announce URLs added to every torrent (newline- or comma-
   // separated). Helps peer discovery on magnets with dead/few trackers.
   // Read by the Rust side from settings.json (filtered to http(s)/udp).
@@ -231,8 +244,6 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   bandwidthLimit: 0,
   defaultRetryCount: 3,
   theme: 'dark',
-  launchOnStartup: false,
-  minimizeToTray: true,
   autoUpdate: true,
   logLevel: 'info',
   notificationsEnabled: true,
@@ -247,8 +258,13 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   scheduleLimitMBps: 5,
   crashReportingEnabled: false,
   audioFormat: 'mp3',
+  keepOriginalContainer: false,
+  setupCardDismissed: false,
   seedingPolicy: 'ratio',
   proxyUrl: '',
+  torrentUpnp: true,
+  torrentDht: true,
+  clipboardWatchEnabled: true,
   extraTrackers: '',
   blocklistUrl: '',
   perSitePresets: {},

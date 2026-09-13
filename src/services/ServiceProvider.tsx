@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
 import type { IPrismService } from './types';
 import { MockPrismService } from './mock';
 
@@ -10,8 +11,10 @@ export function useService(): IPrismService {
   return ctx;
 }
 
+// `isTauri()` checks the internals the runtime always injects — it does not
+// need `withGlobalTauri` (off, so page scripts get no `window.__TAURI__`).
 function detectEnvironment(): 'tauri' | 'web' {
-  return typeof window !== 'undefined' && '__TAURI__' in window ? 'tauri' : 'web';
+  return typeof window !== 'undefined' && isTauri() ? 'tauri' : 'web';
 }
 
 async function createService(): Promise<IPrismService> {

@@ -135,7 +135,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = setTimeout(() => service.persistence.saveQueue(queue), 300);
     return () => clearTimeout(t);
   }, [queue, service]);
-  useEffect(() => { service.persistence.saveHistory(history); }, [history, service]);
+  // History is rewritten in full on every completion (and can hold 2,000
+  // rows) — debounce it like the queue so a burst of finishing playlist items
+  // doesn't serialize the file once per item.
+  useEffect(() => {
+    const t = setTimeout(() => service.persistence.saveHistory(history), 300);
+    return () => clearTimeout(t);
+  }, [history, service]);
   useEffect(() => { service.persistence.saveSettings(settings); }, [settings, service]);
 
   // Sync log level preference to diagnostics service

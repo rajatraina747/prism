@@ -1,0 +1,36 @@
+# Pinned versions + SHA-256 of every third-party binary Prism bundles.
+#
+# Consumed by scripts/fetch-sidecars.sh (CI and local builds). Refresh with
+# scripts/update-sidecars.sh, review the diff, and commit — a release must
+# never pick up whatever "latest" happens to be at build time, because the
+# minisign-signed updater then vouches for it on every user's machine.
+#
+# Format: plain KEY=VALUE lines, sourced by bash.
+
+# yt-dlp — https://github.com/yt-dlp/yt-dlp/releases (hashes from SHA2-256SUMS)
+YTDLP_VERSION=2026.08.19
+YTDLP_SHA256_MACOS=0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202
+YTDLP_SHA256_LINUX=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
+YTDLP_SHA256_WINDOWS=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
+
+# Deno — https://github.com/denoland/deno/releases (hashes from <asset>.zip.sha256sum)
+DENO_VERSION=v2.9.6
+DENO_SHA256_X86_64_APPLE_DARWIN=7d4524b82bcc557fe020a1a5b56956ed42b992ae5b28026e8ad5d17329533f5f
+DENO_SHA256_AARCH64_APPLE_DARWIN=213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472
+DENO_SHA256_X86_64_PC_WINDOWS_MSVC=15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11
+DENO_SHA256_X86_64_UNKNOWN_LINUX_GNU=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+
+# libmpv-wrapper — https://github.com/nini22P/libmpv-wrapper/releases (GitHub asset digests)
+LIBMPV_WRAPPER_VERSION=v0.1.1
+LIBMPV_WRAPPER_SHA256_MACOS_AARCH64=086dbf977fe5b51785048cbd190f1809186513688be0ecea1ad27bd766c55de8
+LIBMPV_WRAPPER_SHA256_MACOS_X86_64=99d65d7e368a456c883b4b3cf5d6384c9af64ec29dccaf4923548c2e3784b0e4
+LIBMPV_WRAPPER_SHA256_WINDOWS_X86_64=d2ff8b2edcd34d2968e544adaa915e5e5c48eb1a0995945005269c2af119a492
+
+# libmpv for Windows — zhongfly's LGPL build, https://github.com/zhongfly/mpv-winbuild/releases
+MPV_WINBUILD_TAG=2026-09-13-13a4bfbc1a
+MPV_WINBUILD_ASSET=mpv-dev-lgpl-x86_64-20260913-git-13a4bfbc1a.7z
+MPV_WINBUILD_SHA256=152188dd100c7206917ca5e4d43d5b548170ad91046cdb0415dfde0e168fb640
+
+# libmpv for macOS comes from Homebrew (see scripts/bundle-libmpv-macos.sh),
+# which has no stable download URL to pin; the exact formula versions used
+# are recorded into the bundle at resources/lib/VERSIONS.txt at build time.
