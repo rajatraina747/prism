@@ -117,13 +117,25 @@ exposes. Shipped in one pass:
 - [x] **Swarm health readout.** peers_seen/peers_connecting from librqbit's
   aggregate stats; the row distinguishes "searching for peers", "connecting",
   "0 of N reachable" (NAT hint) and "N peers · M seen".
-- [ ] **Per-IP peer table.** BLOCKED upstream: librqbit 8.1.1 doesn't re-export
-  `PeerStatsFilter`/`PeerStatsSnapshot`, so `api_peer_stats` is uncallable from
-  outside the crate. Needs an upstream PR (or the http-api feature + local
-  port). Aggregate counts above cover the main diagnostic need meanwhile.
-- [ ] **Manual "update tracker" / force reannounce.** Not exposed by librqbit
-  8.x at all; `force_tracker_interval` at add time is the only knob. Upstream
-  PR territory.
+- [x] **Per-IP peer table.** librqbit 9: `TorrentStateLive::per_peer_stats_snapshot`
+  (filter built via serde so the un-exported type needn't be named); speeds
+  differenced Rust-side; Peers tab in the detail panel. Engine still reports no
+  per-peer progress/flags.
+- [x] **Manual "update tracker" / force reannounce.** `Session::pause` +
+  `unpause` keeps piece state and issues a fresh tracker/DHT/LSD announce —
+  wired as "Update tracker" (row/context menu/`R`) and run automatically every
+  5 min while a torrent is peerless. Peerless torrents never fail on their own
+  (optional `torrentGiveUpMinutes`).
+- [x] **Session persistence + fastresume** (app_data/torrent-session): relaunch
+  spot-checks pieces instead of re-hashing; `add_or_adopt` reuses restored
+  handles. **Force re-check** (delete + re-add) and **Remove and delete files**.
+- [x] **Transfers page**: status tabs, sort, multi-select, context menu,
+  shortcuts, detail panel (General/Files/Peers/Trackers/Speed, pieces map),
+  engine footer; settings for uTP/LSD/port/peer limit/caps/seed ratio & time.
+- [ ] **Engine-blocked (librqbit 9 has no API):** per-tracker status, adding
+  trackers to a running torrent, sequential download / piece priorities,
+  availability, moving a torrent's folder, per-torrent limits after add,
+  protocol encryption. Upstream PR territory; the UI says so rather than faking it.
 - [ ] **Stream-while-downloading (flagship candidate).** librqbit's
   `FileStream` (AsyncRead+AsyncSeek, on-demand piece prioritization) served
   over a localhost HTTP server (Range support) → "Play now" on a downloading

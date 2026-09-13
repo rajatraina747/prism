@@ -115,7 +115,61 @@ export interface DownloadItem {
   uploadSpeed?: number; // bytes per second
   ratio?: number; // uploaded / downloaded
   files?: TorrentFileInfo[]; // multi-file torrent breakdown
+  /** Lifetime bytes uploaded (survives pause/reannounce, unlike the engine's counter). */
+  uploadedBytes?: number;
+  /** Consecutive seconds with zero connected peers; 0 while connected. */
+  peerlessSecs?: number;
+  /** Have-pieces bitmap downsampled to ~200 buckets (0–255 fill). Not persisted. */
+  pieces?: number[];
+  /** When the item entered the queue (set by the reducer on add). */
+  addedAt?: string;
 }
+
+/** One peer of a live torrent (Peers tab). Speeds are differenced per poll. */
+export interface TorrentPeer {
+  addr: string;
+  client?: string | null;
+  kind: string; // tcp | utp | socks | unknown
+  state: string; // queued | connecting | live | dead | not needed
+  downBps: number;
+  upBps: number;
+  downloaded: number;
+  uploaded: number;
+  errors: number;
+}
+
+/** Static facts about an active torrent (General/Trackers tabs). */
+export interface TorrentDetails {
+  infoHash: string;
+  name?: string | null;
+  outputFolder: string;
+  totalBytes: number;
+  totalPieces: number;
+  pieceLength: number;
+  private: boolean;
+  trackers: string[];
+  fileCount: number;
+  addedAt: string;
+  state: string;
+}
+
+/** Session-wide torrent engine numbers (transfers footer). */
+export interface SessionStats {
+  downloadBps: number;
+  uploadBps: number;
+  peersLive: number;
+  peersConnecting: number;
+  peersSeen: number;
+  dhtNodes: number;
+  listenPort?: number | null;
+  upnp: boolean;
+  dht: boolean;
+  utp: boolean;
+  activeTorrents: number;
+}
+
+export type TransfersSort = 'added' | 'name' | 'progress' | 'speed' | 'eta' | 'size' | 'ratio';
+export type TransfersFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'queued' | 'errored';
 
 export interface DownloadError {
   code: string;
@@ -183,6 +237,28 @@ export interface AppPreferences {
   torrentUpnp: boolean;
   // Torrent engine: join the DHT (off = tracker-only). Read Rust-side.
   torrentDht: boolean;
+  // Torrent engine (all read Rust-side at engine start, i.e. next launch):
+  // uTP transport alongside TCP; LAN peer discovery; fixed listen port; max
+  // peers per torrent (0 = engine default).
+  torrentUtp: boolean;
+  torrentLsd: boolean;
+  torrentListenPort: number;
+  torrentPeerLimit: number;
+  // Give up on a torrent that has had no peers for N minutes (0 = never —
+  // it keeps re-announcing every 5 minutes, like uTorrent/Vuze). Rust-side.
+  torrentGiveUpMinutes: number;
+  // Seeding: ratio target for the 'ratio' policy, and an optional wall-clock
+  // limit (minutes, 0 = none) that ends seeding under any policy but 'stop'.
+  seedRatioTarget: number;
+  seedTimeLimitMinutes: number;
+  // Session-wide torrent speed caps in KB/s (0 = unlimited). Applied live;
+  // the quiet-hours override caps them further while active.
+  torrentDownloadLimitKBps: number;
+  torrentUploadLimitKBps: number;
+  // Transfers page memory.
+  transfersSort: TransfersSort;
+  transfersFilter: TransfersFilter;
+  detailPanelHeight: number;
   // Offer to fetch video URLs found on the clipboard when the window regains
   // focus. Reads the clipboard, so it's a user choice.
   clipboardWatchEnabled: boolean;
@@ -228,6 +304,9 @@ export interface HistoryItem {
   status: 'completed' | 'failed' | 'canceled';
   completedAt: string;
   fileSize: number;
+  /** Total size when known — lets a retry start with the real size instead
+   * of a placeholder (torrents otherwise need peers just to learn it). */
+  totalBytes?: number;
   filePath?: string;
   error?: DownloadError;
   /** Torrent only: downloaded files (paths relative to settings.destination),
@@ -264,6 +343,18 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   proxyUrl: '',
   torrentUpnp: true,
   torrentDht: true,
+  torrentUtp: false,
+  torrentLsd: true,
+  torrentListenPort: 4240,
+  torrentPeerLimit: 0,
+  torrentGiveUpMinutes: 0,
+  seedRatioTarget: 1,
+  seedTimeLimitMinutes: 0,
+  torrentDownloadLimitKBps: 0,
+  torrentUploadLimitKBps: 0,
+  transfersSort: 'added',
+  transfersFilter: 'all',
+  detailPanelHeight: 260,
   clipboardWatchEnabled: true,
   extraTrackers: '',
   blocklistUrl: '',

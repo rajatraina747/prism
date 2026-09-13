@@ -17,7 +17,7 @@ import {
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/queue', icon: ArrowDownToLine, label: 'Queue' },
+  { path: '/queue', icon: ArrowDownToLine, label: 'Transfers' },
   { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
   { path: '/library', icon: LibraryIcon, label: 'Library' },
 ] as const;
@@ -102,7 +102,7 @@ function PageHeader() {
   const location = useLocation();
   const titles: Record<string, string> = {
     '/': 'Dashboard',
-    '/queue': 'Download Queue',
+    '/queue': 'Transfers',
     '/subscriptions': 'Subscriptions',
     '/library': 'Library',
     '/settings': 'Settings',

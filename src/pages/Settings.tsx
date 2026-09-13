@@ -247,6 +247,49 @@ export default function Settings() {
                 <SettingRow label="Torrent DHT" description="Find peers through the distributed hash table as well as trackers. Off = tracker-only. Applies on next launch">
                   <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                 </SettingRow>
+                <SettingRow label="Local peer discovery" description="Find peers on your own network (LSD). Applies on next launch">
+                  <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
+                </SettingRow>
+                <SettingRow label="uTP transport" description="Accept and make uTP connections alongside TCP (kinder to home routers; still maturing in the engine). Applies on next launch">
+                  <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
+                </SettingRow>
+                <SettingRow label="Listen port" description="Incoming peer connections (and the UPnP mapping) use this port. Applies on next launch">
+                  <NumberInput value={p.torrentListenPort} onChange={v => updatePreference('torrentListenPort', Math.max(1024, Math.min(65535, v)))} min={1024} max={65535} />
+                </SettingRow>
+                <SettingRow label="Max peers per torrent" description="0 = engine default. Lower it on slow connections or metered links. Applies to torrents added after the change">
+                  <NumberInput value={p.torrentPeerLimit} onChange={v => updatePreference('torrentPeerLimit', Math.max(0, Math.min(10000, v)))} min={0} max={10000} />
+                </SettingRow>
+                <SettingRow label="Torrent download limit" description="Session-wide cap for all torrents, in KB/s (0 = unlimited). Applies immediately; Quiet Hours can lower it further">
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput value={p.torrentDownloadLimitKBps} onChange={v => updatePreference('torrentDownloadLimitKBps', Math.max(0, v))} min={0} />
+                    <span className="text-[11px] text-muted-foreground">KB/s</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="Torrent upload limit" description="Session-wide cap on seeding/upload, in KB/s (0 = unlimited). Applies immediately">
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput value={p.torrentUploadLimitKBps} onChange={v => updatePreference('torrentUploadLimitKBps', Math.max(0, v))} min={0} />
+                    <span className="text-[11px] text-muted-foreground">KB/s</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="Give up on peerless torrents after" description="Minutes with no connected peers before a torrent is marked failed. 0 = never: Prism keeps re-announcing to trackers and the DHT every 5 minutes, like uTorrent or Vuze">
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput value={p.torrentGiveUpMinutes} onChange={v => updatePreference('torrentGiveUpMinutes', Math.max(0, Math.min(10080, v)))} min={0} max={10080} />
+                    <span className="text-[11px] text-muted-foreground">min</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="Seed ratio target" description="For the 'Seed to ratio' policy: stop once uploaded ÷ downloaded reaches this">
+                  <TextInput
+                    value={String(p.seedRatioTarget)}
+                    onChange={v => { const n = Number(v); if (Number.isFinite(n)) updatePreference('seedRatioTarget', Math.max(0.1, Math.min(10, n))); }}
+                    placeholder="1.0"
+                  />
+                </SettingRow>
+                <SettingRow label="Seed time limit" description="Stop seeding after this many minutes under any policy except 'Stop at 100%' (0 = no limit)">
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput value={p.seedTimeLimitMinutes} onChange={v => updatePreference('seedTimeLimitMinutes', Math.max(0, Math.min(525600, v)))} min={0} max={525600} />
+                    <span className="text-[11px] text-muted-foreground">min</span>
+                  </div>
+                </SettingRow>
               </div>
             )}
 

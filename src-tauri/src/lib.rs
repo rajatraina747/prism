@@ -443,11 +443,14 @@ async fn start_torrent(
     // output_path is the destination *directory* for the torrent's files.
     let picked = picked_dirs(&app);
     let dir = validate_download_path(&output_path, &picked)?;
-    let source = resolve_torrent_source(&magnet, &picked)?;
+    let cfg = torrent_session_config(&app);
+    let source = with_cached_metadata(
+        resolve_torrent_source(&magnet, &picked)?,
+        cfg.torrent_cache_dir.as_deref(),
+    );
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create download directory: {}", e))?;
     let policy = seeding_policy(&app);
-    let cfg = torrent_session_config(&app);
     let manager = app.state::<torrent::TorrentManager>();
     manager.start_torrent(app.clone(), id, source, dir, policy, only_files, cfg, speed_limit);
     Ok(())
@@ -463,10 +466,35 @@ async fn parse_torrent(
 ) -> Result<Vec<torrent::TorrentFileEntry>, String> {
     let picked = picked_dirs(&app);
     let dir = validate_download_path(&output_path, &picked)?;
-    let source = resolve_torrent_source(&magnet, &picked)?;
     let cfg = torrent_session_config(&app);
+    let source = with_cached_metadata(
+        resolve_torrent_source(&magnet, &picked)?,
+        cfg.torrent_cache_dir.as_deref(),
+    );
     let manager = app.state::<torrent::TorrentManager>();
-    manager.list_files(source, dir, cfg).await
+    manager.list_files(&app, source, dir, cfg).await
+}
+
+/// "Update tracker": fresh announce to trackers + DHT + LSD, keeping progress.
+#[tauri::command]
+async fn reannounce_torrent(app: AppHandle, id: String) -> Result<(), String> {
+    app.state::<torrent::TorrentManager>().reannounce_torrent(&id).await
+}
+
+/// "Force re-check": hash every piece on disk again.
+#[tauri::command]
+async fn recheck_torrent(app: AppHandle, id: String) -> Result<(), String> {
+    app.state::<torrent::TorrentManager>().recheck_torrent(&id).await
+}
+
+#[tauri::command]
+async fn torrent_peers(app: AppHandle, id: String) -> Result<Vec<torrent::PeerRow>, String> {
+    app.state::<torrent::TorrentManager>().peers(&id).await
+}
+
+#[tauri::command]
+async fn torrent_details(app: AppHandle, id: String) -> Result<torrent::TorrentDetails, String> {
+    app.state::<torrent::TorrentManager>().details(&id).await
 }
 
 /// `.torrent` files Prism was *launched* with (double-click / "Open with" on
@@ -485,13 +513,119 @@ fn is_torrent_file_arg(arg: &str) -> bool {
 /// Session-wide torrent engine settings, each read through its whitelisting
 /// accessor. Applied when the engine starts (next launch after a change).
 fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
+    let app_data = app.path().app_data_dir().ok();
     torrent::SessionConfig {
         socks_proxy: proxy_url(app),
         blocklist_url: blocklist_url(app),
         upnp: torrent_upnp_enabled(app),
         dht: torrent_dht_enabled(app),
+        utp: setting_bool(app, "torrentUtp", false),
+        lsd: setting_bool(app, "torrentLsd", true),
+        listen_port: setting_u64(app, "torrentListenPort", torrent::DEFAULT_LISTEN_PORT as u64, 1024, 65535) as u16,
+        peer_limit: match setting_u64(app, "torrentPeerLimit", 0, 0, 10_000) {
+            0 => None,
+            n => Some(n as usize),
+        },
         trackers: extra_trackers(app),
+        persistence_dir: app_data.as_ref().map(|d| d.join("torrent-session")),
+        torrent_cache_dir: app_data.as_ref().map(|d| d.join("torrents")),
+        give_up_after: match setting_u64(app, "torrentGiveUpMinutes", 0, 0, 10_080) {
+            0 => None,
+            m => Some(std::time::Duration::from_secs(m * 60)),
+        },
+        seed_time_limit: match setting_u64(app, "seedTimeLimitMinutes", 0, 0, 525_600) {
+            0 => None,
+            m => Some(std::time::Duration::from_secs(m * 60)),
+        },
     }
+}
+
+fn setting_bool(app: &AppHandle, key: &str, default: bool) -> bool {
+    read_setting(app, key).and_then(|v| v.as_bool()).unwrap_or(default)
+}
+
+/// Numeric setting clamped to `[min, max]`; anything unparseable = default.
+fn setting_u64(app: &AppHandle, key: &str, default: u64, min: u64, max: u64) -> u64 {
+    read_setting(app, key)
+        .and_then(|v| v.as_f64())
+        .filter(|f| f.is_finite() && *f >= 0.0)
+        .map(|f| (f as u64).clamp(min, max))
+        .unwrap_or(default)
+}
+
+/// If a magnet's metadata was cached on an earlier run (`<cache>/<infohash>
+/// .torrent`), add from those bytes — the size and file list are then known
+/// with zero peers — while keeping the magnet's own trackers.
+fn with_cached_metadata(source: torrent::TorrentSource, cache_dir: Option<&std::path::Path>) -> torrent::TorrentSource {
+    let torrent::TorrentSource::Url(ref magnet) = source else { return source };
+    let Some(dir) = cache_dir else { return source };
+    let Some(hash) = magnet_info_hash(magnet) else { return source };
+    let path = dir.join(format!("{hash}.torrent"));
+    match std::fs::read(&path) {
+        Ok(bytes) if !bytes.is_empty() && bytes.len() as u64 <= MAX_TORRENT_FILE_BYTES => {
+            torrent::TorrentSource::Bytes {
+                key: magnet.clone(),
+                bytes,
+                trackers: magnet_trackers(magnet),
+            }
+        }
+        _ => source,
+    }
+}
+
+/// Lower-case hex info hash from a magnet's `xt=urn:btih:` (hex or base32).
+pub(crate) fn magnet_info_hash(magnet: &str) -> Option<String> {
+    let u = url::Url::parse(magnet).ok()?;
+    if u.scheme() != "magnet" {
+        return None;
+    }
+    let xt = u.query_pairs().find(|(k, _)| k == "xt").map(|(_, v)| v.into_owned())?;
+    let raw = xt.strip_prefix("urn:btih:")?;
+    match raw.len() {
+        40 if raw.chars().all(|c| c.is_ascii_hexdigit()) => Some(raw.to_ascii_lowercase()),
+        32 => base32_decode(raw).filter(|b| b.len() == 20).map(hex_lower),
+        _ => None,
+    }
+}
+
+/// http(s)/udp announce URLs from a magnet's `tr=` parameters.
+pub(crate) fn magnet_trackers(magnet: &str) -> Vec<String> {
+    url::Url::parse(magnet)
+        .map(|u| {
+            u.query_pairs()
+                .filter(|(k, _)| k == "tr")
+                .map(|(_, v)| v.into_owned())
+                .filter(|t| {
+                    url::Url::parse(t)
+                        .map(|p| matches!(p.scheme(), "http" | "https" | "udp"))
+                        .unwrap_or(false)
+                })
+                .take(MAX_EXTRA_TRACKERS)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn hex_lower(bytes: Vec<u8>) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// RFC 4648 base32 (what magnets use for `btih`), no padding.
+fn base32_decode(s: &str) -> Option<Vec<u8>> {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = Vec::with_capacity(s.len() * 5 / 8);
+    let mut buf: u64 = 0;
+    let mut bits = 0;
+    for c in s.bytes() {
+        let v = ALPHABET.iter().position(|&a| a == c.to_ascii_uppercase())? as u64;
+        buf = (buf << 5) | v;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xff) as u8);
+        }
+    }
+    Some(out)
 }
 
 /// Largest `.torrent` file we'll read into memory (real ones are KBs).
@@ -536,13 +670,15 @@ fn read_local_torrent(path: &str, extra_roots: &[PathBuf]) -> Result<torrent::To
         return Err("Torrent file is too large to be a valid .torrent".into());
     }
     let bytes = std::fs::read(&validated).map_err(|e| format!("Failed to read torrent file: {}", e))?;
-    Ok(torrent::TorrentSource::Bytes { key: validated, bytes })
+    Ok(torrent::TorrentSource::Bytes { key: validated, bytes, trackers: Vec::new() })
 }
 
+/// Stop a torrent. `delete_files` also removes its data from disk ("Remove
+/// and delete files" — the frontend confirms first).
 #[tauri::command]
-async fn cancel_torrent(app: AppHandle, id: String) -> Result<(), String> {
+async fn cancel_torrent(app: AppHandle, id: String, delete_files: Option<bool>) -> Result<(), String> {
     let manager = app.state::<torrent::TorrentManager>();
-    manager.cancel_torrent(&app, &id).await;
+    manager.cancel_torrent(&app, &id, delete_files.unwrap_or(false)).await;
     Ok(())
 }
 
@@ -566,16 +702,22 @@ async fn resume_torrent(app: AppHandle, id: String) -> Result<(), String> {
     manager.resume_torrent(&id).await
 }
 
-/// Throttle (or clear) the session-wide torrent rate limit — the same limit is
-/// applied to download and upload, so it caps seeding too. Driven by Quiet Hours.
+/// Session-wide torrent rate limits in bytes/sec (None/0 = unlimited). The
+/// frontend merges the user's limits with the Quiet Hours override and pushes
+/// the effective values; upload capping is what throttles seeding.
 #[tauri::command]
-async fn set_torrent_rate_limit(app: AppHandle, bytes_per_sec: Option<u64>) -> Result<(), String> {
-    let limit = bytes_per_sec
-        .filter(|b| *b > 0)
-        .and_then(|b| u32::try_from(b).ok())
-        .and_then(std::num::NonZeroU32::new);
+async fn set_torrent_rate_limit(
+    app: AppHandle,
+    download_bps: Option<u64>,
+    upload_bps: Option<u64>,
+) -> Result<(), String> {
+    let to_limit = |b: Option<u64>| {
+        b.filter(|b| *b > 0)
+            .and_then(|b| u32::try_from(b).ok())
+            .and_then(std::num::NonZeroU32::new)
+    };
     let manager = app.state::<torrent::TorrentManager>();
-    manager.set_rate_limit(limit, limit).await;
+    manager.set_rate_limit(to_limit(download_bps), to_limit(upload_bps)).await;
     Ok(())
 }
 
@@ -753,7 +895,8 @@ pub fn keep_original_container(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Torrent seeding policy, whitelisted; defaults to seed-to-ratio-1.0.
+/// Torrent seeding policy, whitelisted; defaults to seed-to-ratio (target from
+/// `seedRatioTarget`, clamped 0.1..=10, default 1.0).
 pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
     match read_setting(app, "seedingPolicy")
         .and_then(|v| v.as_str().map(str::to_string))
@@ -761,7 +904,14 @@ pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
     {
         Some("stop") => torrent::SeedingPolicy::Stop,
         Some("seed") => torrent::SeedingPolicy::Forever,
-        _ => torrent::SeedingPolicy::Ratio(1.0),
+        _ => {
+            let target = read_setting(app, "seedRatioTarget")
+                .and_then(|v| v.as_f64())
+                .filter(|f| f.is_finite())
+                .map(|f| f.clamp(0.1, 10.0))
+                .unwrap_or(1.0);
+            torrent::SeedingPolicy::Ratio(target)
+        }
     }
 }
 
@@ -1386,6 +1536,10 @@ pub fn run() {
             update_torrent_files,
             parse_torrent,
             set_torrent_rate_limit,
+            reannounce_torrent,
+            recheck_torrent,
+            torrent_peers,
+            torrent_details,
             open_file,
             open_external,
             show_in_folder,
@@ -1556,6 +1710,22 @@ mod tests {
             Ok(torrent::TorrentSource::Bytes { .. })
         ));
         std::fs::remove_file(&t).unwrap();
+    }
+
+    #[test]
+    fn magnet_info_hash_and_trackers_are_parsed() {
+        let m = "magnet:?xt=urn:btih:C12FE1C06BBA254A9DC9F519B335AA7C1367A88A&dn=x&tr=udp%3A%2F%2Ftracker.example%3A1337%2Fannounce&tr=https%3A%2F%2Ft.example%2Fa&tr=ftp%3A%2F%2Fnope";
+        assert_eq!(magnet_info_hash(m).as_deref(), Some("c12fe1c06bba254a9dc9f519b335aa7c1367a88a"));
+        assert_eq!(
+            magnet_trackers(m),
+            vec!["udp://tracker.example:1337/announce".to_string(), "https://t.example/a".to_string()]
+        );
+        // base32 form of the same hash
+        let b32 = "magnet:?xt=urn:btih:YEX6DQDLXISUVHOJ6UM3GNNKPQJWPKEK";
+        assert_eq!(magnet_info_hash(b32).as_deref(), Some("c12fe1c06bba254a9dc9f519b335aa7c1367a88a"));
+        assert_eq!(magnet_info_hash("magnet:?dn=nohash"), None);
+        assert_eq!(magnet_info_hash("https://example.com/x.torrent"), None);
+        assert!(magnet_trackers("not a magnet").is_empty());
     }
 
     #[test]

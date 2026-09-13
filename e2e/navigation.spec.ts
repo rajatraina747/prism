@@ -9,7 +9,7 @@ test.describe('Navigation', () => {
   test('navigates to Queue page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/queue"]');
-    await expect(page.locator('h2')).toContainText('Queue');
+    await expect(page.locator('h2')).toContainText('Transfers');
   });
 
   test('navigates to Library page', async ({ page }) => {

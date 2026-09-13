@@ -79,7 +79,9 @@ export default function Library() {
       speed: 0,
       eta: 0,
       downloadedBytes: 0,
-      totalBytes: item.settings.format?.fileSize || 500_000_000,
+      // Real size when history has it; a torrent never gets the HTTP
+      // placeholder (it would read as "476.8 MB" until the swarm answers).
+      totalBytes: item.totalBytes || item.settings.format?.fileSize || (isTorrentUrl(item.metadata.source.url) ? 0 : 500_000_000),
       retryAttempt: 0,
       kind: isTorrentUrl(item.metadata.source.url) ? 'torrent' : undefined,
     });

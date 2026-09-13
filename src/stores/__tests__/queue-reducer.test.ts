@@ -198,3 +198,32 @@ describe('queueReducer', () => {
     });
   });
 });
+
+describe('torrent parity fields', () => {
+  it('applies peerlessSecs, uploadedBytes and pieces from progress and keeps pieces when omitted', () => {
+    const items = [makeItem({ id: 't', kind: 'torrent', status: 'downloading' })];
+    let next = queueReducer(items, { type: 'progress', id: 't', data: { peerlessSecs: 30, uploadedBytes: 1000, pieces: [255, 0] } });
+    expect(next[0].peerlessSecs).toBe(30);
+    expect(next[0].uploadedBytes).toBe(1000);
+    expect(next[0].pieces).toEqual([255, 0]);
+    next = queueReducer(next, { type: 'progress', id: 't', data: { progress: 5 } });
+    expect(next[0].pieces).toEqual([255, 0]);
+  });
+
+  it('retry keeps the real size and lifetime upload but resets the peerless clock', () => {
+    const items = [makeItem({ id: 't', kind: 'torrent', status: 'failed', totalBytes: 11_000_000_000, uploadedBytes: 5000, peerlessSecs: 900, progress: 2 })];
+    const next = queueReducer(items, { type: 'retry', id: 't' });
+    expect(next[0].status).toBe('queued');
+    expect(next[0].totalBytes).toBe(11_000_000_000);
+    expect(next[0].uploadedBytes).toBe(5000);
+    expect(next[0].peerlessSecs).toBe(0);
+    expect(next[0].progress).toBe(0);
+  });
+
+  it('stamps addedAt on add when missing', () => {
+    const next = queueReducer([], { type: 'add', item: makeItem({ id: 'n' }) });
+    expect(typeof next[0].addedAt).toBe('string');
+    const kept = queueReducer([], { type: 'add', item: makeItem({ id: 'k', addedAt: '2026-01-01T00:00:00.000Z' }) });
+    expect(kept[0].addedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+});

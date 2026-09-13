@@ -35,7 +35,7 @@ describe('AppShell deep links', () => {
     // Sidebar navigation must not tear down and re-create the subscription:
     // re-subscribing re-reads the link that launched the app, which bounced
     // the user straight back to the Dashboard on Windows.
-    fireEvent.click(screen.getByText('Queue'));
+    fireEvent.click(screen.getByText('Transfers'));
     await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/queue'));
     fireEvent.click(screen.getByText('Library'));
     await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/library'));
@@ -48,7 +48,7 @@ describe('AppShell deep links', () => {
     await waitFor(() => expect(onDeepLink).toHaveBeenCalledTimes(1));
     const handler = onDeepLink.mock.calls[0][0];
 
-    fireEvent.click(screen.getByText('Queue'));
+    fireEvent.click(screen.getByText('Transfers'));
     await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/queue'));
 
     act(() => handler('magnet:?xt=urn:btih:abc'));

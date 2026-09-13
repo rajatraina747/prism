@@ -54,12 +54,12 @@ describe('QueueTable', () => {
 
   it('shows Pause button for downloading items', () => {
     render(<QueueTable items={[makeItem({ status: 'downloading', progress: 50 })]} {...defaultProps} />);
-    expect(screen.getByTitle('Pause')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy();
   });
 
   it('shows Resume button for paused items', () => {
     render(<QueueTable items={[makeItem({ status: 'paused', progress: 30 })]} {...defaultProps} />);
-    expect(screen.getByTitle('Resume')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeTruthy();
   });
 
   it('shows Retry button for failed items', () => {
@@ -67,30 +67,30 @@ describe('QueueTable', () => {
       status: 'failed',
       error: { code: 'ERR', message: 'Network error', category: 'network', timestamp: '' },
     })]} {...defaultProps} />);
-    expect(screen.getByTitle('Retry')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('shows Cancel button for queued items', () => {
     render(<QueueTable items={[makeItem({ status: 'queued' })]} {...defaultProps} />);
-    expect(screen.getByTitle('Cancel')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
   });
 
   it('shows Remove button for completed items', () => {
     render(<QueueTable items={[makeItem({ status: 'completed' })]} {...defaultProps} />);
-    expect(screen.getByTitle('Remove')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeTruthy();
   });
 
   it('calls onPause when Pause is clicked', () => {
     const onPause = vi.fn();
     render(<QueueTable items={[makeItem({ status: 'downloading', progress: 50 })]} {...defaultProps} onPause={onPause} />);
-    fireEvent.click(screen.getByTitle('Pause'));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     expect(onPause).toHaveBeenCalledWith('item-1');
   });
 
   it('calls onCancel when Cancel is clicked', () => {
     const onCancel = vi.fn();
     render(<QueueTable items={[makeItem({ status: 'queued' })]} {...defaultProps} onCancel={onCancel} />);
-    fireEvent.click(screen.getByTitle('Cancel'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledWith('item-1');
   });
 
@@ -100,7 +100,7 @@ describe('QueueTable', () => {
       status: 'failed',
       error: { code: 'ERR', message: 'err', category: 'network', timestamp: '' },
     })]} {...defaultProps} onRetry={onRetry} />);
-    fireEvent.click(screen.getByTitle('Retry'));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledWith('item-1');
   });
 
@@ -117,5 +117,51 @@ describe('QueueTable', () => {
   it('displays status badge', () => {
     render(<QueueTable items={[makeItem({ status: 'downloading', progress: 25 })]} {...defaultProps} />);
     expect(screen.getByText('Downloading')).toBeTruthy();
+  });
+});
+
+describe('QueueTable — torrents', () => {
+  const props = { onPause: vi.fn(), onResume: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn(), onRemove: vi.fn() };
+
+  it('shows "searching for peers" with the elapsed time and never a failure', () => {
+    render(<QueueTable {...props} items={[makeItem({ kind: 'torrent', status: 'downloading', peers: 0, peersSeen: 0, peersConnecting: 0, peerlessSecs: 420 })]} />);
+    expect(screen.getByText(/searching for peers · 7m/)).toBeInTheDocument();
+  });
+
+  it('shows "size pending" instead of 0 B for a torrent without metadata', () => {
+    render(<QueueTable {...props} items={[makeItem({ kind: 'torrent', status: 'downloading', totalBytes: 0 })]} />);
+    expect(screen.getByText('size pending')).toBeInTheDocument();
+    expect(screen.queryByText('0 B / 0 B')).not.toBeInTheDocument();
+  });
+
+  it('renders the pieces map and upload speed for a live torrent', () => {
+    render(<QueueTable {...props} items={[makeItem({ kind: 'torrent', status: 'downloading', uploadSpeed: 2048, pieces: [255, 0, 128] })]} />);
+    expect(screen.getByRole('img', { name: /downloaded pieces map/i })).toBeInTheDocument();
+    expect(screen.getByText(/↑ 2 KB\/s/)).toBeInTheDocument();
+  });
+
+  it('offers Update tracker for live torrents only, and calls it', () => {
+    const onReannounce = vi.fn();
+    render(<QueueTable {...props} onReannounce={onReannounce} items={[
+      makeItem({ id: 'live', kind: 'torrent', status: 'downloading' }),
+      makeItem({ id: 'http', status: 'downloading' }),
+      makeItem({ id: 'paused', kind: 'torrent', status: 'paused' }),
+    ]} />);
+    const buttons = screen.getAllByRole('button', { name: 'Update tracker' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(onReannounce).toHaveBeenCalledWith('live');
+  });
+
+  it('selects on click and opens details on double-click', () => {
+    const onSelect = vi.fn();
+    const onOpenDetails = vi.fn();
+    render(<QueueTable {...props} onSelect={onSelect} onOpenDetails={onOpenDetails} selectedIds={new Set(['item-1'])} items={[makeItem({ status: 'downloading' })]} />);
+    const row = screen.getByRole('listitem');
+    expect(row).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(row, { shiftKey: true });
+    expect(onSelect).toHaveBeenCalledWith('item-1', { shift: true, meta: false });
+    fireEvent.doubleClick(row);
+    expect(onOpenDetails).toHaveBeenCalledWith('item-1');
   });
 });

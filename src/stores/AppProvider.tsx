@@ -74,6 +74,14 @@ interface QueueActions {
   pauseAll: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   updateTorrentFiles: (id: string, onlyFiles: number[]) => void;
+  /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
+  reannounceTorrent: (id: string) => void;
+  /** Torrent: hash every piece on disk again ("Force re-check"). */
+  recheckTorrent: (id: string) => void;
+  /** Torrent: stop, remove from the queue, and delete its files. */
+  removeWithData: (id: string) => void;
+  moveToTop: (id: string) => void;
+  moveToBottom: (id: string) => void;
 }
 
 interface HistoryActions {
@@ -206,6 +214,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         status: i.status as 'completed' | 'failed' | 'canceled',
         completedAt: i.completedAt || new Date().toISOString(),
         fileSize: i.status === 'completed' ? i.totalBytes : i.downloadedBytes,
+        // Real size (when known) so a retry starts with it instead of a
+        // placeholder — torrents would otherwise need peers to learn it.
+        totalBytes: i.totalBytes > 0 ? i.totalBytes : undefined,
         filePath: i.filePath,
         error: i.error,
         // Torrents: keep the file list (names relative to the destination) so
@@ -232,13 +243,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [settings.scheduleEnabled]);
 
-  // Push the quiet-hours throttle to the torrent engine (session-wide, so it
-  // also caps seeding). yt-dlp downloads get the limit per-item at start time;
-  // torrents run in a persistent session, so the limit is applied out-of-band.
+  // Push the effective session-wide torrent caps: the user's download/upload
+  // limits, tightened by the Quiet Hours override while it's active. yt-dlp
+  // downloads get their limit per-item at start time; torrents run in a
+  // persistent session, so the limits are applied out-of-band and live.
   useEffect(() => {
     void scheduleTick;
     const gate = scheduleGate(settings, new Date());
-    service.setTorrentRateLimit(gate.blockStarts ? null : gate.speedLimitOverrideBytes).catch(() => {});
+    const userDown = settings.torrentDownloadLimitKBps > 0 ? settings.torrentDownloadLimitKBps * 1024 : null;
+    const userUp = settings.torrentUploadLimitKBps > 0 ? settings.torrentUploadLimitKBps * 1024 : null;
+    const override = gate.blockStarts ? null : gate.speedLimitOverrideBytes;
+    const tighter = (a: number | null, b: number | null | undefined) =>
+      a == null ? (b ?? null) : b == null ? a : Math.min(a, b);
+    service.setTorrentRateLimits(tighter(userDown, override), tighter(userUp, override)).catch(() => {});
   }, [settings, scheduleTick, service]);
 
   // Auto-start queued items
@@ -463,6 +480,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .catch((e) => toast.error(`Couldn't update file selection: ${e}`));
   }, [service]);
 
+  const reannounceTorrent = useCallback((id: string) => {
+    service.reannounceTorrent(id)
+      .then(() => toast.success('Asked trackers and DHT for peers'))
+      .catch((e) => toast.error(`Couldn't update tracker: ${e instanceof Error ? e.message : e}`));
+  }, [service]);
+
+  const recheckTorrent = useCallback((id: string) => {
+    service.recheckTorrent(id)
+      .then(() => toast.success('Re-checking files on disk'))
+      .catch((e) => toast.error(`Couldn't re-check: ${e instanceof Error ? e.message : e}`));
+  }, [service]);
+
+  const removeWithData = useCallback((id: string) => {
+    // Engine first (it owns the files), then drop the item. The listener is
+    // torn down without a completion so nothing lands in history as "done".
+    const item = queue.find(i => i.id === id);
+    const cleanup = cleanupRefs.current.get(id);
+    cleanup?.();
+    cleanupRefs.current.delete(id);
+    startedRef.current.delete(id);
+    dispatch({ type: 'remove', id });
+    service.removeTorrentData(id)
+      .then(() => toast.success(`Removed ${item?.metadata.title ?? 'torrent'} and deleted its files`))
+      .catch((e) => toast.error(`Couldn't delete files: ${e instanceof Error ? e.message : e}`));
+  }, [queue, service]);
+
+  const moveToTop = useCallback((id: string) => {
+    const from = queue.findIndex(i => i.id === id);
+    if (from > 0) dispatch({ type: 'reorder', from, to: 0 });
+  }, [queue]);
+
+  const moveToBottom = useCallback((id: string) => {
+    const from = queue.findIndex(i => i.id === id);
+    if (from >= 0 && from < queue.length - 1) dispatch({ type: 'reorder', from, to: queue.length - 1 });
+  }, [queue]);
+
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
@@ -477,7 +530,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
           {children}
         </HistoryContext.Provider>

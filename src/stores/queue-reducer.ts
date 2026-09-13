@@ -18,7 +18,7 @@ export type QueueAction =
       data: Partial<
         Pick<
           DownloadItem,
-          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'stage' | 'peers' | 'peersSeen' | 'peersConnecting' | 'uploadSpeed' | 'ratio' | 'files'
+          'progress' | 'speed' | 'eta' | 'downloadedBytes' | 'totalBytes' | 'stage' | 'peers' | 'peersSeen' | 'peersConnecting' | 'uploadSpeed' | 'ratio' | 'files' | 'uploadedBytes' | 'peerlessSecs' | 'pieces'
         >
       >;
       // Torrent-only: the download finished and the item is now uploading.
@@ -40,7 +40,10 @@ export type QueueAction =
   | { type: 'pauseAll' }
   | { type: 'reorder'; from: number; to: number };
 
-const IDLE_COUNTERS = { progress: 0, downloadedBytes: 0, speed: 0, eta: 0, stage: undefined } as const;
+// Reset on retry/requeue. Deliberately keeps totalBytes (a retried torrent
+// must not fall back to a placeholder size), uploadedBytes and ratio (lifetime
+// upload is history, not a counter), files and pieces (still the same torrent).
+const IDLE_COUNTERS = { progress: 0, downloadedBytes: 0, speed: 0, eta: 0, stage: undefined, peerlessSecs: 0 } as const;
 
 function update(
   queue: DownloadItem[],
@@ -53,7 +56,7 @@ function update(
 export function queueReducer(queue: DownloadItem[], action: QueueAction): DownloadItem[] {
   switch (action.type) {
     case 'add':
-      return [...queue, action.item];
+      return [...queue, { ...action.item, addedAt: action.item.addedAt ?? new Date().toISOString() }];
 
     case 'markStarted':
       return update(queue, action.id, i =>

@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -16,6 +16,9 @@ export type ProgressCallback = (data: {
   peersConnecting?: number;
   ratio?: number;
   files?: TorrentFileInfo[];
+  uploadedBytes?: number;
+  peerlessSecs?: number;
+  pieces?: number[];
   // Torrent-only: download finished, now seeding. Drives downloading→seeding.
   seeding?: boolean;
 }) => void;
@@ -62,9 +65,21 @@ export interface IPrismService {
   /** Torrent-only: change which files download, mid-torrent. Rejects when the
    * torrent isn't active or the selection is empty. */
   updateTorrentFiles(id: string, onlyFiles: number[]): Promise<void>;
-  /** Throttle the torrent engine session-wide (bytes/sec; null = unlimited).
-   * Applies to download and seed upload. Driven by Quiet Hours. */
-  setTorrentRateLimit(bytesPerSec: number | null): Promise<void>;
+  /** Session-wide torrent caps (bytes/sec; null = unlimited). The provider
+   * merges the user's limits with Quiet Hours and pushes the effective pair. */
+  setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void>;
+  /** "Update tracker": fresh announce to trackers/DHT/LSD; keeps progress. */
+  reannounceTorrent(id: string): Promise<void>;
+  /** "Force re-check": hash every piece on disk again. */
+  recheckTorrent(id: string): Promise<void>;
+  /** Stop a torrent and delete its files from disk. */
+  removeTorrentData(id: string): Promise<void>;
+  /** Peers of a live torrent (Peers tab; poll while visible). */
+  getTorrentPeers(id: string): Promise<TorrentPeer[]>;
+  /** Static facts about an active torrent (detail panel). */
+  getTorrentDetails(id: string): Promise<TorrentDetails>;
+  /** Session-wide engine stats stream (transfers footer). Returns unsubscribe. */
+  onSessionStats(handler: (stats: SessionStats) => void): () => void;
 
   // File system operations
   openFile(filePath: string): Promise<void>;

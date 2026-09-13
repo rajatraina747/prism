@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback } from './types';
 import { generateId } from './utils';
 
@@ -32,6 +32,18 @@ function generateFormats(): FormatOption[] {
     { id: 'f-480', label: 'SD', resolution: '480p', container: 'mp4', codec: 'H.264', fileSize: 180_000_000, quality: 'low' },
     { id: 'f-1080w', label: 'Full HD (WebM)', resolution: '1080p', container: 'webm', codec: 'VP9', fileSize: 780_000_000, quality: 'high' },
   ];
+}
+
+/** A plausible have-pieces bar for `pct` percent complete: a filled head
+ * plus scattered pieces further along, like a real swarm download. */
+function mockPieces(pct: number): number[] {
+  const buckets = 200;
+  const head = Math.floor((pct / 100) * buckets);
+  return Array.from({ length: buckets }, (_, i) => {
+    if (i < head) return 255;
+    if (i < head + 6) return Math.floor(255 * ((head + 6 - i) / 6));
+    return (i * 7919) % 23 === 0 ? 80 + ((i * 31) % 120) : 0;
+  });
 }
 
 // ── localStorage Keys ──
@@ -117,16 +129,22 @@ export class MockPrismService implements IPrismService {
       const speed = chunk * 5;
       const eta = speed > 0 ? (total - downloaded) / speed : 0;
       const pct = (downloaded / total) * 100;
+      const peers = 8 + Math.floor(Math.random() * 20);
       const swarm = isTorrent
         ? {
             uploadSpeed: chunk * 1.5,
-            peers: 8 + Math.floor(Math.random() * 20),
+            peers,
+            peersSeen: peers + 12,
+            peersConnecting: Math.floor(Math.random() * 3),
             ratio: downloaded > 0 ? (downloaded * 0.2) / total : 0,
+            uploadedBytes: Math.floor(downloaded * 0.2),
+            peerlessSecs: 0,
             // Simulated multi-file breakdown: the first file fills before the second.
             files: [
               { name: `${item.metadata.title}/disc1.iso`, size: total * 0.7, progress: Math.min(100, pct / 0.7) },
               { name: `${item.metadata.title}/README.txt`, size: total * 0.3, progress: Math.max(0, (pct - 70) / 0.3) },
             ],
+            pieces: mockPieces(pct),
           }
         : {};
 
@@ -182,8 +200,75 @@ export class MockPrismService implements IPrismService {
     // Mock: no torrent engine
   }
 
-  async setTorrentRateLimit(_bytesPerSec: number | null): Promise<void> {
+  async setTorrentRateLimits(_downloadBps: number | null, _uploadBps: number | null): Promise<void> {
     // Mock: no torrent engine to throttle
+  }
+
+  async reannounceTorrent(_id: string): Promise<void> {
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  async recheckTorrent(_id: string): Promise<void> {
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  async removeTorrentData(id: string): Promise<void> {
+    console.log('[Mock] Remove torrent data:', id);
+  }
+
+  async getTorrentPeers(_id: string): Promise<TorrentPeer[]> {
+    const clients = ['qBittorrent 5.0.4', 'Transmission 4.0.6', 'libtorrent 2.0.10', 'Deluge 2.1.1', 'rqbit 9.0.1', 'µTorrent 3.6'];
+    const kinds = ['tcp', 'tcp', 'tcp', 'utp'];
+    const n = 8 + Math.floor(Math.random() * 8);
+    return Array.from({ length: n }, (_, i) => {
+      const live = i < n - 2;
+      return {
+        addr: `${10 + i}.${(i * 37) % 255}.${(i * 91) % 255}.${(i * 13) % 255}:${6881 + (i % 9)}`,
+        client: clients[i % clients.length],
+        kind: kinds[i % kinds.length],
+        state: live ? 'live' : 'connecting',
+        downBps: live ? Math.random() * 900_000 : 0,
+        upBps: live ? Math.random() * 120_000 : 0,
+        downloaded: Math.floor(Math.random() * 400_000_000),
+        uploaded: Math.floor(Math.random() * 40_000_000),
+        errors: i % 5 === 0 ? 1 : 0,
+      };
+    });
+  }
+
+  async getTorrentDetails(id: string): Promise<TorrentDetails> {
+    return {
+      infoHash: `${id.replace(/[^a-f0-9]/gi, '').padEnd(40, '0').slice(0, 40)}`,
+      name: 'Ubuntu 24.04',
+      outputFolder: '~/Downloads/Prism',
+      totalBytes: 5.9 * 1024 * 1024 * 1024,
+      totalPieces: 1512,
+      pieceLength: 4 * 1024 * 1024,
+      private: false,
+      trackers: ['udp://tracker.opentrackr.org:1337/announce', 'https://torrent.ubuntu.com/announce'],
+      fileCount: 4,
+      addedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+      state: 'live',
+    };
+  }
+
+  onSessionStats(handler: (stats: SessionStats) => void): () => void {
+    const tick = () => handler({
+      downloadBps: 2_000_000 + Math.random() * 3_000_000,
+      uploadBps: 200_000 + Math.random() * 300_000,
+      peersLive: 12 + Math.floor(Math.random() * 10),
+      peersConnecting: Math.floor(Math.random() * 4),
+      peersSeen: 60 + Math.floor(Math.random() * 20),
+      dhtNodes: 280 + Math.floor(Math.random() * 40),
+      listenPort: 4240,
+      upnp: true,
+      dht: true,
+      utp: false,
+      activeTorrents: 1,
+    });
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
   }
 
   async openFile(filePath: string): Promise<void> {

@@ -8,7 +8,7 @@ import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
@@ -122,6 +122,9 @@ export class TauriPrismService implements IPrismService {
         ratio?: number;
         seeding?: boolean;
         files?: { name: string; size: number; progress: number }[];
+        uploaded_bytes?: number;
+        peerless_secs?: number;
+        pieces?: number[];
       }>(`download-progress-${item.id}`, (event) => {
         if (cancelled) return;
         const p = event.payload;
@@ -139,9 +142,12 @@ export class TauriPrismService implements IPrismService {
           peersConnecting: p.peers_connecting,
           ratio: p.ratio,
           seeding: p.seeding,
-          // Only present on periodic ticks; omit the key otherwise so the reducer
-          // keeps the last file list instead of clearing it.
+          uploadedBytes: p.uploaded_bytes,
+          peerlessSecs: p.peerless_secs,
+          // Only present on periodic ticks; omit the keys otherwise so the
+          // reducer keeps the last file list / pieces map instead of clearing it.
           ...(p.files !== undefined ? { files: p.files } : {}),
+          ...(p.pieces !== undefined ? { pieces: p.pieces } : {}),
         });
       });
 
@@ -244,8 +250,44 @@ export class TauriPrismService implements IPrismService {
     await invoke('update_torrent_files', { id, onlyFiles });
   }
 
-  async setTorrentRateLimit(bytesPerSec: number | null): Promise<void> {
-    await invoke('set_torrent_rate_limit', { bytesPerSec: bytesPerSec ?? null });
+  async setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void> {
+    await invoke('set_torrent_rate_limit', { downloadBps: downloadBps ?? null, uploadBps: uploadBps ?? null });
+  }
+
+  async reannounceTorrent(id: string): Promise<void> {
+    await invoke('reannounce_torrent', { id });
+  }
+
+  async recheckTorrent(id: string): Promise<void> {
+    await invoke('recheck_torrent', { id });
+  }
+
+  async removeTorrentData(id: string): Promise<void> {
+    await invoke('cancel_torrent', { id, deleteFiles: true });
+  }
+
+  async getTorrentPeers(id: string): Promise<TorrentPeer[]> {
+    return await invoke<TorrentPeer[]>('torrent_peers', { id });
+  }
+
+  async getTorrentDetails(id: string): Promise<TorrentDetails> {
+    return await invoke<TorrentDetails>('torrent_details', { id });
+  }
+
+  onSessionStats(handler: (stats: SessionStats) => void): () => void {
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    listen<SessionStats>('torrent-session-stats', (e) => {
+      if (!cancelled) handler(e.payload);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      unlisten = null;
+    };
   }
 
   async openFile(filePath: string): Promise<void> {
@@ -466,7 +508,7 @@ export class TauriPrismService implements IPrismService {
       if (this._initDone) {
         // Don't persist the (potentially large) per-file torrent breakdown — it's
         // runtime detail that repopulates from progress events on the next run.
-        const slim = items.map(({ files: _files, ...rest }) => rest);
+        const slim = items.map(({ files: _files, pieces: _pieces, ...rest }) => rest);
         writeJson(FILES.queue, slim).catch(() => {});
       }
     },
