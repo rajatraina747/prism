@@ -110,6 +110,13 @@ jobs:
         shell: bash
         run: scripts/fetch-sidecars.sh ${{ matrix.platform }}
 
+      # tauri-build resolves the `lib/**/*` resource glob at compile time and
+      # fails if nothing matches. This job type-checks; it doesn't assemble the
+      # player libraries (release builds do), so give the glob one file.
+      - name: Stage placeholder player resources
+        shell: bash
+        run: mkdir -p src-tauri/lib && echo "placeholder for cargo check; release builds bundle the real libmpv tree" > src-tauri/lib/PLACEHOLDER.txt
+
       - name: Clippy (deny warnings)
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
