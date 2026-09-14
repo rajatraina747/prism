@@ -27,9 +27,9 @@ use tokio::sync::Mutex;
 use librqbit::api::{Api, TorrentIdOrHash};
 use librqbit::limits::LimitsConfig;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions, ListenerMode,
-    ListenerOptions, ManagedTorrent, Session, SessionOptions, SessionPersistenceConfig,
-    TorrentStatsState,
+    torrent_from_bytes, AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions,
+    ListenerMode, ListenerOptions, Magnet, ManagedTorrent, Session, SessionOptions,
+    SessionPersistenceConfig, TorrentStatsState,
 };
 
 use crate::download_manager::DownloadComplete;
@@ -514,10 +514,14 @@ impl TorrentManager {
                 only_files: only_files.clone(),
                 download_limit,
                 peer_limit: cfg.peer_limit,
+                cache_dir: cfg.torrent_cache_dir.clone(),
+                fallback_name: fallback_folder_name(&source),
             };
 
-            let handle = match add_or_adopt(&session, &active, &resolved, &add_params).await {
-                Ok(h) => h,
+            // `output_dir` from here on is the folder the files actually go
+            // in (a subfolder of the destination for multi-file torrents).
+            let (handle, output_dir) = match add_or_adopt(&session, &active, &resolved, &add_params).await {
+                Ok(pair) => pair,
                 Err(e) => return emit_failure(&app, &id, e),
             };
 
@@ -558,10 +562,11 @@ impl TorrentManager {
                     fold_uploaded(&active, &id, &handle).await;
                     let _ = session.delete(TorrentIdOrHash::from(handle.id()), false).await;
                     match add_or_adopt(&session, &active, &resolved, &add_params).await {
-                        Ok(h) => {
+                        Ok((h, dir)) => {
                             handle = h;
                             if let Some(entry) = active.lock().await.get_mut(&id) {
                                 entry.handle = handle.clone();
+                                entry.output_dir = dir;
                                 entry.peer_prev.clear();
                             }
                         }
@@ -722,6 +727,7 @@ impl TorrentManager {
                     file_path,
                     file_size: Some(total),
                     actual_height: None,
+                    output_folder: Some(output_dir),
                 },
             );
         });
@@ -893,6 +899,7 @@ impl TorrentManager {
                             file_path,
                             file_size: Some(stats.total_bytes),
                             actual_height: None,
+                            output_folder: Some(output_dir),
                         },
                     );
                 }
@@ -917,32 +924,109 @@ impl Default for TorrentManager {
 #[derive(Clone)]
 struct AddParams {
     source: TorrentSource,
+    /// The user's destination. The torrent's *effective* folder is derived
+    /// from it per `effective_output_dir` (multi-file torrents get a subfolder).
     output_dir: String,
     only_files: Option<Vec<usize>>,
     download_limit: Option<u64>,
     peer_limit: Option<usize>,
+    /// Disk cache for resolved metainfo (see `cache_torrent_bytes`).
+    cache_dir: Option<PathBuf>,
+    /// Folder name to use when the metainfo can't be resolved before adding.
+    fallback_name: String,
+}
+
+/// Metainfo bytes for the add, resolving them from the swarm if needed.
+///
+/// The layout (single file vs multi-file, and the name) decides the output
+/// folder, so it has to be known *before* the real add. Bytes are usually in
+/// hand already — the file picker ran `list_files`, or an earlier run cached
+/// them — and a magnet added without the picker (batch paste, deep link) gets
+/// a bounded list-only add here, which is exactly what the picker does.
+async fn metainfo_for_add(
+    session: &Arc<Session>,
+    resolved: &Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    p: &AddParams,
+) -> Option<Vec<u8>> {
+    if let Some(bytes) = resolved.lock().await.get(p.source.key()) {
+        return Some(bytes.clone());
+    }
+    if let TorrentSource::Bytes { bytes, .. } = &p.source {
+        return Some(bytes.clone());
+    }
+    let opts = AddTorrentOptions {
+        list_only: true,
+        output_folder: Some(p.output_dir.clone()),
+        trackers: Some(p.source.trackers()).filter(|t| !t.is_empty()),
+        ..Default::default()
+    };
+    let fetched = tokio::time::timeout(
+        Duration::from_secs(45),
+        session.add_torrent(p.source.clone().into_add(), Some(opts)),
+    )
+    .await;
+    match fetched {
+        Ok(Ok(AddTorrentResponse::ListOnly(lo))) => {
+            let bytes = lo.torrent_bytes.to_vec();
+            cache_torrent_bytes(p.cache_dir.as_deref(), &lo.info_hash.as_string(), &bytes);
+            resolved.lock().await.insert(p.source.key().to_string(), bytes.clone());
+            Some(bytes)
+        }
+        // Restored by the persisted session: its metadata may already be there.
+        Ok(Ok(AddTorrentResponse::AlreadyManaged(_, h))) => {
+            h.with_metadata(|m| m.torrent_bytes.to_vec()).ok()
+        }
+        _ => None,
+    }
 }
 
 /// Add the torrent, or adopt one the persisted session already restored.
+/// Returns the handle and the folder its files live in.
 async fn add_or_adopt(
     session: &Arc<Session>,
     active: &Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     resolved: &Arc<Mutex<HashMap<String, Vec<u8>>>>,
     p: &AddParams,
-) -> Result<ManagedTorrentHandle, String> {
+) -> Result<(ManagedTorrentHandle, String), String> {
+    let bytes = metainfo_for_add(session, resolved, p).await;
+    let effective = effective_output_dir(&p.output_dir, bytes.as_deref(), &p.fallback_name);
+
+    // Two *different* torrents must never share a folder — that is the
+    // 1.8.0 bug (two flat packs with identical inner file names writing into
+    // one file). Same info hash is fine: that's a retry/re-check of this item.
+    let our_hash = bytes
+        .as_deref()
+        .and_then(|b| torrent_from_bytes(b).ok())
+        .map(|t| t.info_hash.as_string());
+    if !same_dir(std::path::Path::new(&effective), &p.output_dir) {
+        let clash = active.lock().await.values().any(|e| {
+            same_dir(std::path::Path::new(&e.output_dir), &effective)
+                && our_hash.as_deref() != Some(e.handle.info_hash().as_string().as_str())
+        });
+        if clash {
+            return Err(format!(
+                "Another torrent is already downloading into \"{}\". Finish or remove it first.",
+                std::path::Path::new(&effective)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            ));
+        }
+    }
+    std::fs::create_dir_all(&effective)
+        .map_err(|e| format!("Failed to create download directory: {e}"))?;
+
     // Up to 2 attempts: a resume can race the previous pause's session
     // delete and come back AlreadyManaged — reclaim the orphan and retry.
     let mut attempt = 0;
     loop {
         attempt += 1;
-        // Prefer metadata already resolved (file picker, earlier add, disk
-        // cache); fall back to the source itself.
-        let add = match resolved.lock().await.get(p.source.key()) {
-            Some(bytes) => AddTorrent::from_bytes(bytes.clone()),
+        let add = match &bytes {
+            Some(b) => AddTorrent::from_bytes(b.clone()),
             None => p.source.clone().into_add(),
         };
         let opts = AddTorrentOptions {
-            output_folder: Some(p.output_dir.clone()),
+            output_folder: Some(effective.clone()),
             // None = all files; Some(indices) downloads only the picked ones.
             only_files: p.only_files.clone(),
             // Resume-after-pause re-adds a torrent whose partial files are
@@ -961,7 +1045,7 @@ async fn add_or_adopt(
             ..Default::default()
         };
         match session.add_torrent(add, Some(opts)).await {
-            Ok(AddTorrentResponse::Added(_, h)) => return Ok(h),
+            Ok(AddTorrentResponse::Added(_, h)) => return Ok((h, effective)),
             Ok(AddTorrentResponse::AlreadyManaged(managed_id, h)) => {
                 // A handle owned by another queue item is a genuine duplicate —
                 // cancelling one item must not delete the torrent out from under
@@ -977,8 +1061,10 @@ async fn add_or_adopt(
                 // Restored by the persisted session (or a paused run whose delete
                 // hasn't settled). If it points at the same folder, adopt it —
                 // that's what makes a relaunch resume in seconds instead of
-                // re-hashing — otherwise drop it and add afresh.
-                let same_folder = same_dir(h.output_folder(), &p.output_dir);
+                // re-hashing — otherwise drop it and add afresh. (A torrent
+                // persisted by 1.8.0 into the flat destination is therefore
+                // re-added into its own folder; the release notes say so.)
+                let same_folder = same_dir(h.output_folder(), &effective);
                 if same_folder && attempt < 3 {
                     if let Some(files) = &p.only_files {
                         let set: std::collections::HashSet<usize> = files.iter().copied().collect();
@@ -987,7 +1073,7 @@ async fn add_or_adopt(
                     if h.is_paused() {
                         session.unpause(&h).await.map_err(|e| e.to_string())?;
                     }
-                    return Ok(h);
+                    return Ok((h, effective));
                 }
                 if attempt >= 2 {
                     return Err("This torrent is already in the queue.".into());
@@ -1239,8 +1325,97 @@ fn emit_failure(app: &AppHandle, id: &str, message: String) {
             file_path: None,
             file_size: None,
             actual_height: None,
+            output_folder: None,
         },
     );
+}
+
+// ── Output folder ───────────────────────────────────────────────────────
+
+/// How a torrent lays its files out, read from its metainfo.
+enum TorrentLayout {
+    SingleFile,
+    MultiFile { name: Option<String>, info_hash: String },
+}
+
+fn parse_layout(bytes: &[u8]) -> Option<TorrentLayout> {
+    let t = torrent_from_bytes(bytes).ok()?;
+    let info_hash = t.info_hash.as_string();
+    let info = t.info.data.validate().ok()?;
+    // librqbit's own rule: fewer than two files = no subfolder.
+    if info.iter_file_details().count() < 2 {
+        return Some(TorrentLayout::SingleFile);
+    }
+    Some(TorrentLayout::MultiFile {
+        name: info.name().map(|n| n.into_owned()),
+        info_hash,
+    })
+}
+
+/// Where a torrent's files go. Mirrors librqbit's default when no output
+/// folder is given (and every classic client): a multi-file torrent gets its
+/// own `<dest>/<name>` folder; a single-file torrent lands in `dest` itself.
+/// Prism passes an explicit folder (per-download destinations), which
+/// disabled that default — so two flat packs with identical inner names
+/// (`02.Race.Session.mp4` in every F1 weekend) wrote into the same files.
+///
+/// Without metainfo (`bytes` = None: a magnet whose metadata couldn't be
+/// fetched in time) the layout is unknown, so the torrent gets a folder named
+/// `fallback_name` — one level too many for a single-file torrent, never a
+/// collision. The torrent's name is untrusted metadata; it is reduced to a
+/// single safe path component before use.
+pub(crate) fn effective_output_dir(dest: &str, bytes: Option<&[u8]>, fallback_name: &str) -> String {
+    let sub = match bytes.and_then(parse_layout) {
+        Some(TorrentLayout::SingleFile) => return dest.to_string(),
+        Some(TorrentLayout::MultiFile { name, info_hash }) => name
+            .map(|n| safe_folder_name(&n))
+            .filter(|n| !n.is_empty())
+            .unwrap_or(info_hash),
+        None => safe_folder_name(fallback_name),
+    };
+    let sub = if sub.is_empty() { "torrent".to_string() } else { sub };
+    PathBuf::from(dest).join(sub).to_string_lossy().into_owned()
+}
+
+/// One path component from an untrusted name: separators, control
+/// characters and the characters Windows forbids become `_`; leading and
+/// trailing dots/whitespace go (so `..` and `.` can't come back); the length
+/// is capped so a hostile name can't exceed filesystem limits.
+pub(crate) fn safe_folder_name(raw: &str) -> String {
+    const BAD: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    let cleaned: String = raw
+        .chars()
+        .map(|c| if BAD.contains(&c) || c.is_control() { '_' } else { c })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    trimmed.chars().take(200).collect()
+}
+
+/// Folder name for a torrent whose metainfo isn't known at add time: the
+/// magnet's display name, else its info hash, else something from the URL.
+pub(crate) fn fallback_folder_name(source: &TorrentSource) -> String {
+    let from_url = |u: &str| {
+        u.trim_end_matches('/')
+            .rsplit(['/', '\\'])
+            .next()
+            .map(|s| s.trim_end_matches(".torrent"))
+            .filter(|s| !s.is_empty())
+            .unwrap_or("torrent")
+            .to_string()
+    };
+    match source {
+        TorrentSource::Url(u) if u.to_ascii_lowercase().starts_with("magnet:") => Magnet::parse(u)
+            .ok()
+            .and_then(|m| {
+                m.name
+                    .clone()
+                    .filter(|n| !n.trim().is_empty())
+                    .or_else(|| m.as_id20().map(|h| h.as_string()))
+            })
+            .unwrap_or_else(|| "torrent".to_string()),
+        TorrentSource::Url(u) => from_url(u),
+        TorrentSource::Bytes { key, .. } => from_url(key),
+    }
 }
 
 #[cfg(test)]
@@ -1323,5 +1498,77 @@ mod tests {
         assert_eq!(human_minutes(Duration::from_secs(60)), "1 minutes");
         assert_eq!(human_minutes(Duration::from_secs(90 * 60)), "90 minutes");
         assert_eq!(human_minutes(Duration::from_secs(3 * 3600)), "3 hours");
+    }
+
+    // Minimal bencoded metainfo. One 16 KiB piece covers every file here, so
+    // `pieces` is a single 20-byte hash (validation checks the count).
+    fn single_file_torrent(name: &str) -> Vec<u8> {
+        let mut b = format!("d4:infod6:lengthi10e4:name{}:{}12:piece lengthi16384e6:pieces20:", name.len(), name).into_bytes();
+        b.extend([0u8; 20]);
+        b.extend(b"ee");
+        b
+    }
+
+    fn multi_file_torrent(name: &str, files: &[&str]) -> Vec<u8> {
+        let mut b = b"d4:infod5:filesl".to_vec();
+        for f in files {
+            b.extend(format!("d6:lengthi5e4:pathl{}:{}ee", f.len(), f).into_bytes());
+        }
+        b.extend(format!("e4:name{}:{}12:piece lengthi16384e6:pieces20:", name.len(), name).into_bytes());
+        b.extend([0u8; 20]);
+        b.extend(b"ee");
+        b
+    }
+
+    #[test]
+    fn multi_file_torrents_get_their_own_folder() {
+        let dest = "/tmp/dl";
+        let abu = multi_file_torrent("F1.2024x24.Abu-Dhabi", &["01.Buildup.mp4", "02.Race.mp4"]);
+        let qatar = multi_file_torrent("F1.2024x23.Qatar", &["01.Buildup.mp4", "02.Race.mp4"]);
+        let a = effective_output_dir(dest, Some(&abu), "fallback");
+        let q = effective_output_dir(dest, Some(&qatar), "fallback");
+        assert_eq!(a, "/tmp/dl/F1.2024x24.Abu-Dhabi");
+        assert_eq!(q, "/tmp/dl/F1.2024x23.Qatar");
+        assert_ne!(a, q, "same inner file names must never share a folder");
+    }
+
+    #[test]
+    fn single_file_torrents_stay_in_the_destination() {
+        let t = single_file_torrent("debian.iso");
+        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "fallback"), "/tmp/dl");
+        // A `files` list with one entry counts as single-file too (librqbit's rule).
+        let one = multi_file_torrent("Pack", &["only.mkv"]);
+        assert_eq!(effective_output_dir("/tmp/dl", Some(&one), "fallback"), "/tmp/dl");
+    }
+
+    #[test]
+    fn unknown_layout_uses_the_fallback_name() {
+        assert_eq!(effective_output_dir("/tmp/dl", None, "Some Magnet"), "/tmp/dl/Some Magnet");
+        assert_eq!(effective_output_dir("/tmp/dl", Some(b"not a torrent"), "x"), "/tmp/dl/x");
+        // A fallback that sanitizes to nothing still yields a subfolder.
+        assert_eq!(effective_output_dir("/tmp/dl", None, ".."), "/tmp/dl/torrent");
+    }
+
+    #[test]
+    fn hostile_names_become_one_safe_component() {
+        let t = multi_file_torrent("../../evil", &["a", "b"]);
+        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "f"), "/tmp/dl/_.._evil");
+        assert_eq!(safe_folder_name("a/b\\c:d*e?f\"g<h>i|j"), "a_b_c_d_e_f_g_h_i_j");
+        assert_eq!(safe_folder_name("  .hidden.  "), "hidden");
+        assert_eq!(safe_folder_name("con\u{0}trol"), "con_trol");
+        assert_eq!(safe_folder_name("..").len(), 0);
+        assert_eq!(safe_folder_name(&"x".repeat(500)).len(), 200);
+    }
+
+    #[test]
+    fn fallback_name_comes_from_the_magnet_or_url() {
+        let dn = TorrentSource::Url("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=My%20Show".into());
+        assert_eq!(fallback_folder_name(&dn), "My Show");
+        let bare = TorrentSource::Url("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a".into());
+        assert_eq!(fallback_folder_name(&bare), "c12fe1c06bba254a9dc9f519b335aa7c1367a88a");
+        let http = TorrentSource::Url("https://example.com/files/thing.torrent".into());
+        assert_eq!(fallback_folder_name(&http), "thing");
+        let file = TorrentSource::Bytes { key: "/Users/x/Downloads/pack.torrent".into(), bytes: vec![], trackers: vec![] };
+        assert_eq!(fallback_folder_name(&file), "pack");
     }
 }

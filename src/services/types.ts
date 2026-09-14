@@ -23,7 +23,16 @@ export type ProgressCallback = (data: {
   seeding?: boolean;
 }) => void;
 
-export type CompletionCallback = (success: boolean, error?: string, filePath?: string, fileSize?: number, actualHeight?: number) => void;
+export type CompletionCallback = (
+  success: boolean,
+  error?: string,
+  filePath?: string,
+  fileSize?: number,
+  actualHeight?: number,
+  /** Torrents: the folder the files were written to (a multi-file torrent
+   * gets its own `<destination>/<name>` folder). */
+  outputFolder?: string,
+) => void;
 
 export interface UpdateCheckResult {
   available: boolean;

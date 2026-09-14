@@ -25,7 +25,7 @@ export type QueueAction =
       // Drives the 'downloading' → 'seeding' transition. HTTP items never set it.
       seeding?: boolean;
     }
-  | { type: 'completed'; id: string; completedAt: string; filePath?: string; fileSize?: number; actualHeight?: number }
+  | { type: 'completed'; id: string; completedAt: string; filePath?: string; fileSize?: number; actualHeight?: number; outputFolder?: string }
   | { type: 'failed'; id: string; error: DownloadError }
   | { type: 'requeueForRetry'; id: string }
   | { type: 'pause'; id: string }
@@ -93,6 +93,7 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
               completedAt: action.completedAt,
               filePath: action.filePath,
               actualHeight: action.actualHeight,
+              outputFolder: action.outputFolder ?? i.outputFolder,
               totalBytes: action.fileSize ?? i.totalBytes,
             }
           : i,

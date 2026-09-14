@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
 import { AppProvider, useQueue, useHistory, useSettings } from '../AppProvider';
 import { ServiceProvider } from '@/services/ServiceProvider';
@@ -201,5 +201,36 @@ describe('AppProvider - History', () => {
     await waitFor(() => expect(h).not.toBeNull());
     act(() => { h!.clearHistory(); });
     expect(h!.items).toHaveLength(0);
+  });
+
+  // Regression (v1.8.0): the archive timer re-armed on every queue change, so
+  // while any transfer was emitting progress a completed item never moved to
+  // the Library — and the Transfers page hides completed rows, so it vanished.
+  it('archives a completed item even while the queue keeps changing', async () => {
+    let q: ReturnType<typeof useQueue> | null = null;
+    let h: ReturnType<typeof useHistory> | null = null;
+    await renderAndWait(
+      <Wrapper>
+        <QueueHelper onReady={a => { q = a; }} />
+        <HistoryHelper onReady={a => { h = a; }} />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(q).not.toBeNull());
+
+    vi.useFakeTimers();
+    try {
+      act(() => { q!.addToQueue(makeItem('done', 'completed')); });
+      // Mutate the queue every 100 ms for a second — the cadence of a torrent's
+      // progress events. Paused items are inert (never auto-started).
+      for (let i = 0; i < 10; i++) {
+        act(() => { vi.advanceTimersByTime(100); });
+        act(() => { q!.addToQueue(makeItem(`busy-${i}`, 'paused')); });
+      }
+      expect(h!.items.map(i => i.id)).toContain('done');
+      expect(q!.items.find(i => i.id === 'done')).toBeUndefined();
+      expect(q!.items).toHaveLength(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

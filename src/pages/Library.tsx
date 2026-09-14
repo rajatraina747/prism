@@ -46,9 +46,11 @@ function playInPrism(path: string, title: string) {
 }
 
 /** Absolute(ish) path of one file inside a torrent download — file names in
- * history are relative to the item's destination folder. */
+ * history are relative to the folder the engine wrote into (`outputFolder`;
+ * a multi-file torrent gets `<destination>/<name>`), or to the destination
+ * itself for items recorded before 1.8.1. */
 function torrentFilePath(item: HistoryItem, name: string): string {
-  const dest = (item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
+  const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
   return `${dest}/${name}`;
 }
 
@@ -274,7 +276,7 @@ export default function Library() {
                     // were recorded without a path — falling back to the
                     // destination folder keeps the files reachable.
                     const revealTarget = item.filePath
-                      ?? (isTorrent ? item.settings.destination : undefined);
+                      ?? (isTorrent ? (item.outputFolder ?? item.settings.destination) : undefined);
                     return (
                       <>
                         {/* In-app player: mpv handles anything, including a

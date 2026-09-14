@@ -55,6 +55,13 @@ fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
     Some(dir.join("engine").join(YTDLP_NAME))
 }
 
+/// Flags every invocation gets, ahead of anything else: ignore the user's and
+/// system's yt-dlp config files (`~/yt-dlp.conf`, `%APPDATA%\yt-dlp\config`, a
+/// portable `yt-dlp.conf` beside the binary, …) and clear the plugin search
+/// path. Without them a stray config line such as `--exec` silently overrides
+/// the argv Prism builds — including the `--` terminator it relies on.
+const LOCKDOWN_ARGS: [&str; 2] = ["--ignore-config", "--no-plugin-dirs"];
+
 /// Resolve the yt-dlp command: a self-updated copy in app-data wins over the
 /// bundled sidecar. PATH is pre-augmented so deno/node are visible either way.
 pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
@@ -63,12 +70,13 @@ pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
             return Ok(app
                 .shell()
                 .command(managed)
+                .args(LOCKDOWN_ARGS)
                 .env("PATH", augmented_path()));
         }
     }
     app.shell()
         .sidecar("yt-dlp")
-        .map(|c| c.env("PATH", augmented_path()))
+        .map(|c| c.args(LOCKDOWN_ARGS).env("PATH", augmented_path()))
         .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))
 }
 

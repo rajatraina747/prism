@@ -150,7 +150,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = setTimeout(() => service.persistence.saveHistory(history), 300);
     return () => clearTimeout(t);
   }, [history, service]);
-  useEffect(() => { service.persistence.saveSettings(settings); }, [settings, service]);
+  // Settings too: text fields (proxy URL, tracker list) change on every
+  // keystroke, and each change used to rewrite settings.json.
+  useEffect(() => {
+    const t = setTimeout(() => service.persistence.saveSettings(settings), 300);
+    return () => clearTimeout(t);
+  }, [settings, service]);
 
   // Sync log level preference to diagnostics service
   useEffect(() => { diagnostics.setLogLevel(settings.logLevel); }, [settings.logLevel]);
@@ -201,12 +206,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeout);
   }, [settings.autoUpdate, service]);
 
-  // Move completed/failed to history
+  // Move completed/failed/canceled items to history.
+  //
+  // The effect must NOT depend on `queue` itself: every progress event
+  // produces a new array, and an effect keyed on it re-arms its timer on
+  // each tick — with any transfer active the archive never fired, so a
+  // finished download sat in the queue invisibly (hidden from Transfers,
+  // absent from Library) until every transfer went idle. Key it on the
+  // set of terminal ids instead, which only changes when something
+  // actually finishes; the queue is read through a ref when it fires.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const terminalKey = queue
+    .filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled')
+    .map(i => i.id)
+    .join('|');
   useEffect(() => {
-    const terminal = queue.filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled');
-    if (terminal.length === 0) return;
+    if (terminalKey === '') return;
 
     const timeout = setTimeout(() => {
+      const terminal = queueRef.current.filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled');
+      if (terminal.length === 0) return;
       const historyItems: HistoryItem[] = terminal.map(i => ({
         id: i.id,
         metadata: i.metadata,
@@ -226,13 +246,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? i.files.slice(0, 500).map(({ name, size }) => ({ name, size }))
           : undefined,
         actualHeight: i.actualHeight,
+        outputFolder: i.outputFolder,
       }));
       // Cap history so history.json can't grow (and load/render) unboundedly
       setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
-    }, 2000);
+    }, 300);
     return () => clearTimeout(timeout);
-  }, [queue]);
+  }, [terminalKey]);
 
   // Re-evaluate the quiet-hours gate once a minute while a schedule is on,
   // so held items start (or throttling changes) when the window flips.
@@ -295,12 +316,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { seeding, ...rest } = data;
           dispatch({ type: 'progress', id: item.id, data: rest, seeding });
         },
-        (success, errorMsg, filePath, fileSize, actualHeight) => {
+        (success, errorMsg, filePath, fileSize, actualHeight, outputFolder) => {
           startedRef.current.delete(item.id);
           cleanupRefs.current.delete(item.id);
           if (success) {
             diagnostics.log('info', `Download completed: ${item.metadata.title}`);
-            dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize, actualHeight });
+            dispatch({ type: 'completed', id: item.id, completedAt: new Date().toISOString(), filePath, fileSize, actualHeight, outputFolder });
             // Silent quality degradation is worth a loud flag: the site didn't
             // deliver the resolution the user picked (e.g. it vanished, or
             // only exists in a codec the extractor couldn't use).

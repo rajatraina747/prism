@@ -47,10 +47,25 @@
 - **Audio your way** — Extract audio-only as MP3, M4A, or Opus.
 - **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
-- **Cross-platform** — Native desktop apps for macOS (Apple Silicon + Intel), Windows, and Linux, with signed auto-updates.
+- **Cross-platform** — Native desktop apps for macOS (Apple Silicon), Windows, and Linux, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking. Crash reporting exists but is strictly opt-in (off by default) and contains no personal data or download history.
 
 See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
+
+## Requirements
+
+**ffmpeg** must be installed for anything beyond a plain single-stream download: merging separate
+video and audio streams (every YouTube quality above 720p), audio extraction (MP3/M4A/Opus), the
+embedded thumbnails/metadata/chapters, SponsorBlock, and the MP4 remux. Prism checks for it on
+first launch and shows the install command for your OS:
+
+| OS | Install |
+|----|---------|
+| macOS | `brew install ffmpeg` |
+| Windows | `winget install Gyan.FFmpeg` |
+| Linux | `sudo apt install ffmpeg` (or your distro's package) |
+
+yt-dlp, Deno and the player's libmpv are bundled; nothing else is required.
 
 ## Download
 
@@ -65,7 +80,7 @@ Or get the latest release for your platform:
 
 | Platform | Download |
 |----------|----------|
-| macOS | [Prism.dmg](https://github.com/rajatraina747/prism/releases/latest) |
+| macOS (Apple Silicon) | [Prism.dmg](https://github.com/rajatraina747/prism/releases/latest) |
 | Windows | [Prism-setup.exe](https://github.com/rajatraina747/prism/releases/latest) |
 | Linux | [AppImage / deb / rpm](https://github.com/rajatraina747/prism/releases/latest) |
 | Web Demo | [Try in your browser](https://rajatraina747.github.io/prism/) |

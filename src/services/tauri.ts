@@ -158,6 +158,7 @@ export class TauriPrismService implements IPrismService {
         file_path: string | null;
         file_size: number | null;
         actual_height?: number | null;
+        output_folder?: string | null;
       }>(`download-complete-${item.id}`, (event) => {
         if (cancelled) return;
         cleanup();
@@ -167,6 +168,7 @@ export class TauriPrismService implements IPrismService {
           event.payload.file_path ?? undefined,
           event.payload.file_size ?? undefined,
           event.payload.actual_height ?? undefined,
+          event.payload.output_folder ?? undefined,
         );
       });
 

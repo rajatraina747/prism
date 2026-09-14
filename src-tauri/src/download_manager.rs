@@ -42,6 +42,11 @@ pub struct DownloadComplete {
     /// None for audio-only, torrents, and failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual_height: Option<u32>,
+    /// Torrents: the folder the files were written to. A multi-file torrent
+    /// gets its own `<destination>/<name>` folder, so the Library needs this
+    /// (not the destination) to locate each file. None for yt-dlp downloads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_folder: Option<String>,
 }
 
 struct ActiveDownload {
@@ -283,6 +288,7 @@ impl DownloadManager {
                             file_path: None,
                             file_size: None,
                             actual_height: None,
+                            output_folder: None,
                         },
                     );
                     return;
@@ -302,6 +308,7 @@ impl DownloadManager {
                             file_path: None,
                             file_size: None,
                             actual_height: None,
+                            output_folder: None,
                         },
                     );
                     return;
@@ -439,6 +446,7 @@ impl DownloadManager {
                     file_path: final_path,
                     file_size,
                     actual_height: if success { actual_height } else { None },
+                    output_folder: None,
                 },
             );
         });

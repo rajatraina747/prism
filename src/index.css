@@ -62,9 +62,18 @@
     --ring: 160 50% 38%;
     --surface: 220 16% 94%;
     --surface-foreground: 228 14% 25%;
+    /* Status colours need darker variants on white: the dark-theme values
+       (46–55% lightness) sit at ~2:1 against a light card. */
+    --success: 145 60% 30%;
+    --warning: 32 85% 34%;
     --sidebar-background: 220 18% 95%;
     --sidebar-foreground: 228 12% 40%;
+    --sidebar-primary: 160 50% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 90%;
+    --sidebar-accent-foreground: 228 18% 12%;
     --sidebar-border: 220 13% 88%;
+    --sidebar-ring: 160 50% 38%;
   }
 }
 

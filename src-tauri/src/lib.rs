@@ -742,7 +742,29 @@ pub(crate) fn validate_open_path(
         .canonicalize()
         .map_err(|_| "File not found".to_string())?;
     path_is_allowed(&resolved, extra_roots)?;
-    Ok(expanded)
+    // Return the *resolved* path, not the string that was checked: the
+    // extension allowlist in `open_file`/`player_load` and the OS opener must
+    // see the same file the containment check saw. Returning the original
+    // string let a symlink named `clip.mp4` → `payload.command` pass the
+    // media check and then get opened as the `.command`.
+    Ok(canonical_string(&resolved))
+}
+
+/// A canonical path as a string for consumers outside Rust (the OS opener,
+/// mpv, `explorer /select`). On Windows `canonicalize` yields a `\\?\`
+/// verbatim path, which those consumers don't all accept — strip the prefix.
+fn canonical_string(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy().into_owned();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}");
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return rest.to_string();
+        }
+    }
+    s
 }
 
 /// File types Prism will hand to the OS default handler ("Open"/"Play").
@@ -1645,6 +1667,26 @@ mod tests {
         let f = dir.join("clip.mp4");
         std::fs::write(&f, b"x").unwrap();
         assert!(validate_open_path(&f.to_string_lossy(), false, std::slice::from_ref(&dir)).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `open_file` allowlists by extension. That check has to see the file
+    /// the OS will actually open: a symlink named `clip.mp4` pointing at a
+    /// `.command` used to pass as media and then run as the `.command`.
+    #[cfg(unix)]
+    #[test]
+    fn open_path_resolves_symlinks_before_the_media_check() {
+        let dir = std::env::temp_dir().join(format!("prism-symlink-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let payload = dir.join("payload.command");
+        std::fs::write(&payload, b"#!/bin/sh\n").unwrap();
+        let link = dir.join("clip.mp4");
+        std::os::unix::fs::symlink(&payload, &link).unwrap();
+
+        let validated = validate_open_path(&link.to_string_lossy(), false, std::slice::from_ref(&dir)).unwrap();
+        assert!(validated.ends_with("payload.command"), "got {validated}");
+        assert!(!is_openable_media(&validated));
+
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

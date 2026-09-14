@@ -80,6 +80,9 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorCle
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    // The window-level drop handler (useUrlDrop in AppShell) would otherwise
+    // see the same event and submit the URL a second time.
+    e.stopPropagation();
     setIsDragOver(false);
 
     // Check for dropped files first

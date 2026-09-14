@@ -123,6 +123,10 @@ export interface DownloadItem {
   pieces?: number[];
   /** When the item entered the queue (set by the reducer on add). */
   addedAt?: string;
+  /** Torrent only: the folder the files were written to. A multi-file torrent
+   * gets its own `<destination>/<name>` folder, so `files[].name` (relative
+   * to this) must be joined against it, not against settings.destination. */
+  outputFolder?: string;
 }
 
 /** One peer of a live torrent (Peers tab). Speeds are differenced per poll. */
@@ -309,9 +313,12 @@ export interface HistoryItem {
   totalBytes?: number;
   filePath?: string;
   error?: DownloadError;
-  /** Torrent only: downloaded files (paths relative to settings.destination),
-   * so the Library can play/reveal each one individually. */
+  /** Torrent only: downloaded files (paths relative to `outputFolder`, or to
+   * settings.destination for items recorded before 1.8.1), so the Library can
+   * play/reveal each one individually. */
   files?: { name: string; size: number }[];
+  /** Torrent only: see DownloadItem.outputFolder. */
+  outputFolder?: string;
   /** Video height actually delivered, when it differs from what the format
    * label promised (see DownloadItem.actualHeight). */
   actualHeight?: number;

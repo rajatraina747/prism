@@ -15,6 +15,54 @@ what remains open is below. Completed items live in git history.
 - [x] **Per-site smart preset** that remembers last-used settings per domain
   (`perSitePresets`, keyed via `siteKey`).
 
+## Arcs from the September 2026 follow-up review
+
+Full findings, verified against code and live data, in
+[docs/REVIEW-2026-09-14.md](docs/REVIEW-2026-09-14.md). The v1.8.1 hotfix
+(finished downloads not archived; flat multi-file torrents sharing one folder;
+yt-dlp config/plugin lockdown; symlink-safe Open; light-mode tokens; drop-once;
+settings debounce; README accuracy) is shipped. What remains, in order:
+
+### v1.9 — "Trust & polish"
+
+- [ ] Move `torrent-session/`, `torrents/` and `engine/` out of `$APPDATA`
+      (webview-writable via `fs:allow-appdata-write-recursive`) to the
+      preference dir beside `allowed-dirs.json`, or narrow the fs capability
+      to the four JSON files the frontend writes. Closes S-1/S-2.
+- [ ] Confirmation card for OS/deep-link-originated links (`magnet:`,
+      `prism://add`) before any network action; typed links unchanged (S-6).
+- [ ] Vendored mpv plugin: error instead of bare-DLL-name fallback; precheck
+      `player_available` in `player_init` (S-7).
+- [ ] Semaphore on yt-dlp spawns + byte cap on capture buffers (S-8).
+- [ ] `build.yml`: per-job permissions; encrypt the minisign key
+      (`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); write `docs/RELEASE-KEYS.md`
+      with backup/rotation (S-10).
+- [ ] Linux deny-list entries (`bin`, `.local/bin`, `Desktop/*.desktop`);
+      case-insensitive root compare on mac/win (S-9).
+- [ ] UX ★: one "Add" surface (⌘N/⌘L sheet, drop-anywhere incl. magnets and
+      `.torrent`); Settings restructure (Video / BitTorrent / Speed & schedule
+      …, one speed-limit group, one unit, jargon tooltips); failure UX
+      (suggestion + Retry/“Set browser cookies” on the row and toast; classify
+      parse errors); quiet-hours banner; accessibility pass (labelled Settings
+      controls, listbox semantics, Radix tabs everywhere, reduced-motion);
+      virtualize Library/pickers and drop per-row `backdrop-filter`.
+- [ ] TypeScript `strict` + `strictNullChecks`; re-enable `no-unused-vars` /
+      `no-explicit-any`; Playwright in CI; `log::` coverage in the Rust
+      backend; `--force-ipv4` as a setting; WebP logos; prune unused
+      shadcn/Radix; refresh README screenshots; `SECURITY.md`, issue templates,
+      About → "Report a bug".
+
+### v2.0 — "Download manager"
+
+- [ ] Bundle a static LGPL ffmpeg (pinned + SHA in `sidecars.lock`).
+- [ ] Engine freshness check (daily compare, unobtrusive nudge).
+- [ ] Watch folder (`.torrent` + URL lists); categories/labels with
+      per-category destination; move-completed-to; filename templates.
+- [ ] Stream-while-downloading ("Play now") — see the torrent arc below.
+- [ ] Chrome/Edge extension + AMO publish (needs a hosted privacy policy).
+- [ ] Decide `com.prism.app` → `com.rainacorp.prism` (app-data migration +
+      updater continuity) and whether to add a generic HTTP engine.
+
 ## Candidate arc — Second engine: BitTorrent (needs a go/no-go)
 
 Prism today is a client-server pull (yt-dlp over HTTP). BitTorrent is a different
