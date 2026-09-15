@@ -10,7 +10,7 @@
 
 # FFmpeg — https://ffmpeg.org/releases/ (LGPL build: no --enable-gpl/nonfree)
 FFMPEG_URL=https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz
-FFMPEG_SHA256=
+FFMPEG_SHA256=464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c
 
 # mpv — https://github.com/mpv-player/mpv/releases (libmpv only, -Dgpl=false)
 MPV_URL=https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
@@ -66,4 +66,4 @@ GLSLANG_SHA256=9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2
 
 # MoltenVK — https://github.com/KhronosGroup/MoltenVK/releases (Apache-2.0; prebuilt)
 MOLTENVK_URL=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
-MOLTENVK_SHA256=
+MOLTENVK_SHA256=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e

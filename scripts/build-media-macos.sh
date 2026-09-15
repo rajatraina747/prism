@@ -111,7 +111,7 @@ fetch mpv "$MPV_URL" "$MPV_SHA256"
 echo "== Codecs and text =="
 meson_build dav1d -Denable_tools=false -Denable_tests=false
 autotools_build opus --disable-doc --disable-extra-programs
-autotools_build lame --disable-frontend
+autotools_build lame --disable-frontend --disable-decoder
 meson_build freetype -Dharfbuzz=disabled -Dbrotli=disabled -Dpng=disabled -Dbzip2=disabled
 meson_build fribidi -Ddocs=false -Dbin=false -Dtests=false
 meson_build harfbuzz -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled \
