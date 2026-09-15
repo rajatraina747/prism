@@ -26,11 +26,11 @@ DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
 
 # Opus — https://opus-codec.org (BSD-3-Clause)
 OPUS_URL=https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
-OPUS_SHA256=
+OPUS_SHA256=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
 
 # LAME — https://lame.sourceforge.io (LGPL-2.0)
-LAME_URL=https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
-LAME_SHA256=
+LAME_URL=https://downloads.sourceforge.net/project/lame/lame/3.101/lame-3.101.tar.gz
+LAME_SHA256=7578af6eebd578b2bd64e468fac4ae1f03670a7e028166e67f855674b9b6aeac
 
 # libass — https://github.com/libass/libass (ISC)
 LIBASS_URL=https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz
@@ -42,27 +42,27 @@ FREETYPE_SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
 
 # FriBidi — https://github.com/fribidi/fribidi (LGPL-2.1)
 FRIBIDI_URL=https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz
-FRIBIDI_SHA256=
+FRIBIDI_SHA256=1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c
 
 # HarfBuzz — https://github.com/harfbuzz/harfbuzz (MIT)
 HARFBUZZ_URL=https://github.com/harfbuzz/harfbuzz/releases/download/14.4.0/harfbuzz-14.4.0.tar.xz
-HARFBUZZ_SHA256=
+HARFBUZZ_SHA256=2357ed966c6ced7bfa720b0640c0231065af01158fbea215093ffa15aed44371
 
 # Little CMS — https://github.com/mm2/Little-CMS (MIT)
 LCMS2_URL=https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz
-LCMS2_SHA256=
+LCMS2_SHA256=bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
 
 # zimg — https://github.com/sekrit-twc/zimg (WTFPL)
 ZIMG_URL=https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.6.tar.gz
-ZIMG_SHA256=
+ZIMG_SHA256=be89390f13a5c9b2388ce0f44a5e89364a20c1c57ce46d382b1fcc3967057577
 
 # Vulkan — Khronos (Apache-2.0)
 VULKAN_HEADERS_URL=https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz
-VULKAN_HEADERS_SHA256=
+VULKAN_HEADERS_SHA256=e87dce08116151f6b6d7de6b6faf41498e87e6cf848ff16fa3bd5402190ad4a3
 VULKAN_LOADER_URL=https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz
-VULKAN_LOADER_SHA256=
+VULKAN_LOADER_SHA256=54f2537df22313768da0317dda2abdaaab7711b4081c48c869a79db343d0ae70
 GLSLANG_URL=https://github.com/KhronosGroup/glslang/archive/refs/tags/16.6.0.tar.gz
-GLSLANG_SHA256=
+GLSLANG_SHA256=9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2
 
 # MoltenVK — https://github.com/KhronosGroup/MoltenVK/releases (Apache-2.0; prebuilt)
 MOLTENVK_URL=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
