@@ -5,6 +5,7 @@ import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { SetupCard } from '@/components/dashboard/SetupCard';
+import { QuietHoursBanner } from '@/components/common/QuietHoursBanner';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
@@ -462,6 +463,8 @@ export default function Dashboard() {
 
       {/* First-run setup: destination, ffmpeg, cookies. Dismissible. */}
       <SetupCard />
+
+      <QuietHoursBanner className="mt-3" />
 
       {/* Batch progress indicator */}
       {batchProgress && (

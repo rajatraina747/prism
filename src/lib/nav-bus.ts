@@ -2,7 +2,7 @@
 // deep in a list) ask the app shell — which owns `navigate` — to go somewhere.
 
 /** Where "Set browser cookies" lands. One place to change if Settings moves. */
-export const COOKIES_SETTINGS_PATH = '/settings?section=downloads';
+export const COOKIES_SETTINGS_PATH = '/settings?section=video';
 
 let listener: ((path: string) => void) | null = null;
 

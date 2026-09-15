@@ -252,7 +252,9 @@ impl DownloadManager {
             args.push("--fragment-retries".into());
             args.push("10".into());
 
-            args.push("--force-ipv4".into());
+            if crate::force_ipv4(&app) {
+                args.push("--force-ipv4".into());
+            }
 
             // Fetch HLS/DASH fragments in parallel — the single biggest
             // throughput win on segmented streams (2–4× vs one connection).

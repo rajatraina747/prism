@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { PlaylistInfo, PlaylistEntry } from '@/types/models';
 import { formatDuration } from '@/services';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/common/VirtualList';
 import { ListMusic, Check, Clock } from 'lucide-react';
 
 interface PlaylistModalProps {
@@ -81,10 +82,21 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
           </div>
 
           {/* Entry list */}
-          <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
-            {playlist.entries.map((entry, i) => (
+          <VirtualList
+            items={playlist.entries}
+            getKey={(_, i) => i /* a playlist can list the same video twice */}
+            estimateSize={44}
+            gap={4}
+            threshold={100}
+            scroll="self"
+            role="group"
+            aria-label="Videos in this playlist"
+            className="max-h-72 pr-1"
+            renderItem={(entry, i) => (
               <button
-                key={i}
+                type="button"
+                role="checkbox"
+                aria-checked={selected.has(i)}
                 onClick={() => toggleEntry(i)}
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
@@ -93,7 +105,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
                     : 'bg-secondary/30 border border-transparent hover:bg-secondary/50',
                 )}
               >
-                <div className={cn(
+                <div aria-hidden="true" className={cn(
                   'w-4 h-4 rounded flex items-center justify-center shrink-0 border',
                   selected.has(i) ? 'bg-primary border-primary' : 'border-border'
                 )}>
@@ -109,8 +121,8 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
                   )}
                 </div>
               </button>
-            ))}
-          </div>
+            )}
+          />
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">

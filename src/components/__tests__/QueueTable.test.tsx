@@ -121,6 +121,25 @@ describe('QueueTable', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
+  it('says a queued row is held by quiet hours, not waiting for a slot', () => {
+    const { rerender } = render(<QueueTable items={[makeItem({ status: 'queued' })]} {...defaultProps} />);
+    expect(screen.getByText('Waiting for a slot')).toBeTruthy();
+    rerender(
+      <StaticServiceProvider service={mockService}>
+        <QueueTable items={[makeItem({ status: 'queued' })]} {...defaultProps} heldUntil="07:00" />
+      </StaticServiceProvider>
+    );
+    expect(screen.getByText('Held for quiet hours · until 07:00')).toBeTruthy();
+  });
+
+  it('exposes rows as options of a listbox with one tab stop', () => {
+    render(<QueueTable items={[makeItem({ id: 'a' }), makeItem({ id: 'b' })]} {...defaultProps} selectedIds={new Set(['b'])} onSelect={vi.fn()} />);
+    const options = screen.getAllByRole('option');
+    expect(screen.getByRole('listbox', { name: 'Transfers' })).toBeTruthy();
+    expect(options.map(o => o.getAttribute('tabindex'))).toEqual(['-1', '0']);
+    expect(options[1].getAttribute('aria-selected')).toBe('true');
+  });
+
   it('renders multiple items', () => {
     const items = [
       makeItem({ id: 'a', metadata: { ...makeItem().metadata, title: 'Video A' } }),
@@ -174,7 +193,7 @@ describe('QueueTable — torrents', () => {
     const onSelect = vi.fn();
     const onOpenDetails = vi.fn();
     render(<QueueTable {...props} onSelect={onSelect} onOpenDetails={onOpenDetails} selectedIds={new Set(['item-1'])} items={[makeItem({ status: 'downloading' })]} />);
-    const row = screen.getByRole('listitem');
+    const row = screen.getByRole('option');
     expect(row).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(row, { shiftKey: true });
     expect(onSelect).toHaveBeenCalledWith('item-1', { shift: true, meta: false });

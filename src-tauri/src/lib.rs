@@ -193,8 +193,10 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
         "--dump-json".into(),
         "--no-download".into(),
         "--no-warnings".into(),
-        "--force-ipv4".into(),
     ];
+    if force_ipv4(&app) {
+        parse_args.push("--force-ipv4".into());
+    }
     if let Some(browser) = cookies_browser(&app) {
         parse_args.push("--cookies-from-browser".into());
         parse_args.push(browser);
@@ -335,8 +337,10 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         "--dump-json".into(),
         "--no-download".into(),
         "--no-warnings".into(),
-        "--force-ipv4".into(),
     ];
+    if force_ipv4(&app) {
+        playlist_args.push("--force-ipv4".into());
+    }
     // Subscription polls only need the newest entries, not a channel's whole
     // catalog — feeds are newest-first, so a window off the top is enough.
     if let Some(n) = limit.filter(|n| *n > 0) {
@@ -1063,6 +1067,12 @@ pub fn torrent_dht_enabled(app: &AppHandle) -> bool {
     read_setting(app, "torrentDht")
         .and_then(|v| v.as_bool())
         .unwrap_or(true)
+}
+
+/// Whether yt-dlp is told `--force-ipv4` (default on — it was hardcoded
+/// before 1.9, because many sites throttle IPv6 downloads).
+pub fn force_ipv4(app: &AppHandle) -> bool {
+    setting_bool(app, "forceIpv4", true)
 }
 
 /// SponsorBlock preference ("mark" | "remove"), whitelisted; else off.

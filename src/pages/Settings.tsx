@@ -5,30 +5,109 @@ import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes } from '@/services';
 import { Panel, ConfirmDialog } from '@/components/common';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  FolderOpen, Download, Gauge, Bell, Palette, HardDrive,
-  RefreshCw, Bug, Shield, ChevronRight, Loader2, AlertTriangle,
+  FolderOpen, Film, Magnet, Gauge, Globe, Bell, Palette, HardDrive,
+  RefreshCw, Bug, Shield, ChevronRight, ChevronDown, Loader2, AlertTriangle, HelpCircle,
 } from 'lucide-react';
 
-function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
+// ── Accessible setting rows ──
+// Every control inside a SettingRow is labelled by the row's label and
+// described by its description, so assistive tech announces "Listen port,
+// 4240, Incoming peer connections use this port" instead of "4240".
+
+const RowIds = React.createContext<{ labelId: string; descId?: string } | null>(null);
+
+function useRowA11y() {
+  const ids = React.useContext(RowIds);
+  return ids ? { 'aria-labelledby': ids.labelId, 'aria-describedby': ids.descId } : {};
+}
+
+/** A small (?) that explains a term of art in place. */
+function HelpTip({ term, text }: { term: string; text: string }) {
+  return (
+    <Tooltip delayDuration={200}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`What is ${term}?`}
+          className="inline-flex text-muted-foreground/60 hover:text-muted-foreground focus-visible:text-foreground transition-colors"
+        >
+          <HelpCircle className="w-3 h-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-[11px] leading-relaxed">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SettingRow({ label, description, help, children }: {
+  label: string;
+  description?: string;
+  /** [term, explanation] for jargon in the label. */
+  help?: [string, string];
+  children: React.ReactNode;
+}) {
+  const id = React.useId();
+  const labelId = `${id}-label`;
+  const descId = description ? `${id}-desc` : undefined;
   return (
     <div className="flex items-center justify-between py-2.5 min-h-[40px]">
       <div className="flex-1 min-w-0 mr-4">
-        <p className="text-xs font-medium text-foreground">{label}</p>
-        {description && <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>}
+        <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+          <span id={labelId}>{label}</span>
+          {help && <HelpTip term={help[0]} text={help[1]} />}
+        </p>
+        {description && <p id={descId} className="text-[11px] text-muted-foreground mt-0.5">{description}</p>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="shrink-0">
+        <RowIds.Provider value={{ labelId, descId }}>{children}</RowIds.Provider>
+      </div>
+    </div>
+  );
+}
+
+function SettingGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section aria-label={title} className="pt-3 first:pt-0">
+      <h3 className="panel-header mb-1">{title}</h3>
+      <div className="divide-y divide-border/30">{children}</div>
+    </section>
+  );
+}
+
+/** Progressive disclosure for settings most people never need. */
+function Advanced({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  const id = React.useId();
+  return (
+    <div className="pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={id}
+        className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {open ? 'Hide advanced settings' : 'Show advanced settings'}
+      </button>
+      {open && <div id={id} className="mt-1">{children}</div>}
     </div>
   );
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  const a11y = useRowA11y();
   return (
     <button
+      type="button"
       role="switch"
       aria-checked={checked}
+      {...a11y}
       onClick={() => onChange(!checked)}
       className={cn(
         'relative w-9 h-5 rounded-full transition-colors duration-200 active:scale-[0.95]',
@@ -43,11 +122,13 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-function Select({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+function Select<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+  const a11y = useRowA11y();
   return (
     <select
       value={value}
-      onChange={e => onChange(e.target.value)}
+      {...a11y}
+      onChange={e => onChange(e.target.value as T)}
       className="px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none cursor-pointer"
     >
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -55,31 +136,53 @@ function Select({ value, options, onChange }: { value: string; options: { value:
   );
 }
 
-function NumberInput({ value, onChange, min, max }: { value: number; onChange: (v: number) => void; min?: number; max?: number }) {
-  // Clamp on blur, not on change — clamping mid-keystroke fights the user
-  // (typing "10" with min 5 would snap the intermediate "1" to 5).
+/** Numeric field that keeps what you type (so "1." and "" are allowed mid-edit)
+ * and clamps to [min, max] when you leave it. */
+function NumberInput({ value, onChange, min, max, step, unit }: {
+  value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; unit?: string;
+}) {
+  const a11y = useRowA11y();
+  const [text, setText] = React.useState(String(value));
+  const focused = React.useRef(false);
+  React.useEffect(() => { if (!focused.current) setText(String(value)); }, [value]);
   const clamp = (v: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
   return (
-    <input
-      type="number"
-      value={value}
-      onChange={e => {
-        const n = Number(e.target.value);
-        if (!Number.isNaN(n)) onChange(n);
-      }}
-      onBlur={() => onChange(clamp(value))}
-      min={min}
-      max={max}
-      className="w-16 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none tabular-nums text-right"
-    />
+    <div className="flex items-center gap-1.5">
+      <input
+        type="number"
+        inputMode={step && step < 1 ? 'decimal' : 'numeric'}
+        value={text}
+        {...a11y}
+        onFocus={() => { focused.current = true; }}
+        onChange={e => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value.trim() !== '' && Number.isFinite(n)) onChange(n);
+        }}
+        onBlur={() => {
+          focused.current = false;
+          const n = Number(text);
+          const next = text.trim() === '' || !Number.isFinite(n) ? clamp(value) : clamp(n);
+          onChange(next);
+          setText(String(next));
+        }}
+        min={min}
+        max={max}
+        step={step}
+        className="w-20 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none tabular-nums text-right"
+      />
+      {unit && <span className="text-[11px] text-muted-foreground" aria-hidden="true">{unit}</span>}
+    </div>
   );
 }
 
 function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const a11y = useRowA11y();
   return (
     <input
       type="text"
       value={value}
+      {...a11y}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       spellCheck={false}
@@ -90,15 +193,46 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
 }
 
 const SECTIONS = [
-  { id: 'downloads', label: 'Downloads', icon: Download },
-  { id: 'queue', label: 'Queue', icon: Gauge },
+  { id: 'video', label: 'Video', icon: Film },
+  { id: 'bittorrent', label: 'BitTorrent', icon: Magnet },
+  { id: 'speed', label: 'Speed & schedule', icon: Gauge },
+  { id: 'network', label: 'Network', icon: Globe },
+  { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'updates', label: 'Updates', icon: RefreshCw },
   { id: 'diagnostics', label: 'Diagnostics', icon: Bug },
   { id: 'legal', label: 'Legal', icon: Shield },
 ] as const;
+
+/** Section ids from before the 1.9 restructure, so old links still land. */
+const SECTION_ALIASES: Record<string, string> = { downloads: 'video', queue: 'speed' };
+
+function resolveSection(requested: string | null): string | null {
+  if (!requested) return null;
+  const id = SECTION_ALIASES[requested] ?? requested;
+  return SECTIONS.some(s => s.id === id) ? id : null;
+}
+
+/** Torrent limits are stored in KB/s (what the engine takes); every speed is
+ * shown in MB/s so the three limits read the same. */
+const kbpsToMbps = (kbps: number) => Math.round((kbps / 1024) * 100) / 100;
+const mbpsToKbps = (mbps: number) => Math.round(mbps * 1024);
+
+const HELP = {
+  cookies: ['browser cookies', 'Some videos need a signed-in session. Prism lets yt-dlp borrow that browser\'s cookies for the request on this machine; they are never uploaded anywhere else.'],
+  container: ['a container', 'The container (.mp4, .mkv, .webm) wraps the video and audio streams. Remuxing re-wraps them without re-encoding — fast and lossless — but VP9 and AV1, the codecs sites use for 4K and HDR, play poorly inside .mp4 in QuickTime.'],
+  sponsorblock: ['SponsorBlock', 'A community database of sponsor, intro and self-promotion segments in YouTube videos.'],
+  ratio: ['share ratio', 'Uploaded ÷ downloaded. A ratio of 1.0 means you have given the swarm back as much as you took.'],
+  trackers: ['an announce URL', 'A tracker introduces peers to each other; its announce URL is where a client reports in, e.g. udp://tracker.example.org:1337/announce.'],
+  dht: ['DHT', 'Distributed Hash Table: finds peers through other clients instead of a tracker. Most magnet links depend on it.'],
+  lsd: ['LSD', 'Local Service Discovery: finds peers on your own network by multicast.'],
+  utp: ['uTP', 'Micro Transport Protocol: a UDP transport that backs off when your connection is busy, so torrents don\'t swamp everything else.'],
+  upnp: ['UPnP', 'Universal Plug and Play: Prism asks your router to open a port so peers can connect to you directly.'],
+  blocklist: ['a p2p blocklist', 'A list of IP ranges (the P2P/eMule format uTorrent and qBittorrent use) the torrent engine will refuse to connect to.'],
+  proxy: ['socks5h', 'socks5h:// sends DNS lookups through the proxy as well; socks5:// resolves names on this machine first, which can reveal the sites you visit.'],
+  ipv4: ['IPv4-only', 'Many sites throttle or block downloads over IPv6. Turn this off only if your network has no IPv4.'],
+} satisfies Record<string, [string, string]>;
 
 export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
@@ -107,13 +241,10 @@ export default function Settings() {
   // `?section=` opens a specific section (e.g. "Set browser cookies" from a
   // failed download), including when Settings is already open.
   const [searchParams] = useSearchParams();
-  const requestedSection = searchParams.get('section');
-  const [activeSection, setActiveSection] = React.useState<string>(
-    SECTIONS.find(s => s.id === requestedSection)?.id ?? 'downloads'
-  );
+  const requestedSection = resolveSection(searchParams.get('section'));
+  const [activeSection, setActiveSection] = React.useState<string>(requestedSection ?? 'video');
   React.useEffect(() => {
-    const match = SECTIONS.find(s => s.id === requestedSection);
-    if (match) setActiveSection(match.id);
+    if (requestedSection) setActiveSection(requestedSection);
   }, [requestedSection]);
   const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
@@ -140,48 +271,42 @@ export default function Settings() {
         <p className="page-subtitle">Configure Prism preferences</p>
       </div>
 
-      <div className="flex gap-6">
-        {/* Section Nav */}
-        <nav className="w-44 shrink-0 space-y-0.5">
+      <Tabs value={activeSection} onValueChange={setActiveSection} orientation="vertical" className="flex gap-6">
+        <TabsList aria-label="Settings sections" className="w-44 shrink-0 h-auto flex flex-col items-stretch justify-start gap-0.5 bg-transparent p-0">
           {SECTIONS.map(s => (
-            <button
+            <TabsTrigger
               key={s.id}
-              onClick={() => setActiveSection(s.id)}
+              value={s.id}
               className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors active:scale-[0.98]',
-                activeSection === s.id
-                  ? 'bg-primary/12 text-primary'
-                  : 'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground'
+                'justify-start gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors',
+                'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground',
+                'data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none',
               )}
             >
-              <s.icon className="w-3.5 h-3.5" strokeWidth={1.8} />
+              <s.icon className="w-3.5 h-3.5" strokeWidth={1.8} aria-hidden="true" />
               {s.label}
-            </button>
+            </TabsTrigger>
           ))}
-        </nav>
+        </TabsList>
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <Panel className="animate-fade-in" key={activeSection}>
-            {activeSection === 'downloads' && (
-              <div className="divide-y divide-border/30">
-                {!ffmpegOk && (
-                  <div className="flex items-start gap-2.5 px-3 py-2.5 mb-1 rounded-lg bg-warning/10 border border-warning/25">
-                    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
-                        won't work. On macOS install it with <span className="font-mono">brew install ffmpeg</span>,
-                        then restart Prism.
-                      </p>
-                    </div>
+            <TabsContent value="video" className="mt-0">
+              {!ffmpegOk && (
+                <div className="flex items-start gap-2.5 px-3 py-2.5 mb-2 rounded-lg bg-warning/10 border border-warning/25">
+                  <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
+                      won't work. On macOS install it with <span className="font-mono">brew install ffmpeg</span>,
+                      then restart Prism.
+                    </p>
                   </div>
-                )}
-                <SettingRow label="Default retry count" description="Number of retry attempts on failure">
-                  <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
-                </SettingRow>
-                <SettingRow label="Browser cookies" description="Use a browser's cookies for sign-in-required and age-restricted videos">
+                </div>
+              )}
+              <SettingGroup title="Access">
+                <SettingRow label="Browser cookies" help={HELP.cookies} description="Use a browser's sign-in for members-only, private and age-restricted videos">
                   <Select
                     value={p.cookiesFromBrowser}
                     options={[
@@ -192,10 +317,12 @@ export default function Settings() {
                       { value: 'edge', label: 'Edge' },
                       { value: 'brave', label: 'Brave' },
                     ]}
-                    onChange={v => updatePreference('cookiesFromBrowser', v as any)}
+                    onChange={v => updatePreference('cookiesFromBrowser', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Audio format" description="Container for audio-only downloads. MP3 is most compatible; M4A is smaller at the same quality; Opus is smallest">
+              </SettingGroup>
+              <SettingGroup title="Files">
+                <SettingRow label="Audio format" description="For audio-only downloads. MP3 plays everywhere; M4A is smaller at the same quality; Opus is smallest">
                   <Select
                     value={p.audioFormat}
                     options={[
@@ -203,13 +330,13 @@ export default function Settings() {
                       { value: 'm4a', label: 'M4A (AAC)' },
                       { value: 'opus', label: 'Opus' },
                     ]}
-                    onChange={v => updatePreference('audioFormat', v as any)}
+                    onChange={v => updatePreference('audioFormat', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Keep original container" description="Off (default): every video is remuxed to .mp4 for QuickTime/Finder compatibility. On: VP9/AV1 downloads stay in .mkv/.webm as the site serves them — better for VLC/mpv users and 4K/HDR sources">
+                <SettingRow label="Keep original container" help={HELP.container} description="Off: every video becomes .mp4 for QuickTime and Finder. On: 4K/HDR downloads stay .mkv/.webm as the site serves them — better in VLC and mpv">
                   <Toggle checked={p.keepOriginalContainer} onChange={v => updatePreference('keepOriginalContainer', v)} />
                 </SettingRow>
-                <SettingRow label="SponsorBlock" description="Mark or remove sponsor segments using crowd-sourced data (requires ffmpeg)">
+                <SettingRow label="SponsorBlock" help={HELP.sponsorblock} description="Mark sponsor segments as chapters, or cut them out (needs ffmpeg)">
                   <Select
                     value={p.sponsorBlock}
                     options={[
@@ -217,172 +344,143 @@ export default function Settings() {
                       { value: 'mark', label: 'Mark as chapters' },
                       { value: 'remove', label: 'Remove segments' },
                     ]}
-                    onChange={v => updatePreference('sponsorBlock', v as any)}
+                    onChange={v => updatePreference('sponsorBlock', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Torrent seeding" description="After a torrent finishes, how long to keep uploading to the swarm. Seeding to ratio 1.0 shares back roughly what you downloaded">
+              </SettingGroup>
+            </TabsContent>
+
+            <TabsContent value="bittorrent" className="mt-0">
+              <SettingGroup title="Seeding">
+                <SettingRow label="When a torrent finishes" description="How long to keep uploading to the swarm afterwards">
                   <Select
                     value={p.seedingPolicy}
                     options={[
-                      { value: 'stop', label: "Stop at 100%" },
-                      { value: 'ratio', label: 'Seed to ratio 1.0' },
+                      { value: 'stop', label: 'Stop at 100%' },
+                      { value: 'ratio', label: 'Seed to target ratio' },
                       { value: 'seed', label: 'Seed until stopped' },
                     ]}
-                    onChange={v => updatePreference('seedingPolicy', v as any)}
+                    onChange={v => updatePreference('seedingPolicy', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Extra trackers" description="Announce URLs added to every torrent (comma or newline separated). Helps find peers when a magnet's own trackers are dead">
-                  <TextInput
-                    value={p.extraTrackers}
-                    onChange={v => updatePreference('extraTrackers', v)}
-                    placeholder="udp://tracker.example.org:1337/announce"
-                  />
+                {p.seedingPolicy === 'ratio' && (
+                  <SettingRow label="Target ratio" help={HELP.ratio} description="Stop seeding once uploaded ÷ downloaded reaches this">
+                    <NumberInput value={p.seedRatioTarget} onChange={v => updatePreference('seedRatioTarget', v)} min={0.1} max={10} step={0.1} />
+                  </SettingRow>
+                )}
+                {p.seedingPolicy !== 'stop' && (
+                  <SettingRow label="Seed time limit" description="Stop seeding after this long, whatever the ratio (0 = no limit)">
+                    <NumberInput value={p.seedTimeLimitMinutes} onChange={v => updatePreference('seedTimeLimitMinutes', v)} min={0} max={525600} unit="min" />
+                  </SettingRow>
+                )}
+              </SettingGroup>
+              <SettingGroup title="Finding peers">
+                <SettingRow label="Extra trackers" help={HELP.trackers} description="Added to every torrent (comma or newline separated). Helps when a magnet's own trackers are dead">
+                  <TextInput value={p.extraTrackers} onChange={v => updatePreference('extraTrackers', v)} placeholder="udp://tracker.example.org:1337/announce" />
                 </SettingRow>
-                <SettingRow label="IP blocklist" description="URL of a standard p2p blocklist for the torrent engine (gz supported). Takes effect on next launch. Leave empty to disable">
-                  <TextInput
-                    value={p.blocklistUrl}
-                    onChange={v => updatePreference('blocklistUrl', v)}
-                    placeholder="https://example.com/blocklist.p2p.gz"
-                  />
+                <SettingRow label="Give up on peerless torrents after" description="Minutes with no peers before a torrent is marked failed. 0 = never: Prism keeps re-announcing every 5 minutes">
+                  <NumberInput value={p.torrentGiveUpMinutes} onChange={v => updatePreference('torrentGiveUpMinutes', v)} min={0} max={10080} unit="min" />
                 </SettingRow>
-                <SettingRow label="Proxy" description="Video downloads (yt-dlp) go fully through the proxy — use socks5h:// so DNS does too. Torrents route only peer connections through a socks5 proxy: DHT, trackers and UPnP still use your real address, and http proxies are ignored for torrents. Leave empty for a direct connection">
-                  <TextInput
-                    value={p.proxyUrl}
-                    onChange={v => updatePreference('proxyUrl', v)}
-                    placeholder="socks5h://127.0.0.1:9050"
-                  />
-                </SettingRow>
-                <SettingRow label="Torrent UPnP port forwarding" description="Ask your router to forward a port so other peers can reach you (faster swarms). Publishes this machine's reachability; turn off when using a proxy for privacy. Applies on next launch">
-                  <Toggle checked={p.torrentUpnp} onChange={v => updatePreference('torrentUpnp', v)} />
-                </SettingRow>
-                <SettingRow label="Torrent DHT" description="Find peers through the distributed hash table as well as trackers. Off = tracker-only. Applies on next launch">
-                  <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
-                </SettingRow>
-                <SettingRow label="Local peer discovery" description="Find peers on your own network (LSD). Applies on next launch">
-                  <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
-                </SettingRow>
-                <SettingRow label="uTP transport" description="Accept and make uTP connections alongside TCP (kinder to home routers; still maturing in the engine). Applies on next launch">
-                  <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
-                </SettingRow>
-                <SettingRow label="Listen port" description="Incoming peer connections (and the UPnP mapping) use this port. Applies on next launch">
-                  <NumberInput value={p.torrentListenPort} onChange={v => updatePreference('torrentListenPort', Math.max(1024, Math.min(65535, v)))} min={1024} max={65535} />
-                </SettingRow>
-                <SettingRow label="Max peers per torrent" description="0 = engine default. Lower it on slow connections or metered links. Applies to torrents added after the change">
-                  <NumberInput value={p.torrentPeerLimit} onChange={v => updatePreference('torrentPeerLimit', Math.max(0, Math.min(10000, v)))} min={0} max={10000} />
-                </SettingRow>
-                <SettingRow label="Torrent download limit" description="Session-wide cap for all torrents, in KB/s (0 = unlimited). Applies immediately; Quiet Hours can lower it further">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.torrentDownloadLimitKBps} onChange={v => updatePreference('torrentDownloadLimitKBps', Math.max(0, v))} min={0} />
-                    <span className="text-[11px] text-muted-foreground">KB/s</span>
-                  </div>
-                </SettingRow>
-                <SettingRow label="Torrent upload limit" description="Session-wide cap on seeding/upload, in KB/s (0 = unlimited). Applies immediately">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.torrentUploadLimitKBps} onChange={v => updatePreference('torrentUploadLimitKBps', Math.max(0, v))} min={0} />
-                    <span className="text-[11px] text-muted-foreground">KB/s</span>
-                  </div>
-                </SettingRow>
-                <SettingRow label="Give up on peerless torrents after" description="Minutes with no connected peers before a torrent is marked failed. 0 = never: Prism keeps re-announcing to trackers and the DHT every 5 minutes, like uTorrent or Vuze">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.torrentGiveUpMinutes} onChange={v => updatePreference('torrentGiveUpMinutes', Math.max(0, Math.min(10080, v)))} min={0} max={10080} />
-                    <span className="text-[11px] text-muted-foreground">min</span>
-                  </div>
-                </SettingRow>
-                <SettingRow label="Seed ratio target" description="For the 'Seed to ratio' policy: stop once uploaded ÷ downloaded reaches this">
-                  <TextInput
-                    value={String(p.seedRatioTarget)}
-                    onChange={v => { const n = Number(v); if (Number.isFinite(n)) updatePreference('seedRatioTarget', Math.max(0.1, Math.min(10, n))); }}
-                    placeholder="1.0"
-                  />
-                </SettingRow>
-                <SettingRow label="Seed time limit" description="Stop seeding after this many minutes under any policy except 'Stop at 100%' (0 = no limit)">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.seedTimeLimitMinutes} onChange={v => updatePreference('seedTimeLimitMinutes', Math.max(0, Math.min(525600, v)))} min={0} max={525600} />
-                    <span className="text-[11px] text-muted-foreground">min</span>
-                  </div>
-                </SettingRow>
-              </div>
-            )}
+              </SettingGroup>
+              <Advanced>
+                <SettingGroup title="Engine (applies on next launch)">
+                  <SettingRow label="DHT" help={HELP.dht} description="Find peers without a tracker. Off = tracker-only">
+                    <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
+                  </SettingRow>
+                  <SettingRow label="Local peer discovery" help={HELP.lsd} description="Find peers on your own network">
+                    <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
+                  </SettingRow>
+                  <SettingRow label="uTP transport" help={HELP.utp} description="Accept and make uTP connections alongside TCP (still maturing in the engine)">
+                    <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
+                  </SettingRow>
+                  <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections — turn off when using a proxy for privacy">
+                    <Toggle checked={p.torrentUpnp} onChange={v => updatePreference('torrentUpnp', v)} />
+                  </SettingRow>
+                  <SettingRow label="Listen port" description="Incoming peer connections (and the UPnP mapping) use this port">
+                    <NumberInput value={p.torrentListenPort} onChange={v => updatePreference('torrentListenPort', v)} min={1024} max={65535} />
+                  </SettingRow>
+                  <SettingRow label="Max peers per torrent" description="0 = engine default. Lower it on slow or metered connections">
+                    <NumberInput value={p.torrentPeerLimit} onChange={v => updatePreference('torrentPeerLimit', v)} min={0} max={10000} />
+                  </SettingRow>
+                  <SettingRow label="IP blocklist" help={HELP.blocklist} description="URL of a blocklist (https, gz supported). Empty = off">
+                    <TextInput value={p.blocklistUrl} onChange={v => updatePreference('blocklistUrl', v)} placeholder="https://example.com/blocklist.p2p.gz" />
+                  </SettingRow>
+                </SettingGroup>
+              </Advanced>
+            </TabsContent>
 
-            {activeSection === 'queue' && (
-              <div className="divide-y divide-border/30">
-                <SettingRow label="Max concurrent downloads" description="Number of simultaneous downloads">
-                  <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', Math.max(1, Math.min(10, v)))} min={1} max={10} />
+            <TabsContent value="speed" className="mt-0">
+              <SettingGroup title="Queue">
+                <SettingRow label="Max concurrent downloads" description="Transfers running at the same time">
+                  <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
                 </SettingRow>
-                <SettingRow label="Bandwidth limit" description="Maximum download speed (0 = unlimited)">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.bandwidthLimit} onChange={v => updatePreference('bandwidthLimit', v)} min={0} />
-                    <span className="text-[11px] text-muted-foreground">MB/s</span>
-                  </div>
+                <SettingRow label="Retries on failure" description="Attempts before a download is marked failed">
+                  <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>
-                <SettingRow label="Subscription check interval" description="How often to check subscribed channels and playlists for new videos">
-                  <div className="flex items-center gap-1.5">
-                    <NumberInput value={p.subscriptionCheckIntervalMinutes} onChange={v => updatePreference('subscriptionCheckIntervalMinutes', Math.max(5, Math.min(1440, v)))} min={5} max={1440} />
-                    <span className="text-[11px] text-muted-foreground">min</span>
-                  </div>
+                <SettingRow label="Subscription check interval" description="How often subscribed channels and playlists are checked for new videos">
+                  <NumberInput value={p.subscriptionCheckIntervalMinutes} onChange={v => updatePreference('subscriptionCheckIntervalMinutes', v)} min={5} max={1440} unit="min" />
                 </SettingRow>
-                <SettingRow label="Quiet hours" description="Hold or throttle new downloads during part of the day (applies when a download starts)">
+              </SettingGroup>
+              <SettingGroup title="Speed limits (0 = unlimited)">
+                <SettingRow label="Video downloads" description="Per download; applies when a download starts">
+                  <NumberInput value={p.bandwidthLimit} onChange={v => updatePreference('bandwidthLimit', v)} min={0} max={10000} step={0.5} unit="MB/s" />
+                </SettingRow>
+                <SettingRow label="Torrent download" description="All torrents together; applies immediately">
+                  <NumberInput value={kbpsToMbps(p.torrentDownloadLimitKBps)} onChange={v => updatePreference('torrentDownloadLimitKBps', mbpsToKbps(v))} min={0} max={10000} step={0.1} unit="MB/s" />
+                </SettingRow>
+                <SettingRow label="Torrent upload" description="All seeding and uploading together; applies immediately">
+                  <NumberInput value={kbpsToMbps(p.torrentUploadLimitKBps)} onChange={v => updatePreference('torrentUploadLimitKBps', mbpsToKbps(v))} min={0} max={10000} step={0.1} unit="MB/s" />
+                </SettingRow>
+              </SettingGroup>
+              <SettingGroup title="Quiet hours">
+                <SettingRow label="Quiet hours" description="Hold or slow down downloads during part of the day">
                   <Toggle checked={p.scheduleEnabled} onChange={v => updatePreference('scheduleEnabled', v)} />
                 </SettingRow>
                 {p.scheduleEnabled && (
                   <>
-                    <SettingRow label="Window" description="Start and end hour (24h clock; wraps overnight)">
-                      <div className="flex items-center gap-1.5">
-                        <NumberInput value={p.scheduleStartHour} onChange={v => updatePreference('scheduleStartHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
-                        <span className="text-[11px] text-muted-foreground">to</span>
-                        <NumberInput value={p.scheduleEndHour} onChange={v => updatePreference('scheduleEndHour', Math.max(0, Math.min(23, v)))} min={0} max={23} />
-                        <span className="text-[11px] text-muted-foreground">h</span>
-                      </div>
+                    <SettingRow label="From" description="Hour the window starts (24-hour clock)">
+                      <NumberInput value={p.scheduleStartHour} onChange={v => updatePreference('scheduleStartHour', v)} min={0} max={23} unit=":00" />
                     </SettingRow>
-                    <SettingRow label="During quiet hours" description="Hold downloads entirely, or start them at a reduced speed">
+                    <SettingRow label="Until" description="Hour the window ends; wraps past midnight">
+                      <NumberInput value={p.scheduleEndHour} onChange={v => updatePreference('scheduleEndHour', v)} min={0} max={23} unit=":00" />
+                    </SettingRow>
+                    <SettingRow label="During quiet hours" description="Hold new downloads entirely, or start them slower (torrents are slowed too)">
                       <Select
                         value={p.scheduleMode}
                         options={[
-                          { value: 'limit', label: 'Throttle' },
+                          { value: 'limit', label: 'Slow down' },
                           { value: 'pause', label: 'Hold downloads' },
                         ]}
-                        onChange={v => updatePreference('scheduleMode', v as 'pause' | 'limit')}
+                        onChange={v => updatePreference('scheduleMode', v)}
                       />
                     </SettingRow>
                     {p.scheduleMode === 'limit' && (
-                      <SettingRow label="Quiet-hours speed" description="Speed limit applied to downloads started during the window">
-                        <div className="flex items-center gap-1.5">
-                          <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', Math.max(1, Math.min(1000, v)))} min={1} max={1000} />
-                          <span className="text-[11px] text-muted-foreground">MB/s</span>
-                        </div>
+                      <SettingRow label="Quiet-hours speed" description="Cap for downloads started, and torrents running, during the window">
+                        <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', v)} min={1} max={1000} unit="MB/s" />
                       </SettingRow>
                     )}
                   </>
                 )}
-              </div>
-            )}
+              </SettingGroup>
+            </TabsContent>
 
-            {activeSection === 'notifications' && (
-              <div className="divide-y divide-border/30">
-                <SettingRow label="Notifications" description="Show notifications for download events">
-                  <Toggle checked={p.notificationsEnabled} onChange={v => updatePreference('notificationsEnabled', v)} />
+            <TabsContent value="network" className="mt-0">
+              <SettingGroup title="Connection">
+                <SettingRow label="Proxy" help={HELP.proxy} description="Video downloads go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT, trackers and UPnP stay direct). Empty = direct">
+                  <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
                 </SettingRow>
-                <SettingRow label="Sound effects" description="Play sounds on completion and errors">
-                  <Toggle checked={p.soundEnabled} onChange={v => updatePreference('soundEnabled', v)} />
+                <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">
+                  <Toggle checked={p.forceIpv4} onChange={v => updatePreference('forceIpv4', v)} />
                 </SettingRow>
-                <SettingRow label="Clipboard link detection" description="When Prism regains focus, check the clipboard for a video link and offer a one-click fetch. Off = Prism never reads the clipboard on its own">
-                  <Toggle checked={p.clipboardWatchEnabled} onChange={v => updatePreference('clipboardWatchEnabled', v)} />
-                </SettingRow>
-              </div>
-            )}
+              </SettingGroup>
+            </TabsContent>
 
-            {activeSection === 'appearance' && (
+            <TabsContent value="storage" className="mt-0">
               <div className="divide-y divide-border/30">
-                <SettingRow label="Theme" description="Application color scheme">
-                  <Select value={p.theme} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} onChange={v => updatePreference('theme', v as any)} />
-                </SettingRow>
-              </div>
-            )}
-
-            {activeSection === 'storage' && (
-              <div className="divide-y divide-border/30">
-                <SettingRow label="Download location" description="Where downloads are saved. Any folder you pick here — including external drives and network shares — is allowed; system folders (Library, AppData, dotfiles) never are">
+                <SettingRow label="Download location" description="Any folder you pick — including external drives and network shares — is allowed; system folders (Library, AppData, dotfiles) never are">
                   <button
+                    type="button"
+                    {...{ 'aria-label': `Download location: ${p.defaultSaveFolder}. Choose a folder` }}
                     onClick={async () => {
                       const dir = await service.pickDirectory();
                       if (dir) updatePreference('defaultSaveFolder', dir);
@@ -394,11 +492,37 @@ export default function Settings() {
                   </button>
                 </SettingRow>
               </div>
-            )}
+            </TabsContent>
 
-            {activeSection === 'updates' && (
+            <TabsContent value="notifications" className="mt-0">
               <div className="divide-y divide-border/30">
-                <SettingRow label="Auto-update" description="Automatically check and install updates on launch">
+                <SettingRow label="Notifications" description="Show notifications for download events">
+                  <Toggle checked={p.notificationsEnabled} onChange={v => updatePreference('notificationsEnabled', v)} />
+                </SettingRow>
+                <SettingRow label="Sound effects" description="Play a sound when a download finishes">
+                  <Toggle checked={p.soundEnabled} onChange={v => updatePreference('soundEnabled', v)} />
+                </SettingRow>
+                <SettingRow label="Clipboard link detection" description="When Prism regains focus, check the clipboard for a video link and offer a one-click fetch. Off = Prism never reads the clipboard on its own">
+                  <Toggle checked={p.clipboardWatchEnabled} onChange={v => updatePreference('clipboardWatchEnabled', v)} />
+                </SettingRow>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="appearance" className="mt-0">
+              <div className="divide-y divide-border/30">
+                <SettingRow label="Theme" description="Application color scheme">
+                  <Select
+                    value={p.theme}
+                    options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]}
+                    onChange={v => updatePreference('theme', v)}
+                  />
+                </SettingRow>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="updates" className="mt-0">
+              <div className="divide-y divide-border/30">
+                <SettingRow label="Auto-update" description="Check for a new version on launch and offer to install it">
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
                 </SettingRow>
                 <SettingRow label="Check for updates" description={
@@ -407,9 +531,10 @@ export default function Settings() {
                   updateState === 'error' ? `Could not check for updates${updateError ? ` — ${updateError}` : ''}` :
                   undefined
                 }>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" aria-live="polite">
                     {updateState === 'available' && (
                       <button
+                        type="button"
                         onClick={async () => {
                           setUpdateState('installing');
                           toast.info('Downloading and installing update — Prism will restart shortly...');
@@ -428,6 +553,7 @@ export default function Settings() {
                       </button>
                     )}
                     <button
+                      type="button"
                       disabled={updateState === 'checking' || updateState === 'installing'}
                       onClick={async () => {
                         setUpdateState('checking');
@@ -478,6 +604,7 @@ export default function Settings() {
                   description={engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
                 >
                   <button
+                    type="button"
                     disabled={engineUpdating}
                     onClick={async () => {
                       setEngineUpdating(true);
@@ -507,18 +634,23 @@ export default function Settings() {
                   </button>
                 </SettingRow>
               </div>
-            )}
+            </TabsContent>
 
-            {activeSection === 'diagnostics' && (
+            <TabsContent value="diagnostics" className="mt-0">
               <div className="divide-y divide-border/30">
                 <SettingRow label="Log level" description="Verbosity of diagnostic logs">
-                  <Select value={p.logLevel} options={[{ value: 'error', label: 'Error' }, { value: 'warn', label: 'Warning' }, { value: 'info', label: 'Info' }, { value: 'debug', label: 'Debug' }]} onChange={v => updatePreference('logLevel', v as any)} />
+                  <Select
+                    value={p.logLevel}
+                    options={[{ value: 'error', label: 'Error' }, { value: 'warn', label: 'Warning' }, { value: 'info', label: 'Info' }, { value: 'debug', label: 'Debug' }]}
+                    onChange={v => updatePreference('logLevel', v)}
+                  />
                 </SettingRow>
                 <SettingRow label="Crash reporting" description="Send anonymous crash reports to help fix bugs. Off by default; no personal data or download history is included">
                   <Toggle checked={p.crashReportingEnabled} onChange={v => updatePreference('crashReportingEnabled', v)} />
                 </SettingRow>
-                <SettingRow label="Export logs">
+                <SettingRow label="Export logs" description="Save the in-app diagnostic log as JSON, to attach to a bug report">
                   <button
+                    type="button"
                     onClick={async () => {
                       await service.exportLogs(diagnostics.getLogs());
                       toast.success('Logs exported');
@@ -529,36 +661,28 @@ export default function Settings() {
                   </button>
                 </SettingRow>
               </div>
-            )}
+            </TabsContent>
 
-            {activeSection === 'legal' && (
+            <TabsContent value="legal" className="mt-0">
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground text-pretty leading-relaxed">
                   Prism is a general-purpose video download utility. Users are responsible for ensuring they have the right to download any content. Do not use Prism to circumvent DRM or access restrictions.
                 </p>
                 <div className="divide-y divide-border/30">
-                  <button onClick={() => navigate('/privacy')} className="w-full">
-                    <SettingRow label="Privacy Policy">
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    </SettingRow>
-                  </button>
-                  <button onClick={() => navigate('/terms')} className="w-full">
-                    <SettingRow label="Terms of Service">
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    </SettingRow>
-                  </button>
-                  <button onClick={() => navigate('/licenses')} className="w-full">
-                    <SettingRow label="Open Source Licenses">
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    </SettingRow>
-                  </button>
+                  {([['Privacy Policy', '/privacy'], ['Terms of Service', '/terms'], ['Open Source Licenses', '/licenses']] as const).map(([label, path]) => (
+                    <button key={path} type="button" onClick={() => navigate(path)} className="w-full flex items-center justify-between py-2.5 min-h-[40px] text-left">
+                      <span className="text-xs font-medium text-foreground">{label}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
+            </TabsContent>
           </Panel>
 
           <div className="mt-4 flex justify-end">
             <button
+              type="button"
               onClick={() => setConfirmReset(true)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive transition-colors active:scale-[0.97]"
             >
@@ -566,7 +690,7 @@ export default function Settings() {
             </button>
           </div>
         </div>
-      </div>
+      </Tabs>
 
       <ConfirmDialog
         open={confirmReset}

@@ -1,7 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useHistory, useQueue } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
+import { FailureNote } from '@/components/common/FailureNote';
+import { VirtualList } from '@/components/common/VirtualList';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { formatBytes, generateId, isTorrentUrl } from '@/services';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
@@ -54,13 +57,21 @@ function torrentFilePath(item: HistoryItem, name: string): string {
   return `${dest}/${name}`;
 }
 
+const iconButton = 'p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]';
+
+function statusIcon(status: string) {
+  if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" aria-label="Completed" />;
+  if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" aria-label="Failed" />;
+  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Canceled" />;
+}
+
 /** One page for everything that has finished, one way or another: completed,
  * failed, and canceled downloads, in tabs. Replaces the old Downloads / Failed /
- * History trio, which showed the same records three ways. */
+ * History trio, which showed the same records three ways. Long libraries are
+ * windowed — only the rows near the viewport are mounted. */
 export default function Library() {
   const { items, removeFromHistory, clearHistory } = useHistory();
   const { addToQueue } = useQueue();
-  const service = useService();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
@@ -91,8 +102,11 @@ export default function Library() {
     toast.success(`${item.status === 'failed' ? 'Retrying' : 'Queued again'}: ${item.metadata.title}`);
   }, [addToQueue, removeFromHistory]);
 
-  const inTab = items.filter(i => tab === 'all' || i.status === tab);
-  const filtered = inTab.filter(i => !search || i.metadata.title.toLowerCase().includes(search.toLowerCase()));
+  const inTab = useMemo(() => items.filter(i => tab === 'all' || i.status === tab), [items, tab]);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return q ? inTab.filter(i => i.metadata.title.toLowerCase().includes(q)) : inTab;
+  }, [inTab, search]);
 
   const tabs = (['all', 'completed', 'failed', 'canceled'] as const).map(key => ({
     key,
@@ -105,11 +119,7 @@ export default function Library() {
     else items.filter(i => i.status === tab).forEach(i => removeFromHistory(i.id));
   }, [tab, items, clearHistory, removeFromHistory]);
 
-  const statusIcon = (status: string) => {
-    if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" />;
-    if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" />;
-    return <Ban className="w-3 h-3 text-muted-foreground" />;
-  };
+  const toggleExpanded = useCallback((id: string) => setExpandedId(cur => (cur === id ? null : id)), []);
 
   return (
     <div className="page-container">
@@ -120,6 +130,7 @@ export default function Library() {
         </div>
         {inTab.length > 0 && (
           <button
+            type="button"
             onClick={() => setConfirmClear(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
@@ -128,224 +139,72 @@ export default function Library() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 mb-4">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
-              tab === t.key ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground'
-            )}
-          >
-            {t.label}
-            <span className="ml-1.5 tabular-nums opacity-60">{t.count}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      {items.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40 mb-4 max-w-sm">
-          <Search className="w-3.5 h-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search library..."
-            aria-label="Search library"
-            className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
-          />
-        </div>
-      )}
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={tab === 'failed' ? XCircle : Clock}
-          title={tab === 'failed' ? 'No failed downloads' : 'Nothing here yet'}
-          description={
-            tab === 'failed'
-              ? 'Downloads that hit errors land here with a reason and a retry button.'
-              : 'Finished downloads will appear here. Paste a URL on the Dashboard to get started.'
-          }
-        />
-      ) : (
-        <div className="space-y-1.5">
-          {filtered.map((item, i) => (
-            <div
-              key={item.id}
-              className="glass-strong rounded-xl p-3 animate-fade-in"
-              style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
+        <TabsList aria-label="Filter library" className="h-auto gap-1 bg-transparent p-0 mb-4">
+          {tabs.map(t => (
+            <TabsTrigger
+              key={t.key}
+              value={t.key}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground',
+                'data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none',
+              )}
             >
-              <div className="flex items-start gap-3">
-                {item.status === 'failed' ? (
-                  <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <AlertTriangle className="w-4 h-4 text-destructive" />
-                  </div>
-                ) : (
-                  <Thumb
-                    src={item.metadata.thumbnail}
-                    className="w-[72px] h-10"
-                    fallbackIcon={statusIcon(item.status)}
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {statusIcon(item.status)}
-                    <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                    {(() => {
-                      // Show what was actually delivered; call out a shortfall
-                      // vs the requested quality instead of hiding it.
-                      const requested = item.settings.format?.resolution;
-                      const actual = item.actualHeight ? `${item.actualHeight}p` : undefined;
-                      if (actual && requested && actual !== requested) {
-                        return <span className="text-amber-500" title={`Requested ${requested}, the site delivered ${actual}`}>{actual} (asked {requested})</span>;
-                      }
-                      const label = actual ?? requested;
-                      return label ? <span>{label}</span> : null;
-                    })()}
-                    {item.settings.audioOnly && <span>Audio</span>}
-                    {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
-                    <span>{formatWhen(item.completedAt)}</span>
-                  </div>
-                  {item.status === 'failed' && item.error && (
-                    <div className="mt-1.5 space-y-1">
-                      <p className="text-[11px] text-destructive">{item.error.message}</p>
-                      {item.error.suggestion && (
-                        <p className="text-[11px] text-muted-foreground/70 italic">{item.error.suggestion}</p>
-                      )}
-                    </div>
-                  )}
-                  {/* Torrent: expandable per-file list with per-file actions */}
-                  {item.status === 'completed' && item.files && item.files.length > 0 && (
-                    <div className="mt-1.5">
-                      <button
-                        onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                        aria-expanded={expandedId === item.id}
-                      >
-                        <ChevronRight className={cn('w-3 h-3 transition-transform', expandedId === item.id && 'rotate-90')} />
-                        {item.files.length} {item.files.length === 1 ? 'file' : 'files'}
-                      </button>
-                      {expandedId === item.id && (
-                        <ul className="mt-1 space-y-0.5">
-                          {item.files.map((f) => (
-                            <li key={f.name} className="flex items-center gap-2 text-[11px] text-muted-foreground group">
-                              <span className="truncate flex-1" title={f.name}>{f.name}</span>
-                              <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
-                              {playerAvailable && (
-                                <button
-                                  onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
-                                  title="Play in Prism"
-                                  aria-label={`Play ${f.name} in Prism`}
-                                  className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                                >
-                                  <MonitorPlay className="w-3 h-3" />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                                title="Open in default player"
-                                aria-label={`Open ${f.name}`}
-                                className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                              >
-                                <Play className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                                title="Show in folder"
-                                aria-label={`Show ${f.name} in folder`}
-                                className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                              >
-                                <FolderOpen className="w-3 h-3" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {item.status === 'completed' && (() => {
-                    const isTorrent = isTorrentUrl(item.metadata.source.url);
-                    // Older torrent completions (flat multi-file torrents)
-                    // were recorded without a path — falling back to the
-                    // destination folder keeps the files reachable.
-                    const revealTarget = item.filePath
-                      ?? (isTorrent ? (item.outputFolder ?? item.settings.destination) : undefined);
-                    return (
-                      <>
-                        {/* In-app player: mpv handles anything, including a
-                            multi-file torrent's folder (loaded as a playlist). */}
-                        {playerAvailable && item.filePath && (
-                          <button
-                            onClick={() => playInPrism(item.filePath!, item.metadata.title)}
-                            title="Play in Prism"
-                            aria-label="Play in Prism"
-                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                          >
-                            <MonitorPlay className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {/* Multi-file torrents resolve to a folder the OS can't
-                            "play" — Show in Folder covers those. */}
-                        {!isTorrent && item.filePath && (
-                          <button
-                            onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                            title="Open in default player"
-                            aria-label="Open in default player"
-                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {revealTarget && (
-                          <button
-                            onClick={() => service.showInFolder(revealTarget).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                            title="Show in folder"
-                            aria-label="Show in folder"
-                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'))}
-                          title="Copy source URL"
-                          aria-label="Copy source URL"
-                          className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    );
-                  })()}
-                  <button
-                    onClick={() => requeue(item)}
-                    title={item.status === 'failed' ? 'Retry download' : 'Download again'}
-                    aria-label={item.status === 'failed' ? 'Retry download' : 'Download again'}
-                    className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => removeFromHistory(item.id)}
-                    title="Remove from library"
-                    aria-label="Remove from library"
-                    className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
+              {t.label}
+              <span className="ml-1.5 tabular-nums opacity-60">{t.count}</span>
+            </TabsTrigger>
           ))}
-        </div>
-      )}
+        </TabsList>
+
+        {/* Search */}
+        {items.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40 mb-4 max-w-sm">
+            <Search className="w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search library..."
+              aria-label="Search library"
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+            />
+          </div>
+        )}
+
+        <TabsContent value={tab} className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+          {filtered.length === 0 ? (
+            <EmptyState
+              icon={tab === 'failed' ? XCircle : Clock}
+              title={tab === 'failed' ? 'No failed downloads' : 'Nothing here yet'}
+              description={
+                tab === 'failed'
+                  ? 'Downloads that hit errors land here with a reason and a retry button.'
+                  : 'Finished downloads will appear here. Paste a URL on the Dashboard to get started.'
+              }
+            />
+          ) : (
+            <VirtualList
+              items={filtered}
+              getKey={item => item.id}
+              estimateSize={64}
+              gap={6}
+              aria-label={`${TAB_LABELS[tab]} downloads`}
+              role="list"
+              renderItem={item => (
+                <LibraryRow
+                  item={item}
+                  expanded={expandedId === item.id}
+                  playerAvailable={playerAvailable}
+                  onToggleExpanded={toggleExpanded}
+                  onRequeue={requeue}
+                  onRemove={removeFromHistory}
+                />
+              )}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={confirmClear}
@@ -363,3 +222,176 @@ export default function Library() {
     </div>
   );
 }
+
+const LibraryRow = React.memo(function LibraryRow({
+  item, expanded, playerAvailable, onToggleExpanded, onRequeue, onRemove,
+}: {
+  item: HistoryItem;
+  expanded: boolean;
+  playerAvailable: boolean;
+  onToggleExpanded: (id: string) => void;
+  onRequeue: (item: HistoryItem) => void;
+  onRemove: (id: string) => void;
+}) {
+  const service = useService();
+  const isTorrent = isTorrentUrl(item.metadata.source.url);
+  const isFailed = item.status === 'failed';
+
+  return (
+    <div role="listitem" className="surface-row rounded-xl p-3">
+      <div className="flex items-start gap-3">
+        {isFailed ? (
+          <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">
+            <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
+          </div>
+        ) : (
+          <Thumb src={item.metadata.thumbnail} className="w-[72px] h-10" fallbackIcon={statusIcon(item.status)} />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {statusIcon(item.status)}
+            <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+            {(() => {
+              // Show what was actually delivered; call out a shortfall
+              // vs the requested quality instead of hiding it.
+              const requested = item.settings.format?.resolution;
+              const actual = item.actualHeight ? `${item.actualHeight}p` : undefined;
+              if (actual && requested && actual !== requested) {
+                return <span className="text-warning" title={`Requested ${requested}, the site delivered ${actual}`}>{actual} (asked {requested})</span>;
+              }
+              const label = actual ?? requested;
+              return label ? <span>{label}</span> : null;
+            })()}
+            {item.settings.audioOnly && <span>Audio</span>}
+            {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
+            <span>{formatWhen(item.completedAt)}</span>
+          </div>
+          {isFailed && item.error && <FailureNote error={item.error} onRetry={() => onRequeue(item)} />}
+          {/* Torrent: expandable per-file list with per-file actions */}
+          {item.status === 'completed' && item.files && item.files.length > 0 && (
+            <div className="mt-1.5">
+              <button
+                type="button"
+                onClick={() => onToggleExpanded(item.id)}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                aria-expanded={expanded}
+              >
+                <ChevronRight className={cn('w-3 h-3 transition-transform', expanded && 'rotate-90')} />
+                {item.files.length} {item.files.length === 1 ? 'file' : 'files'}
+              </button>
+              {expanded && (
+                <ul className="mt-1 space-y-0.5">
+                  {item.files.map((f) => (
+                    <li key={f.name} className="flex items-center gap-2 text-[11px] text-muted-foreground group">
+                      <span className="truncate flex-1" title={f.name}>{f.name}</span>
+                      <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
+                      {playerAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
+                          title="Play in Prism"
+                          aria-label={`Play ${f.name} in Prism`}
+                          className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                        >
+                          <MonitorPlay className="w-3 h-3" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+                        title="Open in default player"
+                        aria-label={`Open ${f.name}`}
+                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                      >
+                        <Play className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                        title="Show in folder"
+                        aria-label={`Show ${f.name} in folder`}
+                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+                      >
+                        <FolderOpen className="w-3 h-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {item.status === 'completed' && (() => {
+            // Older torrent completions (flat multi-file torrents) were
+            // recorded without a path — falling back to the destination
+            // folder keeps the files reachable.
+            const revealTarget = item.filePath
+              ?? (isTorrent ? (item.outputFolder ?? item.settings.destination) : undefined);
+            return (
+              <>
+                {/* In-app player: mpv handles anything, including a
+                    multi-file torrent's folder (loaded as a playlist). */}
+                {playerAvailable && item.filePath && (
+                  <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title="Play in Prism" aria-label="Play in Prism" className={iconButton}>
+                    <MonitorPlay className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {/* Multi-file torrents resolve to a folder the OS can't
+                    "play" — Show in Folder covers those. */}
+                {!isTorrent && item.filePath && (
+                  <button
+                    type="button"
+                    onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+                    title="Open in default player"
+                    aria-label="Open in default player"
+                    className={iconButton}
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {revealTarget && (
+                  <button
+                    type="button"
+                    onClick={() => service.showInFolder(revealTarget).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+                    title="Show in folder"
+                    aria-label="Show in folder"
+                    className={iconButton}
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'))}
+                  title="Copy source URL"
+                  aria-label="Copy source URL"
+                  className={iconButton}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </>
+            );
+          })()}
+          {/* Failed rows retry from their failure note. */}
+          {!isFailed && (
+            <button type="button" onClick={() => onRequeue(item)} title="Download again" aria-label="Download again" className={iconButton}>
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onRemove(item.id)}
+            title="Remove from library"
+            aria-label="Remove from library"
+            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});

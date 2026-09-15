@@ -276,6 +276,10 @@ export interface AppPreferences {
   // Remembered quality preset per domain (host -> preset id). When you add a URL
   // from a site you've used before, its last-used preset is pre-selected.
   perSitePresets: Record<string, string>;
+  // Pass --force-ipv4 to yt-dlp (lookups and downloads). Many sites throttle
+  // IPv6 downloads; on by default, which was the hardcoded behaviour before
+  // 1.9. Read Rust-side.
+  forceIpv4: boolean;
 }
 
 export interface DiagnosticsEntry {
@@ -366,6 +370,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   extraTrackers: '',
   blocklistUrl: '',
   perSitePresets: {},
+  forceIpv4: true,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

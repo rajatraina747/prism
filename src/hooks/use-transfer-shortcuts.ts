@@ -13,6 +13,8 @@ export interface TransferShortcutHandlers {
 function inEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
+  // A reorder handle uses the arrows to move its row, not the selection.
+  if (target.closest('[data-reorder-handle]')) return true;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 }
 

@@ -22,6 +22,26 @@ export interface ScheduleGate {
 
 const OPEN: ScheduleGate = { blockStarts: false, speedLimitOverrideBytes: null };
 
+export interface QuietHoursStatus {
+  mode: 'pause' | 'limit';
+  /** "07:00" — when the window ends, for the banner. */
+  until: string;
+  /** Throttle mode only: the cap in MB/s. */
+  limitMBps: number;
+}
+
+/** What the UI tells the user while quiet hours are in force, or null when
+ * they aren't — so a held queue never looks like it's just waiting for a slot. */
+export function quietHoursStatus(prefs: AppPreferences, now: Date): QuietHoursStatus | null {
+  if (!prefs.scheduleEnabled) return null;
+  if (!isInQuietHours(now.getHours(), prefs.scheduleStartHour, prefs.scheduleEndHour)) return null;
+  return {
+    mode: prefs.scheduleMode,
+    until: `${String(prefs.scheduleEndHour).padStart(2, '0')}:00`,
+    limitMBps: Math.max(1, prefs.scheduleLimitMBps),
+  };
+}
+
 export function scheduleGate(prefs: AppPreferences, now: Date): ScheduleGate {
   if (!prefs.scheduleEnabled) return OPEN;
   if (!isInQuietHours(now.getHours(), prefs.scheduleStartHour, prefs.scheduleEndHour)) return OPEN;

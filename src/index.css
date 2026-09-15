@@ -121,6 +121,13 @@
     backdrop-filter: blur(16px);
     border: 1px solid hsl(var(--border) / 0.3);
   }
+  /* List rows (Transfers, Library, Subscriptions): the glass look without
+     backdrop-filter. A blur per row repaints on every progress tick and
+     scroll; with hundreds of rows it was the main scrolling cost. */
+  .surface-row {
+    background: hsl(var(--card) / 0.92);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
   .text-balance {
     text-wrap: balance;
   }
@@ -150,6 +157,20 @@
   }
   .panel-header {
     @apply text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3;
+  }
+}
+
+/* Respect "Reduce motion": no entrance animations, pulses, shimmer or smooth
+   scrolling. Progress still updates — only the easing goes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

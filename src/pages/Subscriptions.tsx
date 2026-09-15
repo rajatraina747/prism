@@ -107,8 +107,8 @@ export default function Subscriptions() {
           {items.map((sub, i) => (
             <div
               key={sub.id}
-              className="glass-strong rounded-xl p-3.5 animate-fade-in"
-              style={{ animationDelay: `${i * 50}ms` }}
+              className="surface-row rounded-xl p-3.5 animate-fade-in"
+              style={{ animationDelay: `${Math.min(i, 10) * 50}ms` }}
             >
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${sub.enabled ? 'bg-primary/10' : 'bg-secondary'}`}>

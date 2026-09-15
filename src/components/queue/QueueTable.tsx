@@ -3,9 +3,7 @@ import type { DownloadItem } from '@/types/models';
 import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
-import { classifyError, conciseError } from '@/services/errors';
-import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
-import type { DownloadError } from '@/types/models';
+import { FailureNote } from '@/components/common/FailureNote';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -39,43 +37,19 @@ export interface QueueRowActions {
 
 export interface SelectMods { shift: boolean; meta: boolean }
 
-/** Why a transfer failed and what to do about it, on the row itself: the
- * suggestion first, the engine's own words (one line; full text on hover)
- * beneath, then the fix. Retry is always offered — classification is a
- * best guess — but the fix that matters (browser cookies) comes first. */
-function FailureNote({ error, onRetry }: { error: DownloadError; onRetry: () => void }) {
-  const { suggestion, action } = classifyError(error.message);
-  return (
-    <div className="mt-1.5 space-y-1">
-      <p className="text-[11px] text-destructive">{error.suggestion ?? suggestion}</p>
-      <p className="text-[11px] text-muted-foreground/70 truncate" title={error.message}>{conciseError(error.message)}</p>
-      <div className="flex items-center gap-1.5 pt-0.5">
-        {action === 'cookies' && (
-          <button
-            onClick={() => requestNavigate(COOKIES_SETTINGS_PATH)}
-            className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
-          >
-            Set browser cookies
-          </button>
-        )}
-        <button
-          onClick={onRetry}
-          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
-        >
-          Retry
-        </button>
-      </div>
-    </div>
-  );
-}
 
 interface QueueTableProps extends QueueRowActions {
   items: DownloadItem[];
   selectedIds?: Set<string>;
   onSelect?: (id: string, mods: SelectMods) => void;
+  /** Quiet hours are holding new downloads until this time ("07:00"). */
+  heldUntil?: string;
 }
 
-export function QueueTable({ items, selectedIds, onSelect, onReorder, ...actions }: QueueTableProps) {
+export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil, ...actions }: QueueTableProps) {
+  // Roving tabindex: one row is in the tab order — the first selected one,
+  // else the first row — and arrow keys (global shortcuts) move from there.
+  const focusIndex = Math.max(0, items.findIndex(i => selectedIds?.has(i.id)));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
@@ -115,7 +89,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, ...actions
     // Own provider so the table also works outside App's root provider
     // (tests, the web demo's isolated renders); nesting providers is fine.
     <TooltipProvider delayDuration={400}>
-    <div className="space-y-1.5" role="list" aria-label="Transfers">
+    <div className="space-y-1.5" role="listbox" aria-label="Transfers" aria-multiselectable={onSelect ? true : undefined}>
       {items.map((item, index) => {
         const isDropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
         const isBeingDragged = dragIndex === index;
@@ -123,6 +97,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, ...actions
         return (
           <div
             key={item.id}
+            role="presentation"
             draggable={!!onReorder}
             onDragStart={(e) => handleDragStart(e, index)}
             onDragEnd={handleDragEnd}
@@ -140,6 +115,8 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, ...actions
               index={index}
               count={items.length}
               selected={selectedIds?.has(item.id) ?? false}
+              focusable={index === focusIndex}
+              heldUntil={heldUntil}
               onSelect={onSelect}
               onReorder={onReorder}
               {...actions}
@@ -153,14 +130,25 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, ...actions
 }
 
 const QueueRow = React.memo(function QueueRow({
-  item, index, count, selected, onSelect,
+  item, index, count, selected, focusable, heldUntil, onSelect,
   onPause, onResume, onCancel, onRetry, onRemove, onReorder, onUpdateFiles,
   onReannounce, onRecheck, onRemoveWithData, onMoveTop, onMoveBottom, onShowInFolder, onOpenDetails,
 }: QueueRowActions & {
   item: DownloadItem; index: number; count: number;
   selected: boolean;
+  focusable: boolean;
+  heldUntil?: string;
   onSelect?: (id: string, mods: SelectMods) => void;
 }) {
+  // When the keyboard moves the selection, move focus with it — but only if
+  // focus is already in the list, so a background change never steals it.
+  const rowRef = useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = rowRef.current;
+    if (selected && el && document.activeElement !== el && document.activeElement?.closest('[role="listbox"]') === el.closest('[role="listbox"]')) {
+      el.focus();
+    }
+  }, [selected]);
   const service = useService();
   const copyLink = useCallback(() => {
     service.copyToClipboard(item.metadata.source.url)
@@ -188,13 +176,16 @@ const QueueRow = React.memo(function QueueRow({
 
   const row = (
     <div
-      role="listitem"
+      ref={rowRef}
+      role="option"
       aria-selected={selected}
+      aria-label={`${item.metadata.title}, ${item.status}`}
+      tabIndex={focusable ? 0 : -1}
       data-selected={selected || undefined}
       onClick={handleClick}
       onDoubleClick={() => onOpenDetails?.(item.id)}
       className={cn(
-        'glass-strong rounded-xl p-3.5 animate-fade-in cursor-default transition-shadow',
+        'surface-row rounded-xl p-3.5 animate-fade-in cursor-default transition-shadow',
         selected && 'ring-1 ring-primary/60 bg-primary/5',
       )}
       style={{ animationDelay: `${Math.min(index, 10) * 40}ms` }}
@@ -205,17 +196,18 @@ const QueueRow = React.memo(function QueueRow({
           <div
             role="button"
             tabIndex={0}
+            data-reorder-handle
             className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground focus:text-muted-foreground transition-colors"
             title="Drag to reorder (or focus and use arrow keys)"
             aria-label={`Reorder ${item.metadata.title} — position ${index + 1} of ${count}. Use arrow keys to move.`}
             onKeyDown={(e) => {
-              if (e.key === 'ArrowUp' && index > 0) {
-                e.preventDefault();
-                onReorder(index, index - 1);
-              } else if (e.key === 'ArrowDown' && index < count - 1) {
-                e.preventDefault();
-                onReorder(index, index + 1);
-              }
+              if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+              // The handle owns the arrows: without this the Transfers
+              // shortcuts also moved the selection on the same keypress.
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.key === 'ArrowUp' && index > 0) onReorder(index, index - 1);
+              else if (e.key === 'ArrowDown' && index < count - 1) onReorder(index, index + 1);
             }}
           >
             <GripVertical className="w-4 h-4" strokeWidth={1.5} />
@@ -292,7 +284,9 @@ const QueueRow = React.memo(function QueueRow({
                   : `${formatBytes(item.downloadedBytes)} · size pending`}
               </span>
             )}
-            {isQueued && <span>Waiting for a slot</span>}
+            {isQueued && (heldUntil
+              ? <span className="text-warning">Held for quiet hours · until {heldUntil}</span>
+              : <span>Waiting for a slot</span>)}
           </div>
 
           {isFailed && item.error && (

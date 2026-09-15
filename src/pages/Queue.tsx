@@ -5,12 +5,15 @@ import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
 import { EmptyState, ConfirmDialog } from '@/components/common';
+import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
+import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
 import { FILTERS, SORTS, filterCounts, visibleTransfers, nextSelection, isTransfer } from '@/stores/transfers';
 import { useTransferShortcuts, type TransferShortcutHandlers } from '@/hooks/use-transfer-shortcuts';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ArrowDownToLine, Pause, Play, Search, ArrowUpDown, RefreshCw, Trash2, X } from 'lucide-react';
@@ -55,6 +58,8 @@ export default function Queue() {
   const setFilter = (f: TransfersFilter) => updatePreference('transfersFilter', f);
   const setSort = (s: TransfersSort) => updatePreference('transfersSort', s);
 
+  const now = useMinuteClock();
+  const quiet = quietHoursStatus(preferences, now);
   const activeItems = useMemo(() => items.filter(isTransfer), [items]);
   const counts = useMemo(() => filterCounts(activeItems), [activeItems]);
   const visibleItems = useMemo(() => visibleTransfers(items, filter, sort, search), [items, filter, sort, search]);
@@ -174,26 +179,30 @@ export default function Queue() {
         </div>
       </div>
 
+      <QuietHoursBanner className="mb-3" />
+
+      {/* `contents` keeps the page's flex layout: the Tabs root only ties the
+          filter tabs to the list panel for assistive tech. */}
+      <Tabs value={filter} onValueChange={(v) => setFilter(v as TransfersFilter)} className="contents">
       {/* Filter tabs + sort + search */}
       {activeItems.length > 0 && (
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-1" role="tablist" aria-label="Filter transfers">
+          <TabsList aria-label="Filter transfers" className="h-auto gap-1 bg-transparent p-0">
             {FILTERS.map(f => (
-              <button
+              <TabsTrigger
                 key={f.id}
-                role="tab"
-                aria-selected={filter === f.id}
-                onClick={() => setFilter(f.id)}
+                value={f.id}
                 className={cn(
-                  'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
-                  filter === f.id ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground',
+                  'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors',
+                  'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground',
+                  'data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none',
                   counts[f.id] === 0 && filter !== f.id && 'opacity-50',
                 )}
               >
                 {f.label}<span className="ml-1 tabular-nums opacity-60">{counts[f.id]}</span>
-              </button>
+              </TabsTrigger>
             ))}
-          </div>
+          </TabsList>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Sort transfers">
@@ -248,9 +257,10 @@ export default function Queue() {
             description={search ? `Nothing matches “${search}”.` : `Nothing is ${FILTERS.find(f => f.id === filter)?.label.toLowerCase()} right now.`}
           />
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <TabsContent value={filter} className="flex-1 min-h-0 overflow-auto mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
             <QueueTable
               items={visibleItems}
+              heldUntil={quiet?.mode === 'pause' ? quiet.until : undefined}
               selectedIds={selected}
               onSelect={onSelect}
               onPause={pauseDownload}
@@ -268,7 +278,7 @@ export default function Queue() {
               onShowInFolder={showInFolder}
               onOpenDetails={(id) => { setSelected(new Set([id])); setAnchor(id); setDetailsOpen(true); }}
             />
-          </div>
+          </TabsContent>
         )}
 
         {detailsOpen && detailItem && (
@@ -285,6 +295,7 @@ export default function Queue() {
 
         <SessionFooter hasTorrents={hasTorrents} />
       </div>
+      </Tabs>
 
       <ConfirmDialog
         open={confirmDelete !== null}

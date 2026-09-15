@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { TorrentFileEntry } from '@/types/models';
 import { formatBytes } from '@/services';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/common/VirtualList';
 import { FolderTree, Check, Loader2 } from 'lucide-react';
 
 interface TorrentFilesModalProps {
@@ -84,10 +85,21 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
               </span>
             </div>
 
-            <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
-              {files.map(file => (
+            <VirtualList
+              items={files}
+              getKey={file => file.index}
+              estimateSize={34}
+              gap={4}
+              threshold={100}
+              scroll="self"
+              role="group"
+              aria-label="Files in this torrent"
+              className="max-h-72 pr-1"
+              renderItem={file => (
                 <button
-                  key={file.index}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={selected.has(file.index)}
                   onClick={() => toggle(file.index)}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
@@ -96,7 +108,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                       : 'bg-secondary/30 border border-transparent hover:bg-secondary/50',
                   )}
                 >
-                  <div className={cn(
+                  <div aria-hidden="true" className={cn(
                     'w-4 h-4 rounded flex items-center justify-center shrink-0 border',
                     selected.has(file.index) ? 'bg-primary border-primary' : 'border-border',
                   )}>
@@ -109,8 +121,8 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                     {formatBytes(file.size)}
                   </span>
                 </button>
-              ))}
-            </div>
+              )}
+            />
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">
               <button
