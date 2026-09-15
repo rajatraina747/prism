@@ -1,7 +1,8 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useQueue, useHistory } from '@/stores/AppProvider';
+import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
+import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useDropToAdd } from '@/hooks/use-drop-to-add';
@@ -36,6 +37,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const { items: historyItems } = useHistory();
   const activeCount = queueItems.filter(i => i.status === 'downloading' || i.status === 'queued').length;
   const failedCount = historyItems.filter(i => i.status === 'failed').length;
+  const engine = useEngineStatus();
 
   return (
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
@@ -107,6 +109,13 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
           >
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span>{item.label}</span>
+            {item.path === '/settings' && engine?.updateAvailable && (
+              <span
+                title={`Downloader engine ${engine.latest} is available`}
+                aria-label="Engine update available"
+                className="ml-auto w-2 h-2 rounded-full bg-primary"
+              />
+            )}
           </NavLink>
         ))}
       </div>
@@ -170,6 +179,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Navigation asked for from outside a route (e.g. a failure toast's
   // "Set browser cookies").
   React.useEffect(() => onNavigateRequest((path) => navigateRef.current(path)), []);
+
+  // Engine freshness: an hourly look at a lookup Rust caches for a day, so
+  // GitHub is asked at most daily. Offline or rate-limited just means no nudge.
+  const { preferences } = useSettings();
+  const { engineAutoCheck, engineAutoUpdate } = preferences;
+  React.useEffect(() => {
+    if (service.isDemo || !engineAutoCheck) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const info = await service.checkEngineUpdate(false);
+        if (cancelled) return;
+        publishEngineInfo(info);
+        if (info.updateAvailable && engineAutoUpdate) {
+          const version = await service.updateEngine();
+          toast.success(`Downloader engine updated to ${version}`);
+          publishEngineInfo(await service.getEngineInfo());
+        }
+      } catch { /* try again on the next tick */ }
+    };
+    void run();
+    const timer = setInterval(() => void run(), 60 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [service, engineAutoCheck, engineAutoUpdate]);
 
   const addLinks = React.useCallback((links: string[]) => {
     pushDeepLink(links, 'app');

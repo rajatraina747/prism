@@ -8,7 +8,7 @@ import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
 import { classifyError, errorText } from '@/services/errors';
-import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
+import { requestNavigate, COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 
 let audioCtx: AudioContext | null = null;
 function playNotificationSound() {
@@ -337,9 +337,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 description: suggestion,
                 action: action === 'cookies'
                   ? { label: 'Set browser cookies', onClick: () => requestNavigate(COOKIES_SETTINGS_PATH) }
-                  : action === 'retry'
-                    ? { label: 'Retry', onClick: () => retryRef.current(item.id) }
-                    : undefined,
+                  : action === 'engine'
+                    ? { label: 'Update engine', onClick: () => requestNavigate(ENGINE_SETTINGS_PATH) }
+                    : action === 'retry'
+                      ? { label: 'Retry', onClick: () => retryRef.current(item.id) }
+                      : undefined,
                 duration: 10000,
               });
               if (!document.hasFocus()) {

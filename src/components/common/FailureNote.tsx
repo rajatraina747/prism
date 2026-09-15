@@ -1,6 +1,6 @@
 import type { DownloadError } from '@/types/models';
 import { classifyError, conciseError } from '@/services/errors';
-import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
+import { requestNavigate, COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 
 /** Why a download failed and what to do about it: the suggestion first, the
  * engine's own words (one line; full text on hover) beneath, then the fix.
@@ -25,6 +25,15 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
             className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
           >
             Set browser cookies
+          </button>
+        )}
+        {action === 'engine' && (
+          <button
+            type="button"
+            onClick={() => requestNavigate(ENGINE_SETTINGS_PATH)}
+            className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
+          >
+            Update engine
           </button>
         )}
         <button

@@ -3,6 +3,8 @@
 
 /** Where "Set browser cookies" lands. One place to change if Settings moves. */
 export const COOKIES_SETTINGS_PATH = '/settings?section=video';
+/** Where "Update engine" lands. */
+export const ENGINE_SETTINGS_PATH = '/settings?section=updates';
 
 let listener: ((path: string) => void) | null = null;
 

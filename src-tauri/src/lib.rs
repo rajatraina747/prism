@@ -1789,6 +1789,8 @@ pub fn run() {
             engine::get_ytdlp_version,
             engine::update_ytdlp,
             engine::reset_ytdlp,
+            engine::get_engine_info,
+            engine::check_engine_update,
             updater::check_app_update,
             updater::install_app_update,
             player::fixup_player_video,

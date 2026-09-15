@@ -284,6 +284,11 @@ export interface AppPreferences {
   // IPv6 downloads; on by default, which was the hardcoded behaviour before
   // 1.9. Read Rust-side.
   forceIpv4: boolean;
+  // Compare the yt-dlp engine with its newest release once a day (cached in
+  // Rust) and nudge in the sidebar when it's behind.
+  engineAutoCheck: boolean;
+  // Install a newer engine as soon as the daily check finds one.
+  engineAutoUpdate: boolean;
 }
 
 export interface DiagnosticsEntry {
@@ -375,6 +380,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   blocklistUrl: '',
   perSitePresets: {},
   forceIpv4: true,
+  engineAutoCheck: true,
+  engineAutoUpdate: false,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

@@ -21,8 +21,9 @@ describe('classifyError', () => {
   it('keeps network failures auto-retryable and unknown ones not', () => {
     expect(classifyError('Connection reset by peer')).toMatchObject({ category: 'network', action: 'retry' });
     expect(classifyError('HTTP Error 429: Too Many Requests').category).toBe('network');
-    // 403 is usually the extractor, not the network: offer retry, don't auto-retry.
-    expect(classifyError('HTTP Error 403: Forbidden')).toMatchObject({ category: 'unknown', action: 'retry' });
+    // 403 is usually the extractor, not the network: offer an engine update, don't auto-retry.
+    expect(classifyError('HTTP Error 403: Forbidden')).toMatchObject({ category: 'unknown', action: 'engine' });
+    expect(classifyError('whatever', 'forbidden').action).toBe('engine');
     expect(classifyError('something odd happened')).toMatchObject({ category: 'unknown', action: 'retry' });
   });
 });

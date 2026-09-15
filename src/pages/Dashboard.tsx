@@ -15,7 +15,7 @@ import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName,
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
-import { COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
+import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
 import { cn } from '@/lib/utils';
 import {
@@ -464,9 +464,11 @@ export default function Dashboard() {
         errorHint={parseProblem?.suggestion}
         errorAction={parseProblem?.action === 'cookies'
           ? { label: 'Set browser cookies', onClick: () => navigate(COOKIES_SETTINGS_PATH) }
-          : parseProblem?.action === 'retry' && lastParsedUrlRef.current
-            ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
-            : undefined}
+          : parseProblem?.action === 'engine'
+            ? { label: 'Update engine', onClick: () => navigate(ENGINE_SETTINGS_PATH) }
+            : parseProblem?.action === 'retry' && lastParsedUrlRef.current
+              ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
+              : undefined}
         onErrorClear={() => setParseError(null)}
       />
 

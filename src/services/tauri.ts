@@ -8,7 +8,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory). The webview's fs
@@ -476,6 +476,14 @@ export class TauriPrismService implements IPrismService {
 
   async resetEngine(): Promise<void> {
     await invoke('reset_ytdlp');
+  }
+
+  async getEngineInfo(): Promise<EngineInfo> {
+    return invoke<EngineInfo>('get_engine_info');
+  }
+
+  async checkEngineUpdate(force = false): Promise<EngineInfo> {
+    return invoke<EngineInfo>('check_engine_update', { force });
   }
 
   persistence = {

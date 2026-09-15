@@ -1,9 +1,10 @@
 import type { DownloadError } from '@/types/models';
 
 /** What the UI offers next to a failure. `cookies` opens the Browser cookies
- * setting; `retry` re-runs the item; `none` when retrying can't help (the
- * video is gone, region-locked, the URL isn't supported). */
-export type FailureAction = 'retry' | 'cookies' | 'none';
+ * setting; `engine` opens Updates, for failures a newer yt-dlp usually fixes;
+ * `retry` re-runs the item; `none` when retrying can't help (the video is
+ * gone, region-locked, the URL isn't supported). */
+export type FailureAction = 'retry' | 'cookies' | 'engine' | 'none';
 
 export interface ClassifiedError {
   category: DownloadError['category'];
@@ -59,7 +60,7 @@ const BY_CODE: Partial<Record<EngineErrorCode, ClassifiedError>> = {
   unavailable: { category: 'parse', suggestion: 'This video is no longer available', action: 'none' },
   geo: { category: 'parse', suggestion: 'Not available in your region', action: 'none' },
   rate_limited: { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes, then retry', action: 'retry' },
-  forbidden: { category: 'unknown', suggestion: 'The site refused the download — update the engine in Settings → Updates, then retry', action: 'retry' },
+  forbidden: { category: 'unknown', suggestion: 'The site refused the download — update the engine in Settings → Updates, then retry', action: 'engine' },
   disk_full: { category: 'storage', suggestion: 'Free up disk space, then retry', action: 'retry' },
   permission: { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' },
   format: { category: 'unknown', suggestion: 'Try a different quality', action: 'retry' },
@@ -97,7 +98,7 @@ export function classifyError(msg: string, code?: EngineErrorCode): ClassifiedEr
     return { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes, then retry', action: 'retry' };
   // The site refused the request: usually extraction changed under the engine
   if (lower.includes('403') || lower.includes('forbidden'))
-    return { category: 'unknown', suggestion: 'The site refused the download — update the engine in Settings → Updates, then retry', action: 'retry' };
+    return { category: 'unknown', suggestion: 'The site refused the download — update the engine in Settings → Updates, then retry', action: 'engine' };
   if (lower.includes('permission') || lower.includes('access denied'))
     return { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' };
   if (lower.includes('disk') || lower.includes('space') || lower.includes('no space') || lower.includes('full'))

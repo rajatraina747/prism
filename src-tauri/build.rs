@@ -7,8 +7,24 @@ fn main() {
     // step (ROADMAP → In-app player → Distribution).
     #[cfg(target_os = "macos")]
     stage_player_libs();
+    export_bundled_ytdlp_version();
 
     tauri_build::build()
+}
+
+/// The yt-dlp version scripts/sidecars.lock pins, so the app can tell whether
+/// a self-updated engine is newer than the one it ships with (engine.rs).
+fn export_bundled_ytdlp_version() {
+    let lock = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/sidecars.lock");
+    println!("cargo:rerun-if-changed={}", lock.display());
+    let version = std::fs::read_to_string(&lock)
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.trim().strip_prefix("YTDLP_VERSION=").map(|v| v.trim().to_string()))
+        })
+        .unwrap_or_default();
+    println!("cargo:rustc-env=PRISM_BUNDLED_YTDLP_VERSION={version}");
 }
 
 #[cfg(target_os = "macos")]

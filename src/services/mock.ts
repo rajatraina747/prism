@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -363,6 +363,23 @@ export class MockPrismService implements IPrismService {
 
   async resetEngine(): Promise<void> {
     // Mock: no-op
+  }
+
+  async getEngineInfo(): Promise<EngineInfo> {
+    return {
+      active: 'bundled',
+      activeVersion: '2026.01.01-mock',
+      bundledVersion: '2026.01.01-mock',
+      managedVersion: null,
+      latest: null,
+      checkedAt: null,
+      updateAvailable: false,
+    };
+  }
+
+  async checkEngineUpdate(): Promise<EngineInfo> {
+    // The demo never contacts GitHub.
+    return this.getEngineInfo();
   }
 
   persistence = {

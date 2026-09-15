@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
+import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes } from '@/services';
 import { Panel, ConfirmDialog } from '@/components/common';
@@ -254,10 +255,12 @@ export default function Settings() {
   const [engineUpdating, setEngineUpdating] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [ffmpegOk, setFfmpegOk] = React.useState(true);
+  const engine = useEngineStatus();
 
   React.useEffect(() => {
     if (activeSection !== 'updates') return;
     service.getEngineVersion().then(setEngineVersion).catch(() => setEngineVersion(null));
+    service.getEngineInfo().then(publishEngineInfo).catch(() => {});
   }, [activeSection, service]);
 
   React.useEffect(() => {
@@ -285,6 +288,9 @@ export default function Settings() {
             >
               <s.icon className="w-3.5 h-3.5" strokeWidth={1.8} aria-hidden="true" />
               {s.label}
+              {s.id === 'updates' && engine?.updateAvailable && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" aria-label="Engine update available" />
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -601,7 +607,9 @@ export default function Settings() {
                 )}
                 <SettingRow
                   label="Downloader engine"
-                  description={engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
+                  description={engine?.updateAvailable
+                    ? `yt-dlp ${engineVersion ?? engine.activeVersion ?? ''} — ${engine.latest} is available`
+                    : engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
                 >
                   <button
                     type="button"
@@ -611,6 +619,7 @@ export default function Settings() {
                       try {
                         const v = await service.updateEngine();
                         setEngineVersion(v);
+                        service.getEngineInfo().then(publishEngineInfo).catch(() => {});
                         toast.success(`Downloader engine updated to ${v}`);
                       } catch (e) {
                         toast.error('Engine update failed: ' + (e instanceof Error ? e.message : String(e)));
@@ -632,6 +641,12 @@ export default function Settings() {
                       </span>
                     ) : 'Update Engine'}
                   </button>
+                </SettingRow>
+                <SettingRow label="Check for engine updates" description="Once a day, compare the downloader engine with the newest yt-dlp release">
+                  <Toggle checked={p.engineAutoCheck} onChange={v => updatePreference('engineAutoCheck', v)} />
+                </SettingRow>
+                <SettingRow label="Update the engine automatically" description="Install a newer yt-dlp as soon as the daily check finds one">
+                  <Toggle checked={p.engineAutoUpdate} onChange={v => updatePreference('engineAutoUpdate', v)} />
                 </SettingRow>
               </div>
             </TabsContent>

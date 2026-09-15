@@ -42,6 +42,18 @@ export type CompletionCallback = (
  * `app`: the user put it there inside Prism (tray Paste & Download, a drop). */
 export type LinkOrigin = 'external' | 'app';
 
+/** Mirrors `EngineInfo` in src-tauri/src/engine.rs. */
+export interface EngineInfo {
+  active: 'managed' | 'bundled';
+  /** Null for a self-updated engine from before 2.0 (version never recorded). */
+  activeVersion: string | null;
+  bundledVersion: string;
+  managedVersion: string | null;
+  latest: string | null;
+  checkedAt: string | null;
+  updateAvailable: boolean;
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   version?: string;
@@ -138,6 +150,10 @@ export interface IPrismService {
   getEngineVersion(): Promise<string>;
   updateEngine(): Promise<string>;
   resetEngine(): Promise<void>;
+  /** Which engine runs and whether a newer yt-dlp exists (no network). */
+  getEngineInfo(): Promise<EngineInfo>;
+  /** Ask GitHub for the newest yt-dlp; reuses a lookup under a day old unless `force`. */
+  checkEngineUpdate(force?: boolean): Promise<EngineInfo>;
 
   // Persistence
   persistence: {
