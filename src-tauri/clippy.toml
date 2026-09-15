@@ -1,0 +1,9 @@
+# mpv must never be called on — or waited on from — the main thread: on macOS
+# that deadlocks the whole app (see src/mpv_worker.rs). The main-thread hops
+# below are allowed only at the AppKit-only call sites in src/player.rs, each
+# marked with #[allow(clippy::disallowed_methods)].
+disallowed-methods = [
+    { path = "tauri::AppHandle::run_on_main_thread", reason = "mpv calls go through MpvWorker::run; only AppKit-only work may hop to main" },
+    { path = "tauri::Window::run_on_main_thread", reason = "mpv calls go through MpvWorker::run; only AppKit-only work may hop to main" },
+    { path = "tauri::WebviewWindow::run_on_main_thread", reason = "mpv calls go through MpvWorker::run; only AppKit-only work may hop to main" },
+]

@@ -5,25 +5,20 @@ use crate::MpvExt;
 use crate::Result;
 use crate::VideoMarginRatio;
 
-// PRISM VENDOR PATCH: every command here previously ran on a tokio worker
-// thread (`init` inline in the async fn, the rest via `spawn_blocking`) —
-// never the main thread. On macOS, AppKit/Cocoa window creation is
-// main-thread-only; calling `mpv_wrapper_create` with `force-window`/`wid`
-// off the main thread returns NULL — intermittently in a dev build,
-// reliably in a release build ("Failed to create mpv instance" on every
-// attempt). `run_on_main` serializes every FFI call onto the main thread via
-// `AppHandle::run_on_main_thread`, the same pattern already used in Prism's
-// own `player.rs` for the window-adoption fixup.
-fn run_on_main<R: Runtime, T: Send + 'static>(
-    app: &AppHandle<R>,
-    f: impl FnOnce() -> T + Send + 'static,
+// PRISM VENDOR PATCH: every FFI call runs on the blocking pool — never on the
+// main thread. (1.7.2 moved them all onto the main thread, which deadlocks on
+// macOS: mpv's video output dispatches synchronously to the main thread while
+// it starts, so an mpv call made *from* main waits on a startup that is itself
+// waiting on main.) Prism grants none of these commands to a webview — it
+// drives mpv through its own allowlisted player_* commands on a dedicated
+// thread (src/mpv_worker.rs) — but they must not reintroduce the pattern.
+async fn blocking<R: Runtime, T: Send + 'static>(
+    app: AppHandle<R>,
+    f: impl FnOnce(AppHandle<R>) -> Result<T> + Send + 'static,
 ) -> Result<T> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    app.run_on_main_thread(move || {
-        let _ = tx.send(f());
-    })?;
-    rx.recv()
-        .map_err(|_| crate::Error::FFI("main-thread task was dropped before completing".into()))
+    tauri::async_runtime::spawn_blocking(move || f(app))
+        .await
+        .map_err(|e| crate::Error::FFI(format!("mpv task failed: {e}")))?
 }
 
 #[command]
@@ -32,14 +27,12 @@ pub(crate) async fn init<R: Runtime>(
     mpv_config: MpvConfig,
     window_label: String,
 ) -> Result<String> {
-    let app2 = app.clone();
-    run_on_main(&app, move || app2.mpv().init(mpv_config, &window_label))?
+    blocking(app, move |app| app.mpv().init(mpv_config, &window_label)).await
 }
 
 #[command]
 pub(crate) async fn destroy<R: Runtime>(app: AppHandle<R>, window_label: String) -> Result<()> {
-    let app2 = app.clone();
-    run_on_main(&app, move || app2.mpv().destroy(&window_label))?
+    blocking(app, move |app| app.mpv().destroy(&window_label)).await
 }
 
 #[command]
@@ -49,8 +42,7 @@ pub(crate) async fn command<R: Runtime>(
     args: Vec<serde_json::Value>,
     window_label: String,
 ) -> Result<()> {
-    let app2 = app.clone();
-    run_on_main(&app, move || app2.mpv().command(&name, &args, &window_label))?
+    blocking(app, move |app| app.mpv().command(&name, &args, &window_label)).await
 }
 
 #[command]
@@ -60,10 +52,7 @@ pub(crate) async fn set_property<R: Runtime>(
     value: serde_json::Value,
     window_label: String,
 ) -> Result<()> {
-    let app2 = app.clone();
-    run_on_main(&app, move || {
-        app2.mpv().set_property(&name, &value, &window_label)
-    })?
+    blocking(app, move |app| app.mpv().set_property(&name, &value, &window_label)).await
 }
 
 #[command]
@@ -73,10 +62,7 @@ pub(crate) async fn get_property<R: Runtime>(
     format: String,
     window_label: String,
 ) -> Result<serde_json::Value> {
-    let app2 = app.clone();
-    run_on_main(&app, move || {
-        app2.mpv().get_property(name, format, &window_label)
-    })?
+    blocking(app, move |app| app.mpv().get_property(name, format, &window_label)).await
 }
 
 #[command]
@@ -85,8 +71,5 @@ pub(crate) async fn set_video_margin_ratio<R: Runtime>(
     ratio: VideoMarginRatio,
     window_label: String,
 ) -> Result<()> {
-    let app2 = app.clone();
-    run_on_main(&app, move || {
-        app2.mpv().set_video_margin_ratio(ratio, &window_label)
-    })?
+    blocking(app, move |app| app.mpv().set_video_margin_ratio(ratio, &window_label)).await
 }

@@ -87,6 +87,20 @@ Carried over from the review, still open: S-5 (pin Homebrew mpv), S-11
 (`explorer /select,` concatenation), S-12 (raw stderr in error strings —
 the UI now shows a one-line summary, the full text is still returned).
 
+### v1.9.1 — player hotfix
+
+- [x] macOS: opening the in-app player could deadlock the whole app. mpv was
+      called on the main thread while its video output was waiting on the
+      main thread. All mpv calls now go through one worker thread with
+      timeouts (`mpv_worker.rs`), and the plugin's close handler no longer
+      blocks main.
+- [x] Guards: `clippy.toml` bans `run_on_main_thread` outside the AppKit-only
+      sites; a unit test checks nothing but the worker reaches mpv.
+- [x] Verification: `examples/mpv_thread_repro.rs` reproduces the old deadlock
+      and checks the new call pattern. `scripts/verify-player-macos.sh` checks
+      a real app bundle end to end. Postmortem addendum in
+      [docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md).
+
 ### v2.0 — "Download manager"
 
 - [ ] Bundle a static LGPL ffmpeg (pinned + SHA in `sidecars.lock`).
