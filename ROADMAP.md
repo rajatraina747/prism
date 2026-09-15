@@ -101,6 +101,17 @@ the UI now shows a one-line summary, the full text is still returned).
       a real app bundle end to end. Postmortem addendum in
       [docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md).
 
+### v1.9.2 — Vulkan driver hotfix
+
+- [x] macOS: the player's video output runs on Vulkan, and macOS has no
+      Vulkan driver. Releases since 1.7.1 bundled the Vulkan loader but not
+      MoltenVK, so video only worked where Homebrew's molten-vk was installed
+      (the development Mac included). The bundle now ships
+      `libMoltenVK.dylib` with a manifest, and the app points the loader at it
+      at startup. Proven with the thread harness and mpv's log: with the
+      loader pointed at a missing driver the video output fails to start; with
+      the bundled manifest alone it plays.
+
 ### v2.0 — "Download manager"
 
 - [ ] Bundle a static LGPL ffmpeg (pinned + SHA in `sidecars.lock`).

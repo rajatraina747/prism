@@ -300,6 +300,11 @@ pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), St
         log::warn!("player init refused: libmpv-wrapper is not bundled");
         return Err("The built-in player isn't included in this build of Prism".into());
     }
+    #[cfg(target_os = "macos")]
+    log::info!(
+        "player Vulkan driver: {}",
+        std::env::var("VK_DRIVER_FILES").unwrap_or_else(|_| "none bundled; system search".into())
+    );
     let cfg = player_mpv_config(&app)?;
     mpv_worker(&app)
         .run("init", INIT_TIMEOUT, move |mpv| {
@@ -476,6 +481,37 @@ mod tests {
             assert!(validate_player_property(p, &json!("x")).is_err(), "{p} must be rejected");
         }
     }
+}
+
+/// Point the Vulkan loader at the MoltenVK driver bundled beside libmpv.
+///
+/// macOS provides no Vulkan driver, and mpv's video output (gpu-next) runs on
+/// Vulkan. Releases up to 1.9.1 shipped the loader but not the driver, so the
+/// player only showed video on Macs that happened to have Homebrew's
+/// molten-vk. Called at the top of `run()`, before any thread exists, because
+/// it sets environment variables. A developer's own setting wins.
+#[cfg(target_os = "macos")]
+pub fn use_bundled_vulkan_driver() {
+    if std::env::var_os("VK_DRIVER_FILES").is_some() || std::env::var_os("VK_ICD_FILENAMES").is_some() {
+        return;
+    }
+    if let Some(manifest) = bundled_vulkan_manifest() {
+        std::env::set_var("VK_DRIVER_FILES", &manifest);
+        // The name loaders before 1.3.207 read.
+        std::env::set_var("VK_ICD_FILENAMES", &manifest);
+    }
+}
+
+/// `Contents/Resources/lib/vulkan/icd.d/MoltenVK_icd.json` in the app bundle;
+/// `<exe dir>/lib/…` in development.
+#[cfg(target_os = "macos")]
+fn bundled_vulkan_manifest() -> Option<std::path::PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let relative = "lib/vulkan/icd.d/MoltenVK_icd.json";
+    [exe_dir.join("../Resources").join(relative), exe_dir.join(relative)]
+        .into_iter()
+        .find(|path| path.is_file())
+        .and_then(|path| path.canonicalize().ok())
 }
 
 /// Whether the embedded player can run: the libmpv wrapper must be reachable —
