@@ -32,7 +32,9 @@ pub enum ErrorCode {
     NotFound,
     Unsupported,
     Format,
+    Checksum,
     EngineMissing,
+    InvalidInput,
     Busy,
     Cancelled,
     Unknown,
@@ -49,6 +51,7 @@ impl ErrorCode {
                 | ErrorCode::Forbidden
                 | ErrorCode::DiskFull
                 | ErrorCode::Format
+                | ErrorCode::Checksum
                 | ErrorCode::Busy
                 | ErrorCode::Unknown
         )

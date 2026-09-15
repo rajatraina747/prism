@@ -85,6 +85,32 @@ export function isTorrentUrl(url: string): boolean {
   return /\.torrent$/i.test(pathPart);
 }
 
+/** File types that are downloaded as they are, by the direct-link engine,
+ * rather than through yt-dlp: disk images, archives, installers, documents.
+ * Video and audio files stay with yt-dlp, which adds metadata and thumbnails. */
+const DIRECT_FILE_RE = /\.(iso|img|dmg|pkg|zip|7z|rar|tar|gz|tgz|bz2|tbz2|xz|txz|zst|exe|msi|msix|appimage|deb|rpm|apk|pdf|epub|mobi|azw3|cbz|cbr|djvu|docx?|xlsx?|pptx?|odt|ods|odp|csv|bin)$/i;
+
+/** An http(s) link straight to a file Prism should fetch as-is. */
+export function isDirectFileUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return DIRECT_FILE_RE.test(decodeURIComponent(u.pathname));
+  } catch {
+    return false;
+  }
+}
+
+/** File name a direct link points at, for the queue until the server names it. */
+export function directFileName(url: string): string {
+  try {
+    const last = new URL(url.trim()).pathname.split('/').filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : 'download';
+  } catch {
+    return 'download';
+  }
+}
+
 /** Canonical per-site key (hostname without www./m.) for preset memory.
  * Accepts a full URL or a bare hostname; null when neither parses to a host. */
 export function siteKey(urlOrHost: string): string | null {

@@ -16,7 +16,8 @@ export interface ClassifiedError {
 export type EngineErrorCode =
   | 'network' | 'timeout' | 'auth' | 'geo' | 'unavailable' | 'rate_limited'
   | 'forbidden' | 'disk_full' | 'permission' | 'not_found' | 'unsupported'
-  | 'format' | 'engine_missing' | 'busy' | 'cancelled' | 'unknown';
+  | 'format' | 'checksum' | 'engine_missing' | 'invalid_input' | 'busy'
+  | 'cancelled' | 'unknown';
 
 /** A structured error from Rust: what commands reject with and what
  * download-complete events carry since 2.0. */
@@ -68,6 +69,8 @@ const BY_CODE: Partial<Record<EngineErrorCode, ClassifiedError>> = {
   network: CHECK_CONNECTION,
   unsupported: LINK_UNSUPPORTED,
   not_found: LINK_UNSUPPORTED,
+  checksum: { category: 'unknown', suggestion: 'The file didn\'t match its expected checksum — retry, or check the checksum you entered', action: 'retry' },
+  invalid_input: { category: 'parse', suggestion: 'Check the link and your proxy settings', action: 'none' },
   engine_missing: { category: 'unknown', suggestion: 'Prism\'s downloader is missing — reinstall Prism', action: 'none' },
   busy: { category: 'unknown', suggestion: 'Prism is busy — try again in a moment', action: 'retry' },
   cancelled: { category: 'unknown', suggestion: 'The download was stopped', action: 'retry' },

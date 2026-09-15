@@ -86,7 +86,7 @@ fn managed_version(binary: &Path) -> Option<String> {
         .filter(|v| version_key(v).is_some())
 }
 
-fn sha256_file(path: &Path) -> std::io::Result<String> {
+pub(crate) fn sha256_file(path: &Path) -> std::io::Result<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;

@@ -123,9 +123,13 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [ ] LGPL media toolchain: self-built macOS ffmpeg and libmpv, BtbN LGPL
       builds for Windows/Linux, all pinned (closes S-5 and the GPL macOS
       bundle).
-- [ ] Engine freshness check: daily, an unobtrusive nudge, and a newer bundled
+- [x] Engine freshness check: daily, an unobtrusive nudge, and a newer bundled
       engine beats an older self-updated one.
-- [ ] HTTP(S) direct-link engine: segments, resume, checksum.
+- [x] HTTP(S) direct-link engine (`http_engine.rs`): up to 4 connections,
+      resume across pause and relaunch, optional SHA-256, quiet-hours cap.
+      Disk images, archives, installers and documents route to it.
+- [ ] Direct links, still to add: a checksum field in the Add sheet, and
+      "download it as a file" when yt-dlp says a link is unsupported.
 - [ ] Stream while downloading ("Play now") — see the torrent arc below.
 
 **Organising**

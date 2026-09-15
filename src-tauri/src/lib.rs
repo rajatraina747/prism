@@ -1,6 +1,7 @@
 mod download_manager;
 mod engine;
 mod errors;
+mod http_engine;
 mod migrate;
 mod mpv_worker;
 mod player;
@@ -1686,6 +1687,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(DownloadManager::new())
+        .manage(http_engine::HttpEngine::new())
         .manage(torrent::TorrentManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .manage(updater::PendingUpdate::default())
@@ -1766,6 +1768,10 @@ pub fn run() {
             parse_playlist,
             start_download,
             cancel_download,
+            http_engine::probe_direct_link,
+            http_engine::start_http_download,
+            http_engine::cancel_http_download,
+            http_engine::set_http_rate_limit,
             start_torrent,
             cancel_torrent,
             pause_torrent,

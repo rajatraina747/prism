@@ -23,7 +23,7 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
-tokio = { version = "1", features = ["sync", "time", "process", "io-util"] }
+tokio = { version = "1", features = ["sync", "time", "process", "io-util", "fs"] }
 opener = "0.7"
 # Scheme validation for the outbound-link command (see open_external).
 url = "2"
@@ -61,6 +61,8 @@ objc2-core-foundation = "0.3"
 # ACL) — see `webview_fs_access_*` in src/lib.rs.
 [dev-dependencies]
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "test"] }
+# Local HTTP server for the direct-download engine tests.
+tokio = { version = "1", features = ["net"] }
 
 # Dev-only: examples/mpv_thread_repro.rs, a standalone verification harness
 # for the commands.rs main-thread patch (not part of the shipped app).

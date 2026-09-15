@@ -246,6 +246,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const tighter = (a: number | null, b: number | null | undefined) =>
       a == null ? (b ?? null) : b == null ? a : Math.min(a, b);
     service.setTorrentRateLimits(tighter(userDown, override), tighter(userUp, override)).catch(() => {});
+    // Direct downloads get their own limit per item at start, like yt-dlp;
+    // this cap reaches the ones already running when quiet hours begin.
+    service.setDirectRateLimit(override ?? null).catch(() => {});
   }, [settings, scheduleTick, service]);
 
   // The failure toast's Retry fires long after this render; read the current

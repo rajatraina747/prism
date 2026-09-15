@@ -14,7 +14,7 @@ export type DownloadStatus =
 
 // How an item is fetched. Absent = 'http' (yt-dlp), the default for every
 // existing item. 'torrent' routes through the librqbit engine instead.
-export type DownloadKind = 'http' | 'torrent';
+export type DownloadKind = 'http' | 'torrent' | 'direct';
 
 // One file inside a (multi-file) torrent, with per-file progress percent.
 export interface TorrentFileInfo {
@@ -104,8 +104,9 @@ export interface DownloadItem {
   // 'processing' while yt-dlp hands off to ffmpeg (merge/extract/embed) —
   // bytes stop moving but the download isn't done. Absent otherwise.
   stage?: 'processing';
-  // Source engine. Absent/'http' = yt-dlp; 'torrent' = librqbit. The torrent
-  // fields below are only populated while kind === 'torrent'.
+  // Source engine. Absent/'http' = yt-dlp; 'torrent' = librqbit; 'direct' =
+  // the direct-link engine (plain files). The torrent fields below are only
+  // populated while kind === 'torrent'.
   kind?: DownloadKind;
   peers?: number;
   // Swarm health: peers discovered / mid-handshake. 0 connected + 0 seen =

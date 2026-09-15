@@ -200,6 +200,10 @@ export class MockPrismService implements IPrismService {
     // Mock: no torrent engine
   }
 
+  async setDirectRateLimit(_bytesPerSecond: number | null): Promise<void> {
+    // Mock: nothing to throttle
+  }
+
   async setTorrentRateLimits(_downloadBps: number | null, _uploadBps: number | null): Promise<void> {
     // Mock: no torrent engine to throttle
   }

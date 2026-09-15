@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, torrentDisplayName, sourceKey, siteKey } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -135,6 +135,30 @@ describe('formatReleaseNotes', () => {
     expect(out).not.toContain('`');
     expect(out).not.toContain('Install');
     expect(out).not.toContain('.dmg');
+  });
+});
+
+describe('isDirectFileUrl', () => {
+  it('routes files to the direct engine', () => {
+    expect(isDirectFileUrl('https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.5.0-amd64-netinst.iso')).toBe(true);
+    expect(isDirectFileUrl('https://example.com/releases/app-2.0.0.dmg?download=1')).toBe(true);
+    expect(isDirectFileUrl('https://example.com/Annual%20Report.PDF')).toBe(true);
+    expect(isDirectFileUrl('http://mirror.example.org/pub/linux-6.9.tar.xz#sha')).toBe(true);
+  });
+
+  it('leaves pages, media and other schemes to yt-dlp or the torrent engine', () => {
+    expect(isDirectFileUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe(false);
+    expect(isDirectFileUrl('https://example.com/video.mp4')).toBe(false);
+    expect(isDirectFileUrl('https://example.com/downloads/')).toBe(false);
+    expect(isDirectFileUrl('https://example.com/file.torrent')).toBe(false);
+    expect(isDirectFileUrl('ftp://example.com/file.zip')).toBe(false);
+    expect(isDirectFileUrl('magnet:?xt=urn:btih:abc')).toBe(false);
+    expect(isDirectFileUrl('not a url.zip')).toBe(false);
+  });
+
+  it('names the file from the path', () => {
+    expect(directFileName('https://example.com/a/My%20Setup.exe?x=1')).toBe('My Setup.exe');
+    expect(directFileName('https://example.com/')).toBe('download');
   });
 });
 

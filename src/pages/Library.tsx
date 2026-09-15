@@ -5,7 +5,7 @@ import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { formatBytes, generateId, isTorrentUrl } from '@/services';
+import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight,
@@ -92,11 +92,15 @@ export default function Library() {
       speed: 0,
       eta: 0,
       downloadedBytes: 0,
-      // Real size when history has it; a torrent never gets the HTTP
-      // placeholder (it would read as "476.8 MB" until the swarm answers).
-      totalBytes: item.totalBytes || item.settings.format?.fileSize || (isTorrentUrl(item.metadata.source.url) ? 0 : 500_000_000),
+      // Real size when history has it; torrents and direct files never get
+      // the yt-dlp placeholder (it would read as "476.8 MB" until the engine
+      // learns the real size).
+      totalBytes: item.totalBytes || item.settings.format?.fileSize
+        || (isTorrentUrl(item.metadata.source.url) || isDirectFileUrl(item.metadata.source.url) ? 0 : 500_000_000),
       retryAttempt: 0,
-      kind: isTorrentUrl(item.metadata.source.url) ? 'torrent' : undefined,
+      kind: isTorrentUrl(item.metadata.source.url)
+        ? 'torrent'
+        : isDirectFileUrl(item.metadata.source.url) ? 'direct' : undefined,
     });
     if (item.status === 'failed') removeFromHistory(item.id);
     toast.success(`${item.status === 'failed' ? 'Retrying' : 'Queued again'}: ${item.metadata.title}`);

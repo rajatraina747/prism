@@ -97,6 +97,8 @@ export interface IPrismService {
   /** Session-wide torrent caps (bytes/sec; null = unlimited). The provider
    * merges the user's limits with Quiet Hours and pushes the effective pair. */
   setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void>;
+  /** Live session-wide cap for direct downloads (quiet hours); null = none. */
+  setDirectRateLimit(bytesPerSecond: number | null): Promise<void>;
   /** "Update tracker": fresh announce to trackers/DHT/LSD; keeps progress. */
   reannounceTorrent(id: string): Promise<void>;
   /** "Force re-check": hash every piece on disk again. */

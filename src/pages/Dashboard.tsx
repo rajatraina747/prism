@@ -11,7 +11,7 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
@@ -96,6 +96,40 @@ function buildTorrentItem(url: string, destination: string, selectedFiles?: numb
     totalBytes: 0,
     retryAttempt: 0,
     kind: 'torrent',
+  };
+}
+
+/** Build a queue item for a direct file link. Skips yt-dlp; the engine takes
+ * the real name and size from the server when it starts. */
+function buildDirectItem(url: string, destination: string, speedLimit?: number): DownloadItem {
+  const title = directFileName(url);
+  let domain = 'download';
+  try { domain = new URL(url).hostname; } catch { /* checked by isDirectFileUrl */ }
+  return {
+    id: generateId(),
+    metadata: {
+      title,
+      duration: 0,
+      thumbnail: '',
+      source: { url, domain, addedAt: new Date().toISOString() },
+      formats: [],
+    },
+    settings: {
+      format: null,
+      destination,
+      filename: title,
+      retryCount: 0,
+      startImmediately: true,
+      speedLimit,
+    },
+    status: 'queued',
+    progress: 0,
+    speed: 0,
+    eta: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    retryAttempt: 0,
+    kind: 'direct',
   };
 }
 
@@ -244,6 +278,18 @@ export default function Dashboard() {
     const dup = findDuplicate(url, queueItems, historyItems);
     if (dup === 'queue') { toast.warning('That’s already in your queue'); return; }
     if (dup === 'completed') { toast.info('You’ve downloaded this before — fetching again'); }
+    // Direct file links (disk images, archives, documents) skip yt-dlp and go
+    // straight to the queue.
+    if (isDirectFileUrl(url)) {
+      const item = buildDirectItem(
+        url,
+        preferences.defaultSaveFolder,
+        preferences.bandwidthLimit > 0 ? preferences.bandwidthLimit * 1024 * 1024 : undefined,
+      );
+      addToQueue(item);
+      toast.success(`Added ${item.metadata.title}`);
+      return;
+    }
     // Torrents skip yt-dlp entirely. Fetch the file list first so the user can
     // pick which files to download, then queue on confirm.
     if (isTorrentUrl(url)) {
@@ -306,7 +352,7 @@ export default function Dashboard() {
     } finally {
       setIsParsing(false);
     }
-  }, [service, preferences.defaultSaveFolder, preferences.perSitePresets, queueItems, historyItems]);
+  }, [service, preferences.defaultSaveFolder, preferences.perSitePresets, preferences.bandwidthLimit, queueItems, historyItems, addToQueue]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
@@ -335,6 +381,13 @@ export default function Dashboard() {
           const t = buildTorrentItem(urls[i], preferences.defaultSaveFolder);
           added.push(t);
           addToQueue(t);
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
+        if (isDirectFileUrl(urls[i])) {
+          const d = buildDirectItem(urls[i], preferences.defaultSaveFolder, speedLimitBytes || undefined);
+          added.push(d);
+          addToQueue(d);
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }

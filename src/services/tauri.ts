@@ -182,6 +182,19 @@ export class TauriPrismService implements IPrismService {
         return;
       }
 
+      if (item.kind === 'direct') {
+        // The engine resumes an unfinished file of the same name in `dest`.
+        await invoke('start_http_download', {
+          id: item.id,
+          url: item.metadata.source.url,
+          outputDir: dest,
+          filename: item.settings.filename || null,
+          sha256: null,
+          speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
+        });
+        return;
+      }
+
       // Use %(ext)s template so yt-dlp can download video+audio separately
       // then merge them. --merge-output-format mp4 ensures final output is .mp4
       const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
@@ -225,11 +238,12 @@ export class TauriPrismService implements IPrismService {
   }
 
   async cancelDownload(id: string): Promise<void> {
-    // The caller doesn't track which engine owns the id, so signal both. Each is
-    // a no-op for an id it doesn't own (yt-dlp child kill / librqbit session drop).
+    // The caller doesn't track which engine owns the id, so signal all three.
+    // Each is a no-op for an id it doesn't own.
     await Promise.all([
       invoke('cancel_download', { id }).catch(() => {}),
       invoke('cancel_torrent', { id }).catch(() => {}),
+      invoke('cancel_http_download', { id }).catch(() => {}),
     ]);
   }
 
@@ -247,6 +261,10 @@ export class TauriPrismService implements IPrismService {
 
   async setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void> {
     await invoke('set_torrent_rate_limit', { downloadBps: downloadBps ?? null, uploadBps: uploadBps ?? null });
+  }
+
+  async setDirectRateLimit(bytesPerSecond: number | null): Promise<void> {
+    await invoke('set_http_rate_limit', { bytesPerSecond: bytesPerSecond ?? 0 });
   }
 
   async reannounceTorrent(id: string): Promise<void> {
