@@ -1661,6 +1661,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before any thread starts: this sets process environment (player.rs).
+    #[cfg(target_os = "macos")]
+    player::use_bundled_vulkan_driver();
+
     // Before the builder: Tauri opens windows and plugins open their files
     // before `setup`, so data must already be under the new identifier.
     let migration = migrate::run_once();

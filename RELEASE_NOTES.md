@@ -5,20 +5,17 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 -->
 ## What's New
 
-**The built-in player works again on macOS.** Opening a video in Prism's
-player could freeze the whole app with a spinning cursor until you force-quit
-it. Prism asked the video engine to start playback on the same thread macOS
-needs for setting up the video window, so each waited for the other forever.
-Prism now talks to the video engine from a thread of its own. If the engine
-ever stops responding, the player says so and the rest of Prism keeps working.
-Closing the player while a video is still opening no longer freezes it either.
+**The built-in player now works on every Mac.** Prism's player draws video
+through Vulkan, which macOS doesn't provide by itself. Prism shipped without
+the driver that fills that gap (MoltenVK), so the player only showed video on
+Macs that already had it through Homebrew; everywhere else the video never
+started. Prism now includes the driver. Windows and Linux were not affected.
 
-**Also in the player:** if a file can't be opened, the player now shows why.
-Its "failed to start" screen no longer suggests installing mpv with Homebrew.
-Prism only ever uses its own copy, so reinstalling Prism is the fix.
+**Also included from 1.9.1:** opening the player no longer freezes the whole
+app.
 
-**Updating:** from 1.9.0, use **Settings → Updates**. From 1.8.x or earlier,
-run `brew upgrade --cask prism` or download the files below.
+**Updating:** from 1.9.0 or 1.9.1, use **Settings → Updates**. From 1.8.x or
+earlier, run `brew upgrade --cask prism` or download the files below.
 
 ## Install
 
