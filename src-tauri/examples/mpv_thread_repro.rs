@@ -184,7 +184,7 @@ mod mac {
         eprintln!(
             "usage: mpv_thread_repro --wrapper <libmpv-wrapper.dylib> --clip <media> \
              --scenario <main-all|worker-all|main-init-worker-rest|worker-destroy-early|main-init-destroy-early> \
-             [--vo gpu-next] [--force-window yes] [--wid no] [--iterations 1] [--timeout-secs 15]"
+             [--vo gpu-next] [--force-window yes] [--wid no] [--log <mpv.log>] [--iterations 1] [--timeout-secs 15]"
         );
         std::process::exit(64);
     }
@@ -214,6 +214,7 @@ mod mac {
         iterations: usize,
         timeout: Duration,
         wid: bool,
+        log: Option<String>,
     }
 
     fn parse_args() -> Args {
@@ -227,6 +228,7 @@ mod mac {
             iterations: 1,
             timeout: Duration::from_secs(15),
             wid: false,
+            log: None,
         };
         while let Some(flag) = raw.next() {
             let value = raw.next().unwrap_or_else(|| usage(&format!("{flag} needs a value")));
@@ -237,6 +239,7 @@ mod mac {
                 "--vo" => args.vo = value,
                 "--force-window" => args.force_window = value,
                 "--wid" => args.wid = value == "yes",
+                "--log" => args.log = Some(value),
                 "--iterations" => args.iterations = value.parse().unwrap_or_else(|_| usage("bad --iterations")),
                 "--timeout-secs" => {
                     args.timeout = Duration::from_secs(value.parse().unwrap_or_else(|_| usage("bad --timeout-secs")))
@@ -365,6 +368,10 @@ mod mac {
         // with the player window (the plugin passes its NSView as `wid`).
         if args.wid {
             options["wid"] = serde_json::json!(host_view());
+        }
+        // mpv's own log — shows which video output actually came up.
+        if let Some(log) = &args.log {
+            options["log-file"] = serde_json::json!(log);
         }
         let options = options.to_string();
 

@@ -1,0 +1,53 @@
+name: Media toolchain
+
+# Builds the LGPL libmpv + ffmpeg/ffprobe for macOS arm64 from the sources
+# pinned in scripts/toolchain.lock (see scripts/build-media-macos.sh). Runs when
+# the lock, the script or this workflow change, and on demand. The result is an
+# artifact; releases consume a published copy pinned by SHA in sidecars.lock.
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: Compute missing pins (the build then fails on purpose)
+        type: boolean
+        default: false
+  push:
+    branches: [v2.0]
+    paths:
+      - scripts/toolchain.lock
+      - scripts/build-media-macos.sh
+      - .github/workflows/media-toolchain.yml
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Build tools only; nothing from Homebrew is linked into the output
+      # (the gates check for it).
+      - name: Install build tools
+        run: brew install meson ninja nasm pkgconf cmake autoconf automake libtool
+
+      # Bootstrap mode only matters for empty pins: it computes and prints them,
+      # then fails the build on purpose. A fully pinned lock builds normally.
+      # (On push it's the only way in: workflow_dispatch needs this file on main.)
+      - name: Build
+        env:
+          PRISM_TOOLCHAIN_BOOTSTRAP: '1'
+        run: scripts/build-media-macos.sh "$RUNNER_TEMP/prism-media"
+
+      - name: Package
+        if: success()
+        run: tar -C "$RUNNER_TEMP" -cJf "$RUNNER_TEMP/prism-media-macos-arm64.tar.xz" prism-media
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success()
+        with:
+          name: prism-media-macos-arm64
+          path: ${{ runner.temp }}/prism-media-macos-arm64.tar.xz
+          retention-days: 30

@@ -1,0 +1,69 @@
+# Pinned sources for the LGPL media toolchain (macOS arm64), consumed by
+# scripts/build-media-macos.sh and .github/workflows/media-toolchain.yml.
+#
+# Every URL is fetched and checked against its SHA-256 before building. An
+# empty SHA is only accepted in a bootstrap run (PRISM_TOOLCHAIN_BOOTSTRAP=1),
+# which prints the computed value and then fails, so it can't be released.
+# Review the printed pins, fill them in here and commit.
+#
+# Format: plain KEY=VALUE lines, sourced by bash.
+
+# FFmpeg — https://ffmpeg.org/releases/ (LGPL build: no --enable-gpl/nonfree)
+FFMPEG_URL=https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz
+FFMPEG_SHA256=
+
+# mpv — https://github.com/mpv-player/mpv/releases (libmpv only, -Dgpl=false)
+MPV_URL=https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+MPV_SHA256=ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
+
+# libplacebo — https://code.videolan.org/videolan/libplacebo (LGPL-2.1)
+LIBPLACEBO_URL=https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz
+LIBPLACEBO_SHA256=14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39
+
+# dav1d — https://code.videolan.org/videolan/dav1d (BSD-2-Clause)
+DAV1D_URL=https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz
+DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
+
+# Opus — https://opus-codec.org (BSD-3-Clause)
+OPUS_URL=https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
+OPUS_SHA256=
+
+# LAME — https://lame.sourceforge.io (LGPL-2.0)
+LAME_URL=https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+LAME_SHA256=
+
+# libass — https://github.com/libass/libass (ISC)
+LIBASS_URL=https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz
+LIBASS_SHA256=2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc
+
+# FreeType — https://freetype.org (FTL)
+FREETYPE_URL=https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz
+FREETYPE_SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
+
+# FriBidi — https://github.com/fribidi/fribidi (LGPL-2.1)
+FRIBIDI_URL=https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz
+FRIBIDI_SHA256=
+
+# HarfBuzz — https://github.com/harfbuzz/harfbuzz (MIT)
+HARFBUZZ_URL=https://github.com/harfbuzz/harfbuzz/releases/download/14.4.0/harfbuzz-14.4.0.tar.xz
+HARFBUZZ_SHA256=
+
+# Little CMS — https://github.com/mm2/Little-CMS (MIT)
+LCMS2_URL=https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz
+LCMS2_SHA256=
+
+# zimg — https://github.com/sekrit-twc/zimg (WTFPL)
+ZIMG_URL=https://github.com/sekrit-twc/zimg/archive/refs/tags/release-3.0.6.tar.gz
+ZIMG_SHA256=
+
+# Vulkan — Khronos (Apache-2.0)
+VULKAN_HEADERS_URL=https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz
+VULKAN_HEADERS_SHA256=
+VULKAN_LOADER_URL=https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz
+VULKAN_LOADER_SHA256=
+GLSLANG_URL=https://github.com/KhronosGroup/glslang/archive/refs/tags/16.6.0.tar.gz
+GLSLANG_SHA256=
+
+# MoltenVK — https://github.com/KhronosGroup/MoltenVK/releases (Apache-2.0; prebuilt)
+MOLTENVK_URL=https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar
+MOLTENVK_SHA256=
