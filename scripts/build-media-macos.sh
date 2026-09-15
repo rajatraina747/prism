@@ -30,9 +30,9 @@ mkdir -p "$SRC" "$BUILD" "$PREFIX"
 export MACOSX_DEPLOYMENT_TARGET=13.0
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig"
 export PATH="$PREFIX/bin:$PATH"
-export CFLAGS="-O2 -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+export CFLAGS="-O2 -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET -I$PREFIX/include"
 export CXXFLAGS="$CFLAGS"
-export LDFLAGS="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
+export LDFLAGS="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET -L$PREFIX/lib"
 JOBS="$(sysctl -n hw.ncpu)"
 
 UNPINNED=()
@@ -135,7 +135,7 @@ cp "$MVK_ICD" "$PREFIX/share/vulkan/icd.d/"
 echo "== libplacebo =="
 python3 -m venv "$WORK/venv"
 "$WORK/venv/bin/pip" install --quiet jinja2 glad2
-PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled \
+PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
   -Dvulkan-registry="$PREFIX/share/vulkan/registry/vk.xml" -Dglslang=enabled -Dshaderc=disabled \
   -Dopengl=disabled -Dd3d11=disabled -Dlcms=enabled -Ddovi=disabled -Dlibdovi=disabled \
   -Ddemos=false -Dtests=false
