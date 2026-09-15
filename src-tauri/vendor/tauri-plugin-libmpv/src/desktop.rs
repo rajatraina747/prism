@@ -435,12 +435,22 @@ impl<R: Runtime> Mpv<R> {
                 search_dirs.push(resource_dir);
             }
 
+            // PRISM VENDOR PATCH (S-7): no bare-name fallback. Handing the
+            // loader just "libmpv-wrapper.dll" makes Windows search the
+            // current directory and PATH, so a DLL planted beside a
+            // downloaded file could be loaded into Prism. Only the bundled
+            // locations above are acceptable.
             let valid_lib_path: String = search_dirs
                 .iter()
                 .map(|dir| dir.join(lib_name))
                 .find(|path| path.exists())
                 .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_else(|| lib_name.to_string());
+                .ok_or_else(|| {
+                    Error::FFI(format!(
+                        "{} is not bundled with this build (searched: {:?})",
+                        lib_name, search_dirs
+                    ))
+                })?;
 
             // PRISM VENDOR PATCH (Windows): the wrapper resolves libmpv at
             // runtime with LoadLibraryExW("libmpv-2.dll") — a *bare* name,
@@ -454,19 +464,32 @@ impl<R: Runtime> Mpv<R> {
             #[cfg(target_os = "windows")]
             {
                 static LIBMPV: OnceCell<libloading::Library> = OnceCell::new();
-                if let Some(dir) = std::path::Path::new(&valid_lib_path).parent() {
-                    let libmpv_path = dir.join("libmpv-2.dll");
-                    if libmpv_path.exists() {
-                        let _ = LIBMPV.get_or_try_init(|| {
-                            info!("Pre-loading libmpv from: {}", libmpv_path.display());
-                            unsafe { libloading::Library::new(&libmpv_path) }.inspect_err(|e| {
-                                warn!("Failed to pre-load libmpv from '{}': {:?}. The wrapper will fall back to the system search path.", libmpv_path.display(), e);
-                            })
-                        });
-                    } else {
-                        warn!("libmpv-2.dll not found next to the wrapper at '{}' — playback will fail unless it sits beside the executable.", dir.display());
-                    }
+                // S-7: if the pre-load fails, the wrapper's bare-name load
+                // would search the system path instead — refuse rather than
+                // let it.
+                let dir = std::path::Path::new(&valid_lib_path)
+                    .parent()
+                    .ok_or_else(|| Error::FFI(format!("No parent directory for '{}'", valid_lib_path)))?;
+                let libmpv_path = dir.join("libmpv-2.dll");
+                if !libmpv_path.exists() {
+                    return Err(Error::FFI(format!(
+                        "libmpv-2.dll is not bundled next to the wrapper at '{}'",
+                        dir.display()
+                    ))
+                    .into());
                 }
+                LIBMPV
+                    .get_or_try_init(|| {
+                        info!("Pre-loading libmpv from: {}", libmpv_path.display());
+                        unsafe { libloading::Library::new(&libmpv_path) }
+                    })
+                    .map_err(|e| {
+                        Error::FFI(format!(
+                            "Failed to load libmpv from '{}': {:?}",
+                            libmpv_path.display(),
+                            e
+                        ))
+                    })?;
             }
 
             info!("Attempting to load libmpv-wrapper from: {}", valid_lib_path);

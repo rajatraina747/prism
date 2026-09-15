@@ -4,6 +4,7 @@ mod player;
 mod proc;
 mod quarantine;
 pub mod torrent;
+mod updater;
 
 use std::path::PathBuf;
 
@@ -106,15 +107,52 @@ struct YtDlpThumbnail {
 
 // ── Commands ─────────────────────────────────────────────────────────
 
+/// Metadata lookups (parse, playlist, `--version`) allowed to run at once.
+/// The frontend never needs more; the cap is what stops a burst of IPC calls
+/// from forking an unbounded number of yt-dlp processes (S-8).
+const MAX_CONCURRENT_CAPTURES: usize = 6;
+/// How long a lookup waits for a free slot before giving up.
+const CAPTURE_SLOT_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+/// A flat dump of a very large channel is tens of MB; past this it is not
+/// output worth holding in memory.
+const MAX_CAPTURE_STDOUT: usize = 64 * 1024 * 1024;
+/// Only the tail of stderr matters (the error is at the end).
+const MAX_CAPTURE_STDERR: usize = 256 * 1024;
+
+static CAPTURE_SLOTS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_CAPTURES));
+
+/// Kill a capture's whole tree, not just the PyInstaller launcher — the forked
+/// worker would otherwise outlive it (the bug v1.7.3 fixed for downloads; see
+/// `proc`).
+fn kill_capture(child: tauri_plugin_shell::process::CommandChild) {
+    proc::kill_tree(child.pid());
+    let _ = child.kill();
+}
+
+/// Append to a buffer that keeps only its last `cap` bytes.
+fn push_tail(buf: &mut Vec<u8>, data: &[u8], cap: usize) {
+    buf.extend_from_slice(data);
+    if buf.len() > cap {
+        buf.drain(..buf.len() - cap);
+    }
+}
+
 /// Run a yt-dlp command to completion with a hard timeout, killing the child
 /// if it expires. Without this a hung extractor (dead site, stuck challenge
-/// solver) leaves the frontend spinner stuck forever.
+/// solver) leaves the frontend spinner stuck forever. Bounded in concurrency
+/// and in how much output it buffers.
 /// Returns (exit_code, stdout, stderr).
 pub(crate) async fn run_ytdlp_capture(
     cmd: tauri_plugin_shell::process::Command,
     timeout_secs: u64,
 ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), String> {
     use tauri_plugin_shell::process::CommandEvent;
+
+    let _slot = tokio::time::timeout(CAPTURE_SLOT_WAIT, CAPTURE_SLOTS.acquire())
+        .await
+        .map_err(|_| "Prism is busy with other link lookups — try again in a moment".to_string())?
+        .map_err(|_| "yt-dlp lookups are shutting down".to_string())?;
 
     let (mut rx, child) = cmd
         .spawn()
@@ -124,17 +162,22 @@ pub(crate) async fn run_ytdlp_capture(
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
     loop {
         match tokio::time::timeout_at(deadline, rx.recv()).await {
-            Ok(Some(CommandEvent::Stdout(d))) => stdout.extend_from_slice(&d),
-            Ok(Some(CommandEvent::Stderr(d))) => stderr.extend_from_slice(&d),
+            Ok(Some(CommandEvent::Stdout(d))) => {
+                if stdout.len().saturating_add(d.len()) > MAX_CAPTURE_STDOUT {
+                    kill_capture(child);
+                    return Err(format!(
+                        "yt-dlp returned more than {} MB of data — stopped",
+                        MAX_CAPTURE_STDOUT / 1_048_576
+                    ));
+                }
+                stdout.extend_from_slice(&d);
+            }
+            Ok(Some(CommandEvent::Stderr(d))) => push_tail(&mut stderr, &d, MAX_CAPTURE_STDERR),
             Ok(Some(CommandEvent::Terminated(t))) => return Ok((t.code, stdout, stderr)),
             Ok(Some(_)) => {}
             Ok(None) => return Ok((None, stdout, stderr)),
             Err(_) => {
-                // The whole tree, not just the PyInstaller launcher — the
-                // forked worker would otherwise outlive this timeout (the
-                // same bug v1.7.3 fixed for downloads; see `proc`).
-                proc::kill_tree(child.pid());
-                let _ = child.kill();
+                kill_capture(child);
                 return Err(format!(
                     "yt-dlp did not respond within {} seconds — the site may be blocking or down",
                     timeout_secs
@@ -1051,7 +1094,7 @@ fn path_is_allowed(resolved: &std::path::Path, extra_roots: &[PathBuf]) -> Resul
     roots.extend(dirs::download_dir().map(|d| canon(&d)));
     roots.extend(extra_roots.iter().map(canon));
 
-    if !roots.iter().any(|base| resolved.starts_with(base)) {
+    if !roots.iter().any(|base| strip_prefix_fs(resolved, base).is_some()) {
         return Err(
             "Path is outside your home folder. Pick the folder in Settings → Download location to allow it."
                 .into(),
@@ -1065,20 +1108,45 @@ fn path_is_allowed(resolved: &std::path::Path, extra_roots: &[PathBuf]) -> Resul
     Ok(())
 }
 
+/// Whether paths compare case-insensitively here: the default filesystems on
+/// macOS (APFS) and Windows (NTFS) are, so `~/library` IS `~/Library` (S-9).
+const CASE_INSENSITIVE_FS: bool = cfg!(any(target_os = "macos", target_os = "windows"));
+
+fn same_component(a: &std::ffi::OsStr, b: &std::ffi::OsStr) -> bool {
+    if CASE_INSENSITIVE_FS {
+        a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+/// `path.strip_prefix(base)`, component-wise and case-insensitive where the
+/// filesystem is. None when `path` is not inside `base`.
+fn strip_prefix_fs(path: &std::path::Path, base: &std::path::Path) -> Option<PathBuf> {
+    let mut rest = path.components();
+    for b in base.components() {
+        let p = rest.next()?;
+        if !same_component(p.as_os_str(), b.as_os_str()) {
+            return None;
+        }
+    }
+    Some(rest.as_path().to_path_buf())
+}
+
 /// Sensitive locations under the home directory that must never receive a
 /// download or be opened from the app, even though they're "inside home":
 /// launch agents, shell rc files, SSH/GPG keys, browser profiles, Windows
-/// Startup. Returns a short description of the matched rule.
+/// Startup, Linux autostart/launchers. Returns a short description of the
+/// matched rule.
 fn denied_subtree(resolved: &std::path::Path, home: &std::path::Path) -> Option<String> {
+    let rel = strip_prefix_fs(resolved, home)?;
+    let mut parts = rel.components();
+    let first = parts.next()?.as_os_str().to_owned();
+    let name = first.to_string_lossy();
     // Any hidden entry directly under home: ~/.ssh, ~/.config, ~/.gnupg,
-    // ~/.zshrc, ~/.local/share/applications, ~/.config/autostart, ...
-    if let Ok(rel) = resolved.strip_prefix(home) {
-        if let Some(first) = rel.components().next() {
-            let name = first.as_os_str().to_string_lossy();
-            if name.starts_with('.') {
-                return Some(format!("~/{}", name));
-            }
-        }
+    // ~/.zshrc, ~/.local/bin, ~/.local/share/applications, ~/.config/autostart…
+    if name.starts_with('.') {
+        return Some(format!("~/{}", name));
     }
     let denied: &[&str] = if cfg!(target_os = "macos") {
         // LaunchAgents, Preferences, Application Support, Keychains, Safari…
@@ -1087,12 +1155,22 @@ fn denied_subtree(resolved: &std::path::Path, home: &std::path::Path) -> Option<
         // Roaming/Local AppData: Start Menu\Programs\Startup lives in here.
         &["AppData"]
     } else {
-        &[]
+        // ~/bin is on many distros' default PATH (Debian/Ubuntu ~/.profile).
+        &["bin"]
     };
-    denied
-        .iter()
-        .find(|d| resolved.starts_with(home.join(d)))
-        .map(|d| format!("~/{}", d))
+    if let Some(d) = denied.iter().find(|d| same_component(&first, std::ffi::OsStr::new(d))) {
+        return Some(format!("~/{}", d));
+    }
+    // A launcher dropped straight onto the Linux desktop is one double-click
+    // (and on some desktops, one "trust" prompt) away from running.
+    if cfg!(target_os = "linux")
+        && name == "Desktop"
+        && parts.clone().count() == 1
+        && rel.extension().is_some_and(|e| e.eq_ignore_ascii_case("desktop"))
+    {
+        return Some("~/Desktop/*.desktop".into());
+    }
+    None
 }
 
 /// Validate that a download path doesn't escape allowed directories via traversal.
@@ -1485,6 +1563,7 @@ pub fn run() {
         .manage(DownloadManager::new())
         .manage(torrent::TorrentManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
+        .manage(updater::PendingUpdate::default())
         .plugin(tauri_plugin_shell::init())
         // Embedded player (separate "player" window). The plugin cleans up its
         // mpv instance on window close; macOS embeds via the window's NSView.
@@ -1521,6 +1600,12 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+
+            // The webview may only write top-level JSON files in app data
+            // (capabilities/default.json), so it can't create the directory.
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(dir);
+            }
 
             setup_tray(app)?;
 
@@ -1573,6 +1658,8 @@ pub fn run() {
             engine::get_ytdlp_version,
             engine::update_ytdlp,
             engine::reset_ytdlp,
+            updater::check_app_update,
+            updater::install_app_update,
             player::fixup_player_video,
             player::player_available,
             player::player_init,
@@ -1597,6 +1684,36 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// S-1/S-2: the webview must not be able to write where Rust keeps state
+    /// it trusts (torrent-session/session.json is re-added with overwrite at
+    /// startup; engine/yt-dlp is executed). Scope globs match with
+    /// `require_literal_separator`, so `$APPDATA/*.json` stays top-level.
+    #[test]
+    fn main_window_fs_access_is_top_level_json_only() {
+        let raw = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/default.json")).unwrap();
+        let cap: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let allowed_paths = ["$APPDATA/*.json", "$APPDATA/*.json.tmp"];
+        for perm in cap["permissions"].as_array().unwrap() {
+            if let Some(id) = perm.as_str() {
+                assert!(
+                    !id.starts_with("fs:") || id == "fs:deny-default",
+                    "unscoped fs permission {id} (global scopes merge into every fs command)"
+                );
+                assert!(!id.starts_with("updater:"), "updates run through check_app_update");
+                continue;
+            }
+            let id = perm["identifier"].as_str().unwrap();
+            if !id.starts_with("fs:") {
+                continue;
+            }
+            assert!(!id.contains("recursive") && !id.contains("appdata"), "{id}");
+            for entry in perm["allow"].as_array().unwrap() {
+                let p = entry["path"].as_str().unwrap();
+                assert!(allowed_paths.contains(&p), "{id} allows {p}");
+            }
+        }
+    }
 
     #[test]
     fn extracts_domains() {
@@ -1649,6 +1766,51 @@ mod tests {
             &[]
         )
         .is_err());
+    }
+
+    /// S-9: the deny-list is pure path logic, so pin each platform's rules
+    /// on synthetic paths (nothing needs to exist).
+    #[test]
+    fn deny_list_platform_rules() {
+        use std::path::Path;
+        #[cfg(target_os = "macos")]
+        {
+            let home = Path::new("/Users/u");
+            for bad in ["/Users/u/Library/LaunchAgents/x.plist", "/Users/u/library/LaunchAgents/x", "/Users/u/LIBRARY", "/users/U/Library/x", "/Users/u/.SSH/x"] {
+                assert!(denied_subtree(Path::new(bad), home).is_some(), "{bad} must be denied");
+            }
+            for ok in ["/Users/u/Movies/x.mp4", "/Users/u/Libraryish/x", "/Users/other/Library/x"] {
+                assert!(denied_subtree(Path::new(ok), home).is_none(), "{ok} must be allowed");
+            }
+            assert!(strip_prefix_fs(Path::new("/users/U/Downloads/x"), Path::new("/Users/u")).is_some());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let home = Path::new(r"C:\Users\u");
+            assert!(denied_subtree(Path::new(r"c:\users\u\appdata\Roaming\x"), home).is_some());
+            assert!(denied_subtree(Path::new(r"C:\Users\u\Videos\x.mp4"), home).is_none());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let home = Path::new("/home/u");
+            for bad in ["/home/u/bin/evil", "/home/u/Desktop/run.desktop", "/home/u/Desktop/RUN.DESKTOP", "/home/u/.local/bin/x"] {
+                assert!(denied_subtree(Path::new(bad), home).is_some(), "{bad} must be denied");
+            }
+            // Case-sensitive filesystem: ~/BIN is a different folder.
+            for ok in ["/home/u/BIN/x", "/home/u/Desktop/clip.mp4", "/home/u/Desktop/sub/x.desktop", "/home/u/Library/x"] {
+                assert!(denied_subtree(Path::new(ok), home).is_none(), "{ok} must be allowed");
+            }
+            assert!(strip_prefix_fs(Path::new("/HOME/u/x"), home).is_none());
+        }
+    }
+
+    #[test]
+    fn capture_stderr_keeps_only_the_tail() {
+        let mut buf = Vec::new();
+        push_tail(&mut buf, b"0123456789", 4);
+        assert_eq!(buf, b"6789");
+        push_tail(&mut buf, b"ab", 4);
+        assert_eq!(buf, b"89ab");
     }
 
     /// A folder the user picked in the native dialog is an allowed root even

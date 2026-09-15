@@ -308,7 +308,7 @@ export class MockPrismService implements IPrismService {
     // Web demo: in-app toasts cover it.
   }
 
-  onDeepLink(_handler: (url: string) => void): () => void {
+  onDeepLink(_handler: (url: string, origin: import('./types').LinkOrigin) => void): () => void {
     // Deep links only exist in the desktop app
     return () => {};
   }

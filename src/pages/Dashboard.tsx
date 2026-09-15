@@ -127,6 +127,12 @@ function watchWithListInfo(url: string): { videoUrl: string; playlistUrl: string
   }
 }
 
+/** One-line summary of a link for the confirmation card. */
+function describeExternalLink(url: string): string {
+  if (isTorrentUrl(url)) return `Torrent · ${torrentDisplayName(url)}`;
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 /** Detect if a URL looks like a playlist (heuristic). */
 function looksLikePlaylist(url: string): boolean {
   try {
@@ -181,12 +187,27 @@ export default function Dashboard() {
   // each iteration and stop, keeping whatever was queued so far.
   const abortBulkRef = useRef(false);
 
-  // prism://add?url=... deep links (bookmarklet / "send to Prism"), buffered
-  // by AppShell so links arriving on other pages aren't lost
-  React.useEffect(() => consumeDeepLinks((url) => {
+  // Links buffered by AppShell so ones arriving on other pages aren't lost.
+  // Links from outside Prism — a browser's magnet:/prism:// link, a .torrent
+  // the OS opened — wait for an explicit OK (S-6): a web page can fire them
+  // with no user intent, and even the lookup reaches the network (a magnet
+  // joins the swarm for metadata; a URL runs yt-dlp with the user's browser
+  // cookies). In-app links (tray paste, drops) go straight in.
+  const [externalLinks, setExternalLinks] = useState<string[]>([]);
+  React.useEffect(() => consumeDeepLinks((url, origin) => {
+    if (origin === 'external') {
+      setExternalLinks(q => (q.includes(url) ? q : [...q, url]));
+      return;
+    }
     toast.info('Link received');
     handleUrlSubmitRef.current(url);
   }), []);
+  const pendingExternalLink = externalLinks[0] ?? null;
+  const settleExternalLink = useCallback((add: boolean) => {
+    const url = externalLinks[0];
+    setExternalLinks(q => q.slice(1));
+    if (add && url) handleUrlSubmitRef.current(url);
+  }, [externalLinks]);
 
   // Offer to fetch video URLs found on the clipboard when the app regains
   // focus — a user-controlled setting, since it means reading the clipboard.
@@ -607,6 +628,46 @@ export default function Dashboard() {
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.98]"
             >
               <ListMusic className="w-3.5 h-3.5" /> Whole playlist
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation for links opened from outside Prism (S-6). "Ignore" is
+          first so it takes initial focus — Enter never adds by accident. */}
+      <Dialog open={!!pendingExternalLink} onOpenChange={(open) => { if (!open) settleExternalLink(false); }}>
+        <DialogContent className="glass-strong max-w-md border-border/40 bg-card/95">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {pendingExternalLink && isTorrentUrl(pendingExternalLink) ? 'Add this torrent?' : 'Download from this link?'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              A web page or another app sent this to Prism. Nothing is fetched until you choose Add.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingExternalLink && (
+            <div className="space-y-1.5 min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">{describeExternalLink(pendingExternalLink)}</p>
+              <p className="max-h-24 overflow-auto rounded-md bg-secondary/60 px-2.5 py-2 font-mono text-[11px] text-muted-foreground break-all">
+                {pendingExternalLink}
+              </p>
+              {externalLinks.length > 1 && (
+                <p className="text-[11px] text-muted-foreground">{externalLinks.length - 1} more waiting</p>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={() => settleExternalLink(false)}
+              className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              Ignore
+            </button>
+            <button
+              onClick={() => settleExternalLink(true)}
+              className="px-3 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
+            >
+              Add
             </button>
           </div>
         </DialogContent>

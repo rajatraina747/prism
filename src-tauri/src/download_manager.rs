@@ -16,6 +16,38 @@ static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]
 static SPEED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap());
 static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(?:(\d+):)?(\d+):(\d+)").unwrap());
 
+/// yt-dlp download processes allowed at once (S-8). The UI caps concurrency
+/// at 10; this is the backstop against a flood of `start_download` calls, so
+/// it refuses rather than queues — a waiting run couldn't be cancelled.
+const MAX_CONCURRENT_DOWNLOADS: usize = 16;
+static DOWNLOAD_SLOTS: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_DOWNLOADS)));
+
+/// Longest stderr line kept as a failure message.
+const MAX_ERROR_LINE: usize = 2000;
+
+fn clip_line(s: &str) -> String {
+    match s.char_indices().nth(MAX_ERROR_LINE) {
+        Some((i, _)) => format!("{}…", &s[..i]),
+        None => s.to_string(),
+    }
+}
+
+fn emit_start_failure(app: &AppHandle, id: String, error: String) {
+    let _ = app.emit(
+        &format!("download-complete-{}", id),
+        DownloadComplete {
+            id,
+            success: false,
+            error: Some(error),
+            file_path: None,
+            file_size: None,
+            actual_height: None,
+            output_folder: None,
+        },
+    );
+}
+
 #[derive(Clone, Serialize)]
 pub struct DownloadProgress {
     pub id: String,
@@ -275,22 +307,22 @@ impl DownloadManager {
             args.push("--".into());
             args.push(url.clone());
 
+            // Held for the life of this task, i.e. until the process is done.
+            let Ok(_slot) = DOWNLOAD_SLOTS.clone().try_acquire_owned() else {
+                reserved.lock().await.remove(&id);
+                emit_start_failure(
+                    &app,
+                    id,
+                    format!("Too many downloads running at once (limit {})", MAX_CONCURRENT_DOWNLOADS),
+                );
+                return;
+            };
+
             let cmd = match crate::engine::ytdlp_command(&app) {
                 Ok(c) => c.args(&args),
                 Err(e) => {
                     reserved.lock().await.remove(&id);
-                    let _ = app.emit(
-                        &format!("download-complete-{}", id),
-                        DownloadComplete {
-                            id,
-                            success: false,
-                            error: Some(format!("Failed to find yt-dlp sidecar: {}", e)),
-                            file_path: None,
-                            file_size: None,
-                            actual_height: None,
-                            output_folder: None,
-                        },
-                    );
+                    emit_start_failure(&app, id, format!("Failed to find yt-dlp sidecar: {}", e));
                     return;
                 }
             };
@@ -299,18 +331,7 @@ impl DownloadManager {
                 Ok(pair) => pair,
                 Err(e) => {
                     reserved.lock().await.remove(&id);
-                    let _ = app.emit(
-                        &format!("download-complete-{}", id),
-                        DownloadComplete {
-                            id,
-                            success: false,
-                            error: Some(format!("Failed to start yt-dlp: {}", e)),
-                            file_path: None,
-                            file_size: None,
-                            actual_height: None,
-                            output_folder: None,
-                        },
-                    );
+                    emit_start_failure(&app, id, format!("Failed to start yt-dlp: {}", e));
                     return;
                 }
             };
@@ -364,9 +385,9 @@ impl DownloadManager {
                             let line = String::from_utf8_lossy(&data);
                             let trimmed = line.trim();
                             if !trimmed.is_empty() {
-                                last_stderr = trimmed.to_string();
+                                last_stderr = clip_line(trimmed);
                                 if trimmed.starts_with("ERROR") {
-                                    last_error = trimmed.to_string();
+                                    last_error = last_stderr.clone();
                                 }
                             }
                             if agg.on_line(&line) {

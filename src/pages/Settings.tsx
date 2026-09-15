@@ -108,6 +108,7 @@ export default function Settings() {
   const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
+  const [updateError, setUpdateError] = React.useState<string | undefined>();
   const [engineVersion, setEngineVersion] = React.useState<string | null>(null);
   const [engineUpdating, setEngineUpdating] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
@@ -393,7 +394,7 @@ export default function Settings() {
                 <SettingRow label="Check for updates" description={
                   updateState === 'available' ? `Version ${updateVersion} is available` :
                   updateState === 'up-to-date' ? 'You are on the latest version' :
-                  updateState === 'error' ? 'Could not reach update server' :
+                  updateState === 'error' ? `Could not check for updates${updateError ? ` — ${updateError}` : ''}` :
                   undefined
                 }>
                   <div className="flex items-center gap-2">
@@ -421,6 +422,7 @@ export default function Settings() {
                       onClick={async () => {
                         setUpdateState('checking');
                         const result = await service.checkForUpdates();
+                        setUpdateError(result.error);
                         if (result.available) {
                           setUpdateState('available');
                           setUpdateVersion(result.version);

@@ -143,15 +143,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useLayoutEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   // Deep links can arrive on any page; buffer them and jump to the Dashboard,
-  // which drains the buffer and submits the URL.
-  React.useEffect(() => service.onDeepLink((url) => {
-    pushDeepLink(url);
+  // which drains the buffer and submits the URL (after confirming, for links
+  // from outside the app).
+  React.useEffect(() => service.onDeepLink((url, origin) => {
+    pushDeepLink(url, origin);
     navigateRef.current('/');
   }), [service]);
 
-  // URLs dragged onto the window take the same path.
+  // URLs dragged onto the window take the same path — the drop is the intent.
   useUrlDrop((url) => {
-    pushDeepLink(url);
+    pushDeepLink(url, 'app');
     navigateRef.current('/');
   });
 

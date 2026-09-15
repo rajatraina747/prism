@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins, and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs.",
   "windows": [
     "main"
   ],
@@ -11,14 +11,19 @@
     "dialog:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
-    "fs:default",
-    "fs:allow-appdata-read-recursive",
-    "fs:allow-appdata-write-recursive",
+    "fs:deny-default",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$APPDATA/*.json" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$APPDATA/*.json.tmp" }]
+    },
     {
       "identifier": "fs:allow-rename",
-      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+      "allow": [{ "path": "$APPDATA/*.json" }, { "path": "$APPDATA/*.json.tmp" }]
     },
-    "updater:default",
     "process:allow-restart",
     "process:allow-exit",
     "notification:default",

@@ -294,6 +294,10 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
 #[tauri::command]
 pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), String> {
     ensure_player_window(&window)?;
+    // Fail with a clear message before touching the plugin's library loader.
+    if !player_available(app.clone()) {
+        return Err("The built-in player isn't included in this build of Prism".into());
+    }
     let cfg = player_mpv_config(&app)?;
     let app2 = app.clone();
     on_main(&app, move || {

@@ -4,8 +4,10 @@ on:
   push:
     tags: ['v*']
 
+# Read-only by default; only the jobs that publish to the draft release get
+# write access (S-10).
 permissions:
-  contents: write
+  contents: read
 
 # Every third-party binary that ends up inside a release (yt-dlp, Deno,
 # libmpv-wrapper, libmpv) is pinned by version AND SHA-256 in
@@ -51,6 +53,8 @@ jobs:
   build-macos:
     needs: notes
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -83,6 +87,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -99,6 +105,8 @@ jobs:
   build-windows:
     needs: notes
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -128,6 +136,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -142,6 +152,8 @@ jobs:
   build-linux:
     needs: notes
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -171,6 +183,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

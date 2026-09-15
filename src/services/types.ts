@@ -34,6 +34,12 @@ export type CompletionCallback = (
   outputFolder?: string,
 ) => void;
 
+/** Where a link came from. `external`: the OS handed it to Prism (a browser's
+ * magnet:/prism:// link, a .torrent opened from Finder/Explorer) — nothing
+ * proves the user meant it, so the UI confirms before any network action.
+ * `app`: the user put it there inside Prism (tray Paste & Download, a drop). */
+export type LinkOrigin = 'external' | 'app';
+
 export interface UpdateCheckResult {
   available: boolean;
   version?: string;
@@ -108,9 +114,10 @@ export interface IPrismService {
    * denies permission). */
   notify(title: string, body: string): Promise<void>;
 
-  // Deep links (prism://add?url=...) — handler receives the extracted video URL.
+  // Deep links (prism://add?url=..., magnet:, .torrent files, tray paste) —
+  // handler receives the extracted URL and where it came from.
   // Returns an unsubscribe function.
-  onDeepLink(handler: (url: string) => void): () => void;
+  onDeepLink(handler: (url: string, origin: LinkOrigin) => void): () => void;
 
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;

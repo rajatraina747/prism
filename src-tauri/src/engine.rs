@@ -4,7 +4,7 @@
 //! the app fetch the latest official yt-dlp release into app-data and prefer it
 //! over the bundled copy, decoupling "site broke" from "wait for a Prism release".
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
@@ -55,6 +55,59 @@ fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
     Some(dir.join("engine").join(YTDLP_NAME))
 }
 
+/// Beside the managed binary: the SHA-256 it had when `update_ytdlp` verified
+/// it against the release manifest.
+fn recorded_sha_path(binary: &Path) -> PathBuf {
+    binary.with_extension("sha256")
+}
+
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+/// Whether the managed binary is byte-for-byte what `update_ytdlp` installed
+/// (S-2). Hashing ~35 MB per spawn is wasteful, so the verdict is cached
+/// against the file's size and mtime and recomputed only when either changes.
+/// No record (an engine installed before 1.9) counts as unverified.
+fn managed_binary_verified(binary: &Path) -> bool {
+    type Verdict = (PathBuf, u64, Option<std::time::SystemTime>, bool);
+    static CACHE: std::sync::Mutex<Option<Verdict>> = std::sync::Mutex::new(None);
+
+    let Ok(meta) = std::fs::metadata(binary) else { return false };
+    let (len, mtime) = (meta.len(), meta.modified().ok());
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((p, l, m, ok)) = guard.as_ref() {
+            if p == binary && *l == len && *m == mtime {
+                return *ok;
+            }
+        }
+    }
+    let ok = std::fs::read_to_string(recorded_sha_path(binary))
+        .ok()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| s.len() == 64)
+        .is_some_and(|expected| sha256_file(binary).is_ok_and(|actual| actual == expected));
+    if !ok {
+        log::warn!("self-updated yt-dlp failed its integrity check; using the bundled engine");
+    }
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = Some((binary.to_path_buf(), len, mtime, ok));
+    }
+    ok
+}
+
 /// Flags every invocation gets, ahead of anything else: ignore the user's and
 /// system's yt-dlp config files (`~/yt-dlp.conf`, `%APPDATA%\yt-dlp\config`, a
 /// portable `yt-dlp.conf` beside the binary, …) and clear the plugin search
@@ -63,10 +116,11 @@ fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
 const LOCKDOWN_ARGS: [&str; 2] = ["--ignore-config", "--no-plugin-dirs"];
 
 /// Resolve the yt-dlp command: a self-updated copy in app-data wins over the
-/// bundled sidecar. PATH is pre-augmented so deno/node are visible either way.
+/// bundled sidecar, but only while it still matches the hash recorded when it
+/// was installed. PATH is pre-augmented so deno/node are visible either way.
 pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
     if let Some(managed) = managed_ytdlp_path(app) {
-        if managed.exists() {
+        if managed.exists() && managed_binary_verified(&managed) {
             return Ok(app
                 .shell()
                 .command(managed)
@@ -205,6 +259,10 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     };
 
     std::fs::rename(&staging, &target).map_err(|e| format!("Failed to install yt-dlp: {}", e))?;
+    // Recorded after the swap: a failure in between leaves a stale record,
+    // which only means the bundled engine is used until the next update.
+    std::fs::write(recorded_sha_path(&target), &actual)
+        .map_err(|e| format!("Failed to record yt-dlp checksum: {}", e))?;
     Ok(version)
 }
 
@@ -224,6 +282,24 @@ cccc3333  yt-dlp.exe";
     }
 
     #[test]
+    fn managed_binary_must_match_its_recorded_hash() {
+        let dir = std::env::temp_dir().join(format!("prism-engine-sha-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join(YTDLP_NAME);
+        std::fs::write(&bin, b"genuine").unwrap();
+        // No record yet (pre-1.9 install): not trusted.
+        assert!(!managed_binary_verified(&bin));
+        std::fs::write(recorded_sha_path(&bin), sha256_file(&bin).unwrap()).unwrap();
+        std::fs::write(&bin, b"genuine!").unwrap(); // size changes → cache miss
+        assert!(!managed_binary_verified(&bin), "tampered binary accepted");
+        std::fs::write(&bin, b"genuine").unwrap();
+        std::fs::write(recorded_sha_path(&bin), sha256_file(&bin).unwrap()).unwrap();
+        std::fs::write(&bin, b"genuine").unwrap();
+        assert!(managed_binary_verified(&bin));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn http_client_builds_with_timeouts() {
         assert!(http_client().is_ok());
     }
@@ -237,6 +313,7 @@ pub async fn reset_ytdlp(app: AppHandle) -> Result<(), String> {
             std::fs::remove_file(&managed)
                 .map_err(|e| format!("Failed to remove managed yt-dlp: {}", e))?;
         }
+        let _ = std::fs::remove_file(recorded_sha_path(&managed));
     }
     Ok(())
 }

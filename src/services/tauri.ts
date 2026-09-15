@@ -1,31 +1,26 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, readTextFile, mkdir, exists, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
-import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
-// Persistence file names (stored in app data directory)
+// Persistence file names (stored in app data directory). The webview's fs
+// capability covers exactly `$APPDATA/*.json` (+ `.json.tmp`), top level only —
+// everything Rust owns under app data (torrent session, .torrent cache, the
+// self-updated yt-dlp) is out of its reach. Rust creates the directory.
 const FILES = {
   queue: 'queue.json',
   history: 'history.json',
   settings: 'settings.json',
   subscriptions: 'subscriptions.json',
 } as const;
-
-async function ensureAppData() {
-  const dir = await exists('', { baseDir: BaseDirectory.AppData }).catch(() => false);
-  if (!dir) {
-    await mkdir('', { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {});
-  }
-}
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
@@ -37,7 +32,6 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 }
 
 async function writeJson(file: string, data: unknown): Promise<void> {
-  await ensureAppData();
   // Write-then-rename so a crash mid-write can't corrupt the real file (a
   // corrupted queue/history file silently resets to [] on next launch).
   const tmp = `${file}.tmp`;
@@ -74,7 +68,6 @@ function readLaunchLinks(): Promise<string[]> {
 
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
-  private _pendingUpdate: Update | null = null;
 
   async init(): Promise<void> {
     await this.persistence._ensureLoaded();
@@ -332,25 +325,27 @@ export class TauriPrismService implements IPrismService {
     } catch { /* notifications unavailable — in-app toast already covers it */ }
   }
 
-  onDeepLink(handler: (url: string) => void): () => void {
+  onDeepLink(handler: (url: string, origin: LinkOrigin) => void): () => void {
     let unlisten: UnlistenFn | null = null;
     let trayUnlisten: UnlistenFn | null = null;
     let fileUnlisten: UnlistenFn | null = null;
     let cancelled = false;
 
+    // Everything the OS delivers is `external`: a web page can open magnet:
+    // and prism:// links without the user meaning to, so the Dashboard asks
+    // before parsing (which already reaches the network).
     const extract = (urls: string[]) => {
       if (cancelled) return;
       for (const raw of urls) {
         const trimmed = raw.trim();
-        // Magnet links / .torrent files opened from the browser or OS go straight
-        // to the add flow (which shows the file picker). Everything else must be
-        // a prism://add?url=... deep link.
+        // Magnet links / .torrent files go to the torrent add flow. Everything
+        // else must be a prism://add?url=... deep link.
         if (isTorrentUrl(trimmed)) {
-          handler(trimmed);
+          handler(trimmed, 'external');
           continue;
         }
         const url = parsePrismDeepLink(raw);
-        if (url) handler(url);
+        if (url) handler(url, 'external');
       }
     };
 
@@ -377,7 +372,8 @@ export class TauriPrismService implements IPrismService {
       if (cancelled) return;
       try {
         const u = new URL(event.payload);
-        if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'magnet:') handler(event.payload);
+        // The user clicked the tray item — in-app intent, no confirmation.
+        if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'magnet:') handler(event.payload, 'app');
       } catch { /* not a URL — ignore */ }
     }).then(fn => {
       if (cancelled) fn();
@@ -389,7 +385,7 @@ export class TauriPrismService implements IPrismService {
     // magnet: file picker + confirmation; Rust re-validates the path.
     listen<string>('open-torrent-file', (event) => {
       if (cancelled) return;
-      if (isTorrentUrl(event.payload)) handler(event.payload.trim());
+      if (isTorrentUrl(event.payload)) handler(event.payload.trim(), 'external');
     }).then(fn => {
       if (cancelled) fn();
       else fileUnlisten = fn;
@@ -421,43 +417,34 @@ export class TauriPrismService implements IPrismService {
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {
-    // Retry up to 2 times — GitHub CDN redirects can be slow/flaky
+    // The check runs in Rust (`check_app_update`) so its HTTP client can carry
+    // a connect timeout — see src-tauri/src/updater.rs. One retry for a
+    // transient failure; the error text is the real cause, not a generic line.
+    let lastError = 'Check failed';
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const update = await checkUpdate({ timeout: 30_000 });
-        if (update) {
-          this._pendingUpdate = update;
-          return { available: true, version: update.version, notes: update.body ?? undefined };
-        }
-        this._pendingUpdate = null;
-        return { available: false };
+        const info = await invoke<{ available: boolean; version: string | null; notes: string | null }>('check_app_update');
+        return info.available
+          ? { available: true, version: info.version ?? undefined, notes: info.notes ?? undefined }
+          : { available: false };
       } catch (e) {
-        if (attempt === 1) {
-          this._pendingUpdate = null;
-          const msg = e instanceof Error ? e.message : String(e);
-          return { available: false, error: msg };
-        }
-        // Brief pause before retry
-        await new Promise(r => setTimeout(r, 1000));
+        lastError = e instanceof Error ? e.message : String(e);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
       }
     }
-    return { available: false, error: 'Check failed' };
+    return { available: false, error: lastError };
   }
 
   async installUpdate(onProgress?: (downloaded: number, total: number | null) => void): Promise<void> {
-    if (!this._pendingUpdate) {
-      throw new Error('No update available to install');
-    }
-    let totalDownloaded = 0;
-    await this._pendingUpdate.downloadAndInstall((event) => {
-      if (event.event === 'Started') {
-        onProgress?.(0, event.data.contentLength ?? null);
-      } else if (event.event === 'Progress') {
-        totalDownloaded += event.data.chunkLength;
-        onProgress?.(totalDownloaded, null);
-      }
+    const unlisten = await listen<{ downloaded: number; total: number | null }>('app-update-progress', (e) => {
+      onProgress?.(e.payload.downloaded, e.payload.total);
     });
-    // Explicitly relaunch — downloadAndInstall doesn't always restart on macOS
+    try {
+      await invoke('install_app_update');
+    } finally {
+      unlisten();
+    }
+    // Explicitly relaunch — installing doesn't always restart on macOS
     await relaunch();
   }
 

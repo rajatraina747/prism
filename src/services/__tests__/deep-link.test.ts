@@ -37,7 +37,7 @@ describe('onDeepLink launch link', () => {
     const service = await freshService();
     const handler = vi.fn();
     service.onDeepLink(handler);
-    await vi.waitFor(() => expect(handler).toHaveBeenCalledWith(MAGNET));
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledWith(MAGNET, 'external'));
   });
 
   it('does not replay it when the subscription is re-created', async () => {
@@ -63,7 +63,7 @@ describe('onDeepLink launch link', () => {
 
     const next = vi.fn();
     service.onDeepLink(next);
-    await vi.waitFor(() => expect(next).toHaveBeenCalledWith(MAGNET));
+    await vi.waitFor(() => expect(next).toHaveBeenCalledWith(MAGNET, 'external'));
     expect(dropped).not.toHaveBeenCalled();
   });
 
@@ -86,6 +86,6 @@ describe('onDeepLink launch link', () => {
     await vi.waitFor(() => expect(onOpenUrl).toHaveBeenCalled());
     const emit = onOpenUrl.mock.calls.at(-1)![0];
     emit([MAGNET]);
-    expect(handler).toHaveBeenCalledWith(MAGNET);
+    expect(handler).toHaveBeenCalledWith(MAGNET, 'external');
   });
 });

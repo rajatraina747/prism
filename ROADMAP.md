@@ -25,20 +25,32 @@ settings debounce; README accuracy) is shipped. What remains, in order:
 
 ### v1.9 — "Trust & polish"
 
-- [ ] Move `torrent-session/`, `torrents/` and `engine/` out of `$APPDATA`
-      (webview-writable via `fs:allow-appdata-write-recursive`) to the
-      preference dir beside `allowed-dirs.json`, or narrow the fs capability
-      to the four JSON files the frontend writes. Closes S-1/S-2.
-- [ ] Confirmation card for OS/deep-link-originated links (`magnet:`,
-      `prism://add`) before any network action; typed links unchanged (S-6).
-- [ ] Vendored mpv plugin: error instead of bare-DLL-name fallback; precheck
-      `player_available` in `player_init` (S-7).
-- [ ] Semaphore on yt-dlp spawns + byte cap on capture buffers (S-8).
-- [ ] `build.yml`: per-job permissions; encrypt the minisign key
-      (`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); write `docs/RELEASE-KEYS.md`
-      with backup/rotation (S-10).
-- [ ] Linux deny-list entries (`bin`, `.local/bin`, `Desktop/*.desktop`);
-      case-insensitive root compare on mac/win (S-9).
+- [x] Updater works on networks that black-hole one GitHub CDN address: the
+      check/install run in Rust (`updater.rs`) with a connect timeout (hyper
+      splits it across addresses, so a dead one falls through) and a read
+      timeout; Settings shows the real error. Existing installs still need
+      one manual update to get it.
+- [x] S-1/S-2: fs capability narrowed to top-level `$APPDATA/*.json`
+      (+ `.json.tmp`), no `fs:default` (its recursive global scope merges into
+      every fs command); a Rust test pins the capability shape. The managed
+      yt-dlp's SHA-256 is recorded at install and re-checked (cached by
+      size+mtime) before it's preferred over the sidecar.
+- [x] Confirmation card for OS/deep-link-originated links (`magnet:`,
+      `prism://add`, OS-opened `.torrent`) before any network action; tray
+      paste and drops unchanged (S-6).
+- [x] Vendored mpv plugin: error instead of bare-DLL-name fallback (and on a
+      failed Windows libmpv pre-load); `player_init` prechecks
+      `player_available` (S-7).
+- [x] Semaphore on yt-dlp captures (6, waits ≤60 s) and downloads (16,
+      refuses); stdout capped at 64 MB, stderr keeps a 256 KB tail, error
+      lines clipped (S-8).
+- [x] `build.yml`: read-only by default, `contents: write` only on the build
+      jobs; `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` wired; `docs/RELEASE-KEYS.md`
+      (S-10). **Rajat:** re-encrypt the key and set the password secret
+      (step 1 in that doc).
+- [x] Linux deny-list entries (`bin`, `Desktop/*.desktop`; `.local/bin` was
+      already covered by the dotfile rule); case-insensitive compare on
+      mac/win (S-9).
 - [ ] UX ★: one "Add" surface (⌘N/⌘L sheet, drop-anywhere incl. magnets and
       `.torrent`); Settings restructure (Video / BitTorrent / Speed & schedule
       …, one speed-limit group, one unit, jargon tooltips); failure UX

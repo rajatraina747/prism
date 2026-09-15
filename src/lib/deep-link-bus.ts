@@ -2,19 +2,23 @@
 // is always mounted) and the Dashboard (which knows how to submit a URL but
 // may not be mounted when a link arrives).
 
-let pending: string[] = [];
-let consumer: ((url: string) => void) | null = null;
+import type { LinkOrigin } from '@/services/types';
 
-export function pushDeepLink(url: string) {
-  if (consumer) consumer(url);
-  else pending.push(url);
+type Consumer = (url: string, origin: LinkOrigin) => void;
+
+let pending: { url: string; origin: LinkOrigin }[] = [];
+let consumer: Consumer | null = null;
+
+export function pushDeepLink(url: string, origin: LinkOrigin = 'app') {
+  if (consumer) consumer(url, origin);
+  else pending.push({ url, origin });
 }
 
-export function consumeDeepLinks(cb: (url: string) => void): () => void {
+export function consumeDeepLinks(cb: Consumer): () => void {
   consumer = cb;
   const queued = pending;
   pending = [];
-  queued.forEach(cb);
+  queued.forEach(l => cb(l.url, l.origin));
   return () => {
     if (consumer === cb) consumer = null;
   };
