@@ -101,8 +101,7 @@ function buildTorrentItem(url: string, destination: string, selectedFiles?: numb
 
 /** Build a queue item for a direct file link. Skips yt-dlp; the engine takes
  * the real name and size from the server when it starts. */
-function buildDirectItem(url: string, destination: string, speedLimit?: number): DownloadItem {
-  const title = directFileName(url);
+function buildDirectItem(url: string, destination: string, speedLimit?: number, title = directFileName(url)): DownloadItem {
   let domain = 'download';
   try { domain = new URL(url).hostname; } catch { /* checked by isDirectFileUrl */ }
   return {
@@ -355,6 +354,29 @@ export default function Dashboard() {
   }, [service, preferences.defaultSaveFolder, preferences.perSitePresets, preferences.bandwidthLimit, queueItems, historyItems, addToQueue]);
   handleUrlSubmitRef.current = handleUrlSubmit;
 
+  // yt-dlp couldn't read the link, but it may still be a plain file.
+  const downloadAsFile = useCallback(async (url: string) => {
+    try {
+      const probe = await service.probeDirectLink(url);
+      if (probe.contentType?.toLowerCase().startsWith('text/html')) {
+        toast.error('That link opens a web page, not a file');
+        return;
+      }
+      setParseError(null);
+      const item = buildDirectItem(
+        url,
+        preferences.defaultSaveFolder,
+        preferences.bandwidthLimit > 0 ? preferences.bandwidthLimit * 1024 * 1024 : undefined,
+        probe.filename,
+      );
+      if (probe.size) item.totalBytes = probe.size;
+      addToQueue(item);
+      toast.success(`Added ${item.metadata.title}`);
+    } catch (err) {
+      toast.error(errorText(err, 'Could not read that link').message);
+    }
+  }, [service, preferences.defaultSaveFolder, preferences.bandwidthLimit, addToQueue]);
+
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
     setParseError(null);
     setBatchProgress({ total: urls.length, done: 0 });
@@ -519,9 +541,11 @@ export default function Dashboard() {
           ? { label: 'Set browser cookies', onClick: () => navigate(COOKIES_SETTINGS_PATH) }
           : parseProblem?.action === 'engine'
             ? { label: 'Update engine', onClick: () => navigate(ENGINE_SETTINGS_PATH) }
-            : parseProblem?.action === 'retry' && lastParsedUrlRef.current
-              ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
-              : undefined}
+            : parseError?.engineCode === 'unsupported' && lastParsedUrlRef.current
+              ? { label: 'Download as a file', onClick: () => void downloadAsFile(lastParsedUrlRef.current) }
+              : parseProblem?.action === 'retry' && lastParsedUrlRef.current
+                ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
+                : undefined}
         onErrorClear={() => setParseError(null)}
       />
 

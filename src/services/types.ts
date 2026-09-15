@@ -54,6 +54,15 @@ export interface EngineInfo {
   updateAvailable: boolean;
 }
 
+/** Mirrors `LinkProbe` in src-tauri/src/http_engine.rs. */
+export interface LinkProbe {
+  finalUrl: string;
+  filename: string;
+  size: number | null;
+  acceptRanges: boolean;
+  contentType: string | null;
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   version?: string;
@@ -156,6 +165,8 @@ export interface IPrismService {
   getEngineInfo(): Promise<EngineInfo>;
   /** Ask GitHub for the newest yt-dlp; reuses a lookup under a day old unless `force`. */
   checkEngineUpdate(force?: boolean): Promise<EngineInfo>;
+  /** What an http(s) link points at — a file (name, size) or a web page. */
+  probeDirectLink(url: string): Promise<LinkProbe>;
 
   // Persistence
   persistence: {

@@ -128,8 +128,10 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [x] HTTP(S) direct-link engine (`http_engine.rs`): up to 4 connections,
       resume across pause and relaunch, optional SHA-256, quiet-hours cap.
       Disk images, archives, installers and documents route to it.
-- [ ] Direct links, still to add: a checksum field in the Add sheet, and
-      "download it as a file" when yt-dlp says a link is unsupported.
+- [x] "Download as a file" when yt-dlp says a link is unsupported (probes
+      first; web pages are refused).
+- [ ] Direct links, still to add: a way to enter an expected SHA-256 (the
+      engine already verifies one).
 - [ ] Stream while downloading ("Play now") — see the torrent arc below.
 
 **Organising**

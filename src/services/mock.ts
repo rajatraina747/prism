@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -384,6 +384,11 @@ export class MockPrismService implements IPrismService {
   async checkEngineUpdate(): Promise<EngineInfo> {
     // The demo never contacts GitHub.
     return this.getEngineInfo();
+  }
+
+  async probeDirectLink(url: string): Promise<LinkProbe> {
+    const name = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '') || 'download';
+    return { finalUrl: url, filename: name, size: 250_000_000, acceptRanges: true, contentType: 'application/octet-stream' };
   }
 
   persistence = {
