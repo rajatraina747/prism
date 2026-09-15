@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyError, conciseError } from '../errors';
+import { classifyError, conciseError, errorText, isEngineError } from '../errors';
 
 describe('classifyError', () => {
   it('offers browser cookies for sign-in walls', () => {
@@ -24,6 +24,29 @@ describe('classifyError', () => {
     // 403 is usually the extractor, not the network: offer retry, don't auto-retry.
     expect(classifyError('HTTP Error 403: Forbidden')).toMatchObject({ category: 'unknown', action: 'retry' });
     expect(classifyError('something odd happened')).toMatchObject({ category: 'unknown', action: 'retry' });
+  });
+});
+
+describe('structured engine errors', () => {
+  it('uses the code Rust assigned over the message text', () => {
+    // The text alone would read as a network failure.
+    expect(classifyError('connection closed', 'auth')).toMatchObject({ category: 'auth', action: 'cookies' });
+    expect(classifyError('whatever', 'disk_full')).toMatchObject({ category: 'storage', action: 'retry' });
+    expect(classifyError('whatever', 'unsupported').action).toBe('none');
+    expect(classifyError('whatever', 'engine_missing').action).toBe('none');
+  });
+
+  it('falls back to reading the message for unknown codes', () => {
+    expect(classifyError('Connection reset by peer', 'unknown').category).toBe('network');
+  });
+
+  it('normalises engine errors, strings and Errors', () => {
+    expect(errorText({ code: 'geo', summary: 'Not in your country', detail: 'ERROR: x', retryable: false }))
+      .toEqual({ message: 'Not in your country', detail: 'ERROR: x', engineCode: 'geo' });
+    expect(errorText('plain')).toEqual({ message: 'plain' });
+    expect(errorText(new Error('boom'))).toEqual({ message: 'boom' });
+    expect(errorText(undefined, 'fallback')).toEqual({ message: 'fallback' });
+    expect(isEngineError({ code: 'x' })).toBe(false);
   });
 });
 

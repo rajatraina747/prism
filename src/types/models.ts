@@ -181,6 +181,10 @@ export interface DownloadError {
   category: 'network' | 'parse' | 'permission' | 'storage' | 'auth' | 'unknown';
   timestamp: string;
   suggestion?: string;
+  /** Rust's classification (2.0+); absent on failures saved before 2.0. */
+  engineCode?: import('@/services/errors').EngineErrorCode;
+  /** The engine's own output, redacted in Rust — for the tooltip. */
+  detail?: string;
 }
 
 export interface DownloadPreset {

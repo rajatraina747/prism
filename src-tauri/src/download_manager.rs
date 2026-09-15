@@ -9,6 +9,7 @@ use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::process::CommandEvent;
 use tokio::sync::Mutex;
 
+use crate::errors::{classify_output, ErrorCode, PrismError};
 use crate::find_ffmpeg;
 
 static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
@@ -25,6 +26,8 @@ static DOWNLOAD_SLOTS: LazyLock<Arc<tokio::sync::Semaphore>> =
 
 /// Longest stderr line kept as a failure message.
 const MAX_ERROR_LINE: usize = 2000;
+/// stderr kept for a failure's detail (the cause is at the end).
+const MAX_STDERR_TAIL: usize = 16 * 1024;
 
 fn clip_line(s: &str) -> String {
     match s.char_indices().nth(MAX_ERROR_LINE) {
@@ -33,7 +36,7 @@ fn clip_line(s: &str) -> String {
     }
 }
 
-fn emit_start_failure(app: &AppHandle, id: String, error: String) {
+fn emit_start_failure(app: &AppHandle, id: String, error: PrismError) {
     let _ = app.emit(
         &format!("download-complete-{}", id),
         DownloadComplete {
@@ -66,7 +69,7 @@ pub struct DownloadProgress {
 pub struct DownloadComplete {
     pub id: String,
     pub success: bool,
-    pub error: Option<String>,
+    pub error: Option<PrismError>,
     pub file_path: Option<String>,
     pub file_size: Option<u64>,
     /// Video height actually delivered (yt-dlp's after_move print), so the UI
@@ -316,7 +319,10 @@ impl DownloadManager {
                 emit_start_failure(
                     &app,
                     id,
-                    format!("Too many downloads running at once (limit {})", MAX_CONCURRENT_DOWNLOADS),
+                    PrismError::new(
+                        ErrorCode::Busy,
+                        format!("Too many downloads running at once (limit {})", MAX_CONCURRENT_DOWNLOADS),
+                    ),
                 );
                 return;
             };
@@ -325,7 +331,11 @@ impl DownloadManager {
                 Ok(c) => c.args(&args),
                 Err(e) => {
                     reserved.lock().await.remove(&id);
-                    emit_start_failure(&app, id, format!("Failed to find yt-dlp sidecar: {}", e));
+                    emit_start_failure(
+                        &app,
+                        id,
+                        PrismError::new(ErrorCode::EngineMissing, format!("Failed to find yt-dlp sidecar: {}", e)),
+                    );
                     return;
                 }
             };
@@ -334,7 +344,11 @@ impl DownloadManager {
                 Ok(pair) => pair,
                 Err(e) => {
                     reserved.lock().await.remove(&id);
-                    emit_start_failure(&app, id, format!("Failed to start yt-dlp: {}", e));
+                    emit_start_failure(
+                        &app,
+                        id,
+                        PrismError::new(ErrorCode::EngineMissing, format!("Failed to start yt-dlp: {}", e)),
+                    );
                     return;
                 }
             };
@@ -352,6 +366,9 @@ impl DownloadManager {
             // postprocessor chatter rather than the actual cause.
             let mut last_error = String::new();
             let mut last_stderr = String::new();
+            // The failure's detail: redacted and capped again in PrismError.
+            let mut stderr_tail = String::new();
+            let mut timed_out = false;
             let mut actual_height: Option<u32> = None;
             let mut agg = PhaseAggregator::new();
             // yt-dlp prints a progress line per fragment/chunk — many per
@@ -393,6 +410,15 @@ impl DownloadManager {
                                 if trimmed.starts_with("ERROR") {
                                     last_error = last_stderr.clone();
                                 }
+                                stderr_tail.push_str(&last_stderr);
+                                stderr_tail.push('\n');
+                                if stderr_tail.len() > MAX_STDERR_TAIL {
+                                    let mut cut = stderr_tail.len() - MAX_STDERR_TAIL;
+                                    while !stderr_tail.is_char_boundary(cut) {
+                                        cut += 1;
+                                    }
+                                    stderr_tail.drain(..cut);
+                                }
                             }
                             if agg.on_line(&line) {
                                 let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
@@ -415,11 +441,11 @@ impl DownloadManager {
                         // Inactivity timeout. Stays "alive" — this run still
                         // owns the id and reports its own failure, which is
                         // what drives the frontend's retry.
-                        let timed_out = downloads.lock().await.remove(&id);
-                        if let Some(dl) = timed_out {
+                        let stalled = downloads.lock().await.remove(&id);
+                        if let Some(dl) = stalled {
                             dl.kill();
                         }
-                        last_error = "Download timed out (no activity for 5 minutes)".to_string();
+                        timed_out = true;
                         break;
                     }
                 }
@@ -470,8 +496,14 @@ impl DownloadManager {
                     success,
                     error: if success {
                         None
+                    } else if timed_out {
+                        Some(PrismError::new(ErrorCode::Timeout, "Download timed out (no activity for 5 minutes)"))
+                    } else if last_error.is_empty() {
+                        Some(PrismError::new(ErrorCode::Unknown, "Download failed or was cancelled"))
                     } else {
-                        Some(if last_error.is_empty() { "Download failed or was cancelled".into() } else { last_error })
+                        // Classify on the one line that failed; earlier
+                        // warnings (e.g. about cookies) must not steer it.
+                        Some(classify_output(&last_error).with_detail(&stderr_tail))
                     },
                     file_path: final_path,
                     file_size,

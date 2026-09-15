@@ -1324,7 +1324,7 @@ fn emit_failure(app: &AppHandle, id: &str, message: String) {
         DownloadComplete {
             id: id.to_string(),
             success: false,
-            error: Some(message),
+            error: Some(crate::errors::classify_output(&message)),
             file_path: None,
             file_size: None,
             actual_height: None,

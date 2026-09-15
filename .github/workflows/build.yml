@@ -100,7 +100,7 @@ jobs:
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   build-windows:
     needs: notes
@@ -147,7 +147,7 @@ jobs:
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   build-linux:
     needs: notes
@@ -194,4 +194,4 @@ jobs:
           releaseName: 'Prism ${{ github.ref_name }}'
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

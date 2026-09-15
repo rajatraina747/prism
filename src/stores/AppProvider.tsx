@@ -7,7 +7,7 @@ import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
-import { classifyError } from '@/services/errors';
+import { classifyError, errorText } from '@/services/errors';
 import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
 
 let audioCtx: AudioContext | null = null;
@@ -316,8 +316,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
             if (settings.soundEnabled) playNotificationSound();
           } else {
-            const message = errorMsg || 'An unexpected error occurred';
-            const { category, suggestion, action } = classifyError(message);
+            // Rust sends a structured EngineError; the web demo plain text.
+            const { message, detail, engineCode } = errorText(errorMsg);
+            const { category, suggestion, action } = classifyError(message, engineCode);
 
             // Transient (network) failures: retry automatically with backoff
             // before surfacing a failure. Keeps status 'downloading' during the
@@ -351,6 +352,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               category,
               timestamp: new Date().toISOString(),
               suggestion,
+              ...(engineCode ? { engineCode } : {}),
+              ...(detail ? { detail } : {}),
             };
             dispatch({ type: 'failed', id: item.id, error: err });
           }

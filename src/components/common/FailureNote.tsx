@@ -12,11 +12,11 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
   onRetry: () => void;
   retryLabel?: string;
 }) {
-  const { suggestion, action } = classifyError(error.message);
+  const { suggestion, action } = classifyError(error.message, error.engineCode);
   return (
     <div className="mt-1.5 space-y-1">
       <p className="text-[11px] text-destructive">{error.suggestion ?? suggestion}</p>
-      <p className="text-[11px] text-muted-foreground/70 truncate" title={error.message}>{conciseError(error.message)}</p>
+      <p className="text-[11px] text-muted-foreground/70 truncate" title={error.detail ?? error.message}>{conciseError(error.message)}</p>
       <div className="flex items-center gap-1.5 pt-0.5">
         {action === 'cookies' && (
           <button

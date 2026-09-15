@@ -11,10 +11,73 @@ export interface ClassifiedError {
   action: FailureAction;
 }
 
-/** Map a raw engine error to a category (drives auto-retry), a human
- * suggestion and the one action worth offering. Pattern-matches yt-dlp's
- * English messages — structured errors from Rust are a v2.0 idea. */
-export function classifyError(msg: string): ClassifiedError {
+/** Codes from src-tauri/src/errors.rs (`ErrorCode`, snake_case). */
+export type EngineErrorCode =
+  | 'network' | 'timeout' | 'auth' | 'geo' | 'unavailable' | 'rate_limited'
+  | 'forbidden' | 'disk_full' | 'permission' | 'not_found' | 'unsupported'
+  | 'format' | 'engine_missing' | 'busy' | 'cancelled' | 'unknown';
+
+/** A structured error from Rust: what commands reject with and what
+ * download-complete events carry since 2.0. */
+export interface EngineError {
+  code: EngineErrorCode;
+  summary: string;
+  /** Engine output, already redacted and capped in Rust. */
+  detail?: string;
+  retryable: boolean;
+}
+
+export function isEngineError(value: unknown): value is EngineError {
+  return typeof value === 'object' && value !== null
+    && typeof (value as EngineError).code === 'string'
+    && typeof (value as EngineError).summary === 'string';
+}
+
+export interface ErrorText {
+  message: string;
+  detail?: string;
+  engineCode?: EngineErrorCode;
+}
+
+/** Normalise whatever a command rejected with or an event carried: an
+ * EngineError (2.0+), a plain string (history saved before 2.0, the web
+ * demo), or an Error. */
+export function errorText(value: unknown, fallback = 'An unexpected error occurred'): ErrorText {
+  if (isEngineError(value)) return { message: value.summary || fallback, detail: value.detail, engineCode: value.code };
+  if (typeof value === 'string') return { message: value || fallback };
+  if (value instanceof Error) return { message: value.message || fallback };
+  return { message: fallback };
+}
+
+const LINK_UNSUPPORTED: ClassifiedError = { category: 'parse', suggestion: 'This link may not be supported', action: 'none' };
+const CHECK_CONNECTION: ClassifiedError = { category: 'network', suggestion: 'Check your connection, then retry', action: 'retry' };
+
+/** Suggestions for codes Rust already classified. `unknown` is absent on
+ * purpose: those fall back to reading the message. */
+const BY_CODE: Partial<Record<EngineErrorCode, ClassifiedError>> = {
+  auth: { category: 'auth', suggestion: 'This video needs you to be signed in — choose a browser where you\'re logged in under Browser cookies', action: 'cookies' },
+  unavailable: { category: 'parse', suggestion: 'This video is no longer available', action: 'none' },
+  geo: { category: 'parse', suggestion: 'Not available in your region', action: 'none' },
+  rate_limited: { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes, then retry', action: 'retry' },
+  forbidden: { category: 'unknown', suggestion: 'The site refused the download — update the engine in Settings → Updates, then retry', action: 'retry' },
+  disk_full: { category: 'storage', suggestion: 'Free up disk space, then retry', action: 'retry' },
+  permission: { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' },
+  format: { category: 'unknown', suggestion: 'Try a different quality', action: 'retry' },
+  timeout: CHECK_CONNECTION,
+  network: CHECK_CONNECTION,
+  unsupported: LINK_UNSUPPORTED,
+  not_found: LINK_UNSUPPORTED,
+  engine_missing: { category: 'unknown', suggestion: 'Prism\'s downloader is missing — reinstall Prism', action: 'none' },
+  busy: { category: 'unknown', suggestion: 'Prism is busy — try again in a moment', action: 'retry' },
+  cancelled: { category: 'unknown', suggestion: 'The download was stopped', action: 'retry' },
+};
+
+/** Map an engine error to a category (drives auto-retry), a human suggestion
+ * and the one action worth offering. Uses Rust's code when there is one;
+ * otherwise pattern-matches the message (yt-dlp's English, older history). */
+export function classifyError(msg: string, code?: EngineErrorCode): ClassifiedError {
+  const known = code ? BY_CODE[code] : undefined;
+  if (known) return known;
   const lower = msg.toLowerCase();
   // Auth / access walls (yt-dlp phrases these many ways)
   if (lower.includes('sign in to confirm') || lower.includes('not a bot') || lower.includes('login required')

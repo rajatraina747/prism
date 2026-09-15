@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Prism",
   "version": "1.9.1",
-  "identifier": "com.prism.app",
+  "identifier": "com.rainacorp.prism",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8080",
@@ -43,6 +43,7 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "prism",
     "targets": "all",
     "createUpdaterArtifacts": true,
     "fileAssociations": [

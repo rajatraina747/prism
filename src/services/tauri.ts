@@ -147,7 +147,7 @@ export class TauriPrismService implements IPrismService {
       completeUnlisten = await listen<{
         id: string;
         success: boolean;
-        error: string | null;
+        error: import('@/services/errors').EngineError | string | null;
         file_path: string | null;
         file_size: number | null;
         actual_height?: number | null;

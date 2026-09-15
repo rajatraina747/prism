@@ -1,4 +1,5 @@
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
+import type { EngineError } from '@/services/errors';
 
 export type ProgressCallback = (data: {
   downloadedBytes: number;
@@ -25,7 +26,8 @@ export type ProgressCallback = (data: {
 
 export type CompletionCallback = (
   success: boolean,
-  error?: string,
+  /** A structured EngineError from Rust; the web demo passes plain text. */
+  error?: EngineError | string,
   filePath?: string,
   fileSize?: number,
   actualHeight?: number,

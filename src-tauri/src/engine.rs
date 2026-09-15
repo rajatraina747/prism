@@ -137,7 +137,8 @@ pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
 #[tauri::command]
 pub async fn get_ytdlp_version(app: AppHandle) -> Result<String, String> {
     let cmd = ytdlp_command(&app)?.args(["--version"]);
-    let (code, stdout, _stderr) = crate::run_ytdlp_capture(cmd, VERSION_TIMEOUT_SECS).await?;
+    let (code, stdout, _stderr) =
+        crate::run_ytdlp_capture(cmd, VERSION_TIMEOUT_SECS).await.map_err(|e| e.summary)?;
     if code != Some(0) {
         return Err("yt-dlp --version failed".into());
     }

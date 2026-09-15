@@ -16,7 +16,7 @@ import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
-import { classifyError, conciseError } from '@/services/errors';
+import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
 import { cn } from '@/lib/utils';
 import {
   Sparkles, Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen,
@@ -156,7 +156,7 @@ export default function Dashboard() {
   const { preferences, updatePreference } = useSettings();
   const service = useService();
   const navigate = useNavigate();
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [parseError, setParseError] = useState<ErrorText | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parsedMetadata, setParsedMetadata] = useState<MediaMetadata | null>(null);
   const [showMediaModal, setShowMediaModal] = useState(false);
@@ -184,8 +184,8 @@ export default function Dashboard() {
   // line, what to do, and the action that can fix it.
   const parseProblem = useMemo(() => {
     if (!parseError) return null;
-    const { suggestion, action } = classifyError(parseError);
-    return { message: conciseError(parseError), suggestion, action };
+    const { suggestion, action } = classifyError(parseError.message, parseError.engineCode);
+    return { message: conciseError(parseError.message), suggestion, action };
   }, [parseError]);
 
   // Ref indirection so the clipboard watcher callback stays stable
@@ -301,8 +301,8 @@ export default function Dashboard() {
       setParsedMetadata(metadata);
       setShowMediaModal(true);
     } catch (err: unknown) {
-      // Tauri commands reject with a plain string; the web demo throws Errors.
-      setParseError(typeof err === 'string' ? err : err instanceof Error ? err.message : 'Failed to parse URL');
+      // Tauri commands reject with a structured EngineError; the web demo throws Errors.
+      setParseError(errorText(err, 'Failed to parse URL'));
     } finally {
       setIsParsing(false);
     }

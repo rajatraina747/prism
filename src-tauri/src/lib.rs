@@ -1,5 +1,7 @@
 mod download_manager;
 mod engine;
+mod errors;
+mod migrate;
 mod mpv_worker;
 mod player;
 mod proc;
@@ -147,20 +149,21 @@ fn push_tail(buf: &mut Vec<u8>, data: &[u8], cap: usize) {
 pub(crate) async fn run_ytdlp_capture(
     cmd: tauri_plugin_shell::process::Command,
     timeout_secs: u64,
-) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), String> {
+) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), errors::PrismError> {
+    use errors::{ErrorCode, PrismError};
     use tauri_plugin_shell::process::CommandEvent;
 
     let _slot = tokio::time::timeout(CAPTURE_SLOT_WAIT, CAPTURE_SLOTS.acquire())
         .await
         .map_err(|_| {
             log::warn!("no free yt-dlp lookup slot after {}s", CAPTURE_SLOT_WAIT.as_secs());
-            "Prism is busy with other link lookups — try again in a moment".to_string()
+            PrismError::new(ErrorCode::Busy, "Prism is busy with other link lookups — try again in a moment")
         })?
-        .map_err(|_| "yt-dlp lookups are shutting down".to_string())?;
+        .map_err(|_| PrismError::new(ErrorCode::Cancelled, "yt-dlp lookups are shutting down"))?;
 
     let (mut rx, child) = cmd
         .spawn()
-        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+        .map_err(|e| PrismError::new(ErrorCode::EngineMissing, format!("Failed to run yt-dlp: {}", e)))?;
     let mut stdout: Vec<u8> = Vec::new();
     let mut stderr: Vec<u8> = Vec::new();
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
@@ -170,9 +173,9 @@ pub(crate) async fn run_ytdlp_capture(
                 if stdout.len().saturating_add(d.len()) > MAX_CAPTURE_STDOUT {
                     log::warn!("yt-dlp lookup output passed {} bytes; killed", MAX_CAPTURE_STDOUT);
                     kill_capture(child);
-                    return Err(format!(
-                        "yt-dlp returned more than {} MB of data — stopped",
-                        MAX_CAPTURE_STDOUT / 1_048_576
+                    return Err(PrismError::new(
+                        ErrorCode::Unknown,
+                        format!("yt-dlp returned more than {} MB of data — stopped", MAX_CAPTURE_STDOUT / 1_048_576),
                     ));
                 }
                 stdout.extend_from_slice(&d);
@@ -184,17 +187,22 @@ pub(crate) async fn run_ytdlp_capture(
             Err(_) => {
                 log::warn!("yt-dlp lookup timed out after {timeout_secs}s; killed");
                 kill_capture(child);
-                return Err(format!(
-                    "yt-dlp did not respond within {} seconds — the site may be blocking or down",
-                    timeout_secs
+                return Err(PrismError::new(
+                    ErrorCode::Timeout,
+                    format!("yt-dlp did not respond within {timeout_secs} seconds — the site may be blocking or down"),
                 ));
             }
         }
     }
 }
 
+/// The yt-dlp command for a lookup; a missing engine is its own error code.
+fn lookup_command(app: &AppHandle) -> Result<tauri_plugin_shell::process::Command, errors::PrismError> {
+    engine::ytdlp_command(app).map_err(|e| errors::PrismError::new(errors::ErrorCode::EngineMissing, e))
+}
+
 #[tauri::command]
-async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String> {
+async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors::PrismError> {
     let mut parse_args: Vec<String> = vec![
         "--dump-json".into(),
         "--no-download".into(),
@@ -217,7 +225,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
     parse_args.push(url.clone());
 
     let (code, stdout, stderr) =
-        run_ytdlp_capture(engine::ytdlp_command(&app)?.args(&parse_args), 120).await?;
+        run_ytdlp_capture(lookup_command(&app)?.args(&parse_args), 120).await?;
 
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
@@ -226,7 +234,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
             extract_domain(&url),
             stderr.trim().lines().last().unwrap_or("no output")
         );
-        return Err(format!("yt-dlp error: {}", stderr.trim()));
+        return Err(errors::classify_output(&stderr));
     }
 
     let info: YtDlpInfo = serde_json::from_slice(&stdout)
@@ -342,7 +350,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 }
 
 #[tauri::command]
-async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Result<PlaylistInfo, String> {
+async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Result<PlaylistInfo, errors::PrismError> {
     let mut playlist_args: Vec<String> = vec![
         "--flat-playlist".into(),
         "--dump-json".into(),
@@ -373,7 +381,7 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
     // (un-limited) import path more headroom than a single-video parse.
     let timeout = if limit.is_some() { 120 } else { 600 };
     let (code, stdout, stderr) =
-        run_ytdlp_capture(engine::ytdlp_command(&app)?.args(&playlist_args), timeout).await?;
+        run_ytdlp_capture(lookup_command(&app)?.args(&playlist_args), timeout).await?;
 
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
@@ -382,7 +390,7 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
             extract_domain(&url),
             stderr.trim().lines().last().unwrap_or("no output")
         );
-        return Err(format!("yt-dlp error: {}", stderr.trim()));
+        return Err(errors::classify_output(&stderr));
     }
 
     let stdout = String::from_utf8_lossy(&stdout);
@@ -940,8 +948,11 @@ async fn show_in_folder(app: AppHandle, path: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        // raw_arg: Explorer parses its own command line and doesn't follow
+        // the argv quoting Rust would apply (S-11).
         std::process::Command::new("explorer")
-            .arg(format!("/select,{}", expanded.replace('/', "\\")))
+            .raw_arg(explorer_select_arg(&expanded)?)
             .spawn()
             .map_err(|e| format!("Failed to reveal in Explorer: {}", e))?;
         return Ok(());
@@ -952,6 +963,17 @@ async fn show_in_folder(app: AppHandle, path: String) -> Result<(), String> {
         let folder = p.parent().unwrap_or(&p);
         opener::open(folder).map_err(|e| format!("Failed to open folder: {}", e))
     }
+}
+
+/// Explorer's `/select,"<path>"` argument. The path comes from a torrent's
+/// name, so it's quoted explicitly and a `"` (which Windows paths can't
+/// contain anyway) is refused rather than allowed to end the quoting (S-11).
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn explorer_select_arg(path: &str) -> Result<String, String> {
+    if path.contains('"') {
+        return Err("That path can't be shown in Explorer".into());
+    }
+    Ok(format!("/select,\"{}\"", path.replace('/', "\\")))
 }
 
 #[tauri::command]
@@ -989,9 +1011,31 @@ pub fn cookies_browser(app: &AppHandle) -> Option<String> {
 /// the value they accept, so a corrupted settings file can't inject anything.
 fn read_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
     let path = app.path().app_data_dir().ok()?.join("settings.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    v.get(key).cloned()
+    settings_snapshot(&path)?.get(key).cloned()
+}
+
+/// settings.json parsed once per change rather than once per key: starting a
+/// single download reads a dozen settings. Keyed on the file's size and
+/// modification time (the frontend replaces the file on every save).
+fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json::Value>> {
+    type Snapshot = (PathBuf, u64, Option<std::time::SystemTime>, std::sync::Arc<serde_json::Value>);
+    static CACHE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
+
+    let meta = std::fs::metadata(path).ok()?;
+    let (len, mtime) = (meta.len(), meta.modified().ok());
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((p, l, m, value)) = guard.as_ref() {
+            if p == path && *l == len && *m == mtime {
+                return Some(value.clone());
+            }
+        }
+    }
+    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let value = std::sync::Arc::new(value);
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = Some((path.to_path_buf(), len, mtime, value.clone()));
+    }
+    Some(value)
 }
 
 /// Opt-in crash reporting preference; false on any read/parse failure.
@@ -1287,11 +1331,19 @@ pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Res
 pub struct PickedDirs(std::sync::Mutex<Vec<PathBuf>>);
 
 fn picked_dirs_file() -> Option<PathBuf> {
-    dirs::preference_dir().map(|d| d.join("com.prism.app.allowed-dirs.json"))
+    dirs::preference_dir().map(|d| d.join(format!("{}.allowed-dirs.json", migrate::NEW_ID)))
+}
+
+/// Before 2.0 the file carried the old identifier. Read it until the first
+/// save under the new name; never written again.
+fn legacy_picked_dirs_file() -> Option<PathBuf> {
+    dirs::preference_dir().map(|d| d.join(format!("{}.allowed-dirs.json", migrate::OLD_ID)))
 }
 
 fn load_picked_dirs() -> Vec<PathBuf> {
     picked_dirs_file()
+        .filter(|f| f.exists())
+        .or_else(legacy_picked_dirs_file)
         .and_then(|f| std::fs::read_to_string(f).ok())
         .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
         .unwrap_or_default()
@@ -1610,6 +1662,15 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before the builder: Tauri opens windows and plugins open their files
+    // before `setup`, so data must already be under the new identifier.
+    let migration = migrate::run_once();
+    // Hidden: run only the migration and report it (release verification).
+    if std::env::args().any(|a| a == "--prism-migrate-only") {
+        println!("{}", serde_json::to_string(&migration).unwrap_or_default());
+        return;
+    }
+
     tauri::Builder::default()
         // Must be first: relays argv (incl. deep links on Windows/Linux) from a
         // second launch to the running instance and refocuses its window.
@@ -1666,6 +1727,7 @@ pub fn run() {
                     .level(log::LevelFilter::Info)
                     .build(),
             )?;
+            migrate::log_outcome();
 
             // The webview may only write top-level JSON files in app data
             // (capabilities/default.json), so it can't create the directory.
@@ -1756,6 +1818,30 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// S-11: a torrent-controlled name can't break out of Explorer's quoting.
+    #[test]
+    fn explorer_select_arg_quotes_and_refuses_quotes() {
+        assert_eq!(
+            explorer_select_arg("C:/Users/me/Downloads/Show, S01 & more").unwrap(),
+            "/select,\"C:\\Users\\me\\Downloads\\Show, S01 & more\""
+        );
+        assert!(explorer_select_arg("C:/x\" /root,C:/Windows").is_err());
+    }
+
+    #[test]
+    fn allowed_dirs_file_uses_the_new_identifier() {
+        if let Some(f) = picked_dirs_file() {
+            assert!(f.to_string_lossy().ends_with("com.rainacorp.prism.allowed-dirs.json"));
+        }
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], migrate::NEW_ID);
+        // Tauri's NSIS installer names its registry keys after the publisher,
+        // or the identifier's second segment when unset — "prism" under
+        // com.prism.app. Pinning it keeps Windows upgrades in place.
+        assert_eq!(conf["bundle"]["publisher"], "prism");
+    }
 
     /// S-1/S-2: the webview must not be able to write where Rust keeps state
     /// it trusts (torrent-session/session.json is re-added with overwrite at
