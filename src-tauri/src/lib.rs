@@ -6,6 +6,7 @@ mod mpv_worker;
 mod player;
 mod proc;
 mod quarantine;
+mod spawn;
 pub mod torrent;
 mod updater;
 
@@ -125,12 +126,10 @@ const MAX_CAPTURE_STDERR: usize = 256 * 1024;
 static CAPTURE_SLOTS: std::sync::LazyLock<tokio::sync::Semaphore> =
     std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_CAPTURES));
 
-/// Kill a capture's whole tree, not just the PyInstaller launcher — the forked
-/// worker would otherwise outlive it (the bug v1.7.3 fixed for downloads; see
-/// `proc`).
-fn kill_capture(child: tauri_plugin_shell::process::CommandChild) {
-    proc::kill_tree(child.pid());
-    let _ = child.kill();
+/// Kill a capture's whole run, not just the PyInstaller launcher — the forked
+/// worker would otherwise outlive it (see `spawn` and `proc`).
+fn kill_capture(child: spawn::Child) {
+    child.kill();
 }
 
 /// Append to a buffer that keeps only its last `cap` bytes.
@@ -147,11 +146,11 @@ fn push_tail(buf: &mut Vec<u8>, data: &[u8], cap: usize) {
 /// and in how much output it buffers.
 /// Returns (exit_code, stdout, stderr).
 pub(crate) async fn run_ytdlp_capture(
-    cmd: tauri_plugin_shell::process::Command,
+    cmd: spawn::CommandSpec,
     timeout_secs: u64,
 ) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), errors::PrismError> {
     use errors::{ErrorCode, PrismError};
-    use tauri_plugin_shell::process::CommandEvent;
+    use spawn::Event;
 
     let _slot = tokio::time::timeout(CAPTURE_SLOT_WAIT, CAPTURE_SLOTS.acquire())
         .await
@@ -169,7 +168,7 @@ pub(crate) async fn run_ytdlp_capture(
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
     loop {
         match tokio::time::timeout_at(deadline, rx.recv()).await {
-            Ok(Some(CommandEvent::Stdout(d))) => {
+            Ok(Some(Event::Stdout(d))) => {
                 if stdout.len().saturating_add(d.len()) > MAX_CAPTURE_STDOUT {
                     log::warn!("yt-dlp lookup output passed {} bytes; killed", MAX_CAPTURE_STDOUT);
                     kill_capture(child);
@@ -180,9 +179,8 @@ pub(crate) async fn run_ytdlp_capture(
                 }
                 stdout.extend_from_slice(&d);
             }
-            Ok(Some(CommandEvent::Stderr(d))) => push_tail(&mut stderr, &d, MAX_CAPTURE_STDERR),
-            Ok(Some(CommandEvent::Terminated(t))) => return Ok((t.code, stdout, stderr)),
-            Ok(Some(_)) => {}
+            Ok(Some(Event::Stderr(d))) => push_tail(&mut stderr, &d, MAX_CAPTURE_STDERR),
+            Ok(Some(Event::Terminated(code))) => return Ok((code, stdout, stderr)),
             Ok(None) => return Ok((None, stdout, stderr)),
             Err(_) => {
                 log::warn!("yt-dlp lookup timed out after {timeout_secs}s; killed");
@@ -197,7 +195,7 @@ pub(crate) async fn run_ytdlp_capture(
 }
 
 /// The yt-dlp command for a lookup; a missing engine is its own error code.
-fn lookup_command(app: &AppHandle) -> Result<tauri_plugin_shell::process::Command, errors::PrismError> {
+fn lookup_command(app: &AppHandle) -> Result<spawn::CommandSpec, errors::PrismError> {
     engine::ytdlp_command(app).map_err(|e| errors::PrismError::new(errors::ErrorCode::EngineMissing, e))
 }
 
@@ -1691,7 +1689,6 @@ pub fn run() {
         .manage(torrent::TorrentManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .manage(updater::PendingUpdate::default())
-        .plugin(tauri_plugin_shell::init())
         // Embedded player (separate "player" window). The plugin cleans up its
         // mpv instance on window close; macOS embeds via the window's NSView.
         .plugin(tauri_plugin_libmpv::init())

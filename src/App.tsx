@@ -1,4 +1,5 @@
 import { useState, useCallback, lazy, Suspense } from "react";
+import { useService } from "@/services/ServiceProvider";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -32,15 +33,26 @@ const SPLASH_SEEN_KEY = 'prism_splash_seen';
 const PlayerWindow = lazy(() => import("@/pages/Player"));
 const isPlayerWindow = window.location.pathname.endsWith("/player");
 
-const App = () => {
-  const [showSplash, setShowSplash] = useState(() => {
-    try { return !localStorage.getItem(SPLASH_SEEN_KEY); } catch { return true; }
+/** The splash, on a first launch only: nothing saved yet. The webview-storage
+ * flag alone isn't enough, because that storage belongs to the bundle
+ * identifier, which changed in 2.0 — upgraded users arrive with their
+ * settings but an empty store. Settings are preloaded before this renders. */
+function FirstRunSplash() {
+  const service = useService();
+  const [show, setShow] = useState(() => {
+    try {
+      if (localStorage.getItem(SPLASH_SEEN_KEY)) return false;
+    } catch { /* private mode */ }
+    return service.persistence.loadSettings() === null;
   });
-  const handleSplashFinished = useCallback(() => {
-    setShowSplash(false);
+  const finish = useCallback(() => {
+    setShow(false);
     try { localStorage.setItem(SPLASH_SEEN_KEY, '1'); } catch { /* private mode */ }
   }, []);
+  return show ? <SplashScreen onFinished={finish} /> : null;
+}
 
+const App = () => {
   if (isPlayerWindow) {
     return (
       <Suspense fallback={null}>
@@ -51,8 +63,8 @@ const App = () => {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      {showSplash && <SplashScreen onFinished={handleSplashFinished} />}
       <ServiceProvider>
+        <FirstRunSplash />
         <TooltipProvider>
           <Sonner />
           <BrowserRouter>

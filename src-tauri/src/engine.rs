@@ -8,10 +8,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::process::Command;
-use tauri_plugin_shell::ShellExt;
 
 use crate::augmented_path;
+use crate::spawn::CommandSpec;
 
 #[cfg(target_os = "windows")]
 const YTDLP_NAME: &str = "yt-dlp.exe";
@@ -118,20 +117,28 @@ const LOCKDOWN_ARGS: [&str; 2] = ["--ignore-config", "--no-plugin-dirs"];
 /// Resolve the yt-dlp command: a self-updated copy in app-data wins over the
 /// bundled sidecar, but only while it still matches the hash recorded when it
 /// was installed. PATH is pre-augmented so deno/node are visible either way.
-pub fn ytdlp_command(app: &AppHandle) -> Result<Command, String> {
-    if let Some(managed) = managed_ytdlp_path(app) {
-        if managed.exists() && managed_binary_verified(&managed) {
-            return Ok(app
-                .shell()
-                .command(managed)
-                .args(LOCKDOWN_ARGS)
-                .env("PATH", augmented_path()));
-        }
+pub fn ytdlp_command(app: &AppHandle) -> Result<CommandSpec, String> {
+    let program = match managed_ytdlp_path(app) {
+        Some(managed) if managed.exists() && managed_binary_verified(&managed) => managed,
+        _ => bundled_ytdlp_path()?,
+    };
+    Ok(CommandSpec::new(program).args(LOCKDOWN_ARGS).env("PATH", augmented_path()))
+}
+
+/// The sidecar Tauri places beside the app binary (`externalBin`, target
+/// triple stripped): `Contents/MacOS/yt-dlp` in the macOS bundle, next to the
+/// exe on Windows and Linux, `target/<profile>/yt-dlp` in development.
+fn bundled_ytdlp_path() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Failed to find yt-dlp sidecar: {e}"))?;
+    let path = exe
+        .parent()
+        .map(|dir| dir.join(YTDLP_NAME))
+        .ok_or("Failed to find yt-dlp sidecar")?;
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(format!("Failed to find yt-dlp sidecar at {}", path.display()))
     }
-    app.shell()
-        .sidecar("yt-dlp")
-        .map(|c| c.args(LOCKDOWN_ARGS).env("PATH", augmented_path()))
-        .map_err(|e| format!("Failed to find yt-dlp sidecar: {}", e))
 }
 
 #[tauri::command]
@@ -248,10 +255,19 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
             .map_err(|e| format!("Failed to mark yt-dlp executable: {}", e))?;
     }
 
-    // Verify the download actually runs before swapping it in
-    let check = std::process::Command::new(&staging).arg("--version").output();
+    // Verify the download actually runs before swapping it in. Bounded and
+    // async: a binary that hangs must not park a runtime thread or leave the
+    // Settings action spinning.
+    let mut version_check = tokio::process::Command::new(&staging);
+    version_check.arg("--version").kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        version_check.creation_flags(CREATE_NO_WINDOW);
+    }
+    let check = tokio::time::timeout(Duration::from_secs(VERSION_TIMEOUT_SECS), version_check.output()).await;
     let version = match check {
-        Ok(out) if out.status.success() => {
+        Ok(Ok(out)) if out.status.success() => {
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         }
         _ => {

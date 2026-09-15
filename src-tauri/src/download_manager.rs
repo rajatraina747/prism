@@ -5,12 +5,11 @@ use std::sync::{Arc, LazyLock};
 use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::process::CommandEvent;
 use tokio::sync::Mutex;
 
 use crate::errors::{classify_output, ErrorCode, PrismError};
 use crate::find_ffmpeg;
+use crate::spawn::{Child, Event};
 
 static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
 static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
@@ -85,7 +84,7 @@ pub struct DownloadComplete {
 }
 
 struct ActiveDownload {
-    child: CommandChild,
+    child: Child,
     /// Cleared when the run is cancelled or superseded. Its reader task checks
     /// this before touching shared state or emitting: a process that outlived
     /// its kill must not keep streaming progress under the item's id.
@@ -93,12 +92,10 @@ struct ActiveDownload {
 }
 
 impl ActiveDownload {
-    /// Kill the process *tree* — see `crate::proc` for why the direct child
-    /// isn't enough.
+    /// Kill the whole run, forked worker included — see `crate::spawn` for
+    /// why the direct child isn't enough.
     fn kill(self) {
-        let pid = self.child.pid();
-        crate::proc::kill_tree(pid);
-        let _ = self.child.kill();
+        self.child.kill();
     }
 
     /// Kill it *and* disown the run, so its reader task goes quiet instead of
@@ -387,7 +384,7 @@ impl DownloadManager {
                 let inactivity = std::time::Duration::from_secs(if agg.processing { 1800 } else { 300 });
                 match tokio::time::timeout(inactivity, rx.recv()).await {
                     Ok(Some(event)) => match event {
-                        CommandEvent::Stdout(data) => {
+                        Event::Stdout(data) => {
                             let line = String::from_utf8_lossy(&data);
                             if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
                                 actual_height = h.parse().ok(); // "NA" → None
@@ -402,7 +399,7 @@ impl DownloadManager {
                                 }
                             }
                         }
-                        CommandEvent::Stderr(data) => {
+                        Event::Stderr(data) => {
                             let line = String::from_utf8_lossy(&data);
                             let trimmed = line.trim();
                             if !trimmed.is_empty() {
@@ -430,11 +427,10 @@ impl DownloadManager {
                                 }
                             }
                         }
-                        CommandEvent::Terminated(payload) => {
-                            success = payload.code == Some(0);
+                        Event::Terminated(code) => {
+                            success = code == Some(0);
                             break;
                         }
-                        _ => {}
                     },
                     Ok(None) => break,
                     Err(_) => {
