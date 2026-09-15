@@ -49,7 +49,7 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex items-center gap-3">
-          <img src="/logo-nobg.png" alt="Prism" className="w-10 h-10 animate-pulse" />
+          <img src="/logo-nobg.webp" alt="Prism" className="w-10 h-10 animate-pulse" />
           <span className="text-sm text-muted-foreground">Loading...</span>
         </div>
       </div>

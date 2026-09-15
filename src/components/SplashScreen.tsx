@@ -27,14 +27,14 @@ export function SplashScreen({ onFinished, minimumDuration = 2800 }: SplashScree
         {/* Logos row */}
         <div className="flex items-center gap-8">
           <img
-            src="/logo-nobg.png"
+            src="/logo-nobg.webp"
             alt="Prism"
             className="splash-logo-enter h-28 w-28 object-contain drop-shadow-[0_0_24px_hsl(160,50%,44%,0.35)]"
             style={{ animationDelay: '0.2s' }}
           />
           <div className="splash-divider-enter h-20 w-px bg-gradient-to-b from-transparent via-muted-foreground/30 to-transparent" />
           <img
-            src="/rainacorp-logo.png"
+            src="/rainacorp-logo.webp"
             alt="RainaCorp"
             className="splash-logo-enter h-24 w-24 object-contain drop-shadow-[0_0_24px_hsl(45,80%,55%,0.3)]"
             style={{ animationDelay: '0.4s' }}

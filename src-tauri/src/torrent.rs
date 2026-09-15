@@ -718,6 +718,7 @@ impl TorrentManager {
             let total = handle.stats().total_bytes;
             let file_path = resolve_completion_path(&handle, &output_dir);
             mark_torrent_files_downloaded(&handle, &output_dir);
+            log::info!("torrent {id}: completed ({total} bytes)");
             let _ = app.emit(
                 &format!("download-complete-{id}"),
                 DownloadComplete {
@@ -890,6 +891,7 @@ impl TorrentManager {
                 if stats.finished && !delete_files {
                     let file_path = resolve_completion_path(&h, &output_dir);
                     mark_torrent_files_downloaded(&h, &output_dir);
+                    log::info!("torrent {id}: seeding stopped by user; completed");
                     let _ = app.emit(
                         &format!("download-complete-{id}"),
                         DownloadComplete {
@@ -1316,6 +1318,7 @@ fn file_breakdown(handle: &ManagedTorrentHandle, file_progress: &[u64]) -> Vec<T
 }
 
 fn emit_failure(app: &AppHandle, id: &str, message: String) {
+    log::warn!("torrent {id}: failed: {message}");
     let _ = app.emit(
         &format!("download-complete-{id}"),
         DownloadComplete {

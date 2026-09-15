@@ -227,6 +227,7 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
             .collect::<String>()
     };
     if actual != expected {
+        log::warn!("yt-dlp update rejected: checksum mismatch for {asset}");
         return Err("Downloaded yt-dlp failed checksum verification — keeping current engine. Please try again.".into());
     }
 
@@ -263,6 +264,7 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     // which only means the bundled engine is used until the next update.
     std::fs::write(recorded_sha_path(&target), &actual)
         .map_err(|e| format!("Failed to record yt-dlp checksum: {}", e))?;
+    log::info!("yt-dlp engine updated to {version}");
     Ok(version)
 }
 
@@ -314,6 +316,7 @@ pub async fn reset_ytdlp(app: AppHandle) -> Result<(), String> {
                 .map_err(|e| format!("Failed to remove managed yt-dlp: {}", e))?;
         }
         let _ = std::fs::remove_file(recorded_sha_path(&managed));
+        log::info!("yt-dlp engine reset to the bundled copy");
     }
     Ok(())
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useService } from '@/services/ServiceProvider';
 import { Panel, OutboundLink } from '@/components/common';
-import { ExternalLink, Heart, Shield, BookOpen, Sparkles } from 'lucide-react';
+import { ExternalLink, Heart, Shield, BookOpen, Sparkles, Bug } from 'lucide-react';
 
 export default function About() {
   const service = useService();
@@ -16,7 +16,7 @@ export default function About() {
   return (
     <div className="page-container max-w-lg mx-auto">
       <div className="page-header text-center">
-        <img src="/logo-nobg.png" alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
+        <img src="/logo-nobg.webp" alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
         <h2 className="page-title">Prism</h2>
         <p className="page-subtitle">Premium Video Downloader</p>
         <p className="text-[11px] text-muted-foreground/60 mt-1">
@@ -42,6 +42,12 @@ export default function About() {
             label="Release notes"
             description="What changed in each version"
             href="https://github.com/rajatraina747/prism/releases"
+          />
+          <LinkRow
+            icon={Bug}
+            label="Report a bug"
+            description="Opens a bug report on GitHub — Settings → Diagnostics → Export logs helps"
+            href={`https://github.com/rajatraina747/prism/issues/new?template=bug_report.yml&version=${encodeURIComponent(version)}`}
           />
           <button onClick={() => navigate('/privacy')} className="w-full text-left">
             <LinkRow icon={Shield} label="Privacy Policy" description="How Prism handles your data — spoiler: it stays on your device" />

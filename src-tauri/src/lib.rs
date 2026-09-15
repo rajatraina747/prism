@@ -151,7 +151,10 @@ pub(crate) async fn run_ytdlp_capture(
 
     let _slot = tokio::time::timeout(CAPTURE_SLOT_WAIT, CAPTURE_SLOTS.acquire())
         .await
-        .map_err(|_| "Prism is busy with other link lookups — try again in a moment".to_string())?
+        .map_err(|_| {
+            log::warn!("no free yt-dlp lookup slot after {}s", CAPTURE_SLOT_WAIT.as_secs());
+            "Prism is busy with other link lookups — try again in a moment".to_string()
+        })?
         .map_err(|_| "yt-dlp lookups are shutting down".to_string())?;
 
     let (mut rx, child) = cmd
@@ -164,6 +167,7 @@ pub(crate) async fn run_ytdlp_capture(
         match tokio::time::timeout_at(deadline, rx.recv()).await {
             Ok(Some(CommandEvent::Stdout(d))) => {
                 if stdout.len().saturating_add(d.len()) > MAX_CAPTURE_STDOUT {
+                    log::warn!("yt-dlp lookup output passed {} bytes; killed", MAX_CAPTURE_STDOUT);
                     kill_capture(child);
                     return Err(format!(
                         "yt-dlp returned more than {} MB of data — stopped",
@@ -177,6 +181,7 @@ pub(crate) async fn run_ytdlp_capture(
             Ok(Some(_)) => {}
             Ok(None) => return Ok((None, stdout, stderr)),
             Err(_) => {
+                log::warn!("yt-dlp lookup timed out after {timeout_secs}s; killed");
                 kill_capture(child);
                 return Err(format!(
                     "yt-dlp did not respond within {} seconds — the site may be blocking or down",
@@ -215,6 +220,11 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, String>
 
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
+        log::warn!(
+            "link lookup on {} failed: {}",
+            extract_domain(&url),
+            stderr.trim().lines().last().unwrap_or("no output")
+        );
         return Err(format!("yt-dlp error: {}", stderr.trim()));
     }
 
@@ -366,6 +376,11 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
 
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
+        log::warn!(
+            "link lookup on {} failed: {}",
+            extract_domain(&url),
+            stderr.trim().lines().last().unwrap_or("no output")
+        );
         return Err(format!("yt-dlp error: {}", stderr.trim()));
     }
 
@@ -1253,8 +1268,10 @@ pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Res
     let tail = path_buf.strip_prefix(existing).unwrap_or(std::path::Path::new(""));
     let resolved = resolved_existing.join(tail);
 
-    path_is_allowed(&resolved, extra_roots)
-        .map_err(|e| format!("Invalid download path: {} ({})", e, expanded))?;
+    path_is_allowed(&resolved, extra_roots).map_err(|e| {
+        log::warn!("refused download path {expanded}: {e}");
+        format!("Invalid download path: {} ({})", e, expanded)
+    })?;
 
     Ok(expanded)
 }
@@ -1337,6 +1354,7 @@ async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
     if let Some(state) = app.try_state::<PickedDirs>() {
         let mut guard = state.0.lock().map_err(|_| "State lock poisoned".to_string())?;
         if !guard.iter().any(|d| d == &resolved) {
+            log::info!("download folder allowed by user pick: {}", resolved.display());
             guard.push(resolved.clone());
             save_picked_dirs(&guard);
         }
@@ -1760,6 +1778,62 @@ mod tests {
                 let p = entry["path"].as_str().unwrap();
                 assert!(allowed_paths.contains(&p), "{id} allows {p}");
             }
+        }
+    }
+
+    /// S-1/S-2 end to end: the real `capabilities/default.json`, enforced by
+    /// Tauri's IPC + ACL (mock runtime), decides what the main window may
+    /// write through the fs plugin. This resolves to the real app data
+    /// directory, so every name is unique to the run and removed afterwards.
+    #[test]
+    fn webview_fs_access_is_enforced_by_the_real_capability() {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::webview::InvokeRequest;
+
+        let app = tauri::test::mock_builder()
+            .plugin(tauri_plugin_fs::init())
+            .build(tauri::generate_context!(test = true))
+            .expect("mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("main webview");
+        let data_dir = app.path().app_data_dir().unwrap();
+        std::fs::create_dir_all(data_dir.join("torrent-session")).unwrap();
+        std::fs::create_dir_all(data_dir.join("engine")).unwrap();
+        let tag = format!("prism-acl-test-{}", std::process::id());
+
+        let write = |rel: &str| {
+            let mut headers = tauri::http::HeaderMap::new();
+            headers.insert("path", rel.parse().unwrap());
+            // 14 = BaseDirectory::AppData, as the frontend's writeJson sends it.
+            headers.insert("options", r#"{"baseDir":14}"#.parse().unwrap());
+            let response = tauri::test::get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: "plugin:fs|write_text_file".into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: InvokeBody::Raw(b"{}".to_vec()),
+                    headers,
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            );
+            let _ = std::fs::remove_file(data_dir.join(rel));
+            response
+        };
+
+        let allowed = format!("{tag}.json.tmp");
+        let r = write(&allowed);
+        assert!(r.is_ok(), "the settings write-then-rename temp file was refused: {r:?}");
+
+        for refused in [
+            format!("torrent-session/{tag}.json"),
+            format!("engine/{tag}"),
+            format!("{tag}.json"),
+            format!("{tag}.sh"),
+        ] {
+            assert!(write(&refused).is_err(), "the webview could write {refused}");
         }
     }
 

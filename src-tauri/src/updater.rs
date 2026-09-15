@@ -67,15 +67,29 @@ pub async fn check_app_update(
     app: AppHandle,
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateInfo, String> {
-    let updater = app
-        .updater_builder()
-        .configure_client(|c| c.connect_timeout(CONNECT_TIMEOUT).read_timeout(READ_TIMEOUT))
-        .build()
-        .map_err(|e| error_chain(&e))?;
-    let found = tokio::time::timeout(CHECK_TIMEOUT, updater.check())
-        .await
-        .map_err(|_| format!("Update check timed out after {} seconds", CHECK_TIMEOUT.as_secs()))?
-        .map_err(|e| error_chain(&e))?;
+    let checked = async {
+        let updater = app
+            .updater_builder()
+            .configure_client(|c| c.connect_timeout(CONNECT_TIMEOUT).read_timeout(READ_TIMEOUT))
+            .build()
+            .map_err(|e| error_chain(&e))?;
+        tokio::time::timeout(CHECK_TIMEOUT, updater.check())
+            .await
+            .map_err(|_| format!("Update check timed out after {} seconds", CHECK_TIMEOUT.as_secs()))?
+            .map_err(|e| error_chain(&e))
+    }
+    .await;
+    let found = match checked {
+        Ok(found) => found,
+        Err(e) => {
+            log::warn!("update check failed: {e}");
+            return Err(e);
+        }
+    };
+    match &found {
+        Some(u) => log::info!("update check: {} available", u.version),
+        None => log::info!("update check: up to date"),
+    }
     let info = UpdateInfo {
         available: found.is_some(),
         version: found.as_ref().map(|u| u.version.clone()),
@@ -98,6 +112,7 @@ pub async fn install_app_update(
         .map_err(|_| "Update state lock poisoned".to_string())?
         .clone()
         .ok_or("No update available to install — check for updates first")?;
+    log::info!("installing update {}", update.version);
     let mut downloaded: u64 = 0;
     update
         .download_and_install(
@@ -108,7 +123,11 @@ pub async fn install_app_update(
             || {},
         )
         .await
-        .map_err(|e| error_chain(&e))
+        .map_err(|e| {
+            let msg = error_chain(&e);
+            log::warn!("update install failed: {msg}");
+            msg
+        })
 }
 
 #[cfg(test)]
@@ -126,6 +145,45 @@ mod tests {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             self.1.as_deref().map(|e| e as _)
         }
+    }
+
+    /// The updater fix against the real network: the release-asset host is
+    /// resolved to a black-holed address *first* (on the network this was
+    /// diagnosed on, GitHub's 185.199.109.133 behaved exactly like this),
+    /// then to a live one. hyper splits the connect timeout across the
+    /// addresses, so the request falls through and succeeds well inside the
+    /// check budget. The plugin's own client — no connect timeout — sat on
+    /// the dead address for the OS's ~75 s TCP timeout instead.
+    ///
+    /// Uses this crate's reqwest 0.12 (the plugin builds on 0.13); both use
+    /// hyper-util's connector. Network-dependent, so opt-in:
+    /// `cargo test --lib -- --ignored connect_timeout`.
+    #[test]
+    #[ignore = "needs network"]
+    fn connect_timeout_falls_through_a_blackholed_address() {
+        use std::net::{SocketAddr, ToSocketAddrs};
+        const HOST: &str = "release-assets.githubusercontent.com";
+        let dead: SocketAddr = std::env::var("PRISM_DEAD_ADDR")
+            .unwrap_or_else(|_| "10.255.255.1:443".into())
+            .parse()
+            .unwrap();
+        let live = (HOST, 443)
+            .to_socket_addrs()
+            .expect("DNS")
+            .find(|a| a.is_ipv4() && a.ip() != dead.ip())
+            .expect("a live IPv4 address");
+        let client = reqwest::Client::builder()
+            .connect_timeout(super::CONNECT_TIMEOUT)
+            .resolve_to_addrs(HOST, &[dead, live])
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let result = tauri::async_runtime::block_on(client.get(format!("https://{HOST}/")).send());
+        let took = started.elapsed();
+        // Any HTTP status proves TCP + TLS reached the live address.
+        assert!(result.is_ok(), "request failed after {took:?}: {result:?}");
+        assert!(took < super::CHECK_TIMEOUT, "took {took:?}");
+        assert!(took >= super::CONNECT_TIMEOUT / 2 / 2, "dead address was never tried ({took:?})");
     }
 
     #[test]

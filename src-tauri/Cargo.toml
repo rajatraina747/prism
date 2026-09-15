@@ -58,6 +58,11 @@ libc = "0.2"
 objc2 = "0.6"
 objc2-core-foundation = "0.3"
 
+# Tests drive the real capability files through Tauri's mock runtime (IPC +
+# ACL) — see `webview_fs_access_*` in src/lib.rs.
+[dev-dependencies]
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "test"] }
+
 # Dev-only: examples/mpv_thread_repro.rs, a standalone verification harness
 # for the commands.rs main-thread patch (not part of the shipped app).
 [target.'cfg(target_os = "macos")'.dev-dependencies]

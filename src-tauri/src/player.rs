@@ -296,6 +296,7 @@ pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), St
     ensure_player_window(&window)?;
     // Fail with a clear message before touching the plugin's library loader.
     if !player_available(app.clone()) {
+        log::warn!("player init refused: libmpv-wrapper is not bundled");
         return Err("The built-in player isn't included in this build of Prism".into());
     }
     let cfg = player_mpv_config(&app)?;
@@ -304,7 +305,10 @@ pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), St
         app2.mpv()
             .init(cfg, PLAYER_LABEL)
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| {
+                log::warn!("player init failed: {e}");
+                e.to_string()
+            })
     })
     .await?
 }

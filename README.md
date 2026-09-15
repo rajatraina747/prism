@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo-nobg.png" alt="Prism" width="120" />
+  <img src="public/logo-nobg.webp" alt="Prism" width="120" />
 </p>
 
 <h1 align="center">Prism</h1>

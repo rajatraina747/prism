@@ -300,8 +300,9 @@ export default function Dashboard() {
       const metadata = await service.parseUrl(url);
       setParsedMetadata(metadata);
       setShowMediaModal(true);
-    } catch (err: any) {
-      setParseError(typeof err === 'string' ? err : (err?.message || 'Failed to parse URL'));
+    } catch (err: unknown) {
+      // Tauri commands reject with a plain string; the web demo throws Errors.
+      setParseError(typeof err === 'string' ? err : err instanceof Error ? err.message : 'Failed to parse URL');
     } finally {
       setIsParsing(false);
     }
@@ -602,7 +603,7 @@ export default function Dashboard() {
         className="mt-10 mb-2 flex flex-col items-center gap-2.5 py-5 group animate-fade-in"
         style={{ animationDelay: '220ms' } as React.CSSProperties}
       >
-        <img src="/rainacorp-logo.png" alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
+        <img src="/rainacorp-logo.webp" alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
         <div className="text-center">
           <p className="text-[11px] font-semibold tracking-wide text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
             A RAINACORP PRODUCT

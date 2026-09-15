@@ -311,6 +311,7 @@ impl DownloadManager {
 
             // Held for the life of this task, i.e. until the process is done.
             let Ok(_slot) = DOWNLOAD_SLOTS.clone().try_acquire_owned() else {
+                log::warn!("download {id}: refused, {MAX_CONCURRENT_DOWNLOADS} already running");
                 reserved.lock().await.remove(&id);
                 emit_start_failure(
                     &app,
@@ -343,6 +344,7 @@ impl DownloadManager {
                 let mut map = downloads.lock().await;
                 map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
             }
+            log::info!("download {id}: yt-dlp started");
 
             let mut success = false;
             // Prefer the last explicit "ERROR:" line for the failure message —
@@ -439,6 +441,11 @@ impl DownloadManager {
 
             if last_error.is_empty() {
                 last_error = last_stderr;
+            }
+            if success {
+                log::info!("download {id}: finished");
+            } else {
+                log::warn!("download {id}: failed: {last_error}");
             }
 
             let final_path = if success {
