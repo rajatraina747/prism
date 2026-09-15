@@ -83,9 +83,9 @@ settings debounce; README accuracy) is shipped, and so is v1.9.0 below.
       timeout falls through a black-holed address; rustls → 0.23.45
       (RUSTSEC-2026-0285, published the day before 1.9.0).
 
-Carried over from the review, still open: S-5 (pin Homebrew mpv), S-11
-(`explorer /select,` concatenation), S-12 (raw stderr in error strings —
-the UI now shows a one-line summary, the full text is still returned).
+Carried over from the review: S-5 (pin Homebrew mpv) is still open. S-11
+(`explorer /select,` concatenation) and S-12 (raw stderr in error strings) are
+fixed on the `v2.0` branch.
 
 ### v1.9.1 — player hotfix
 
@@ -101,16 +101,51 @@ the UI now shows a one-line summary, the full text is still returned).
       a real app bundle end to end. Postmortem addendum in
       [docs/AUDIT-2026-07.md](docs/AUDIT-2026-07.md).
 
-### v2.0 — "Download manager"
+### v2.0 — "Download manager" (in progress on `v2.0`)
 
-- [ ] Bundle a static LGPL ffmpeg (pinned + SHA in `sidecars.lock`).
-- [ ] Engine freshness check (daily compare, unobtrusive nudge).
-- [ ] Watch folder (`.torrent` + URL lists); categories/labels with
-      per-category destination; move-completed-to; filename templates.
-- [ ] Stream-while-downloading ("Play now") — see the torrent arc below.
-- [ ] Chrome/Edge extension + AMO publish (needs a hosted privacy policy).
-- [ ] Decide `com.prism.app` → `com.rainacorp.prism` (app-data migration +
-      updater continuity) and whether to add a generic HTTP engine.
+Decided 2026-09-15: the bundle id becomes `com.rainacorp.prism`; a basic
+HTTP(S) engine is in; the extension goes to Edge Add-ons and AMO, with Chrome
+as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
+
+**Foundations**
+- [x] Identifier migration (`migrate.rs`): copy-only, staged, locked, marked.
+      The allowed-dirs file is renamed and still read under the old name. The
+      NSIS publisher is pinned to "prism" so Windows upgrades stay in place.
+- [x] Structured errors (`errors.rs`, S-12): a code plus a redacted summary
+      and detail from Rust; the UI classifies by code.
+- [x] One process group per yt-dlp run (`spawn.rs`); shell plugin removed;
+      the engine update's version check is bounded.
+- [x] S-11 Explorer quoting; settings.json parsed once per change; tags with
+      `-` build as prereleases; the first-run splash survives the rename.
+- [ ] Windows: kill runs with a Job Object (still `taskkill /T`).
+
+**Engines and media**
+- [ ] LGPL media toolchain: self-built macOS ffmpeg and libmpv, BtbN LGPL
+      builds for Windows/Linux, all pinned (closes S-5 and the GPL macOS
+      bundle).
+- [ ] Engine freshness check: daily, an unobtrusive nudge, and a newer bundled
+      engine beats an older self-updated one.
+- [ ] HTTP(S) direct-link engine: segments, resume, checksum.
+- [ ] Stream while downloading ("Play now") — see the torrent arc below.
+
+**Organising**
+- [ ] Categories, labels, filename templates, move-completed, watch folders.
+
+**Player**
+- [ ] Resume position, chapters, external subtitles, track menus, mini player.
+
+**Library and automation**
+- [ ] Library list model, grid, bulk actions, storage, undo that resumes.
+- [ ] Post-completion actions (including sleep/shutdown), scheduling, RSS
+      rules, duplicate detection, native menu, global shortcuts, Dock and
+      taskbar progress.
+- [ ] Clip download, chapter split, conversion presets, settings/Library
+      export, qBittorrent and Transmission import, statistics page.
+
+**Distribution**
+- [ ] Chrome/Edge and Firefox extension builds; hosted privacy page; winget;
+      cask cleanup for both identifiers.
+- [ ] Upstream librqbit PRs (tracked here, never blocking a release).
 
 ## Candidate arc — Second engine: BitTorrent (needs a go/no-go)
 
