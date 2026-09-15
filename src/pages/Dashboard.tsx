@@ -14,6 +14,8 @@ import { generateId, formatBytes, formatSpeed, isTorrentUrl, torrentDisplayName,
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
+import { COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
+import { classifyError, conciseError } from '@/services/errors';
 import { cn } from '@/lib/utils';
 import {
   Sparkles, Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen,
@@ -177,9 +179,18 @@ export default function Dashboard() {
   const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
   const totalDownloadedBytes = useMemo(() => completedHistory.reduce((s, i) => s + (i.fileSize || 0), 0), [completedHistory]);
   const recentDownloads = useMemo(() => completedHistory.slice(0, 3), [completedHistory]);
+  // Parse errors get the same treatment as failed downloads: the engine's
+  // line, what to do, and the action that can fix it.
+  const parseProblem = useMemo(() => {
+    if (!parseError) return null;
+    const { suggestion, action } = classifyError(parseError);
+    return { message: conciseError(parseError), suggestion, action };
+  }, [parseError]);
 
   // Ref indirection so the clipboard watcher callback stays stable
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
+  // The link behind the current parse error, for its Retry action.
+  const lastParsedUrlRef = useRef('');
   // Monotonic token so a slow parseTorrent (up to ~45s) can't populate or close a
   // modal the user has since moved on from. Bumped on new parse / close / confirm.
   const torrentParseIdRef = useRef(0);
@@ -278,6 +289,7 @@ export default function Dashboard() {
         }
       }
 
+      lastParsedUrlRef.current = url;
       const metadata = await service.parseUrl(url);
       setParsedMetadata(metadata);
       setShowMediaModal(true);
@@ -438,7 +450,13 @@ export default function Dashboard() {
         onSubmit={handleUrlSubmit}
         onBatchSubmit={handleBatchSubmit}
         isLoading={isParsing}
-        error={parseError}
+        error={parseProblem?.message ?? null}
+        errorHint={parseProblem?.suggestion}
+        errorAction={parseProblem?.action === 'cookies'
+          ? { label: 'Set browser cookies', onClick: () => navigate(COOKIES_SETTINGS_PATH) }
+          : parseProblem?.action === 'retry' && lastParsedUrlRef.current
+            ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
+            : undefined}
         onErrorClear={() => setParseError(null)}
       />
 

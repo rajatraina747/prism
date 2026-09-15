@@ -104,6 +104,23 @@ describe('QueueTable', () => {
     expect(onRetry).toHaveBeenCalledWith('item-1');
   });
 
+  it('explains a sign-in failure and offers the cookies fix on the row', () => {
+    render(<QueueTable items={[makeItem({
+      status: 'failed',
+      error: {
+        code: 'ERR',
+        message: "yt-dlp error: ERROR: [youtube] abc123: Sign in to confirm you're not a bot",
+        category: 'auth',
+        timestamp: '',
+      },
+    })]} {...defaultProps} />);
+    expect(screen.getByText(/needs you to be signed in/)).toBeTruthy();
+    // The engine's line, without the yt-dlp/extractor prefixes.
+    expect(screen.getByText("Sign in to confirm you're not a bot")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set browser cookies' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
   it('renders multiple items', () => {
     const items = [
       makeItem({ id: 'a', metadata: { ...makeItem().metadata, title: 'Video A' } }),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
@@ -104,7 +104,17 @@ export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
   const service = useService();
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = React.useState('downloads');
+  // `?section=` opens a specific section (e.g. "Set browser cookies" from a
+  // failed download), including when Settings is already open.
+  const [searchParams] = useSearchParams();
+  const requestedSection = searchParams.get('section');
+  const [activeSection, setActiveSection] = React.useState<string>(
+    SECTIONS.find(s => s.id === requestedSection)?.id ?? 'downloads'
+  );
+  React.useEffect(() => {
+    const match = SECTIONS.find(s => s.id === requestedSection);
+    if (match) setActiveSection(match.id);
+  }, [requestedSection]);
   const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();

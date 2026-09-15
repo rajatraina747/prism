@@ -51,13 +51,17 @@ settings debounce; README accuracy) is shipped. What remains, in order:
 - [x] Linux deny-list entries (`bin`, `Desktop/*.desktop`; `.local/bin` was
       already covered by the dotfile rule); case-insensitive compare on
       mac/win (S-9).
+- [x] Failure UX: shared classifier (`services/errors.ts`) with an action;
+      failed rows show suggestion → engine's one-line error (full text on
+      hover) → "Set browser cookies" / Retry; failure toast carries the same
+      action; parse errors under the URL box classified the same way;
+      Settings opens at `?section=`.
 - [ ] UX ★: one "Add" surface (⌘N/⌘L sheet, drop-anywhere incl. magnets and
       `.torrent`); Settings restructure (Video / BitTorrent / Speed & schedule
-      …, one speed-limit group, one unit, jargon tooltips); failure UX
-      (suggestion + Retry/“Set browser cookies” on the row and toast; classify
-      parse errors); quiet-hours banner; accessibility pass (labelled Settings
-      controls, listbox semantics, Radix tabs everywhere, reduced-motion);
-      virtualize Library/pickers and drop per-row `backdrop-filter`.
+      …, one speed-limit group, one unit, jargon tooltips); quiet-hours
+      banner; accessibility pass (labelled Settings controls, listbox
+      semantics, Radix tabs everywhere, reduced-motion); virtualize
+      Library/pickers and drop per-row `backdrop-filter`.
 - [ ] TypeScript `strict` + `strictNullChecks`; re-enable `no-unused-vars` /
       `no-explicit-any`; Playwright in CI; `log::` coverage in the Rust
       backend; `--force-ipv4` as a setting; WebP logos; prune unused

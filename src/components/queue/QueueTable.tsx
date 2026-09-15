@@ -3,6 +3,9 @@ import type { DownloadItem } from '@/types/models';
 import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
+import { classifyError, conciseError } from '@/services/errors';
+import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
+import type { DownloadError } from '@/types/models';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -35,6 +38,36 @@ export interface QueueRowActions {
 }
 
 export interface SelectMods { shift: boolean; meta: boolean }
+
+/** Why a transfer failed and what to do about it, on the row itself: the
+ * suggestion first, the engine's own words (one line; full text on hover)
+ * beneath, then the fix. Retry is always offered — classification is a
+ * best guess — but the fix that matters (browser cookies) comes first. */
+function FailureNote({ error, onRetry }: { error: DownloadError; onRetry: () => void }) {
+  const { suggestion, action } = classifyError(error.message);
+  return (
+    <div className="mt-1.5 space-y-1">
+      <p className="text-[11px] text-destructive">{error.suggestion ?? suggestion}</p>
+      <p className="text-[11px] text-muted-foreground/70 truncate" title={error.message}>{conciseError(error.message)}</p>
+      <div className="flex items-center gap-1.5 pt-0.5">
+        {action === 'cookies' && (
+          <button
+            onClick={() => requestNavigate(COOKIES_SETTINGS_PATH)}
+            className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
+          >
+            Set browser cookies
+          </button>
+        )}
+        <button
+          onClick={onRetry}
+          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface QueueTableProps extends QueueRowActions {
   items: DownloadItem[];
@@ -260,10 +293,11 @@ const QueueRow = React.memo(function QueueRow({
               </span>
             )}
             {isQueued && <span>Waiting for a slot</span>}
-            {isFailed && item.error && (
-              <span className="text-destructive">{item.error.message}</span>
-            )}
           </div>
+
+          {isFailed && item.error && (
+            <FailureNote error={item.error} onRetry={() => onRetry(item.id)} />
+          )}
 
           {/* Multi-file torrent breakdown (quick glance; the detail panel has the full tree) */}
           {isTorrent && files.length > 1 && (isActive || isSeeding || isPaused) && (
@@ -334,9 +368,6 @@ const QueueRow = React.memo(function QueueRow({
           )}
           {isPaused && (
             <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip="Resume" />
-          )}
-          {isFailed && (
-            <ActionButton icon={RotateCcw} onClick={() => onRetry(item.id)} tooltip="Retry" />
           )}
           {(isActive || isPaused || isSeeding || isQueued) && (
             <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip={isSeeding ? 'Stop seeding' : 'Cancel'} />

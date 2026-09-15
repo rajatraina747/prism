@@ -6,6 +6,7 @@ import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useUrlDrop } from '@/hooks/use-url-drop';
 import { pushDeepLink } from '@/lib/deep-link-bus';
+import { onNavigateRequest } from '@/lib/nav-bus';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -149,6 +150,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pushDeepLink(url, origin);
     navigateRef.current('/');
   }), [service]);
+
+  // Navigation asked for from outside a route (e.g. a failure toast's
+  // "Set browser cookies").
+  React.useEffect(() => onNavigateRequest((path) => navigateRef.current(path)), []);
 
   // URLs dragged onto the window take the same path — the drop is the intent.
   useUrlDrop((url) => {

@@ -7,39 +7,8 @@ import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
-
-function classifyError(msg: string): { category: DownloadError['category']; suggestion: string } {
-  const lower = msg.toLowerCase();
-  // Auth / access walls (yt-dlp phrases these many ways)
-  if (lower.includes('sign in to confirm') || lower.includes('not a bot') || lower.includes('login required')
-    || lower.includes('private video') || lower.includes('members-only') || lower.includes('age-restricted')
-    || lower.includes('age restricted') || lower.includes('confirm your age'))
-    return { category: 'auth', suggestion: 'This video requires sign-in — set "Browser cookies" in Settings to a browser where you\'re logged in' };
-  // Gone / never existed
-  if (lower.includes('video unavailable') || lower.includes('has been removed') || lower.includes('account terminated')
-    || lower.includes('no longer available') || lower.includes('404'))
-    return { category: 'parse', suggestion: 'This video is no longer available' };
-  // Region locks
-  if (lower.includes('not available in your country') || lower.includes('geo restrict') || lower.includes('georestrict'))
-    return { category: 'parse', suggestion: 'Not available in your region' };
-  // Rate limiting — transient, but retrying immediately makes it worse
-  if (lower.includes('429') || lower.includes('too many requests') || lower.includes('rate limit'))
-    return { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes and retry' };
-  if (lower.includes('permission') || lower.includes('access denied'))
-    return { category: 'permission', suggestion: 'Check folder permissions' };
-  if (lower.includes('disk') || lower.includes('space') || lower.includes('no space') || lower.includes('full'))
-    return { category: 'storage', suggestion: 'Free up disk space' };
-  if (lower.includes('codec') || lower.includes('format') || lower.includes('merge') || lower.includes('remux'))
-    return { category: 'unknown', suggestion: 'Try a different format' };
-  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('connection') || lower.includes('network')
-    || lower.includes('dns') || lower.includes('ssl') || lower.includes('unable to download'))
-    return { category: 'network', suggestion: 'Check your connection' };
-  if (lower.includes('not found') || lower.includes('unsupported') || lower.includes('unable to extract'))
-    return { category: 'parse', suggestion: 'This URL may not be supported' };
-  // Unknown errors must NOT classify as 'network' — that category triggers
-  // automatic retries, which is wrong for failures we can't identify.
-  return { category: 'unknown', suggestion: 'Check the URL, then retry' };
-}
+import { classifyError } from '@/services/errors';
+import { requestNavigate, COOKIES_SETTINGS_PATH } from '@/lib/nav-bus';
 
 let audioCtx: AudioContext | null = null;
 function playNotificationSound() {
@@ -279,6 +248,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     service.setTorrentRateLimits(tighter(userDown, override), tighter(userUp, override)).catch(() => {});
   }, [settings, scheduleTick, service]);
 
+  // The failure toast's Retry fires long after this render; read the current
+  // retryDownload through a ref (assigned where it's defined, below).
+  const retryRef = useRef<(id: string) => void>(() => {});
+
   // Auto-start queued items
   useEffect(() => {
     void scheduleTick; // dep only: minute tick re-runs the gate below
@@ -344,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (settings.soundEnabled) playNotificationSound();
           } else {
             const message = errorMsg || 'An unexpected error occurred';
-            const { category, suggestion } = classifyError(message);
+            const { category, suggestion, action } = classifyError(message);
 
             // Transient (network) failures: retry automatically with backoff
             // before surfacing a failure. Keeps status 'downloading' during the
@@ -359,7 +332,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });
             if (settings.notificationsEnabled) {
-              toast.error(`Failed: ${item.metadata.title}`);
+              toast.error(`Failed: ${item.metadata.title}`, {
+                description: suggestion,
+                action: action === 'cookies'
+                  ? { label: 'Set browser cookies', onClick: () => requestNavigate(COOKIES_SETTINGS_PATH) }
+                  : action === 'retry'
+                    ? { label: 'Retry', onClick: () => retryRef.current(item.id) }
+                    : undefined,
+                duration: 10000,
+              });
               if (!document.hasFocus()) {
                 service.notify('Download failed', item.metadata.title).catch(() => {});
               }
@@ -461,6 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     stopDownload(id);
     dispatch({ type: 'retry', id });
   }, [stopDownload]);
+  retryRef.current = retryDownload;
 
   const clearCompleted = useCallback(() => {
     dispatch({ type: 'clearCompleted' });

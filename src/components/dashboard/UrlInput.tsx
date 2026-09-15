@@ -7,6 +7,10 @@ interface UrlInputProps {
   onBatchSubmit?: (urls: string[]) => void;
   isLoading?: boolean;
   error?: string | null;
+  /** What to do about `error`, shown beneath it. */
+  errorHint?: string;
+  /** The one action that can fix `error` (Retry, Set browser cookies). */
+  errorAction?: { label: string; onClick: () => void };
   /** Called when the user edits the URL, so a stale parse error can be dismissed. */
   onErrorClear?: () => void;
 }
@@ -18,7 +22,7 @@ function extractUrls(text: string): string[] {
     .filter(line => line.length > 4 && /^(https?:\/\/|magnet:\?)/i.test(line));
 }
 
-export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorClear }: UrlInputProps) {
+export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint, errorAction, onErrorClear }: UrlInputProps) {
   const [url, setUrl] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [batchCount, setBatchCount] = useState<number | null>(null);
@@ -205,9 +209,20 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, onErrorCle
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 mt-2.5 px-1 animate-fade-in">
-          <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
-          <span className="text-xs text-destructive">{error}</span>
+        <div role="alert" className="flex items-start gap-2 mt-2.5 px-1 animate-fade-in">
+          <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-px" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-destructive break-words">{error}</p>
+            {errorHint && <p className="text-[11px] text-muted-foreground mt-0.5">{errorHint}</p>}
+          </div>
+          {errorAction && (
+            <button
+              onClick={errorAction.onClick}
+              className="shrink-0 px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              {errorAction.label}
+            </button>
+          )}
         </div>
       )}
 
