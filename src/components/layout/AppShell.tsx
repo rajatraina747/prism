@@ -4,9 +4,11 @@ import { cn } from '@/lib/utils';
 import { useQueue, useHistory } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
-import { useUrlDrop } from '@/hooks/use-url-drop';
+import { useDropToAdd } from '@/hooks/use-drop-to-add';
 import { pushDeepLink } from '@/lib/deep-link-bus';
 import { onNavigateRequest } from '@/lib/nav-bus';
+import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
+import { toast } from 'sonner';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -14,6 +16,7 @@ import {
   Rss,
   Settings2,
   Info,
+  Plus,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -28,7 +31,7 @@ const BOTTOM_ITEMS = [
   { path: '/about', icon: Info, label: 'About' },
 ] as const;
 
-function SidebarNav() {
+function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const { items: queueItems } = useQueue();
   const { items: historyItems } = useHistory();
   const activeCount = queueItems.filter(i => i.status === 'downloading' || i.status === 'queued').length;
@@ -41,6 +44,19 @@ function SidebarNav() {
         <img src="/logo-nobg.png" alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
         <span className="text-[11px] text-muted-foreground/60">by RainaCorp</span>
+      </div>
+
+      <div className="px-3 pt-3">
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+N' : 'Control+N'}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors active:scale-[0.98]"
+        >
+          <Plus className="w-4 h-4 shrink-0" strokeWidth={2} />
+          <span>Add</span>
+          <kbd className="ml-auto text-[10px] font-sans opacity-70">{MOD_KEY}N</kbd>
+        </button>
       </div>
 
       {/* Main Nav */}
@@ -155,15 +171,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // "Set browser cookies").
   React.useEffect(() => onNavigateRequest((path) => navigateRef.current(path)), []);
 
-  // URLs dragged onto the window take the same path — the drop is the intent.
-  useUrlDrop((url) => {
-    pushDeepLink(url, 'app');
+  const addLinks = React.useCallback((links: string[]) => {
+    pushDeepLink(links, 'app');
     navigateRef.current('/');
-  });
+  }, []);
+
+  // One Add surface: the sheet (sidebar button, ⌘N / ⌘L from any page)…
+  const [addOpen, setAddOpen] = React.useState(false);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key === 'n' || e.key === 'N' || e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        setAddOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // …and drops anywhere in the window — the drop is the intent.
+  const dragging = useDropToAdd(
+    (name, bytes) => service.importTorrentFile(name, bytes),
+    ({ links, errors }) => {
+      errors.forEach(msg => toast.error(msg));
+      if (links.length > 0) addLinks(links);
+    },
+  );
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      <SidebarNav />
+      <SidebarNav onAdd={() => setAddOpen(true)} />
+      <AddSheet open={addOpen} onOpenChange={setAddOpen} onAdd={addLinks} />
+      {dragging && (
+        <div aria-hidden="true" className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-background/70 border-2 border-dashed border-primary/60 rounded-xl m-2">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border/60 text-sm font-medium text-primary">
+            <Plus className="w-4 h-4" /> Drop to add links, .torrent files or a list
+          </div>
+        </div>
+      )}
       <div className="flex-1 flex flex-col min-w-0">
         <PageHeader />
         <main className="flex-1 overflow-auto">

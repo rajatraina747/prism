@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { save as dialogSave } from '@tauri-apps/plugin-dialog';
+import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
@@ -400,6 +400,20 @@ export class TauriPrismService implements IPrismService {
       trayUnlisten?.();
       trayUnlisten = null;
     };
+  }
+
+  async importTorrentFile(name: string, bytes: Uint8Array): Promise<string> {
+    return invoke<string>('import_torrent_file', { name, bytes: Array.from(bytes) });
+  }
+
+  async pickTorrentFile(): Promise<string | null> {
+    // The path goes through the normal add flow; Rust validates it again.
+    const picked = await dialogOpen({
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'Torrent', extensions: ['torrent'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
   }
 
   async exportLogs(logs: DiagnosticsEntry[]): Promise<void> {

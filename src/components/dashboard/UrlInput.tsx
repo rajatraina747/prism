@@ -82,35 +82,9 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
     reader.readAsText(file);
   }, [onBatchSubmit, onSubmit]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    // The window-level drop handler (useUrlDrop in AppShell) would otherwise
-    // see the same event and submit the URL a second time.
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    // Check for dropped files first
-    if (e.dataTransfer.files.length > 0) {
-      Array.from(e.dataTransfer.files).forEach(handleFileRead);
-      return;
-    }
-
-    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
-    if (text) {
-      const urls = extractUrls(text);
-      if (urls.length > 1 && onBatchSubmit) {
-        onBatchSubmit(urls);
-        setBatchCount(urls.length);
-        setTimeout(() => setBatchCount(null), 3000);
-      } else {
-        const firstUrl = text.split('\n')[0]?.trim();
-        if (firstUrl) {
-          setUrl(firstUrl);
-          onSubmit(firstUrl);
-        }
-      }
-    }
-  }, [onSubmit, onBatchSubmit, handleFileRead]);
+  // Drops land in the window-level handler (useDropToAdd in AppShell), which
+  // also takes .torrent files; this box only highlights while hovered.
+  const handleDrop = useCallback(() => setIsDragOver(false), []);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -202,7 +176,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
           <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-primary/5 backdrop-blur-sm pointer-events-none">
             <div className="flex items-center gap-2">
               <ListPlus className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Drop URLs or text file here</span>
+              <span className="text-sm font-medium text-primary">Drop links, .torrent files or a text file</span>
             </div>
           </div>
         )}

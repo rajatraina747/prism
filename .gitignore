@@ -34,3 +34,8 @@ src-tauri/binaries/deno-*
 *.deb
 *.msi
 src-tauri/lib/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

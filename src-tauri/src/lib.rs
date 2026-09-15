@@ -678,6 +678,43 @@ fn base32_decode(s: &str) -> Option<Vec<u8>> {
 /// Largest `.torrent` file we'll read into memory (real ones are KBs).
 const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
+/// A `.torrent` dropped onto the window or picked in the web demo. Drops are
+/// handled as HTML5 events (so links dragged from a browser work too), and
+/// those never expose a file's path — only its bytes. They're parsed, cached
+/// exactly like metadata fetched from peers, and returned as a magnet for
+/// that info hash, which `with_cached_metadata` turns straight back into
+/// these bytes (trackers included) when the torrent is added.
+#[tauri::command]
+async fn import_torrent_file(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    if bytes.is_empty() || bytes.len() as u64 > MAX_TORRENT_FILE_BYTES {
+        return Err(format!("{name} is not a valid .torrent file"));
+    }
+    let (hash, torrent_name) =
+        torrent_identity(&bytes).ok_or_else(|| format!("{name} is not a valid .torrent file"))?;
+    let dir = torrent_session_config(&app)
+        .torrent_cache_dir
+        .ok_or("Could not resolve the app data directory")?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to store torrent: {e}"))?;
+    std::fs::write(dir.join(format!("{hash}.torrent")), &bytes)
+        .map_err(|e| format!("Failed to store torrent: {e}"))?;
+    let fallback = name.strip_suffix(".torrent").unwrap_or(&name);
+    log::info!("imported .torrent {hash} from a drop");
+    Ok(magnet_for(&hash, torrent_name.as_deref().unwrap_or(fallback)))
+}
+
+/// Info hash (lower-case hex) and name of a `.torrent`, or None if it isn't one.
+pub(crate) fn torrent_identity(bytes: &[u8]) -> Option<(String, Option<String>)> {
+    let t = librqbit::torrent_from_bytes(bytes).ok()?;
+    let hash = t.info_hash.as_string().to_ascii_lowercase();
+    let name = t.info.data.validate().ok().and_then(|i| i.name().map(|n| n.into_owned()));
+    Some((hash, name))
+}
+
+fn magnet_for(info_hash: &str, display_name: &str) -> String {
+    let dn: String = url::form_urlencoded::byte_serialize(display_name.as_bytes()).collect();
+    format!("magnet:?xt=urn:btih:{info_hash}&dn={dn}")
+}
+
 /// The only way webview input becomes a torrent source. Accepts a `magnet:`
 /// link, an http(s) URL, or an existing `.torrent` file (as a `file://` URL
 /// or a bare path) inside the allowed roots — the frontend's `isTorrentUrl`
@@ -1662,6 +1699,7 @@ pub fn run() {
             show_in_folder,
             get_default_download_path,
             get_launch_torrent_files,
+            import_torrent_file,
             pick_download_dir,
             get_app_version,
             ffmpeg_available,
@@ -1924,6 +1962,22 @@ mod tests {
             Ok(torrent::TorrentSource::Bytes { .. })
         ));
         std::fs::remove_file(&t).unwrap();
+    }
+
+    /// A dropped .torrent comes back as a magnet whose hash is the one the
+    /// cache lookup (`with_cached_metadata`) will find it under.
+    #[test]
+    fn dropped_torrent_bytes_become_a_matching_magnet() {
+        let mut bytes = b"d4:infod6:lengthi3e4:name10:clip &.mp412:piece lengthi16384e6:pieces20:".to_vec();
+        bytes.extend_from_slice(&[0u8; 20]);
+        bytes.extend_from_slice(b"ee");
+        let (hash, name) = torrent_identity(&bytes).expect("valid torrent");
+        assert_eq!(hash.len(), 40);
+        assert_eq!(name.as_deref(), Some("clip &.mp4"));
+        let magnet = magnet_for(&hash, name.as_deref().unwrap());
+        assert_eq!(magnet_info_hash(&magnet).as_deref(), Some(hash.as_str()));
+        assert!(magnet.ends_with("&dn=clip+%26.mp4"), "{magnet}");
+        assert!(torrent_identity(b"not a torrent").is_none());
     }
 
     #[test]

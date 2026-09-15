@@ -192,6 +192,7 @@ export default function Dashboard() {
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
   // The link behind the current parse error, for its Retry action.
   const lastParsedUrlRef = useRef('');
+  const handleBatchSubmitRef = useRef<(urls: string[]) => void>(() => {});
   // Monotonic token so a slow parseTorrent (up to ~45s) can't populate or close a
   // modal the user has since moved on from. Bumped on new parse / close / confirm.
   const torrentParseIdRef = useRef(0);
@@ -206,13 +207,18 @@ export default function Dashboard() {
   // joins the swarm for metadata; a URL runs yt-dlp with the user's browser
   // cookies). In-app links (tray paste, drops) go straight in.
   const [externalLinks, setExternalLinks] = useState<string[]>([]);
-  React.useEffect(() => consumeDeepLinks((url, origin) => {
+  React.useEffect(() => consumeDeepLinks((urls, origin) => {
     if (origin === 'external') {
-      setExternalLinks(q => (q.includes(url) ? q : [...q, url]));
+      setExternalLinks(q => [...q, ...urls.filter(u => !q.includes(u))]);
       return;
     }
-    toast.info('Link received');
-    handleUrlSubmitRef.current(url);
+    // Several links at once (Add sheet, a drop): the batch flow, which
+    // parses and queues each with the selected preset.
+    if (urls.length > 1) {
+      handleBatchSubmitRef.current(urls);
+      return;
+    }
+    handleUrlSubmitRef.current(urls[0]);
   }), []);
   const pendingExternalLink = externalLinks[0] ?? null;
   const settleExternalLink = useCallback((add: boolean) => {
@@ -438,6 +444,8 @@ export default function Dashboard() {
     toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
     navigate('/queue');
   }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, navigate]);
+
+  handleBatchSubmitRef.current = handleBatchSubmit;
 
   return (
     <div className="page-container max-w-3xl mx-auto">

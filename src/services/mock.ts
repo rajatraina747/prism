@@ -313,6 +313,19 @@ export class MockPrismService implements IPrismService {
     return () => {};
   }
 
+  async importTorrentFile(name: string, bytes: Uint8Array): Promise<string> {
+    // Demo: a stable fake info hash from the name and size; nothing is stored.
+    let h = 2166136261;
+    for (const c of `${name}:${bytes.length}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    const hash = h.toString(16).padStart(8, '0').repeat(5);
+    return `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(name.replace(/\.torrent$/i, ''))}`;
+  }
+
+  async pickTorrentFile(): Promise<string | null> {
+    // The browser demo has no native file paths to hand to a torrent engine.
+    return null;
+  }
+
   async exportLogs(logs: import('@/types/models').DiagnosticsEntry[]): Promise<void> {
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

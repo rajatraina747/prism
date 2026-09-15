@@ -4,6 +4,7 @@ import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
 import { FailureNote } from '@/components/common/FailureNote';
+import { INTERNAL_DRAG_TYPE } from '@/hooks/use-drop-to-add';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,8 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
     setDragIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
+    // Tells the window-level drop-to-add that this drag is a reorder.
+    e.dataTransfer.setData(INTERNAL_DRAG_TYPE, String(index));
     if (e.currentTarget instanceof HTMLElement) {
       dragNodeRef.current = e.currentTarget as HTMLDivElement;
       e.currentTarget.style.opacity = '0.5';

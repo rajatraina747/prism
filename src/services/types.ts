@@ -118,6 +118,11 @@ export interface IPrismService {
   // handler receives the extracted URL and where it came from.
   // Returns an unsubscribe function.
   onDeepLink(handler: (url: string, origin: LinkOrigin) => void): () => void;
+  /** A dropped `.torrent` (bytes only — drops carry no path). Returns a magnet
+   * for it; the engine adds it from the stored bytes. */
+  importTorrentFile(name: string, bytes: Uint8Array): Promise<string>;
+  /** Native "Open .torrent" picker; null when cancelled or unavailable. */
+  pickTorrentFile(): Promise<string | null>;
 
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
