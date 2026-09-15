@@ -5,46 +5,68 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 -->
 ## What's New
 
-A fix release for two bugs found in real use of 1.8.0, plus a few small
-hardening items from the follow-up review (`docs/REVIEW-2026-09-14.md`).
+**Updates work again on networks that block part of GitHub.** If Settings said
+"Could not reach update server" while GitHub worked fine in your browser, the
+updater was stuck waiting on one unreachable GitHub server. It never tried the
+others. It now moves on after a few seconds, and Settings shows the real error
+if a check does fail. *Earlier versions have the bug, so download this release
+yourself* (`brew upgrade --cask prism`, or the files below). Later updates
+install from inside Prism again.
 
-**Finished downloads reach the Library again.** In 1.8.0 a download that
-completed while any other transfer was still running never moved to the
-Library — and since the Transfers page hides finished rows, it simply
-vanished. Anything stuck that way is archived on the first launch of this
-version.
+**One place to add anything.** An **Add** button sits at the top of the
+sidebar, and ⌘N or ⌘L opens it from any page. Paste video links and magnet
+links, open a `.torrent`, or import a list. You can also drop links, `.torrent`
+files or a text file of links anywhere in the window.
 
-**Multi-file torrents get their own folder.** A torrent without a root folder
-of its own (many episode and race packs) used to write its files straight into
-the download folder, so two packs with the same inner file names — for
-example `02.Race.Session.mp4` in two F1 weekends — wrote into the *same file*
-and corrupted each other. Every multi-file torrent now downloads into
-`<download folder>/<torrent name>/`, like every other client; single-file
-torrents are unchanged. Prism also refuses to add a torrent whose folder is in
-use by a different one.
+**Links from outside Prism ask first.** A `magnet:` or `prism://` link opened
+from a browser, or a `.torrent` opened from Finder or Explorer, now shows what
+it is and waits for **Add**. Nothing is fetched until you choose to. Pasting,
+the Add sheet and drag-and-drop still add straight away.
 
-> If you added multi-file torrents with 1.8.0: they will restart from scratch
-> into their new folders on relaunch. Delete the loose files they left in your
-> download folder by hand — don't use "Remove and delete files" on them, since
-> two such torrents share those files.
+**Failures tell you what to do.** A failed transfer shows the likely cause,
+the engine's own message on one line, and the fix. That's **Set browser
+cookies** for sign-in walls, or **Retry**. Link errors under the URL box and
+failed items in the Library work the same way.
 
-**Hardening.**
-- yt-dlp now runs with `--ignore-config --no-plugin-dirs`, so a config file or
-  plugin elsewhere on the machine can't change what Prism asked for.
-- "Open" and the player resolve symlinks *before* checking that a file is
-  media, so a link named `clip.mp4` can't smuggle in something else.
-- Dropping a link onto the URL box no longer submits it twice.
-- Light mode: status colours and sidebar hover states now have proper contrast.
-- Settings are written to disk 300 ms after the last change instead of on
-  every keystroke.
+**Settings, reorganised.** Settings are now grouped into Video, BitTorrent,
+Speed & schedule and Network. Rarely used torrent engine options sit behind
+"Show advanced settings". All three speed limits use MB/s. Terms like DHT,
+uTP, UPnP and share ratio are explained where they appear. New: **Use IPv4
+only** (on by default, as before).
 
-**Docs.** The README now states the ffmpeg requirement up front, and no longer
-claims an Intel macOS build (there is none; the Apple Silicon build is the
-only macOS build).
+**Quiet hours you can see.** A banner on the Dashboard and Transfers says when
+quiet hours end, and whether downloads are held or slowed. Held transfers say
+"Held for quiet hours" instead of "Waiting for a slot".
+
+**Big libraries stay fast.** The Library and the torrent and playlist pickers
+only draw the rows on screen, so thousands of entries scroll smoothly.
+
+**Accessibility.** Every setting is labelled for screen readers. The Transfers
+list works as a proper list with the keyboard, filter tabs are real tabs, and
+Reduce Motion is respected. Moving a row with its handle no longer also moves
+the selection.
+
+**Security hardening** from the September review:
+- Prism's window can only write its own settings, queue and history files.
+  The torrent session, cached `.torrent` files and the self-updated downloader
+  are out of its reach.
+- A self-updated yt-dlp is checked against the checksum recorded when it was
+  installed. *If you updated the engine in an earlier version, Prism uses the
+  bundled yt-dlp until you press **Update Engine** once more.*
+- Windows: the player loads its libraries only from Prism's own folder.
+- Limits on how many yt-dlp processes run at once and how much output Prism
+  keeps in memory.
+- System folders are blocked regardless of letter case on macOS and Windows.
+  On Linux, `~/bin` and launchers on the Desktop are blocked too.
+- Updated rustls for RUSTSEC-2026-0285.
+
+**Also:** a **Report a bug** link in About, clearer backend logs, and a smaller
+app: the logos went from 7 MB to under 100 KB, and unused interface code was
+removed.
 
 ## Install
 
-- **macOS:** `brew install --cask rajatraina747/prism/prism`, or download the
+- **macOS:** `brew install --cask rajatraina747/prism/prism` (or `brew upgrade --cask prism`), or download the
   `.dmg`. Not notarized: on macOS 15+ open the app once, then System Settings →
   Privacy & Security → **Open Anyway** (or `xattr -dr com.apple.quarantine /Applications/Prism.app`).
 - **Windows:** run the installer; click "More info → Run anyway" on the SmartScreen prompt.

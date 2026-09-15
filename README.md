@@ -32,15 +32,16 @@
 - **Built-in player (macOS & Windows)** — Play any download inside Prism, powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching. Plays individual files inside torrents too.
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p — and the resolution you pick is what you get, with a warning if a site delivers less.
 - **BitTorrent downloads** — Paste a magnet link or `.torrent` file and download it in the same queue as your videos. Pick which files to grab, watch peers and share ratio live, and control seeding (stop at 100%, seed to ratio 1.0, or seed until you stop). UPnP port forwarding for peers behind a router; Quiet Hours throttles torrents too.
-- **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder. Configurable concurrent downloads and bandwidth limits.
-- **Quiet hours** — Hold or throttle downloads during part of the day; full speed the rest of the time.
+- **One place to add anything** — The Add button (⌘N / ⌘L from any page) takes video links, magnets, `.torrent` files and lists of links; or drop any of them anywhere in the window. Links opened from your browser ask before Prism fetches anything.
+- **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder, full keyboard control. Configurable concurrent downloads and speed limits.
+- **Quiet hours** — Hold or throttle downloads during part of the day, with a banner saying until when; full speed the rest of the time.
 - **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
 - **Batch downloads** — Paste multiple URLs at once or import entire playlists with per-video selection.
-- **Resilient by default** — Automatic retries with backoff on network failures, disk-space checks before starting, and clear, actionable error messages (sign-in walls, removed videos, geo locks, rate limits).
+- **Resilient by default** — Automatic retries with backoff on network failures, disk-space checks before starting, and failures that say what happened and offer the fix (sign-in walls → browser cookies, removed videos, geo locks, rate limits).
 - **Browser cookie support** — Use cookies from Safari, Chrome, Firefox, Edge, or Brave for sign-in-required and age-restricted videos.
 - **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
 - **SponsorBlock** — Optionally mark sponsor segments as chapters or cut them out entirely, using crowd-sourced data.
-- **Download history** — Searchable log of every download with one-click replay.
+- **Library** — Searchable record of every download with one-click replay; stays fast with thousands of entries.
 - **Subscriptions** — Watch channels and playlists; new videos are queued automatically on a configurable interval.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
 - **Menu bar quick-add** — Tray icon with Paste & Download; drag a URL onto the window to fetch it.
@@ -145,7 +146,12 @@ npm run dev
 npm run dev:tauri
 
 # Run tests
-npm test
+npm test                 # unit & component (Vitest)
+npx playwright test      # end-to-end against the web demo
+cd src-tauri && cargo test --lib
+
+# Regenerate the README screenshots (with `npm run dev` running)
+node scripts/readme-screenshots.mjs
 
 # Production build (desktop)
 npm run build:tauri
@@ -170,6 +176,9 @@ upstream releases, run `scripts/update-sidecars.sh`, review the lockfile diff, a
 - `RELEASE_NOTES.md` is the release body — update it *before* tagging.
 - The npm `@tauri-apps/api` and Rust `tauri` crate must be on the same minor.
 - After the release is published, bump the Homebrew cask in `rajatraina747/homebrew-prism`.
+- The updater signing key: backup, encryption and rotation are in [`docs/RELEASE-KEYS.md`](docs/RELEASE-KEYS.md).
+
+Found a security issue? See [SECURITY.md](SECURITY.md) — please report it privately.
 
 ## Project Structure
 

@@ -21,9 +21,9 @@ Full findings, verified against code and live data, in
 [docs/REVIEW-2026-09-14.md](docs/REVIEW-2026-09-14.md). The v1.8.1 hotfix
 (finished downloads not archived; flat multi-file torrents sharing one folder;
 yt-dlp config/plugin lockdown; symlink-safe Open; light-mode tokens; drop-once;
-settings debounce; README accuracy) is shipped. What remains, in order:
+settings debounce; README accuracy) is shipped, and so is v1.9.0 below.
 
-### v1.9 — "Trust & polish"
+### v1.9 — "Trust & polish" (shipped 1.9.0)
 
 - [x] Updater works on networks that black-hole one GitHub CDN address: the
       check/install run in Rust (`updater.rs`) with a connect timeout (hyper
@@ -56,17 +56,36 @@ settings debounce; README accuracy) is shipped. What remains, in order:
       hover) → "Set browser cookies" / Retry; failure toast carries the same
       action; parse errors under the URL box classified the same way;
       Settings opens at `?section=`.
-- [ ] UX ★: one "Add" surface (⌘N/⌘L sheet, drop-anywhere incl. magnets and
-      `.torrent`); Settings restructure (Video / BitTorrent / Speed & schedule
-      …, one speed-limit group, one unit, jargon tooltips); quiet-hours
-      banner; accessibility pass (labelled Settings controls, listbox
-      semantics, Radix tabs everywhere, reduced-motion); virtualize
-      Library/pickers and drop per-row `backdrop-filter`.
-- [ ] TypeScript `strict` + `strictNullChecks`; re-enable `no-unused-vars` /
-      `no-explicit-any`; Playwright in CI; `log::` coverage in the Rust
-      backend; `--force-ipv4` as a setting; WebP logos; prune unused
-      shadcn/Radix; refresh README screenshots; `SECURITY.md`, issue templates,
-      About → "Report a bug".
+- [x] One Add surface: sidebar button + ⌘N/⌘L sheet on every page (links,
+      magnets, "Open .torrent…", a list file); drops anywhere in the window
+      incl. `.torrent` files (bytes → `import_torrent_file` → cached magnet).
+- [x] Settings restructure: Video / BitTorrent / Speed & schedule / Network
+      as vertical Radix tabs, engine options behind "Show advanced", all
+      speed limits in MB/s, jargon help tooltips, old `?section=` aliases.
+- [x] Quiet-hours banner (Dashboard, Transfers) and "Held for quiet hours ·
+      until HH:00" on queued rows.
+- [x] Accessibility pass: every Settings control labelled/described by its
+      row; Transfers rows are listbox options with a roving tab stop; Radix
+      tabs for Transfers/Library filters; picker rows are checkboxes;
+      `prefers-reduced-motion`; reorder handle no longer also moves selection.
+- [x] Library and torrent/playlist pickers windowed past a threshold
+      (`VirtualList`, @tanstack/react-virtual); list rows drop
+      `backdrop-filter` (`surface-row`).
+- [x] TypeScript `strict`; `no-unused-vars` / `no-explicit-any` as errors;
+      Playwright (22 tests) in CI; `log::` coverage in the Rust backend;
+      "Use IPv4 only" setting; WebP logos (7.4 MB → 87 KB); 31 unused
+      shadcn components + 18 Radix packages removed; README screenshots
+      regenerated (`scripts/readme-screenshots.mjs`); `SECURITY.md` with
+      private vulnerability reporting enabled, issue templates, About →
+      "Report a bug".
+- [x] Verification added: the real capability driven through Tauri's IPC/ACL
+      (mock runtime) test; opt-in network test proving the updater's connect
+      timeout falls through a black-holed address; rustls → 0.23.45
+      (RUSTSEC-2026-0285, published the day before 1.9.0).
+
+Carried over from the review, still open: S-5 (pin Homebrew mpv), S-11
+(`explorer /select,` concatenation), S-12 (raw stderr in error strings —
+the UI now shows a one-line summary, the full text is still returned).
 
 ### v2.0 — "Download manager"
 
@@ -293,11 +312,10 @@ Everything below the line shipped in **v1.8.0**; what's left is open.
   carrying GPL x264/x265/rubberband (the player only decodes; nothing is
   lost). Until then the macOS binary is distributed under GPL-2.0-or-later
   terms with license texts + Homebrew source pointers shipped in-app.
-- [ ] Virtualize/paginate the Library once histories get long (2,000-row cap
-  today).
+- [x] Virtualize the Library (1.9.0; the 2,000-row history cap stays).
 - [ ] Spawn yt-dlp in its own process group (`tokio::process` +
   `process_group`) instead of the `ps`-snapshot tree kill.
-- [ ] Run the Playwright suite in CI against the web demo.
+- [x] Run the Playwright suite in CI against the web demo (1.9.0).
 
 ## Explicitly deferred
 
