@@ -86,6 +86,25 @@ for dylib in "$LIB"/*.dylib; do
   done
 done
 
+# macOS has no Vulkan driver of its own, and libmpv's video output (gpu-next
+# on Vulkan) needs one. Without this the player only showed video on Macs that
+# happened to have Homebrew's molten-vk installed. Ship MoltenVK and a
+# manifest with a path relative to itself; the app points the Vulkan loader at
+# the manifest at startup (player.rs, use_bundled_vulkan_driver).
+echo "==> Bundling the MoltenVK Vulkan driver"
+MVK_PREFIX=$(brew --prefix molten-vk)
+cp "$MVK_PREFIX/lib/libMoltenVK.dylib" "$LIB/libMoltenVK.dylib"
+chmod u+w "$LIB/libMoltenVK.dylib"
+install_name_tool -id "@loader_path/libMoltenVK.dylib" "$LIB/libMoltenVK.dylib"
+mkdir -p "$LIB/vulkan/icd.d"
+/usr/bin/python3 - "$MVK_PREFIX/etc/vulkan/icd.d/MoltenVK_icd.json" "$LIB/vulkan/icd.d/MoltenVK_icd.json" <<'PY'
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+manifest["ICD"]["library_path"] = "../../libMoltenVK.dylib"
+json.dump(manifest, open(sys.argv[2], "w"), indent=2)
+PY
+echo "molten-vk (Homebrew) $(keg_version molten-vk)" >> "$LIB/VERSIONS.txt"
+
 # License compliance: the tree above is (L)GPL-heavy (mpv, FFmpeg, x264,
 # x265, rubberband, …). Ship every formula's license text with the app so
 # the bundle carries the notices those licenses require, plus a manifest of

@@ -1610,6 +1610,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before any thread starts: this sets process environment (player.rs).
+    #[cfg(target_os = "macos")]
+    player::use_bundled_vulkan_driver();
+
     tauri::Builder::default()
         // Must be first: relays argv (incl. deep links on Windows/Linux) from a
         // second launch to the running instance and refocuses its window.
