@@ -4,14 +4,18 @@
 > - `src/desktop.rs`: the wrapper search path also includes the Tauri
 >   resource directory (`resources/lib`), so bundled release builds can ship
 >   libmpv without post-processing the app.
-> - `src/commands.rs`: every command now runs on the main thread via
->   `AppHandle::run_on_main_thread`. Upstream ran `init` inline on whatever
->   thread polls the async command and the rest via `spawn_blocking` — never
->   the main thread. macOS AppKit/Cocoa window creation is main-thread-only;
->   calling `mpv_wrapper_create` with `force-window`/`wid` off-main returns
->   NULL. Intermittent in a dev build (worked most of the time by scheduling
->   luck), 100% reproducible in a release build ("Failed to create mpv
->   instance" on every attempt).
+> - `src/commands.rs`: every command runs on the blocking pool
+>   (`spawn_blocking`, including `init`), **never the main thread**. 1.7.2
+>   moved them all onto the main thread, believing off-main
+>   `mpv_wrapper_create` returned NULL; that NULL was really a duplicate
+>   LC_RPATH in the bundled libmpv. The main-thread version deadlocks on
+>   macOS: mpv's video output (gpu-next → MoltenVK) starts with a
+>   `DispatchQueue.main.sync`, so an mpv call made from main waits on a
+>   startup that waits on main. Fixed in Prism 1.9.1; reproduced and verified
+>   with `src-tauri/examples/mpv_thread_repro.rs`.
+> - `src/lib.rs`: the `CloseRequested` handler uses `try_lock` on the
+>   instance map (it runs on the main thread, and the lock is held across
+>   FFI calls that may be waiting on main), and destroys on the blocking pool.
 > - `src/desktop.rs` (Windows): pre-load `libmpv-2.dll` from beside the
 >   wrapper by absolute path, because the wrapper resolves it by bare name
 >   and Windows never searches the calling DLL's own directory.

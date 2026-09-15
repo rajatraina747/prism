@@ -1,5 +1,6 @@
 mod download_manager;
 mod engine;
+mod mpv_worker;
 mod player;
 mod proc;
 mod quarantine;
@@ -1671,6 +1672,11 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(dir);
             }
+
+            // The only thread mpv is ever called from (see mpv_worker.rs).
+            app.manage(mpv_worker::MpvWorker::spawn(app.handle().clone())?);
+            #[cfg(debug_assertions)]
+            player::verify_player_from_env(app.handle())?;
 
             setup_tray(app)?;
 

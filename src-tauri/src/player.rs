@@ -132,6 +132,7 @@ mod macos {
 /// Returns the class names of the windows considered, for diagnostics.
 #[cfg(target_os = "macos")]
 #[tauri::command]
+#[allow(clippy::disallowed_methods)] // AppKit calls only — never mpv (see mpv_worker.rs)
 pub async fn fixup_player_video(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     use tauri::Manager;
 
@@ -148,7 +149,7 @@ pub async fn fixup_player_video(app: tauri::AppHandle) -> Result<Vec<String>, St
 
     let mut last: Vec<String> = Vec::new();
     for _ in 0..25 {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::oneshot::channel();
         let p = player.clone();
         let other = other.clone();
         player
@@ -163,7 +164,13 @@ pub async fn fixup_player_video(app: tauri::AppHandle) -> Result<Vec<String>, St
                 let _ = tx.send(result);
             })
             .map_err(|e| e.to_string())?;
-        match rx.recv().map_err(|e| e.to_string())? {
+        // Await, never block: a tokio worker parked in a blocking recv stays
+        // parked for as long as the main thread is busy.
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| "video-window adoption timed out waiting for the main thread".to_string())?
+            .map_err(|_| "video-window adoption was dropped".to_string())?;
+        match outcome {
             Ok(outcome) => {
                 if outcome.adopted {
                     return Ok(outcome.windows);
@@ -181,6 +188,7 @@ pub async fn fixup_player_video(app: tauri::AppHandle) -> Result<Vec<String>, St
 /// to the player window's Resized event in lib.rs (moves need no handling —
 /// child windows track their parent).
 #[cfg(target_os = "macos")]
+#[allow(clippy::disallowed_methods)] // AppKit calls only — never mpv (see mpv_worker.rs)
 pub fn refit_player_children(window: &tauri::Window) {
     let w = window.clone();
     let _ = window.run_on_main_thread(move || {
@@ -208,8 +216,9 @@ pub async fn fixup_player_video(_app: tauri::AppHandle) -> Result<Vec<String>, S
 // validate media paths like `open_file`, and start mpv with config files,
 // scripts and the ytdl hook disabled.
 
+use crate::mpv_worker::{MpvWorker, CALL_TIMEOUT, INIT_TIMEOUT, LOAD_TIMEOUT};
 use tauri::AppHandle;
-use tauri_plugin_libmpv::{MpvConfig, MpvExt};
+use tauri_plugin_libmpv::MpvConfig;
 
 const PLAYER_LABEL: &str = "player";
 
@@ -220,19 +229,11 @@ fn ensure_player_window(window: &tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
-/// Every mpv FFI call must run on the main thread on macOS (see the vendor
-/// patch in commands.rs); this mirrors that without blocking a worker.
-async fn on_main<T: Send + 'static>(
-    app: &AppHandle,
-    f: impl FnOnce() -> T + Send + 'static,
-) -> Result<T, String> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    app.run_on_main_thread(move || {
-        let _ = tx.send(f());
-    })
-    .map_err(|e| e.to_string())?;
-    rx.await
-        .map_err(|_| "main-thread task was dropped before completing".to_string())
+/// Every mpv call goes through the dedicated mpv thread, never the main
+/// thread — see mpv_worker.rs for the deadlock that prevents.
+fn mpv_worker(app: &AppHandle) -> tauri::State<'_, MpvWorker> {
+    use tauri::Manager;
+    app.state::<MpvWorker>()
 }
 
 /// Options mpv starts with. Fixed here, not in the webview.
@@ -300,24 +301,20 @@ pub async fn player_init(app: AppHandle, window: tauri::Window) -> Result<(), St
         return Err("The built-in player isn't included in this build of Prism".into());
     }
     let cfg = player_mpv_config(&app)?;
-    let app2 = app.clone();
-    on_main(&app, move || {
-        app2.mpv()
-            .init(cfg, PLAYER_LABEL)
-            .map(|_| ())
-            .map_err(|e| {
-                log::warn!("player init failed: {e}");
-                e.to_string()
-            })
-    })
-    .await?
+    mpv_worker(&app)
+        .run("init", INIT_TIMEOUT, move |mpv| {
+            mpv.init(cfg, PLAYER_LABEL)
+                .inspect_err(|e| log::warn!("player init failed: {e}"))
+        })
+        .await
 }
 
 #[tauri::command]
 pub async fn player_destroy(app: AppHandle, window: tauri::Window) -> Result<(), String> {
     ensure_player_window(&window)?;
-    let app2 = app.clone();
-    on_main(&app, move || app2.mpv().destroy(PLAYER_LABEL).map_err(|e| e.to_string())).await?
+    mpv_worker(&app)
+        .run("destroy", LOAD_TIMEOUT, |mpv| mpv.destroy(PLAYER_LABEL))
+        .await
 }
 
 /// Load a local media file and start playback. Same path rules as `open_file`:
@@ -329,15 +326,12 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
     if !crate::is_openable_media(&validated) {
         return Err("The player only opens media files".into());
     }
-    let app2 = app.clone();
-    on_main(&app, move || {
-        let mpv = app2.mpv();
-        mpv.command("loadfile", &vec![serde_json::json!(validated)], PLAYER_LABEL)
-            .map_err(|e| e.to_string())?;
-        mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
-            .map_err(|e| e.to_string())
-    })
-    .await?
+    mpv_worker(&app)
+        .run("loadfile", LOAD_TIMEOUT, move |mpv| {
+            mpv.command("loadfile", vec![serde_json::json!(validated)], PLAYER_LABEL)?;
+            mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -352,17 +346,15 @@ pub async fn player_seek(
         return Err("Invalid seek position".into());
     }
     let mode = if relative { "relative" } else { "absolute" };
-    let app2 = app.clone();
-    on_main(&app, move || {
-        app2.mpv()
-            .command(
+    mpv_worker(&app)
+        .run("seek", CALL_TIMEOUT, move |mpv| {
+            mpv.command(
                 "seek",
-                &vec![serde_json::json!(seconds), serde_json::json!(mode)],
+                vec![serde_json::json!(seconds), serde_json::json!(mode)],
                 PLAYER_LABEL,
             )
-            .map_err(|e| e.to_string())
-    })
-    .await?
+        })
+        .await
 }
 
 /// The only properties the UI may set, each with its value shape checked.
@@ -409,13 +401,59 @@ pub async fn player_set(
 ) -> Result<(), String> {
     ensure_player_window(&window)?;
     let value = validate_player_property(&name, &value)?;
-    let app2 = app.clone();
-    on_main(&app, move || {
-        app2.mpv()
-            .set_property(&name, &value, PLAYER_LABEL)
-            .map_err(|e| e.to_string())
-    })
-    .await?
+    mpv_worker(&app)
+        .run("set_property", CALL_TIMEOUT, move |mpv| {
+            mpv.set_property(&name, &value, PLAYER_LABEL)
+        })
+        .await
+}
+
+/// Debug builds only: `PRISM_VERIFY_PLAYER=<media file>` opens the player at
+/// launch and logs `player-verify: ok` once playback passes 1 s. That checks
+/// the whole path (window, mpv init, load, video output) end to end with
+/// nobody clicking. `PRISM_VERIFY_EXIT=1` quits afterwards.
+/// See scripts/verify-player-macos.sh.
+#[cfg(debug_assertions)]
+pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tauri::{Listener, WebviewUrl, WebviewWindowBuilder};
+
+    let Ok(clip) = std::env::var("PRISM_VERIFY_PLAYER") else {
+        return Ok(());
+    };
+    let quit = std::env::var("PRISM_VERIFY_EXIT").is_ok_and(|v| v == "1");
+    log::info!("player-verify: opening {clip}");
+
+    let handle = app.clone();
+    let reported = AtomicBool::new(false);
+    app.listen_any(format!("mpv-event-{PLAYER_LABEL}"), move |event| {
+        let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) else {
+            return;
+        };
+        let playing = payload["event"] == "property-change"
+            && payload["name"] == "time-pos"
+            && payload["data"].as_f64().is_some_and(|t| t > 1.0);
+        if playing && !reported.swap(true, Ordering::Relaxed) {
+            log::info!("player-verify: ok");
+            if quit {
+                handle.exit(0);
+            }
+        }
+    });
+
+    let mut query = tauri::Url::parse("http://localhost/").map_err(|e| e.to_string())?;
+    query.query_pairs_mut().append_pair("src", &clip).append_pair("title", "Prism verify");
+    let url = format!("player?{}", query.query().unwrap_or_default());
+    // Same window options as openInPlayer (src/lib/player-window.ts).
+    WebviewWindowBuilder::new(app, PLAYER_LABEL, WebviewUrl::App(url.into()))
+        .title("Prism Player")
+        .inner_size(1024.0, 640.0)
+        .min_inner_size(480.0, 320.0)
+        .transparent(true)
+        .center()
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

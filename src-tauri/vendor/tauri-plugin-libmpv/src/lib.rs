@@ -66,15 +66,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             {
                 let mpv_state = app_handle.state::<Mpv<R>>();
 
-                let instance_exists = {
-                    let instances_lock = match mpv_state.instances.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            log::warn!("Mutex for mpv instances was poisoned. Recovering.");
-                            poisoned.into_inner()
-                        }
-                    };
-                    instances_lock.contains_key(label)
+                // PRISM VENDOR PATCH: never wait for this lock here — this runs
+                // on the main thread. `with_instance` holds it for a whole FFI
+                // call, and on macOS that call can itself be waiting for the
+                // main thread (mpv's video output dispatches to main while it
+                // starts), so a blocking lock deadlocks the app when the player
+                // is closed mid-startup. Busy means an instance is in use.
+                let instance_exists = match mpv_state.instances.try_lock() {
+                    Ok(guard) => guard.contains_key(label),
+                    Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                        log::warn!("Mutex for mpv instances was poisoned. Recovering.");
+                        poisoned.into_inner().contains_key(label)
+                    }
+                    Err(std::sync::TryLockError::WouldBlock) => true,
                 };
 
                 if instance_exists {
@@ -83,7 +87,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                     let app_handle_clone = app_handle.clone();
                     let window_label = label.to_string();
 
-                    tauri::async_runtime::spawn(async move {
+                    // Blocking pool, not an async task: destroy waits for the
+                    // instance lock and for mpv to terminate.
+                    tauri::async_runtime::spawn_blocking(move || {
                         log::info!(
                             "Close requested for '{}', destroying mpv instance first...",
                             &window_label

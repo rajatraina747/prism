@@ -69,6 +69,7 @@ function trackLabel(t: MpvTrack): string {
 export default function Player() {
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [paused, setPaused] = useState(true);
   const [timePos, setTimePos] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -93,8 +94,15 @@ export default function Player() {
       setTitle(src.title);
       getCurrentWindow().setTitle(src.title).catch(() => {});
     }
-    // Rust validates the path (allowed roots + media type) and unpauses.
-    await invoke('player_load', { path: src.path });
+    // Rust validates the path (allowed roots + media type) and unpauses. A
+    // failure (bad path, or the engine timing out) is shown, not swallowed.
+    try {
+      await invoke('player_load', { path: src.path });
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
     // Re-run the macOS adoption pass in case mpv (re)created its video window
     // for this load — idempotent, no-op elsewhere. See src-tauri/src/player.rs.
     invoke('fixup_player_video').catch(() => {});
@@ -155,7 +163,7 @@ export default function Player() {
       const params = new URLSearchParams(window.location.search);
       const src = params.get('src');
       if (src) {
-        await loadFile({ path: src, title: params.get('title') ?? undefined });
+        await loadFile({ path: src, title: params.get('title') ?? undefined }).catch(() => {});
       }
     })();
 
@@ -253,7 +261,7 @@ export default function Player() {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
   }, []);
-  const showControls = !ready || initError !== null || paused || eof || controlsVisible;
+  const showControls = !ready || initError !== null || loadError !== null || paused || eof || controlsVisible;
 
   // Keyboard parity with normal players.
   useEffect(() => {
@@ -292,12 +300,12 @@ export default function Player() {
           <p className="text-xs text-white/70 break-words">{initError}</p>
           {/* libmpv ships inside the app on macOS and Windows, so "install it
               yourself" is only actionable advice on Linux. */}
+          {/* Only the bundled libmpv is ever loaded (S-7), so on macOS and
+              Windows the fix is a reinstall, never a system mpv. */}
           <p className="text-xs text-white/50">
-            {IS_WINDOWS
+            {IS_WINDOWS || IS_MAC
               ? 'Prism ships its own copy of libmpv — reinstalling Prism should restore it.'
-              : IS_MAC
-                ? <>Prism ships its own copy of libmpv. If it can't start, installing mpv with <code className="bg-white/10 px-1 rounded">brew install mpv</code> gives it a fallback.</>
-                : <>Prism's player needs libmpv — install it from your package manager (e.g. <code className="bg-white/10 px-1 rounded">libmpv2</code>), then reopen the player.</>}
+              : <>Prism's player needs libmpv — install it from your package manager (e.g. <code className="bg-white/10 px-1 rounded">libmpv2</code>), then reopen the player.</>}
           </p>
         </div>
       </div>
@@ -324,6 +332,11 @@ export default function Player() {
       >
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-medium text-white truncate drop-shadow">{title}</h1>
+          {loadError && (
+            <span role="alert" className="shrink-0 max-w-[60%] truncate text-[11px] px-1.5 py-0.5 rounded bg-red-500/80 text-white" title={loadError}>
+              {loadError}
+            </span>
+          )}
           {isHdr && (
             <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-400/90 text-black">
               HDR
