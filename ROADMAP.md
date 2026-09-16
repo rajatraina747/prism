@@ -215,9 +215,15 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       stops early it says "at least" rather than reporting a wrong total
       confidently.
 - [ ] Library list model, grid view, density modes.
-- [ ] Bulk "move to Trash" — needs the `trash` crate and would be the first
-      thing in Prism that deletes a finished download, which the Clear dialog
-      currently promises it won't. Worth deciding rather than assuming.
+- [x] Bulk "move to Trash" — the first thing in Prism that removes a file
+      someone downloaded, so it goes to the OS Trash rather than being
+      unlinked: the Trash is the undo, which is why no Undo toast is offered.
+      The Clear dialog's promise that downloaded files stay on disk is still
+      true — Clear removes records only, and this is a separate action that
+      says outright what it does. Every path is validated in Rust against the
+      allowed roots, and only a file or a torrent's own folder is ever a
+      target: never `settings.destination`, which is the whole download folder
+      and would take every other download with it.
 - [ ] Undo that resumes (cancel-undo keeping partials).
 - [x] Sleep, shut down or quit once the queue finishes
       (`stores/completion.ts`). It fires on the change from working to
@@ -238,12 +244,28 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       no for that one download rather than an absence. A torrent can finish
       without a file path, so open and reveal fall back to its folder instead
       of failing.
-- [ ] Scheduling, duplicate detection, native menu, global shortcuts, Dock and
-      taskbar progress.
-- [ ] Undecided, not skipped: the plan's separate `rss_fetch` (reqwest +
-      `feed-rs`). `parsePlaylist` already reads RSS and Atom through yt-dlp,
-      so a second fetch path would add a dependency to do what works today —
-      worth a decision rather than quietly adding it.
+- [x] Global shortcuts: optional system-wide hotkeys for add-from-clipboard,
+      show Prism, and pause everything. All three default to empty — a global
+      shortcut is taken away from every other application for as long as Prism
+      runs, so it claims none on its own. Registered in Rust, so the web view
+      is never granted the ability to bind arbitrary keys. The handler fires on
+      press and release, so it acts only on the press; collisions are caught on
+      the parsed key's id, which sees "Cmd+P" and "CommandOrControl+P" as one
+      key. "Show Prism" never reaches the page — the point of it is to work
+      while the window is hidden, and a hidden web view can't raise itself.
+- [ ] Scheduling, duplicate detection, native menu, Dock and taskbar progress.
+- [x] Decided, and added: `rss_fetch` (reqwest + `feed-rs`). yt-dlp does read
+      RSS and Atom, but it returns each entry's *page* — and for a podcast or
+      torrent feed the thing to download is the `<enclosure>`, a file or a
+      magnet, which never reaches the queue that way. That is what the second
+      path buys, and it is why the dependency was worth taking. It returns the
+      same shape as `parsePlaylist`, so the seen set, the keyword rules and the
+      category are untouched and don't know which fetcher ran; a subscription's
+      type is guessed from its URL and falls back to the other fetcher, so
+      pasting a URL still just works. Enclosures live in different places per
+      format — Atom in `links` with a rel, RSS 2.0 wrapped as media content and
+      not in `links` at all — and handling only one fails quietly, queueing
+      every entry's web page. Both are covered by tests.
 - [x] Statistics page (`stores/stats.ts`): counters kept as their own record,
       not a view of the Library, which is capped at 2,000 rows and forgets —
       seeded once from whatever history exists and updated where terminal

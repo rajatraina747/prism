@@ -32,6 +32,15 @@ web view, the update and signing pipeline (`.github/workflows/build.yml`,
 [`docs/RELEASE-KEYS.md`](docs/RELEASE-KEYS.md)), and how Prism runs its bundled
 engines and handles files.
 
+Two surfaces worth naming explicitly, since both are reachable without the user
+doing anything:
+
+- The loopback stream server that feeds the player while a torrent is still
+  downloading — bound to `127.0.0.1` on a random port, with a 32-byte token
+  minted per launch, a constant-time token check and a `Host` check.
+- Optional system-wide hotkeys. They are registered in Rust and default to
+  none; the web view is never granted permission to bind keys itself.
+
 Report these upstream instead, unless Prism makes the problem worse:
 [yt-dlp](https://github.com/yt-dlp/yt-dlp/security),
 [librqbit](https://github.com/ikatson/rqbit), [mpv](https://github.com/mpv-player/mpv),
