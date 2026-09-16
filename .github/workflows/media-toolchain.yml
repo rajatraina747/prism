@@ -2,8 +2,9 @@ name: Media toolchain
 
 # Builds the LGPL libmpv + ffmpeg/ffprobe for macOS arm64 from the sources
 # pinned in scripts/toolchain.lock (see scripts/build-media-macos.sh). Runs when
-# the lock, the script or this workflow change, and on demand. The result is an
-# artifact; releases consume a published copy pinned by SHA in sidecars.lock.
+# the lock, the script or this workflow change, and on demand. The result is
+# published on a dated media-toolchain-* release, which scripts/sidecars.lock
+# pins by URL and SHA-256 — that is where release builds fetch it from.
 on:
   workflow_dispatch:
     inputs:
@@ -18,8 +19,9 @@ on:
       - scripts/build-media-macos.sh
       - .github/workflows/media-toolchain.yml
 
+# Publishing the toolchain release needs write; nothing else here does.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   macos-arm64:
@@ -33,17 +35,28 @@ jobs:
       - name: Install build tools
         run: brew install meson ninja nasm pkgconf cmake autoconf automake libtool
 
-      # Bootstrap mode only matters for empty pins: it computes and prints them,
-      # then fails the build on purpose. A fully pinned lock builds normally.
-      # (On push it's the only way in: workflow_dispatch needs this file on main.)
+      # Bootstrap mode is for filling empty pins: it computes and prints them,
+      # then fails the build on purpose, so a just-computed pin can never ship.
+      # Every source is pinned now, so it stays off unless a dispatch asks.
       - name: Build
         env:
-          PRISM_TOOLCHAIN_BOOTSTRAP: '1'
+          PRISM_TOOLCHAIN_BOOTSTRAP: ${{ inputs.bootstrap && '1' || '0' }}
         run: scripts/build-media-macos.sh "$RUNNER_TEMP/prism-media"
 
       - name: Package
         if: success()
-        run: tar -C "$RUNNER_TEMP" -cJf "$RUNNER_TEMP/prism-media-macos-arm64.tar.xz" prism-media
+        run: |
+          tar -C "$RUNNER_TEMP" -cJf "$RUNNER_TEMP/prism-media-macos-arm64.tar.xz" prism-media
+          cp "$RUNNER_TEMP/prism-media/VERSIONS.txt" "$RUNNER_TEMP/VERSIONS.txt"
+          # What the LGPL written offer has to point at: every upstream tarball
+          # this was built from, byte for byte, next to the script that patches
+          # and builds them and the pins it checked them against.
+          mkdir -p "$RUNNER_TEMP/sources"
+          find .media-build/src -maxdepth 1 -type f -exec cp {} "$RUNNER_TEMP/sources/" \;
+          cp scripts/build-media-macos.sh scripts/toolchain.lock "$RUNNER_TEMP/sources/"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/prism-media-sources.tar.gz" sources
+          (cd "$RUNNER_TEMP" && shasum -a 256 prism-media-macos-arm64.tar.xz prism-media-sources.tar.gz > SHA256SUMS.txt)
+          cat "$RUNNER_TEMP/SHA256SUMS.txt"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success()
@@ -51,3 +64,43 @@ jobs:
           name: prism-media-macos-arm64
           path: ${{ runner.temp }}/prism-media-macos-arm64.tar.xz
           retention-days: 30
+
+      # A release, not only an artifact: artifacts expire after 30 days and
+      # can't be fetched without a token, while sidecars.lock has to name a URL
+      # that still resolves when a release is cut months from now. Never marked
+      # latest — that belongs to Prism's own releases.
+      - name: Publish
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="media-toolchain-$(date -u +%Y%m%d)"
+          assets=(
+            "$RUNNER_TEMP/prism-media-macos-arm64.tar.xz"
+            "$RUNNER_TEMP/prism-media-sources.tar.gz"
+            "$RUNNER_TEMP/VERSIONS.txt"
+            "$RUNNER_TEMP/SHA256SUMS.txt"
+          )
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          Prism's LGPL media toolchain for macOS arm64: libmpv, ffmpeg and ffprobe
+          built from pinned sources by `scripts/build-media-macos.sh`, with nothing
+          GPL or non-free in them — the build's gates check the binaries
+          themselves, not just the configure flags.
+
+          `prism-media-sources.tar.gz` is the corresponding source: every upstream
+          tarball this was built from, byte for byte, together with the build
+          script (which carries Prism's own patch to libplacebo's glslang probes)
+          and the pins it verified them against.
+
+          Consumed by `scripts/sidecars.lock`, pinned by SHA-256.
+          EOF
+            gh release create "$tag" "${assets[@]}" \
+              --title "Media toolchain $tag" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --latest=false
+          fi
+          echo "Pin these in scripts/sidecars.lock:"
+          cat "$RUNNER_TEMP/SHA256SUMS.txt"
