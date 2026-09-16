@@ -214,7 +214,10 @@ for dylib in "$OUT"/lib/*.dylib; do
   # tree. A duplicate rpath is what made the bundled libmpv hand back a NULL
   # handle in July (docs/AUDIT-2026-07.md), so the gate below refuses more than
   # one: reduce every dylib to a single @loader_path. Signing happens after.
-  rpaths="$(otool -l "$dylib" | awk '/cmd LC_RPATH/ {f = 1} f && /path /{print $2; f = 0}')"
+  # Always per-architecture: MoltenVK ships fat (x86_64 + arm64) and otool
+  # prints the load commands of every slice, so reading them all would see one
+  # rpath per slice as several.
+  rpaths="$(otool -arch arm64 -l "$dylib" | awk '/cmd LC_RPATH/ {f = 1} f && /path /{print $2; f = 0}')"
   for rp in $rpaths; do
     install_name_tool -delete_rpath "$rp" "$dylib" 2>/dev/null || true
   done
@@ -247,7 +250,9 @@ bad_links="$(find "$OUT" -type f \( -name '*.dylib' -o -path '*/bin/*' \) -exec 
 if [ -n "$bad_links" ]; then echo "✗ unresolved build-machine paths:"; echo "$bad_links"; fail=1; fi
 if find "$OUT" -type f -exec otool -L {} \; 2>/dev/null | grep -qiE 'x264|x265|rubberband|postproc'; then echo "✗ GPL library linked"; fail=1; fi
 for dylib in "$OUT"/lib/*.dylib; do
-  if [ "$(otool -l "$dylib" | grep -c 'cmd LC_RPATH')" -gt 1 ]; then echo "✗ duplicate LC_RPATH in $dylib"; fail=1; fi
+  # arm64 only: a fat dylib carries its own rpaths in each slice, and counting
+  # across slices would call one-per-architecture a duplicate.
+  if [ "$(otool -arch arm64 -l "$dylib" | grep -c 'cmd LC_RPATH')" -gt 1 ]; then echo "✗ duplicate LC_RPATH in $dylib"; fail=1; fi
 done
 "$OUT/bin/ffprobe" -hide_banner -version | head -1
 
