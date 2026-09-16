@@ -1864,8 +1864,18 @@ fn scrub_sentry_event(mut event: sentry::protocol::Event<'static>) -> Option<sen
 
 // ── App setup ────────────────────────────────────────────────────────
 
-fn show_main_window(app: &AppHandle) {
+/// Bring Prism to the front, from wherever it is.
+///
+/// Generic over the runtime because the global-shortcut handler is handed an
+/// `AppHandle<R>` rather than the concrete one.
+///
+/// `unminimize` matters: showing and focusing a minimised window leaves it
+/// minimised, so "Open Prism" from the tray did nothing useful in exactly the
+/// case someone reaches for it.
+pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -1932,9 +1942,10 @@ pub fn run() {
             for arg in args.iter().skip(1).filter(|a| is_torrent_file_arg(a)) {
                 let _ = app.emit("open-torrent-file", arg.clone());
             }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-            }
+            // Same helper as the tray and the global shortcut: a second launch
+            // should raise Prism even when the first one is minimised, which a
+            // bare set_focus doesn't do.
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(DownloadManager::new())

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Action names. These cross to the frontend as the event payload and must
@@ -159,11 +159,9 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             // hidden or minimised, and a webview in that state can't show
             // itself. The other actions are the page's to carry out.
             if action == SHOW_PRISM {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.unminimize();
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                // One helper for "bring Prism to the front", shared with the
+                // tray and the second-instance handler.
+                crate::show_main_window(app);
                 return;
             }
             let _ = app.emit("shortcut-action", action);
