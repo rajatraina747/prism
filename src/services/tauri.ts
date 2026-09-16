@@ -514,6 +514,16 @@ export class TauriPrismService implements IPrismService {
     return invoke<ContentMatch | null>('index_download', { path, title });
   }
 
+  onMenuAction(handler: (action: string) => void): () => void {
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    listen<string>('menu-action', e => handler(e.payload)).then(fn => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => { cancelled = true; unlisten?.(); };
+  }
+
   onShortcut(handler: (action: ShortcutAction) => void): () => void {
     let unlisten: UnlistenFn | undefined;
     let cancelled = false;

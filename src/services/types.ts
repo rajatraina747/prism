@@ -189,6 +189,12 @@ export interface IPrismService {
    * than before one. */
   indexDownload(path: string, title: string): Promise<ContentMatch | null>;
 
+  /** Someone chose something from the application menu. The payload is either
+   * `add` or `nav:<path>` — the menu names an intent, and the shell decides
+   * what that means, so navigation keeps going through one place. Returns an
+   * unsubscribe function. */
+  onMenuAction(handler: (action: string) => void): () => void;
+
   // Clipboard
   copyToClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;

@@ -1,3 +1,4 @@
+mod app_menu;
 mod content_index;
 mod download_manager;
 mod engine;
@@ -2004,6 +2005,12 @@ pub fn run() {
             // Re-take the user's global hotkeys, if they assigned any. Reads
             // settings.json, so it belongs after the directory above exists.
             shortcuts::apply_saved(app.handle());
+
+            // A menu that fails to build is worth a log line, not a refusal to
+            // start: the app is entirely usable without it.
+            if let Err(e) = app_menu::install(app.handle()) {
+                log::warn!("menu: not installed: {e}");
+            }
 
             // The only thread mpv is ever called from (see mpv_worker.rs).
             app.manage(mpv_worker::MpvWorker::spawn(app.handle().clone())?);

@@ -244,6 +244,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // One Add surface: the sheet (sidebar button, ⌘N / ⌘L from any page)…
   const [addOpen, setAddOpen] = React.useState(false);
+
+  // The application menu names an intent; deciding what it means belongs here,
+  // with the rest of the navigation, rather than in Rust.
+  React.useEffect(() => service.onMenuAction(action => {
+    if (action === 'add') {
+      setAddOpen(true);
+      return;
+    }
+    if (action.startsWith('nav:')) {
+      navigateRef.current(action.slice('nav:'.length));
+    }
+  }), [service]);
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;

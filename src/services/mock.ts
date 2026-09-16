@@ -372,6 +372,11 @@ export class MockPrismService implements IPrismService {
     return null;
   }
 
+  onMenuAction(_handler: (action: string) => void): () => void {
+    // Web demo: a page has no application menu.
+    return () => {};
+  }
+
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
     await new Promise(r => setTimeout(r, 400));
     const host = (() => { try { return new URL(url).hostname; } catch { return 'example.com'; } })();
