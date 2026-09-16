@@ -128,6 +128,11 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       the engine update's version check is bounded.
 - [x] S-11 Explorer quoting; settings.json parsed once per change; tags with
       `-` build as prereleases; the first-run splash survives the rename.
+- [x] Settings record the shape they were written in
+      (`stores/settings-migrations.ts`) and are migrated before they merge
+      over the defaults, so a later rename can't read as the user unsetting
+      something. Settings written by a newer Prism are left exactly as they
+      are rather than stamped back down to this version.
 - [ ] Windows: kill runs with a Job Object (still `taskkill /T`).
 
 **Engines and media**

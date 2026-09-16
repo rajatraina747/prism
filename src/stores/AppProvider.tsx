@@ -3,6 +3,7 @@ import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, Download
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { applyCategory, categoryFor } from '@/stores/categories';
+import { migrateSettings } from '@/stores/settings-migrations';
 import { scheduleGate } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
@@ -101,8 +102,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // only performs side effects — spawning/killing downloads — and dispatches.
   const [queue, dispatch] = useReducer(queueReducer, null, () => service.persistence.loadQueue());
   const [history, setHistory] = useState<HistoryItem[]>(() => service.persistence.loadHistory());
-  // Merge over defaults so settings saved by older versions pick up new keys
-  const [settings, setSettings] = useState<AppPreferences>(() => ({ ...DEFAULT_PREFERENCES, ...service.persistence.loadSettings() }));
+  // Migrate whatever was stored into the shape this build expects, then merge
+  // it over the defaults so settings saved by older versions pick up new keys.
+  const [settings, setSettings] = useState<AppPreferences>(() => ({
+    ...DEFAULT_PREFERENCES,
+    ...migrateSettings(service.persistence.loadSettings()),
+  }));
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
   // Items whose backend kill hasn't come back yet — see the auto-start effect.

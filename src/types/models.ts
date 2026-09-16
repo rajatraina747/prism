@@ -319,7 +319,15 @@ export interface AppPreferences {
   // Labels are put on downloads by hand, several at a time. Unlike a category
   // they carry no settings — they only group things after the fact.
   labels: DownloadLabel[];
+  // The shape these settings were written in, so a later rename can migrate
+  // them rather than read as the user unsetting something. Anything written
+  // before 2.0 has no stamp at all; see src/stores/settings-migrations.ts.
+  settingsVersion: number;
 }
+
+/** Bumped whenever a stored setting changes shape, with a matching step in
+ * src/stores/settings-migrations.ts. */
+export const SETTINGS_VERSION = 1;
 
 /** A tag the user can put on any download, independent of its category. */
 export interface DownloadLabel {
@@ -439,6 +447,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   watchFolders: [],
   categories: [],
   labels: [],
+  settingsVersion: SETTINGS_VERSION,
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [
