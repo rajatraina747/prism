@@ -4,7 +4,7 @@ import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
-import { EmptyState, ConfirmDialog } from '@/components/common';
+import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
@@ -372,10 +372,3 @@ export default function Queue() {
   );
 }
 
-function BulkButton({ icon: Icon, label, onClick }: { icon: React.ElementType; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
-      <Icon className="w-3 h-3" /> {label}
-    </button>
-  );
-}

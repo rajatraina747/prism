@@ -19,6 +19,8 @@ interface VirtualListProps<T> {
   className?: string;
   role?: string;
   'aria-label'?: string;
+  /** For a `listbox` whose rows can be selected together. */
+  'aria-multiselectable'?: boolean;
 }
 
 /** A list that only mounts the rows near the viewport once it gets long
@@ -33,6 +35,7 @@ function PlainList<T>({ items, getKey, renderItem, gap = 6, scroll = 'parent', c
     <div
       role={role}
       aria-label={rest['aria-label']}
+      aria-multiselectable={rest['aria-multiselectable']}
       className={cn('flex flex-col', scroll === 'self' && 'overflow-y-auto', className)}
       style={{ gap }}
     >
@@ -83,6 +86,7 @@ function WindowedList<T>({
       ref={innerRef}
       role={role}
       aria-label={rest['aria-label']}
+      aria-multiselectable={rest['aria-multiselectable']}
       style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
     >
       {virtualizer.getVirtualItems().map(vi => (

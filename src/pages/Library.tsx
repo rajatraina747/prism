@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
-import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
+import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -9,10 +9,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
-import { categoriesInUse, labelsInUse } from '@/stores/transfers';
+import { categoriesInUse, labelsInUse, nextSelection } from '@/stores/transfers';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
-  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags,
+  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -74,7 +74,7 @@ function statusIcon(status: string) {
  * History trio, which showed the same records three ways. Long libraries are
  * windowed — only the rows near the viewport are mounted. */
 export default function Library() {
-  const { items, removeFromHistory, clearHistory } = useHistory();
+  const { items, removeFromHistory, restoreHistory, clearHistory } = useHistory();
   const { addToQueue } = useQueue();
   const { preferences } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
@@ -84,7 +84,15 @@ export default function Library() {
   const [confirmClear, setConfirmClear] = useState(false);
   // Torrent row whose per-file list is expanded (one at a time keeps it tidy).
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Multi-select, using the same click/shift/meta rules as Transfers rather
+  // than a second selection model that would drift from it.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
   const playerAvailable = usePlayerAvailable();
+  // The page needs its own handle: the one in LibraryRow is that row's, and
+  // reaching for it from here bound to the imported module instead — which
+  // typechecked, and took the whole page down at render.
+  const service = useService();
 
   // Queue the same video again with its original settings. For failed items the
   // stale failure entry is dropped (a successful retry shouldn't leave it
@@ -143,6 +151,39 @@ export default function Library() {
   }, [tab, items, clearHistory, removeFromHistory]);
 
   const toggleExpanded = useCallback((id: string) => setExpandedId(cur => (cur === id ? null : id)), []);
+
+  const orderedIds = useMemo(() => filtered.map(i => i.id), [filtered]);
+  const onSelect = useCallback((id: string, mods: { shift: boolean; meta: boolean }) => {
+    setSelected(cur => {
+      const next = nextSelection(cur, anchor, orderedIds, id, mods);
+      setAnchor(next.anchor);
+      return next.selection;
+    });
+  }, [anchor, orderedIds]);
+  // Only what is both selected and currently visible: a filter or tab change
+  // shouldn't act on rows the user can no longer see.
+  const selectedItems = useMemo(() => filtered.filter(i => selected.has(i.id)), [filtered, selected]);
+  const clearSelection = useCallback(() => { setSelected(new Set()); setAnchor(null); }, []);
+
+  const revealSelected = useCallback(() => {
+    for (const item of selectedItems) {
+      const target = item.filePath ?? item.outputFolder ?? item.settings.destination;
+      if (target) service.showInFolder(target).catch(() => {});
+    }
+  }, [selectedItems, service]);
+
+  const removeSelected = useCallback(() => {
+    const count = selectedItems.length;
+    const removed = selectedItems;
+    removed.forEach(i => removeFromHistory(i.id));
+    clearSelection();
+    // Records only — the files are untouched, so an undo can simply put the
+    // entries back rather than having to restore anything from disk.
+    toast(`Removed ${count} ${count === 1 ? 'entry' : 'entries'} from the library`, {
+      action: { label: 'Undo', onClick: () => removed.forEach(restoreHistory) },
+      duration: 8000,
+    });
+  }, [selectedItems, removeFromHistory, restoreHistory, clearSelection]);
 
   return (
     <div className="page-container">
@@ -229,6 +270,22 @@ export default function Library() {
           </div>
         )}
 
+        {selectedItems.length > 1 && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary/8 border border-primary/20 text-xs animate-fade-in">
+            <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
+            <BulkButton icon={RotateCcw} label="Download again" onClick={() => selectedItems.forEach(requeue)} />
+            <BulkButton icon={FolderOpen} label="Show in folder" onClick={revealSelected} />
+            <BulkButton icon={Trash2} label="Remove" onClick={removeSelected} />
+            <button
+              onClick={clearSelection}
+              aria-label="Clear selection"
+              className="ml-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <TabsContent value={tab} className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
           {filtered.length === 0 ? (
             <EmptyState
@@ -247,13 +304,16 @@ export default function Library() {
               estimateSize={64}
               gap={6}
               aria-label={`${TAB_LABELS[tab]} downloads`}
-              role="list"
+              role="listbox"
+              aria-multiselectable
               renderItem={item => (
                 <LibraryRow
                   item={item}
                   expanded={expandedId === item.id}
                   playerAvailable={playerAvailable}
                   labelNames={labelNames}
+                  selected={selected.has(item.id)}
+                  onSelect={onSelect}
                   onToggleExpanded={toggleExpanded}
                   onRequeue={requeue}
                   onRemove={removeFromHistory}
@@ -282,12 +342,14 @@ export default function Library() {
 }
 
 const LibraryRow = React.memo(function LibraryRow({
-  item, expanded, playerAvailable, labelNames, onToggleExpanded, onRequeue, onRemove,
+  item, expanded, playerAvailable, labelNames, selected, onSelect, onToggleExpanded, onRequeue, onRemove,
 }: {
   item: HistoryItem;
   expanded: boolean;
   playerAvailable: boolean;
   labelNames?: Record<string, string>;
+  selected?: boolean;
+  onSelect?: (id: string, mods: { shift: boolean; meta: boolean }) => void;
   onToggleExpanded: (id: string) => void;
   onRequeue: (item: HistoryItem) => void;
   onRemove: (id: string) => void;
@@ -296,8 +358,20 @@ const LibraryRow = React.memo(function LibraryRow({
   const isTorrent = isTorrentUrl(item.metadata.source.url);
   const isFailed = item.status === 'failed';
 
+  // A click on one of the row's own controls is that control's, not a
+  // selection — the same rule the Transfers rows follow.
+  const handleClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, a, [role="button"]')) return;
+    onSelect?.(item.id, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey });
+  };
+
   return (
-    <div role="listitem" className="surface-row rounded-xl p-3">
+    <div
+      role="option"
+      aria-selected={!!selected}
+      onClick={handleClick}
+      className={cn('surface-row rounded-xl p-3', selected && 'ring-1 ring-primary/60 bg-primary/5')}
+    >
       <div className="flex items-start gap-3">
         {isFailed ? (
           <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">

@@ -202,7 +202,17 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       window's own permissions stay as narrow as they were.
 
 **Library and automation**
-- [ ] Library list model, grid, bulk actions, storage, undo that resumes.
+- [x] Library multi-select and bulk actions: click, shift-click and meta-click
+      reusing the same `nextSelection` Transfers uses, rather than a second
+      selection model. Download again, show in folder, and remove — records
+      only, with an undo that genuinely restores them, since removing from the
+      Library never touched the files. Rows are options of a multi-select
+      listbox now, so the selection is announced rather than only drawn.
+- [ ] Library list model, grid view, density modes, storage tile.
+- [ ] Bulk "move to Trash" — needs the `trash` crate and would be the first
+      thing in Prism that deletes a finished download, which the Clear dialog
+      currently promises it won't. Worth deciding rather than assuming.
+- [ ] Undo that resumes (cancel-undo keeping partials).
 - [x] Sleep, shut down or quit once the queue finishes
       (`stores/completion.ts`). It fires on the change from working to
       finished, never on a standing start — otherwise switching it on with an

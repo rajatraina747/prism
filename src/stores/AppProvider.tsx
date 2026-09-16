@@ -69,6 +69,10 @@ interface QueueActions {
 interface HistoryActions {
   items: HistoryItem[];
   removeFromHistory: (id: string) => void;
+  /** Put a removed entry back, for an undo. Removing from the Library only
+   * drops the record — the files are untouched — so this genuinely restores
+   * everything that was lost. */
+  restoreHistory: (item: HistoryItem) => void;
   clearHistory: () => void;
 }
 
@@ -650,6 +654,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
 
+  const restoreHistory = useCallback((item: HistoryItem) => {
+    setHistory(prev => (
+      // Guard against a double undo, and keep the list in completion order so
+      // a restored entry lands back where it was rather than at the top.
+      prev.some(i => i.id === item.id)
+        ? prev
+        : [...prev, item].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 2000)
+    ));
+  }, []);
+
   const clearHistory = useCallback(() => { setHistory([]); }, []);
 
   const updatePreference = useCallback(<K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
@@ -661,7 +675,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
       <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
-        <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
+        <HistoryContext.Provider value={{ items: history, removeFromHistory, restoreHistory, clearHistory }}>
           <StatsContext.Provider value={{ stats }}>
             {children}
           </StatsContext.Provider>

@@ -176,6 +176,25 @@ export function Panel({ title, children, className, action, style }: PanelProps)
   );
 }
 
+// ── Bulk action button ──
+// The button used in a multi-select bar. Shared rather than defined per page:
+// two copies of the same bar drift apart, and a bulk action that looks
+// different on one screen reads as a different action.
+export function BulkButton({ icon: Icon, label, onClick }: {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+    >
+      <Icon className="w-3 h-3" /> {label}
+    </button>
+  );
+}
+
 // ── Thumbnail with graceful fallback ──
 // Video thumbnails are remote (often expiring CDN) URLs — render a neutral
 // placeholder when the URL is missing or fails to load, instead of the

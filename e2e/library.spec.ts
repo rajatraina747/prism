@@ -30,14 +30,16 @@ test.describe('Library', () => {
     await expect(page.getByRole('tab', { name: new RegExp(`All\\s*${COUNT}`) })).toBeVisible();
     await expect(page.getByText('Library entry 0', { exact: true })).toBeVisible();
 
-    const mounted = await page.getByRole('listitem').count();
+    // Rows are options of a multi-select listbox, not plain list items — the
+    // list is selectable now, and that is what a screen reader is told.
+    const mounted = await page.getByRole('option').count();
     expect(mounted).toBeGreaterThan(0);
     expect(mounted).toBeLessThan(100);
 
     // Scroll the page's scroller to the end; the last row gets mounted.
     await page.locator('main').evaluate(el => { el.scrollTop = el.scrollHeight; });
     await expect(page.getByText(`Library entry ${COUNT - 1}`, { exact: true })).toBeVisible();
-    expect(await page.getByRole('listitem').count()).toBeLessThan(100);
+    expect(await page.getByRole('option').count()).toBeLessThan(100);
   });
 
   test('search narrows the list', async ({ page }) => {
