@@ -72,6 +72,13 @@ describe('queueReducer', () => {
     expect(next[0].settings.destination).toBe('~/Downloads/Prism');
   });
 
+  it('tags an item with labels at any point, and forgets the key when the last goes', () => {
+    const tagged = queueReducer([makeItem({ status: 'downloading' })], { type: 'setLabels', id: 'a', labelIds: ['l1', 'l2'] });
+    expect(tagged[0].settings.labelIds).toEqual(['l1', 'l2']);
+    const cleared = queueReducer(tagged, { type: 'setLabels', id: 'a', labelIds: [] });
+    expect(cleared[0].settings.labelIds).toBeUndefined();
+  });
+
   it('marks queued items started, but not paused ones', () => {
     const started = queueReducer([makeItem()], { type: 'markStarted', id: 'a', startedAt: 't' });
     expect(started[0].status).toBe('downloading');

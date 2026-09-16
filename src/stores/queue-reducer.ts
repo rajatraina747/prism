@@ -35,6 +35,7 @@ export type QueueAction =
   | { type: 'retry'; id: string }
   | { type: 'setSelectedFiles'; id: string; files: number[] }
   | { type: 'setCategory'; id: string; category: DownloadCategory | null }
+  | { type: 'setLabels'; id: string; labelIds: string[] }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -165,6 +166,17 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
           ? applyCategory(i, action.category)
           : { ...i, settings: { ...i.settings, categoryId: action.category.id, categoryName: action.category.name } };
       });
+
+    case 'setLabels':
+      // Labels carry no settings, so unlike a category they can move at any
+      // point in an item's life without consequences.
+      return update(queue, action.id, i => ({
+        ...i,
+        settings: {
+          ...i.settings,
+          labelIds: action.labelIds.length > 0 ? action.labelIds : undefined,
+        },
+      }));
 
     case 'remove':
       return queue.filter(i => i.id !== action.id);

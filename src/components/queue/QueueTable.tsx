@@ -45,9 +45,12 @@ interface QueueTableProps extends QueueRowActions {
   onSelect?: (id: string, mods: SelectMods) => void;
   /** Quiet hours are holding new downloads until this time ("07:00"). */
   heldUntil?: string;
+  /** Label id → name, so a row can show its labels without reading settings
+   * (the table is also rendered on its own, in tests and the web demo). */
+  labelNames?: Record<string, string>;
 }
 
-export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil, ...actions }: QueueTableProps) {
+export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil, labelNames, ...actions }: QueueTableProps) {
   // Roving tabindex: one row is in the tab order — the first selected one,
   // else the first row — and arrow keys (global shortcuts) move from there.
   const focusIndex = Math.max(0, items.findIndex(i => selectedIds?.has(i.id)));
@@ -120,6 +123,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
               selected={selectedIds?.has(item.id) ?? false}
               focusable={index === focusIndex}
               heldUntil={heldUntil}
+              labelNames={labelNames}
               onSelect={onSelect}
               onReorder={onReorder}
               {...actions}
@@ -133,7 +137,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
 }
 
 const QueueRow = React.memo(function QueueRow({
-  item, index, count, selected, focusable, heldUntil, onSelect,
+  item, index, count, selected, focusable, heldUntil, labelNames, onSelect,
   onPause, onResume, onCancel, onRetry, onRemove, onReorder, onUpdateFiles,
   onReannounce, onRecheck, onRemoveWithData, onMoveTop, onMoveBottom, onShowInFolder, onOpenDetails,
 }: QueueRowActions & {
@@ -141,6 +145,7 @@ const QueueRow = React.memo(function QueueRow({
   selected: boolean;
   focusable: boolean;
   heldUntil?: string;
+  labelNames?: Record<string, string>;
   onSelect?: (id: string, mods: SelectMods) => void;
 }) {
   // When the keyboard moves the selection, move focus with it — but only if
@@ -239,6 +244,15 @@ const QueueRow = React.memo(function QueueRow({
                 {item.settings.categoryName}
               </span>
             )}
+            {item.settings.labelIds?.map(id => labelNames?.[id]).filter(Boolean).map(name => (
+              <span
+                key={name}
+                title={`Label: ${name}`}
+                className="shrink-0 px-1.5 py-0.5 rounded-md bg-primary/10 text-[10px] font-medium text-primary/90 max-w-24 truncate"
+              >
+                {name}
+              </span>
+            ))}
             <StatusBadge status={item.status} />
           </div>
 

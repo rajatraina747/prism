@@ -638,6 +638,37 @@ export default function Settings() {
                     </button>
                   </div>
                 </SettingRow>
+                <SettingRow label="Labels" description="Tags you put on a download by hand, several at a time. They group things after the fact and change nothing about where a download goes">
+                  <div className="flex flex-col items-end gap-1.5">
+                    {p.labels.map((label, index) => (
+                      <div key={label.id} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={label.name}
+                          onChange={e => updatePreference('labels', p.labels.map(l => (l.id === label.id ? { ...l, name: e.target.value } : l)))}
+                          placeholder="Name"
+                          aria-label={`Label ${index + 1} name`}
+                          className="w-36 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove label ${label.name || index + 1}`}
+                          onClick={() => updatePreference('labels', p.labels.filter(l => l.id !== label.id))}
+                          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => updatePreference('labels', [...p.labels, { id: generateId(), name: '' }])}
+                      className="px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
+                    >
+                      Add a label
+                    </button>
+                  </div>
+                </SettingRow>
                 <SettingRow label="Watch folders" description="Drop a .torrent file or a text file of links into one of these and Prism adds it. Handled files are renamed, never deleted">
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (

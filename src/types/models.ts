@@ -78,6 +78,9 @@ export interface DownloadSettings {
   // renamed or deleted later).
   categoryId?: string;
   categoryName?: string;
+  // Labels put on this item by hand. Ids only: the names live in settings, so
+  // renaming a label renames it everywhere at once. Absent = none.
+  labelIds?: string[];
 }
 
 export interface PlaylistEntry {
@@ -313,6 +316,15 @@ export interface AppPreferences {
   // item gives it a destination and a file name template. Assigned once, when
   // the item is queued.
   categories: DownloadCategory[];
+  // Labels are put on downloads by hand, several at a time. Unlike a category
+  // they carry no settings — they only group things after the fact.
+  labels: DownloadLabel[];
+}
+
+/** A tag the user can put on any download, independent of its category. */
+export interface DownloadLabel {
+  id: string;
+  name: string;
 }
 
 /** A rule for sorting downloads, with the settings that come with it. */
@@ -426,6 +438,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   moveCompletedTo: '',
   watchFolders: [],
   categories: [],
+  labels: [],
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

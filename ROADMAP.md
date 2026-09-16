@@ -157,7 +157,10 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [x] Categories by hand: a picker in the details dialog — re-filing something
       that has already started changes its label only, never where it is
       writing — and a category filter on Transfers and Library.
-- [ ] Labels (several per item, unlike a category).
+- [x] Labels (several per item, unlike a category): defined in Settings, put on
+      by hand from the details dialog, shown on the transfer's row. Ids are
+      stored, not names, so renaming a label renames it everywhere.
+- [ ] Labels, still to add: filter Transfers and Library by label.
 - [x] Watch folders (`watch.rs`): `.torrent` files and text files of links,
       polled every few seconds, fed into the ordinary add flow as an in-app
       add. Handled files are renamed (`.added`/`.failed`), never deleted.

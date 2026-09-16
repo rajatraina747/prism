@@ -20,6 +20,7 @@ export interface DetailPanelProps {
   onUpdateFiles?: (id: string, onlyFiles: number[]) => void;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
+  onSetLabels?: (id: string, labelIds: string[]) => void;
   playerAvailable?: boolean;
 }
 
@@ -32,7 +33,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -91,7 +92,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -129,10 +130,11 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce, onSetCategory }: {
+function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels }: {
   item: DownloadItem;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
+  onSetLabels?: (id: string, labelIds: string[]) => void;
 }) {
   const service = useService();
   const { preferences } = useSettings();
@@ -203,6 +205,35 @@ function GeneralTab({ item, onReannounce, onSetCategory }: {
           )}
         </div>
       </div>
+      {onSetLabels && preferences.labels.length > 0 && (
+        <div className="flex items-baseline gap-3 mt-2 pt-2 border-t border-border/20">
+          <span className="w-28 shrink-0 text-[11px] text-muted-foreground">Labels</span>
+          <span className="flex flex-wrap gap-1">
+            {preferences.labels.map(label => {
+              const on = item.settings.labelIds?.includes(label.id) ?? false;
+              return (
+                <button
+                  key={label.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => {
+                    const current = item.settings.labelIds ?? [];
+                    onSetLabels(item.id, on ? current.filter(x => x !== label.id) : [...current, label.id]);
+                  }}
+                  className={cn(
+                    'px-1.5 py-0.5 rounded-md text-[10px] border transition-colors',
+                    on
+                      ? 'bg-primary/15 border-primary/40 text-primary'
+                      : 'bg-input border-border/40 text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {label.name || 'Unnamed'}
+                </button>
+              );
+            })}
+          </span>
+        </div>
+      )}
     </ScrollArea>
   );
 }

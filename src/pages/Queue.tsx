@@ -22,7 +22,7 @@ import type { TransfersFilter, TransfersSort } from '@/types/models';
 export default function Queue() {
   const {
     items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
-    startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, reannounceTorrent, recheckTorrent, removeWithData,
+    startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, reannounceTorrent, recheckTorrent, removeWithData,
     moveToTop, moveToBottom,
   } = useQueue();
   const { removeFromHistory } = useHistory();
@@ -66,6 +66,10 @@ export default function Queue() {
   const activeItems = useMemo(() => items.filter(isTransfer), [items]);
   const counts = useMemo(() => filterCounts(activeItems), [activeItems]);
   const categories = useMemo(() => categoriesInUse(activeItems), [activeItems]);
+  const labelNames = useMemo(
+    () => Object.fromEntries(preferences.labels.map(l => [l.id, l.name])),
+    [preferences.labels],
+  );
   // Heal the filter when its last transfer is archived, rather than leaving
   // the list mysteriously empty under a category that is no longer there.
   const activeCategory = category && categories.some(c => c.id === category) ? category : null;
@@ -287,6 +291,7 @@ export default function Queue() {
             <QueueTable
               items={visibleItems}
               heldUntil={quiet?.mode === 'pause' ? quiet.until : undefined}
+              labelNames={labelNames}
               selectedIds={selected}
               onSelect={onSelect}
               onPause={pauseDownload}
@@ -316,6 +321,7 @@ export default function Queue() {
             onUpdateFiles={updateTorrentFiles}
             onReannounce={reannounceTorrent}
             onSetCategory={setItemCategory}
+            onSetLabels={setItemLabels}
             playerAvailable={playerAvailable}
           />
         )}

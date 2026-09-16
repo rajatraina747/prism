@@ -46,6 +46,8 @@ interface QueueActions {
   updateTorrentFiles: (id: string, onlyFiles: number[]) => void;
   /** File an item under a category by hand (null clears it). */
   setItemCategory: (id: string, category: DownloadCategory | null) => void;
+  /** Replace the labels on an item (an empty list clears them). */
+  setItemLabels: (id: string, labelIds: string[]) => void;
   /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
   reannounceTorrent: (id: string) => void;
   /** Torrent: hash every piece on disk again ("Force re-check"). */
@@ -510,6 +512,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'setCategory', id, category });
   }, []);
 
+  const setItemLabels = useCallback((id: string, labelIds: string[]) => {
+    dispatch({ type: 'setLabels', id, labelIds });
+  }, []);
+
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
       .then(() => toast.success('Asked trackers and DHT for peers'))
@@ -560,7 +566,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
           {children}
         </HistoryContext.Provider>
