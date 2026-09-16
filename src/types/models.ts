@@ -341,6 +341,10 @@ export interface AppPreferences {
   // Seeding counts as work by default, so a machine doesn't sleep in the
   // middle of uploading. This waives that.
   whenDoneIgnoresSeeding: boolean;
+  // Optional global hotkeys — off unless the user assigns one, because a
+  // shortcut registered system-wide takes that key away from every other app.
+  // Registered Rust-side; see src-tauri/src/shortcuts.rs.
+  shortcuts: GlobalShortcuts;
   // The shape these settings were written in, so a later rename can migrate
   // them rather than read as the user unsetting something. Anything written
   // before 2.0 has no stamp at all; see src/stores/settings-migrations.ts.
@@ -350,6 +354,24 @@ export interface AppPreferences {
 /** Bumped whenever a stored setting changes shape, with a matching step in
  * src/stores/settings-migrations.ts. */
 export const SETTINGS_VERSION = 1;
+
+/** System-wide hotkeys, each an accelerator like "CommandOrControl+Shift+V".
+ *
+ * An empty string means unassigned, which is the default for all of them: a
+ * global shortcut is taken from every other application on the machine, so
+ * Prism should never claim one the user didn't ask for. */
+export interface GlobalShortcuts {
+  /** Add whatever link is on the clipboard, without raising the window. */
+  addFromClipboard: string;
+  /** Bring Prism to the front from wherever the user is. */
+  showPrism: string;
+  /** Pause every running download. */
+  pauseAll: string;
+}
+
+/** Which global hotkey fired. Keyed off GlobalShortcuts so the two can never
+ * drift apart. */
+export type ShortcutAction = keyof GlobalShortcuts;
 
 /** A tag the user can put on any download, independent of its category. */
 export interface DownloadLabel {
@@ -486,6 +508,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultWhenComplete: 'nothing',
   whenDoneAction: 'nothing',
   whenDoneIgnoresSeeding: false,
+  // All unassigned: Prism claims no system-wide key until asked to.
+  shortcuts: { addFromClipboard: '', showPrism: '', pauseAll: '' },
   settingsVersion: SETTINGS_VERSION,
 };
 

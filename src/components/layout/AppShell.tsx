@@ -211,6 +211,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     navigateRef.current('/');
   }, []);
 
+  // Global hotkeys. Rust owns the registration (see src-tauri/src/shortcuts.rs)
+  // and tells us which one fired. "Show Prism" never arrives here — raising a
+  // hidden window is Rust's job.
+  const { pauseAll } = useQueue();
+  // Compared by value: `preferences.shortcuts` is a fresh object whenever
+  // settings are saved, and re-registering system-wide keys on every render
+  // would be a lot of churn for nothing.
+  const shortcutsKey = JSON.stringify(preferences.shortcuts);
+  React.useEffect(() => {
+    if (service.isDemo) return;
+    service.setShortcuts(JSON.parse(shortcutsKey)).catch((e: unknown) => {
+      toast.error(e instanceof Error ? e.message : 'Could not register that shortcut');
+    });
+  }, [service, shortcutsKey]);
+
+  React.useEffect(() => service.onShortcut(async (action) => {
+    if (action === 'pauseAll') {
+      pauseAll();
+      return;
+    }
+    if (action === 'addFromClipboard') {
+      try {
+        const text = (await service.readClipboard()).trim();
+        if (text) addLinks([text]);
+        else toast('Nothing on the clipboard to add');
+      } catch {
+        toast.error('Could not read the clipboard');
+      }
+    }
+  }), [service, pauseAll, addLinks]);
+
   // One Add surface: the sheet (sidebar button, ⌘N / ⌘L from any page)…
   const [addOpen, setAddOpen] = React.useState(false);
   React.useEffect(() => {

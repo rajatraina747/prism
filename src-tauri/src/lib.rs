@@ -10,6 +10,7 @@ mod postprocess;
 mod proc;
 mod quarantine;
 mod rss;
+mod shortcuts;
 mod spawn;
 mod stream_server;
 mod template;
@@ -1916,6 +1917,9 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        // Optional system-wide hotkeys. Registers nothing until the user
+        // assigns one (see shortcuts.rs).
+        .plugin(shortcuts::plugin())
         // Remembers window size/position across launches.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // Keep mpv's adopted video window glued to the player window on
@@ -1949,6 +1953,10 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(dir);
             }
+
+            // Re-take the user's global hotkeys, if they assigned any. Reads
+            // settings.json, so it belongs after the directory above exists.
+            shortcuts::apply_saved(app.handle());
 
             // The only thread mpv is ever called from (see mpv_worker.rs).
             app.manage(mpv_worker::MpvWorker::spawn(app.handle().clone())?);
@@ -2037,6 +2045,7 @@ pub fn run() {
             storage_summary,
             move_to_trash,
             rss::rss_fetch,
+            shortcuts::set_shortcuts,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { EngineError } from '@/services/errors';
 
 export type ProgressCallback = (data: {
@@ -163,6 +163,13 @@ export interface IPrismService {
    * Returns the same shape as `parsePlaylist` so subscription checking doesn't
    * have to care which fetcher ran. */
   fetchRss(url: string, limit?: number): Promise<PlaylistInfo>;
+
+  /** Register the user's global hotkeys, replacing whatever was registered
+   * before. Rejects with the first accelerator the OS wouldn't give us —
+   * usually because another application already holds it. */
+  setShortcuts(shortcuts: GlobalShortcuts): Promise<void>;
+  /** A registered global hotkey fired. Returns an unsubscribe function. */
+  onShortcut(handler: (action: ShortcutAction) => void): () => void;
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

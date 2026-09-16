@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary } from './types';
 import { generateId } from './utils';
 
@@ -352,6 +352,15 @@ export class MockPrismService implements IPrismService {
   async moveToTrash(paths: string[]): Promise<number> {
     // Web demo: no files to move, so report what would have gone.
     return paths.length;
+  }
+
+  async setShortcuts(_shortcuts: GlobalShortcuts): Promise<void> {
+    // Web demo: a page can't claim a system-wide hotkey, so this is a no-op
+    // rather than a pretend success with a fake registration behind it.
+  }
+
+  onShortcut(_handler: (action: ShortcutAction) => void): () => void {
+    return () => {};
   }
 
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {

@@ -7,7 +7,7 @@ import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
@@ -500,6 +500,21 @@ export class TauriPrismService implements IPrismService {
 
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
     return invoke<PlaylistInfo>('rss_fetch', { url, limit });
+  }
+
+  async setShortcuts(shortcuts: GlobalShortcuts): Promise<void> {
+    return invoke('set_shortcuts', { shortcuts });
+  }
+
+  onShortcut(handler: (action: ShortcutAction) => void): () => void {
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    listen<ShortcutAction>('shortcut-action', e => handler(e.payload)).then(fn => {
+      // Unsubscribed before the listener finished attaching.
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => { cancelled = true; unlisten?.(); };
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult> {

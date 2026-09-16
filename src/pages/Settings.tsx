@@ -597,6 +597,30 @@ export default function Settings() {
                   </SettingRow>
                 )}
               </SettingGroup>
+
+              <SettingGroup title="Global shortcuts">
+                <SettingRow label="Add from clipboard" description="Queues whatever link is on the clipboard. Leave empty for none — a shortcut set here is taken from every other app while Prism runs">
+                  <TextInput
+                    value={p.shortcuts.addFromClipboard}
+                    onChange={v => updatePreference('shortcuts', { ...p.shortcuts, addFromClipboard: v })}
+                    placeholder="e.g. CmdOrCtrl+Shift+V"
+                  />
+                </SettingRow>
+                <SettingRow label="Show Prism" description="Brings the window to the front from wherever you are">
+                  <TextInput
+                    value={p.shortcuts.showPrism}
+                    onChange={v => updatePreference('shortcuts', { ...p.shortcuts, showPrism: v })}
+                    placeholder="e.g. CmdOrCtrl+Shift+P"
+                  />
+                </SettingRow>
+                <SettingRow label="Pause everything" description="Pauses every running download">
+                  <TextInput
+                    value={p.shortcuts.pauseAll}
+                    onChange={v => updatePreference('shortcuts', { ...p.shortcuts, pauseAll: v })}
+                    placeholder="e.g. CmdOrCtrl+Shift+Period"
+                  />
+                </SettingRow>
+              </SettingGroup>
             </TabsContent>
 
             <TabsContent value="network" className="mt-0">
