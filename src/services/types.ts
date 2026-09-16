@@ -86,6 +86,14 @@ export interface StorageSummary {
   partial: boolean;
 }
 
+/** A download already holding the same content. Mirrors `IndexEntry` in
+ * src-tauri/src/content_index.rs. */
+export interface ContentMatch {
+  path: string;
+  title: string;
+  recordedAt: string;
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   version?: string;
@@ -174,6 +182,12 @@ export interface IPrismService {
   /** Dock (macOS) and taskbar (Windows) progress, 0–100. `null` hides the bar.
    * What the number *is* comes from src/stores/progress.ts. */
   setProgress(percent: number | null, paused: boolean): Promise<void>;
+
+  /** Record a finished file in the content index, and say whether the same
+   * content was already there under a different name or from a different URL.
+   * Only answerable once the file exists, so this runs after a download rather
+   * than before one. */
+  indexDownload(path: string, title: string): Promise<ContentMatch | null>;
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

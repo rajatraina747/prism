@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -365,6 +365,11 @@ export class MockPrismService implements IPrismService {
 
   async setProgress(_percent: number | null, _paused: boolean): Promise<void> {
     // Web demo: a page has no Dock or taskbar to draw on.
+  }
+
+  async indexDownload(_path: string, _title: string): Promise<ContentMatch | null> {
+    // Web demo: nothing lands on disk, so nothing can already be there.
+    return null;
   }
 
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {

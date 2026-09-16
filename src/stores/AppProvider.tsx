@@ -246,6 +246,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // actually finishes; the queue is read through a ref when it fires.
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  // Read through a ref for the same reason as the queue above: this effect is
+  // keyed on terminalKey alone and must not re-arm. Making the service a
+  // dependency would put that back at the mercy of an identity change.
+  const serviceRef = useRef(service);
+  serviceRef.current = service;
   const terminalKey = queue
     .filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled')
     .map(i => i.id)
@@ -288,6 +293,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Cap history so history.json can't grow (and load/render) unboundedly
       setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
+
+      // Content-level duplicates. Only answerable once a file exists, so it
+      // reports afterwards ("you already had this") rather than pretending the
+      // same thing could be known at add time, where only the URL is in hand.
+      // Advisory: a failure here must not disturb archiving.
+      for (const done of terminal) {
+        if (done.status !== 'completed' || !done.filePath) continue;
+        const { filePath, metadata } = done;
+        void serviceRef.current
+          .indexDownload(filePath, metadata.title)
+          .then(existing => {
+            if (existing) {
+              toast.info(`You already had this: ${existing.title}`, { duration: 8000 });
+            }
+          })
+          .catch(() => { /* the index is a convenience, not a guarantee */ });
+      }
     }, 300);
     return () => clearTimeout(timeout);
   }, [terminalKey]);

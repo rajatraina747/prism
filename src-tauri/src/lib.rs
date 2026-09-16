@@ -1,3 +1,4 @@
+mod content_index;
 mod download_manager;
 mod engine;
 mod errors;
@@ -2082,6 +2083,7 @@ pub fn run() {
             rss::rss_fetch,
             shortcuts::set_shortcuts,
             set_progress,
+            content_index::index_download,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
