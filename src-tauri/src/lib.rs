@@ -1849,6 +1849,9 @@ pub fn run() {
             player::player_load_stream,
             player::player_save_position,
             player::player_resume_position,
+            player::player_add_subtitle,
+            player::player_sibling_subtitles,
+            player::player_set_mini,
             player::player_seek,
             player::player_set,
         ])

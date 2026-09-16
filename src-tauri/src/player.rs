@@ -284,6 +284,10 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         "media-title": "string",
         "video-params": "node",
         "eof-reached": "flag",
+        "chapter-list": "node",
+        "chapter": "int64",
+        "sub-delay": "double",
+        "sub-visibility": "flag",
     });
     serde_json::from_value(serde_json::json!({
         "initialOptions": initial,
@@ -336,8 +340,11 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
         let title = std::path::Path::new(&validated)
             .file_name()
             .map(|n| n.to_string_lossy().into_owned());
-        app.state::<crate::player_state::PlayerState>()
-            .set_current(crate::player_state::key_for_path(&validated), title);
+        app.state::<crate::player_state::PlayerState>().set_current(
+            crate::player_state::key_for_path(&validated),
+            title,
+            Some(validated.clone()),
+        );
     }
     mpv_worker(&app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
@@ -379,6 +386,7 @@ pub async fn player_load_stream(
     app.state::<crate::player_state::PlayerState>().set_current(
         crate::player_state::key_for_stream(&torrent_id, file_idx),
         Some(name),
+        None,
     );
     mpv_worker(&app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
@@ -438,6 +446,90 @@ pub async fn player_resume_position(
     Ok(crate::player_state::resume_current(&app))
 }
 
+/// Subtitle files the player will take, whether picked by hand or found
+/// sitting next to the media.
+const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "ass", "ssa", "sub", "lrc"];
+
+fn is_subtitle(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .is_some_and(|e| SUBTITLE_EXTENSIONS.contains(&e.as_str()))
+}
+
+/// Load a subtitle file and switch to it. Validated like any other path the
+/// UI hands to the player: inside the allowed roots, and a subtitle at that.
+#[tauri::command]
+pub async fn player_add_subtitle(
+    app: AppHandle,
+    window: tauri::Window,
+    path: String,
+) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let validated = crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?;
+    if !is_subtitle(&validated) {
+        return Err("That isn't a subtitle file".into());
+    }
+    mpv_worker(&app)
+        .run("sub-add", CALL_TIMEOUT, move |mpv| {
+            mpv.command(
+                "sub-add",
+                vec![serde_json::json!(validated), serde_json::json!("select")],
+                PLAYER_LABEL,
+            )
+        })
+        .await
+}
+
+/// Subtitles sitting beside the file being played, so the common case needs
+/// no file picker. Only ones whose name starts with the media's — a season
+/// folder shouldn't offer every episode's subtitles — and empty for a stream,
+/// which has no folder to look in.
+#[tauri::command]
+pub async fn player_sibling_subtitles(
+    app: AppHandle,
+    window: tauri::Window,
+) -> Result<Vec<String>, String> {
+    use tauri::Manager;
+    ensure_player_window(&window)?;
+    let Some(current) = app.state::<crate::player_state::PlayerState>().current() else {
+        return Ok(Vec::new());
+    };
+    let Some(path) = current.path else {
+        return Ok(Vec::new());
+    };
+    let media = std::path::Path::new(&path);
+    let (Some(dir), Some(stem)) = (media.parent(), media.file_stem().and_then(|s| s.to_str()))
+    else {
+        return Ok(Vec::new());
+    };
+    let mut found: Vec<String> = std::fs::read_dir(dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| {
+            let p = entry.ok()?.path();
+            let name = p.file_name()?.to_str()?.to_string();
+            let full = p.to_str()?.to_string();
+            (is_subtitle(&full) && name.starts_with(stem)).then_some(full)
+        })
+        .collect();
+    found.sort();
+    Ok(found)
+}
+
+/// Mini player: a small always-on-top window, or back to the size it opens at.
+/// Done here rather than from the window itself so the player window's ACL
+/// stays as narrow as it is.
+#[tauri::command]
+pub async fn player_set_mini(window: tauri::Window, on: bool) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let (w, h) = if on { (400.0, 225.0) } else { (1024.0, 640.0) };
+    window.set_always_on_top(on).map_err(|e| e.to_string())?;
+    window
+        .set_size(tauri::LogicalSize::new(w, h))
+        .map_err(|e| e.to_string())
+}
+
 /// The only properties the UI may set, each with its value shape checked.
 pub(crate) fn validate_player_property(
     name: &str,
@@ -446,7 +538,7 @@ pub(crate) fn validate_player_property(
     use serde_json::Value;
     let bad = || format!("Invalid value for player property '{}'", name);
     match name {
-        "pause" | "mute" => match value {
+        "pause" | "mute" | "sub-visibility" => match value {
             Value::Bool(b) => Ok(Value::String(if *b { "yes" } else { "no" }.into())),
             Value::String(s) if s == "yes" || s == "no" => Ok(value.clone()),
             _ => Err(bad()),
@@ -459,6 +551,17 @@ pub(crate) fn validate_player_property(
         "speed" => value
             .as_f64()
             .filter(|v| (0.1..=4.0).contains(v))
+            .map(|v| serde_json::json!(v))
+            .ok_or_else(bad),
+        // Chapter index, from mpv's own chapter-list.
+        "chapter" => match value {
+            Value::Number(n) if n.as_i64().is_some_and(|i| i >= 0) => Ok(value.clone()),
+            _ => Err(bad()),
+        },
+        // Subtitle timing nudge, in seconds either way.
+        "sub-delay" => value
+            .as_f64()
+            .filter(|v| (-60.0..=60.0).contains(v))
             .map(|v| serde_json::json!(v))
             .ok_or_else(bad),
         // Track ids come from mpv's own track-list.

@@ -171,7 +171,11 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       playing off disk — offered on reopen with "Start over", and forgotten
       once you have watched something to the end. The window reports only the
       number; which item it belongs to is Rust's to know.
-- [ ] Chapters, external subtitles, track menus, mini player.
+- [x] Chapters (marks on the seek bar, previous/next, the current one named),
+      external subtitles (sidecars found next to the file, or any file through
+      the picker, plus a timing nudge), track menus, and a mini player. The
+      mini player resizes and pins the window from Rust, so the player
+      window's own permissions stay as narrow as they were.
 
 **Library and automation**
 - [ ] Library list model, grid, bulk actions, storage, undo that resumes.

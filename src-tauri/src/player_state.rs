@@ -44,6 +44,9 @@ pub struct Entry {
 pub struct Current {
     pub key: String,
     pub title: Option<String>,
+    /// The file on disk, when it is one — a stream has no folder to look in,
+    /// so sidecar subtitles simply don't apply to it.
+    pub path: Option<String>,
 }
 
 #[derive(Default)]
@@ -58,9 +61,9 @@ impl PlayerState {
 
     /// Record what was just loaded. Called by `player_load` (a path) and
     /// `player_load_stream` (a torrent's file).
-    pub fn set_current(&self, key: String, title: Option<String>) {
+    pub fn set_current(&self, key: String, title: Option<String>, path: Option<String>) {
         if let Ok(mut guard) = self.current.lock() {
-            *guard = Some(Current { key, title });
+            *guard = Some(Current { key, title, path });
         }
     }
 

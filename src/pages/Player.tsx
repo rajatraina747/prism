@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import {
   Play, Pause, RotateCcw, Volume2, VolumeX, Maximize2, Minimize2, AlertTriangle, FolderOpen,
+  SkipBack, SkipForward, Captions, PictureInPicture2,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { formatDuration } from '@/services/utils';
@@ -36,6 +37,10 @@ const OBSERVED = [
   ['media-title', 'string', 'none'],
   ['video-params', 'node', 'none'],
   ['eof-reached', 'flag', 'none'],
+  ['chapter-list', 'node', 'none'],
+  ['chapter', 'int64', 'none'],
+  ['sub-delay', 'double'],
+  ['sub-visibility', 'flag'],
 ] as const satisfies MpvObservableProperty[];
 
 interface MpvTrack {
@@ -45,6 +50,11 @@ interface MpvTrack {
   lang?: string;
   selected?: boolean;
   ['demux-channel-count']?: number;
+}
+
+interface MpvChapter {
+  title?: string;
+  time: number;
 }
 
 interface VideoParams {
@@ -85,6 +95,12 @@ export default function Player() {
   // Set when this file was left partway through, so the jump is visible and
   // undoable rather than the video mysteriously starting in the middle.
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+  const [chapters, setChapters] = useState<MpvChapter[]>([]);
+  const [chapter, setChapter] = useState<number | null>(null);
+  const [subDelay, setSubDelay] = useState(0);
+  const [subVisible, setSubVisible] = useState(true);
+  const [siblingSubs, setSiblingSubs] = useState<string[]>([]);
+  const [mini, setMini] = useState(false);
 
   // While the user drags the seek bar, ignore time-pos updates so the thumb
   // doesn't fight the stream.
@@ -125,6 +141,10 @@ export default function Player() {
         setResumedFrom(null);
       }
     } catch { /* a missing position is not worth reporting */ }
+    // Subtitles sitting next to this file, offered without a file picker.
+    invoke<string[]>('player_sibling_subtitles')
+      .then(setSiblingSubs)
+      .catch(() => setSiblingSubs([]));
     // Re-run the macOS adoption pass in case mpv (re)created its video window
     // for this load — idempotent, no-op elsewhere. See src-tauri/src/player.rs.
     invoke('fixup_player_video').catch(() => {});
@@ -154,6 +174,10 @@ export default function Player() {
           case 'media-title': if (data) setTitle(data); break;
           case 'video-params': setVideoParams(data as VideoParams | null); break;
           case 'eof-reached': setEof(data ?? false); break;
+          case 'chapter-list': setChapters((data as MpvChapter[] | null) ?? []); break;
+          case 'chapter': setChapter(data); break;
+          case 'sub-delay': setSubDelay(data ?? 0); break;
+          case 'sub-visibility': setSubVisible(data ?? true); break;
         }
       }));
 
@@ -301,6 +325,29 @@ export default function Player() {
     }).catch(() => {});
   }, [loadFile]);
 
+  const goChapter = useCallback((delta: number) => {
+    if (chapters.length === 0) return;
+    const next = Math.min(chapters.length - 1, Math.max(0, (chapter ?? 0) + delta));
+    setProp('chapter', next).catch(() => {});
+  }, [chapters.length, chapter]);
+
+  const addSubtitle = useCallback(() => {
+    openFileDialog({
+      multiple: false,
+      filters: [{ name: 'Subtitles', extensions: ['srt', 'vtt', 'ass', 'ssa', 'sub', 'lrc'] }],
+    }).then((picked) => {
+      if (typeof picked === 'string') {
+        invoke('player_add_subtitle', { path: picked })
+          .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const toggleMini = useCallback(() => {
+    const next = !mini;
+    invoke('player_set_mini', { on: next }).then(() => setMini(next)).catch(() => {});
+  }, [mini]);
+
   // Controls stay while paused; fade after idle mouse while playing.
   const pokeControls = useCallback(() => {
     setControlsVisible(true);
@@ -414,16 +461,30 @@ export default function Player() {
       <div
         className={`absolute bottom-0 inset-x-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
-        <Slider
-          value={[seekingRef.current ? timePos : Math.min(timePos, duration || timePos)]}
-          min={0}
-          max={Math.max(duration, 0.1)}
-          step={0.1}
-          onValueChange={([v]) => { seekingRef.current = true; setTimePos(v); }}
-          onValueCommit={([v]) => { seekingRef.current = false; seekTo(v); }}
-          className="mb-2.5"
-          aria-label="Seek"
-        />
+        <div className="relative mb-2.5">
+          <Slider
+            value={[seekingRef.current ? timePos : Math.min(timePos, duration || timePos)]}
+            min={0}
+            max={Math.max(duration, 0.1)}
+            step={0.1}
+            onValueChange={([v]) => { seekingRef.current = true; setTimePos(v); }}
+            onValueCommit={([v]) => { seekingRef.current = false; seekTo(v); }}
+            aria-label="Seek"
+          />
+          {/* Chapter marks. Decoration only — the slider underneath stays the
+              thing you drag. */}
+          {chapters.length > 1 && duration > 0 && (
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2">
+              {chapters.map((c, i) => (
+                <span
+                  key={`${c.time}-${i}`}
+                  className="absolute w-px h-2 -translate-y-1/2 bg-white/70"
+                  style={{ left: `${Math.min(100, Math.max(0, (c.time / duration) * 100))}%` }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-3 text-white">
           <button
             onClick={togglePause}
@@ -434,9 +495,36 @@ export default function Player() {
             {eof ? <RotateCcw className="w-5 h-5" /> : paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
 
+          {chapters.length > 1 && (
+            <>
+              <button
+                onClick={() => goChapter(-1)}
+                className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
+                title="Previous chapter"
+                aria-label="Previous chapter"
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => goChapter(1)}
+                className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
+                title="Next chapter"
+                aria-label="Next chapter"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
           <span className="text-[11px] tabular-nums text-white/90 shrink-0">
             {formatDuration(timePos)} / {formatDuration(duration)}
           </span>
+
+          {chapters.length > 1 && chapter !== null && chapters[chapter]?.title && (
+            <span className="text-[11px] text-white/70 truncate max-w-40 shrink-0" title={chapters[chapter].title}>
+              {chapters[chapter].title}
+            </span>
+          )}
 
           <div className="flex items-center gap-1.5 ml-1">
             <button
@@ -475,12 +563,17 @@ export default function Player() {
             </label>
           )}
 
-          {subTracks.length > 0 && (
-            <label className="flex items-center gap-1 text-[11px] text-white/80">
-              Subs
+          <label className="flex items-center gap-1 text-[11px] text-white/80">
+            Subs
+            {subTracks.length > 0 && (
               <select
-                value={subTracks.find((t) => t.selected)?.id ?? 'no'}
-                onChange={(e) => setProp('sid', e.target.value).catch(() => {})}
+                value={subVisible ? (subTracks.find((t) => t.selected)?.id ?? 'no') : 'no'}
+                onChange={(e) => {
+                  // "Off" hides subtitles rather than only deselecting, so an
+                  // external file added later doesn't come back on its own.
+                  setProp('sub-visibility', e.target.value !== 'no').catch(() => {});
+                  if (e.target.value !== 'no') setProp('sid', e.target.value).catch(() => {});
+                }}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-36"
               >
                 <option value="no">Off</option>
@@ -488,8 +581,58 @@ export default function Player() {
                   <option key={t.id} value={t.id}>{trackLabel(t)}</option>
                 ))}
               </select>
-            </label>
-          )}
+            )}
+            {/* Sidecar subtitles found next to the file, then any file. */}
+            {siblingSubs.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  invoke('player_add_subtitle', { path: e.target.value })
+                    .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
+                  e.target.value = '';
+                }}
+                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-28"
+                aria-label="Subtitles found next to this file"
+              >
+                <option value="">Nearby…</option>
+                {siblingSubs.map((p) => (
+                  <option key={p} value={p}>{p.split('/').pop()}</option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={addSubtitle}
+              className="p-1 rounded-md hover:bg-white/15 transition-colors"
+              title="Add a subtitle file…"
+              aria-label="Add a subtitle file…"
+            >
+              <Captions className="w-4 h-4" />
+            </button>
+            {subVisible && subTracks.some((t) => t.selected) && (
+              <span className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setProp('sub-delay', Math.max(-60, Number((subDelay - 0.5).toFixed(1)))).catch(() => {})}
+                  className="px-1 rounded hover:bg-white/15 transition-colors"
+                  title="Subtitles earlier"
+                  aria-label="Subtitles earlier"
+                >
+                  −
+                </button>
+                <span className="tabular-nums text-white/70 w-10 text-center" title="Subtitle delay">
+                  {subDelay.toFixed(1)}s
+                </span>
+                <button
+                  onClick={() => setProp('sub-delay', Math.min(60, Number((subDelay + 0.5).toFixed(1)))).catch(() => {})}
+                  className="px-1 rounded hover:bg-white/15 transition-colors"
+                  title="Subtitles later"
+                  aria-label="Subtitles later"
+                >
+                  +
+                </button>
+              </span>
+            )}
+          </label>
 
           <label className="flex items-center gap-1 text-[11px] text-white/80">
             <select
@@ -511,6 +654,16 @@ export default function Player() {
             aria-label="Open file…"
           >
             <FolderOpen className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={toggleMini}
+            className={`p-1.5 rounded-md hover:bg-white/15 transition-colors ${mini ? 'bg-white/20' : ''}`}
+            title={mini ? 'Leave mini player' : 'Mini player'}
+            aria-label={mini ? 'Leave mini player' : 'Mini player'}
+            aria-pressed={mini}
+          >
+            <PictureInPicture2 className="w-4 h-4" />
           </button>
 
           <button
