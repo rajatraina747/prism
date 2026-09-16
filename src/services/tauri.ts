@@ -367,6 +367,7 @@ export class TauriPrismService implements IPrismService {
     let unlisten: UnlistenFn | null = null;
     let trayUnlisten: UnlistenFn | null = null;
     let fileUnlisten: UnlistenFn | null = null;
+    let watchUnlisten: UnlistenFn | null = null;
     let cancelled = false;
 
     // Everything the OS delivers is `external`: a web page can open magnet:
@@ -429,8 +430,23 @@ export class TauriPrismService implements IPrismService {
       else fileUnlisten = fn;
     }).catch(() => {});
 
+    // Found in a watch folder the user configured: in-app intent, so it goes
+    // straight into the add flow like a drop, with no confirmation card.
+    listen<string[]>('watch-folder-links', (event) => {
+      if (cancelled) return;
+      for (const link of event.payload ?? []) {
+        const trimmed = link.trim();
+        if (trimmed) handler(trimmed, 'app');
+      }
+    }).then(fn => {
+      if (cancelled) fn();
+      else watchUnlisten = fn;
+    }).catch(() => {});
+
     return () => {
       cancelled = true;
+      watchUnlisten?.();
+      watchUnlisten = null;
       fileUnlisten?.();
       fileUnlisten = null;
       unlisten?.();

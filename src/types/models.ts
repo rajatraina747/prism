@@ -301,6 +301,9 @@ export interface AppPreferences {
   // seeding ends). Read Rust-side; nothing is ever overwritten.
   moveCompletedEnabled: boolean;
   moveCompletedTo: string;
+  // Folders Prism watches for .torrent files and text files of links. Scanned
+  // Rust-side; a handled file is renamed, never deleted.
+  watchFolders: { path: string; enabled: boolean }[];
 }
 
 export interface DiagnosticsEntry {
@@ -397,6 +400,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   filenameTemplate: '{title}',
   moveCompletedEnabled: false,
   moveCompletedTo: '',
+  watchFolders: [],
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

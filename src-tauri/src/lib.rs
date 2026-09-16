@@ -11,6 +11,7 @@ mod quarantine;
 mod spawn;
 mod template;
 pub mod torrent;
+mod watch;
 mod updater;
 
 use std::path::PathBuf;
@@ -730,19 +731,26 @@ const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// these bytes (trackers included) when the torrent is added.
 #[tauri::command]
 async fn import_torrent_file(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    store_torrent_bytes(&app, &name, &bytes)
+}
+
+/// Cache a `.torrent`'s bytes and return the magnet for its info hash — the
+/// same cache `with_cached_metadata` reads back (trackers included) when the
+/// torrent is added. Shared by drops, the web demo and watch folders.
+pub(crate) fn store_torrent_bytes(app: &AppHandle, name: &str, bytes: &[u8]) -> Result<String, String> {
     if bytes.is_empty() || bytes.len() as u64 > MAX_TORRENT_FILE_BYTES {
         return Err(format!("{name} is not a valid .torrent file"));
     }
     let (hash, torrent_name) =
-        torrent_identity(&bytes).ok_or_else(|| format!("{name} is not a valid .torrent file"))?;
-    let dir = torrent_session_config(&app)
+        torrent_identity(bytes).ok_or_else(|| format!("{name} is not a valid .torrent file"))?;
+    let dir = torrent_session_config(app)
         .torrent_cache_dir
         .ok_or("Could not resolve the app data directory")?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to store torrent: {e}"))?;
-    std::fs::write(dir.join(format!("{hash}.torrent")), &bytes)
+    std::fs::write(dir.join(format!("{hash}.torrent")), bytes)
         .map_err(|e| format!("Failed to store torrent: {e}"))?;
-    let fallback = name.strip_suffix(".torrent").unwrap_or(&name);
-    log::info!("imported .torrent {hash} from a drop");
+    let fallback = name.strip_suffix(".torrent").unwrap_or(name);
+    log::info!("cached .torrent {hash}");
     Ok(magnet_for(&hash, torrent_name.as_deref().unwrap_or(fallback)))
 }
 
@@ -1765,6 +1773,10 @@ pub fn run() {
             player::verify_player_from_env(app.handle())?;
 
             setup_tray(app)?;
+
+            // Watch folders (none configured = a cached settings read every
+            // few seconds).
+            watch::spawn(app.handle().clone());
 
             // Opt-in crash reporting for Rust panics. Doubly gated: the build
             // must have a DSN baked in AND the user must have enabled the

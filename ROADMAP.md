@@ -152,7 +152,9 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       completion is reported, across devices by copy-then-remove, torrents
       once seeding ends, never overwriting.
 - [ ] Categories and labels with per-category destination and template.
-- [ ] Watch folders (`.torrent` files and URL lists).
+- [x] Watch folders (`watch.rs`): `.torrent` files and text files of links,
+      polled every few seconds, fed into the ordinary add flow as an in-app
+      add. Handled files are renamed (`.added`/`.failed`), never deleted.
 
 **Player**
 - [ ] Resume position, chapters, external subtitles, track menus, mini player.
