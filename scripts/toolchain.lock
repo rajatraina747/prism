@@ -20,6 +20,12 @@ MPV_SHA256=ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
 LIBPLACEBO_URL=https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz
 LIBPLACEBO_SHA256=14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39
 
+# fast_float — https://github.com/fastfloat/fast_float (Apache-2.0 / MIT /
+# BSL-1.0, header-only). A libplacebo submodule, so its source tarball doesn't
+# carry it and it has to be pinned separately.
+FAST_FLOAT_URL=https://github.com/fastfloat/fast_float/archive/refs/tags/v8.3.0.tar.gz
+FAST_FLOAT_SHA256=90485994d0fed61d0693e8dba32c464b0e8adf7f2e7c2efbf5bff0df5ef5b13f
+
 # dav1d — https://code.videolan.org/videolan/dav1d (BSD-2-Clause)
 DAV1D_URL=https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz
 DAV1D_SHA256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5

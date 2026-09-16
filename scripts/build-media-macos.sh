@@ -123,6 +123,7 @@ fetch vulkan-loader "$VULKAN_LOADER_URL" "$VULKAN_LOADER_SHA256"
 fetch glslang "$GLSLANG_URL" "$GLSLANG_SHA256"
 fetch moltenvk "$MOLTENVK_URL" "$MOLTENVK_SHA256"
 fetch libplacebo "$LIBPLACEBO_URL" "$LIBPLACEBO_SHA256"
+fetch fast_float "$FAST_FLOAT_URL" "$FAST_FLOAT_SHA256"
 fetch ffmpeg "$FFMPEG_URL" "$FFMPEG_SHA256"
 fetch mpv "$MPV_URL" "$MPV_SHA256"
 
@@ -151,6 +152,11 @@ cp "$MVK_DYLIB" "$PREFIX/lib/"
 cp "$MVK_ICD" "$PREFIX/share/vulkan/icd.d/"
 
 echo "== libplacebo =="
+# libplacebo carries fast_float as a git submodule, which a source tarball has
+# no way to include. It is header-only and libplacebo falls back to the include
+# path when the submodule is absent (CPATH and CXXFLAGS already point here).
+mkdir -p "$PREFIX/include/fast_float"
+cp "$SRC/fast_float"/include/fast_float/*.h "$PREFIX/include/fast_float/"
 # meson goes in the venv alongside libplacebo's build-time Python modules, and
 # meson_build picks it up from PATH below. libplacebo asks meson for a Python
 # interpreter, and meson answers with the one it is itself running under — so a
