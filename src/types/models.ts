@@ -297,6 +297,10 @@ export interface AppPreferences {
   // How new downloads are named, e.g. "{uploader}/{title}" (a / makes a
   // subfolder). Rendered and made safe in Rust (src-tauri/src/template.rs).
   filenameTemplate: string;
+  // Move each finished download out of the working folder (torrents once
+  // seeding ends). Read Rust-side; nothing is ever overwritten.
+  moveCompletedEnabled: boolean;
+  moveCompletedTo: string;
 }
 
 export interface DiagnosticsEntry {
@@ -391,6 +395,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   engineAutoCheck: true,
   engineAutoUpdate: false,
   filenameTemplate: '{title}',
+  moveCompletedEnabled: false,
+  moveCompletedTo: '',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

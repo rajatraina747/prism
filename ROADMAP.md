@@ -146,7 +146,13 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [ ] Stream while downloading ("Play now") — see the torrent arc below.
 
 **Organising**
-- [ ] Categories, labels, filename templates, move-completed, watch folders.
+- [x] Filename templates (`template.rs`): rendered in Rust, previewed in
+      Settings, recorded per item so a resume keeps its name.
+- [x] Move finished downloads to another folder (`postprocess.rs`): before
+      completion is reported, across devices by copy-then-remove, torrents
+      once seeding ends, never overwriting.
+- [ ] Categories and labels with per-category destination and template.
+- [ ] Watch folders (`.torrent` files and URL lists).
 
 **Player**
 - [ ] Resume position, chapters, external subtitles, track menus, mini player.

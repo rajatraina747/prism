@@ -546,6 +546,25 @@ export default function Settings() {
                     )}
                   </div>
                 </SettingRow>
+                <SettingRow label="Move finished downloads" description="Take each finished download out of the working folder. Torrents move once seeding ends, and nothing is ever overwritten">
+                  <Toggle checked={p.moveCompletedEnabled} onChange={v => updatePreference('moveCompletedEnabled', v)} />
+                </SettingRow>
+                {p.moveCompletedEnabled && (
+                  <SettingRow label="Move them to" description="Where finished downloads end up">
+                    <button
+                      type="button"
+                      {...{ 'aria-label': `Move finished downloads to: ${p.moveCompletedTo || 'not set yet'}. Choose a folder` }}
+                      onClick={async () => {
+                        const dir = await service.pickDirectory();
+                        if (dir) updatePreference('moveCompletedTo', dir);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
+                    >
+                      <FolderOpen className="w-3 h-3 shrink-0" />
+                      {p.moveCompletedTo || 'Choose a folder…'}
+                    </button>
+                  </SettingRow>
+                )}
               </div>
             </TabsContent>
 

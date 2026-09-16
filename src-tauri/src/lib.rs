@@ -5,6 +5,7 @@ mod http_engine;
 mod migrate;
 mod mpv_worker;
 mod player;
+mod postprocess;
 mod proc;
 mod quarantine;
 mod spawn;

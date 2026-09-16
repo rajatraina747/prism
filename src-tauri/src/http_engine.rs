@@ -843,6 +843,7 @@ pub async fn start_http_download(
             Err(Halt::Cancelled) => return,
             Ok(path) => {
                 let path = path.to_string_lossy().into_owned();
+                let path = crate::postprocess::move_file(&app, &path).unwrap_or(path);
                 crate::quarantine::mark_downloaded(&path);
                 let file_size = std::fs::metadata(&path).ok().map(|m| m.len());
                 log::info!("direct download {id}: finished");

@@ -718,6 +718,31 @@ impl TorrentManager {
             let total = handle.stats().total_bytes;
             let file_path = resolve_completion_path(&handle, &output_dir);
             mark_torrent_files_downloaded(&handle, &output_dir);
+            // Seeding is over, so librqbit has let go of the files. A
+            // multi-file torrent owns its folder and moves as one; a
+            // single-file torrent sits in the shared destination, so only its
+            // own file moves.
+            let single_file = handle.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
+            let (file_path, output_dir) = if single_file {
+                let moved = file_path
+                    .as_deref()
+                    .and_then(|path| crate::postprocess::move_file(&app, path));
+                (moved.or(file_path), output_dir)
+            } else {
+                match crate::postprocess::move_folder(&app, &output_dir) {
+                    Some(moved) => {
+                        let rebased = match file_path.as_deref() {
+                            Some(path) if path == output_dir => Some(moved.clone()),
+                            Some(path) => std::path::Path::new(path)
+                                .file_name()
+                                .map(|name| std::path::Path::new(&moved).join(name).to_string_lossy().into_owned()),
+                            None => None,
+                        };
+                        (rebased, moved)
+                    }
+                    None => (file_path, output_dir),
+                }
+            };
             log::info!("torrent {id}: completed ({total} bytes)");
             let _ = app.emit(
                 &format!("download-complete-{id}"),

@@ -471,7 +471,10 @@ impl DownloadManager {
             }
 
             let final_path = if success {
+                // "Move completed to" runs before completion is reported, so
+                // the Library records where the file actually ended up.
                 find_output_file(&output_path)
+                    .map(|path| crate::postprocess::move_file(&app, &path).unwrap_or(path))
             } else {
                 None
             };
