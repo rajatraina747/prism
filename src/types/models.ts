@@ -73,6 +73,11 @@ export interface DownloadSettings {
   // torrents). Fixed per item, so a resume finds its partial file even if the
   // preference changed meanwhile. Absent = the plain title, as before 2.0.
   filenameTemplate?: string;
+  // The category this item was sorted into when it was queued, and its name
+  // at that moment (kept so the row still reads right if the category is
+  // renamed or deleted later).
+  categoryId?: string;
+  categoryName?: string;
 }
 
 export interface PlaylistEntry {
@@ -304,6 +309,25 @@ export interface AppPreferences {
   // Folders Prism watches for .torrent files and text files of links. Scanned
   // Rust-side; a handled file is renamed, never deleted.
   watchFolders: { path: string; enabled: boolean }[];
+  // Categories sort downloads as they arrive: the first whose rules match an
+  // item gives it a destination and a file name template. Assigned once, when
+  // the item is queued.
+  categories: DownloadCategory[];
+}
+
+/** A rule for sorting downloads, with the settings that come with it. */
+export interface DownloadCategory {
+  id: string;
+  name: string;
+  /** Where its downloads go; empty = the default download folder. */
+  destination: string;
+  /** File names for its downloads; empty = the default template. */
+  filenameTemplate: string;
+  /** Hosts it claims (`youtube.com`, matched on the site and its subdomains).
+   * Empty means "any host". */
+  domains: string[];
+  /** Engines it claims; empty means "any". */
+  kinds: DownloadKind[];
 }
 
 export interface DiagnosticsEntry {
@@ -401,6 +425,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   moveCompletedEnabled: false,
   moveCompletedTo: '',
   watchFolders: [],
+  categories: [],
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

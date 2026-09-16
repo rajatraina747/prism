@@ -151,7 +151,12 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [x] Move finished downloads to another folder (`postprocess.rs`): before
       completion is reported, across devices by copy-then-remove, torrents
       once seeding ends, never overwriting.
-- [ ] Categories and labels with per-category destination and template.
+- [x] Categories (`stores/categories.ts`): rules on site and engine, each with
+      its own destination and file name template, applied when an item is
+      queued and shown as a chip on its row.
+- [ ] Categories, still to add: pick one by hand in the details dialog, and
+      filter Transfers and Library by category.
+- [ ] Labels (several per item, unlike a category).
 - [x] Watch folders (`watch.rs`): `.torrent` files and text files of links,
       polled every few seconds, fed into the ordinary add flow as an in-app
       add. Handled files are renamed (`.added`/`.failed`), never deleted.

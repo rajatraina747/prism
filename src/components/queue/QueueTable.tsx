@@ -231,6 +231,14 @@ const QueueRow = React.memo(function QueueRow({
           <div className="flex items-center gap-2 mb-1">
             <KindBadge torrent={isTorrent} />
             <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
+            {item.settings.categoryName && (
+              <span
+                title={`Category: ${item.settings.categoryName}`}
+                className="shrink-0 px-1.5 py-0.5 rounded-md bg-secondary/70 text-[10px] font-medium text-muted-foreground max-w-24 truncate"
+              >
+                {item.settings.categoryName}
+              </span>
+            )}
             <StatusBadge status={item.status} />
           </div>
 

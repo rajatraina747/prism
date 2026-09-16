@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer, useR
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
+import { applyCategory, categoryFor } from '@/stores/categories';
 import { scheduleGate } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
@@ -378,8 +379,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stamped = item.kind === 'torrent' || item.settings.filenameTemplate || !template || template === '{title}'
       ? item
       : { ...item, settings: { ...item.settings, filenameTemplate: template } };
-    dispatch({ type: 'add', item: stamped });
-  }, [settings.filenameTemplate]);
+    // Sort it into a category, unless one was already chosen for it in the
+    // details dialog. Also fixed now rather than looked up later, so editing
+    // a category can't move a download that is already under way.
+    const category = stamped.settings.categoryId ? null : categoryFor(settings.categories, stamped);
+    dispatch({ type: 'add', item: category ? applyCategory(stamped, category) : stamped });
+  }, [settings.filenameTemplate, settings.categories]);
 
   // Detach listeners AND kill the backend yt-dlp process for a download.
   const stopDownload = useCallback((id: string) => {

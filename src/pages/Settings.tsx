@@ -4,7 +4,8 @@ import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { diagnostics } from '@/services/diagnostics';
-import { formatReleaseNotes } from '@/services';
+import { formatReleaseNotes, generateId } from '@/services';
+import type { DownloadCategory } from '@/types/models';
 import { Panel, ConfirmDialog } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -268,6 +269,10 @@ export default function Settings() {
   const [ffmpegOk, setFfmpegOk] = React.useState(true);
   const engine = useEngineStatus();
   const [templatePreview, setTemplatePreview] = React.useState<{ ok: boolean; text: string } | null>(null);
+
+  const updateCategory = React.useCallback((id: string, change: Partial<DownloadCategory>) => {
+    updatePreference('categories', p.categories.map(c => (c.id === id ? { ...c, ...change } : c)));
+  }, [p.categories, updatePreference]);
 
   // Live preview of the file name template, rendered by the same code that
   // names real downloads.
@@ -565,6 +570,74 @@ export default function Settings() {
                     </button>
                   </SettingRow>
                 )}
+                <SettingRow label="Categories" description="Sort downloads as they arrive: the first category whose rules match gives a download its folder and file names. Leave a box empty to use the defaults">
+                  <div className="flex flex-col items-end gap-2">
+                    {p.categories.map((category, index) => (
+                      <div key={category.id} className="flex flex-col items-end gap-1 p-2 rounded-lg bg-input/60 border border-border/40">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={category.name}
+                            onChange={e => updateCategory(category.id, { name: e.target.value })}
+                            placeholder="Name"
+                            aria-label={`Category ${index + 1} name`}
+                            className="w-28 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={category.domains.join(', ')}
+                            onChange={e => updateCategory(category.id, { domains: e.target.value.split(',').map(d => d.trim()).filter(Boolean) })}
+                            placeholder="youtube.com"
+                            spellCheck={false}
+                            aria-label={`Category ${index + 1} sites`}
+                            className="w-36 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono"
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Remove category ${category.name || index + 1}`}
+                            onClick={() => updatePreference('categories', p.categories.filter(c => c.id !== category.id))}
+                            className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={category.filenameTemplate}
+                            onChange={e => updateCategory(category.id, { filenameTemplate: e.target.value })}
+                            placeholder="File names, e.g. {uploader}/{title}"
+                            spellCheck={false}
+                            aria-label={`Category ${index + 1} file names`}
+                            className="w-44 px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Category ${index + 1} folder: ${category.destination || 'the default download folder'}. Choose a folder`}
+                            onClick={async () => {
+                              const dir = await service.pickDirectory();
+                              if (dir) updateCategory(category.id, { destination: dir });
+                            }}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-muted-foreground hover:bg-secondary transition-colors max-w-44"
+                          >
+                            <FolderOpen className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{category.destination || 'Default folder'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => updatePreference('categories', [
+                        ...p.categories,
+                        { id: generateId(), name: '', destination: '', filenameTemplate: '', domains: [], kinds: [] },
+                      ])}
+                      className="px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
+                    >
+                      Add a category
+                    </button>
+                  </div>
+                </SettingRow>
                 <SettingRow label="Watch folders" description="Drop a .torrent file or a text file of links into one of these and Prism adds it. Handled files are renamed, never deleted">
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (
