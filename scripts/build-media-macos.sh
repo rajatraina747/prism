@@ -210,6 +210,15 @@ cp "$PREFIX/bin/ffmpeg" "$PREFIX/bin/ffprobe" "$OUT/bin/"
 
 for dylib in "$OUT"/lib/*.dylib; do
   install_name_tool -id "@loader_path/$(basename "$dylib")" "$dylib"
+  # meson leaves libmpv with an rpath for the build tree as well as the install
+  # tree. A duplicate rpath is what made the bundled libmpv hand back a NULL
+  # handle in July (docs/AUDIT-2026-07.md), so the gate below refuses more than
+  # one: reduce every dylib to a single @loader_path. Signing happens after.
+  rpaths="$(otool -l "$dylib" | awk '/cmd LC_RPATH/ {f = 1} f && /path /{print $2; f = 0}')"
+  for rp in $rpaths; do
+    install_name_tool -delete_rpath "$rp" "$dylib" 2>/dev/null || true
+  done
+  install_name_tool -add_rpath "@loader_path" "$dylib"
   otool -L "$dylib" | awk 'NR>1 {print $1}' | while read -r dep; do
     case "$dep" in
       "$PREFIX"/lib/libvulkan*) install_name_tool -change "$dep" "@loader_path/libvulkan.1.dylib" "$dylib" ;;
