@@ -30,27 +30,57 @@ export default function Queue() {
   const service = useService();
 
   // Cancel is a single click on a possibly hours-old download — no confirm
-  // dialog, but give a few seconds to undo (undo restarts from the top).
+  // dialog, but a few seconds to undo, and undoing picks the download up where
+  // it stopped instead of starting it again.
   const cancelWithUndo = useCallback((id: string) => {
     const item = items.find(i => i.id === id);
     if (item?.status === 'seeding') {
+      // Ending a seed is finishing, not cancelling: there is nothing to undo.
       cancelDownload(id);
       return;
     }
+    const title = item?.metadata.title ?? 'download';
+
+    // A torrent is paused for the length of the toast rather than cancelled
+    // outright: the engine keeps its handle, so undoing is instant and costs
+    // no re-check. The real cancel happens when the toast goes. The wording
+    // says "Canceling" because the row will read Paused until then.
+    if (item?.kind === 'torrent') {
+      let undone = false;
+      const finish = () => { if (!undone) cancelDownload(id); };
+      pauseDownload(id);
+      toast(`Canceling: ${title}`, {
+        action: {
+          label: 'Undo',
+          // Clicking the action also dismisses the toast, so the flag is what
+          // stops the dismissal handler cancelling what was just resumed.
+          onClick: () => { undone = true; resumeDownload(id); },
+        },
+        onAutoClose: finish,
+        onDismiss: finish,
+        duration: 6000,
+      });
+      return;
+    }
+
+    // yt-dlp and direct downloads keep their partial file when cancelled, and
+    // both engines resume from it (--continue, and the .prismpart state file).
+    // So the counters carry over: zeroing them showed a restart that was never
+    // going to happen.
     cancelDownload(id);
-    toast(`Canceled: ${item?.metadata.title ?? 'download'}`, {
+    toast(`Canceled: ${title}`, {
       action: {
         label: 'Undo',
         onClick: () => {
           if (!item) return;
           removeFromQueue(id);
           removeFromHistory(id);
-          addToQueue({ ...item, status: 'queued', progress: 0, speed: 0, eta: 0, downloadedBytes: 0, error: undefined });
+          addToQueue({ ...item, status: 'queued', speed: 0, eta: 0, error: undefined });
         },
       },
       duration: 6000,
     });
-  }, [items, cancelDownload, removeFromQueue, removeFromHistory, addToQueue]);
+  }, [items, cancelDownload, pauseDownload, resumeDownload, removeFromQueue, removeFromHistory, addToQueue]);
 
   const [search, setSearch] = useState('');
   // Kept local, like the search box: a filter you can't see the effect of is
