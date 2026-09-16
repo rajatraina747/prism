@@ -2116,6 +2116,7 @@ pub fn run() {
             set_progress,
             content_index::index_download,
             convert::convert_file,
+            convert::cancel_convert,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

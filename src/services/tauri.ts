@@ -197,6 +197,19 @@ export class TauriPrismService implements IPrismService {
         return;
       }
 
+      if (item.kind === 'convert') {
+        // Not a download: the source is a file already on disk, named by the
+        // item's source URL. It reports through the same events as everything
+        // above, so the listeners set up here need no special case.
+        await invoke('convert_file', {
+          id: item.id,
+          input: item.metadata.source.url,
+          preset: item.settings.convertPreset ?? 'mp4-h264',
+          durationSecs: item.metadata.duration || 0,
+        });
+        return;
+      }
+
       if (item.kind === 'direct') {
         // The engine resumes an unfinished file of the same name in `dest`.
         await invoke('start_http_download', {
@@ -268,6 +281,10 @@ export class TauriPrismService implements IPrismService {
       invoke('cancel_download', { id }).catch(() => {}),
       invoke('cancel_torrent', { id }).catch(() => {}),
       invoke('cancel_http_download', { id }).catch(() => {}),
+      // A conversion is spawned outside the three download engines, so it
+      // needs signalling too — otherwise ffmpeg keeps running with nothing
+      // in the UI left pointing at it.
+      invoke('cancel_convert', { id }).catch(() => {}),
     ]);
   }
 

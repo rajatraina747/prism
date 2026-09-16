@@ -1,4 +1,6 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction, ConvertPreset } from '@/types/models';
+
+export type { ConvertPreset };
 import type { EngineError } from '@/services/errors';
 
 export type ProgressCallback = (data: {
@@ -85,12 +87,6 @@ export interface StorageSummary {
   /** The walk stopped early — treat `files`/`bytes` as a floor. */
   partial: boolean;
 }
-
-/** The conversions offered. Mirrors `Preset` in src-tauri/src/convert.rs,
- * which serialises kebab-case. Deliberately a short list of destinations
- * rather than a codec matrix: every extra option is one more way to end up
- * with a file that won't play. */
-export type ConvertPreset = 'mp4-h264' | 'mp4-hevc' | 'mp4-remux' | 'mp3' | 'm4a' | 'opus';
 
 /** A download already holding the same content. Mirrors `IndexEntry` in
  * src-tauri/src/content_index.rs. */

@@ -6,14 +6,38 @@
 //! other child process, so a conversion is killed with its process group on
 //! unix and its Job Object on Windows rather than being left behind.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::download_manager::{DownloadComplete, DownloadProgress};
 use crate::errors::{ErrorCode, PrismError};
-use crate::spawn::{CommandSpec, Event};
+use crate::spawn::{Child, CommandSpec, Event};
+
+/// Conversions currently running, so one can be stopped.
+///
+/// Without this, cancelling a conversion would signal the three download
+/// engines — none of which owns it — and ffmpeg would keep going with nothing
+/// left in the UI pointing at it. `Child::kill` takes the process group on
+/// unix and the Job Object on Windows, so nothing is left behind.
+fn running() -> &'static Mutex<HashMap<String, Child>> {
+    static RUNNING: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
+    RUNNING.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Stop a running conversion. A no-op for an id this doesn't own, so the
+/// frontend can signal every engine without knowing which one has the job.
+#[tauri::command]
+pub async fn cancel_convert(id: String) -> Result<(), String> {
+    let child = running().lock().ok().and_then(|mut map| map.remove(&id));
+    if let Some(child) = child {
+        child.kill();
+    }
+    Ok(())
+}
 
 /// The conversions offered. Deliberately a short list of destinations people
 /// actually want, rather than a codec matrix: every extra option here is one
@@ -229,6 +253,10 @@ pub async fn convert_file(
         .spawn()
         .map_err(|e| format!("Couldn't start ffmpeg: {e}"))?;
 
+    if let Ok(mut map) = running().lock() {
+        map.insert(id.clone(), child);
+    }
+
     tauri::async_runtime::spawn(async move {
         let mut state = ConvertProgress::default();
         let mut stderr_tail = String::new();
@@ -274,11 +302,17 @@ pub async fn convert_file(
                 }
             }
         }
-        drop(child);
+        // Whether it finished or was killed, it is no longer running.
+        let was_cancelled = running()
+            .lock()
+            .map(|mut map| map.remove(&id).is_none())
+            .unwrap_or(false);
 
-        let ok = code == Some(0) && destination.is_file();
+        // A killed ffmpeg exits non-zero, which is not a failure worth
+        // reporting as one — the user asked for it to stop.
+        let ok = !was_cancelled && code == Some(0) && destination.is_file();
         let size = destination.metadata().ok().map(|m| m.len());
-        let error = (!ok).then(|| {
+        let error = (!ok && !was_cancelled).then(|| {
             let detail = stderr_tail.trim().to_string();
             let message = if detail.is_empty() {
                 "ffmpeg couldn't convert that file".to_string()

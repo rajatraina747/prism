@@ -14,7 +14,16 @@ export type DownloadStatus =
 
 // How an item is fetched. Absent = 'http' (yt-dlp), the default for every
 // existing item. 'torrent' routes through the librqbit engine instead.
-export type DownloadKind = 'http' | 'torrent' | 'direct';
+export type DownloadKind = 'http' | 'torrent' | 'direct' | 'convert';
+
+/** The conversions offered. Mirrors `Preset` in src-tauri/src/convert.rs,
+ * which serialises kebab-case. Deliberately a short list of destinations
+ * rather than a codec matrix: every extra option is one more way to end up
+ * with a file that won't play.
+ *
+ * Here rather than in services/types.ts because that file imports from this
+ * one — a download setting referring the other way would be a cycle. */
+export type ConvertPreset = 'mp4-h264' | 'mp4-hevc' | 'mp4-remux' | 'mp3' | 'm4a' | 'opus';
 
 /** What Prism does once the queue finishes. The logic lives in
  * src/stores/completion.ts; the type lives here with the rest so settings and
@@ -107,6 +116,9 @@ export interface DownloadSettings {
   // Write one file per chapter. Ignored when a clip range is set, since
   // splitting the chapters of an excerpt describes two different cuts.
   splitChapters?: boolean;
+  // Conversion items (`kind: 'convert'`) only: which preset to run. The source
+  // file is the item's source URL, which for these is a path on disk.
+  convertPreset?: ConvertPreset;
 }
 
 export interface PlaylistEntry {

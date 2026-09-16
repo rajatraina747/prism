@@ -131,6 +131,11 @@ export function recordCompletion(
   status: 'completed' | 'failed' | 'canceled' = 'completed',
   now = new Date(),
 ): Stats {
+  // A conversion is not a download. Counting one would add an item and its
+  // bytes to a total that is meant to answer "what have I downloaded", and
+  // would attribute it to yt-dlp, which did none of the work.
+  if (item.kind === 'convert') return stats;
+
   const next = apply(stats, {
     engine: engineOf(item),
     status,
