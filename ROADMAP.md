@@ -263,7 +263,21 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       the parsed key's id, which sees "Cmd+P" and "CommandOrControl+P" as one
       key. "Show Prism" never reaches the page — the point of it is to work
       while the window is hidden, and a hidden web view can't raise itself.
-- [ ] Scheduling, duplicate detection, native menu, Dock and taskbar progress.
+- [x] Dock and taskbar progress. `stores/progress.ts` decides the number and
+      Rust only shows it. Weighted by bytes when every running download knows
+      its size, so one large file isn't drowned out by several small ones —
+      and the mean of their own percentages when any size is still unknown,
+      because mixing the two scales makes the bar jump backwards the moment a
+      size arrives. Seeding is excluded (the download is finished, and a bar
+      stuck at 100% reads as stuck), and nothing running hides the bar rather
+      than leaving it full. Pushed only when the shown value changes: the
+      queue ticks several times a second and every push is an IPC call.
+- [ ] Scheduling: the global quiet-hours half is done (`stores/schedule.ts` —
+      `scheduleGate`, `quietHoursStatus`). Per-item `startAt` and weekday
+      `scheduleDays` are not built.
+- [ ] Content-level duplicate detection (`contentKey`, `content-index.json`).
+- [ ] Native menu bar with accelerators. The existing `tauri::menu` code in
+      `lib.rs` builds the tray menu, not an application menu.
 - [x] Decided, and added: `rss_fetch` (reqwest + `feed-rs`). yt-dlp does read
       RSS and Atom, but it returns each entry's *page* — and for a podcast or
       torrent feed the thing to download is the `<enclosure>`, a file or a
