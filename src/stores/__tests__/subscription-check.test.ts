@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffFeed, entryToDownloadItem } from '../subscription-check';
+import { diffFeed, entryToDownloadItem, entryMatches } from '../subscription-check';
 import type { Subscription, PlaylistEntry, AppPreferences } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 
@@ -58,6 +58,53 @@ describe('diffFeed', () => {
   });
 });
 
+describe('entryMatches', () => {
+  it('takes everything when no rules are set — what a subscription has always meant', () => {
+    expect(entryMatches(makeSub(), entry('https://y/1', 'Anything'))).toBe(true);
+    expect(entryMatches(makeSub({ includeKeywords: [], excludeKeywords: [] }), entry('https://y/1'))).toBe(true);
+  });
+
+  it('keeps only what an include list names', () => {
+    const sub = makeSub({ includeKeywords: ['review'] });
+    expect(entryMatches(sub, entry('https://y/1', 'Laptop Review 2026'))).toBe(true);
+    expect(entryMatches(sub, entry('https://y/2', 'Unboxing'))).toBe(false);
+  });
+
+  it('drops what an exclude list names, even when an include also matches', () => {
+    const sub = makeSub({ includeKeywords: ['review'], excludeKeywords: ['sponsored'] });
+    expect(entryMatches(sub, entry('https://y/1', 'Review — sponsored'))).toBe(false);
+    expect(entryMatches(sub, entry('https://y/2', 'Review'))).toBe(true);
+  });
+
+  it('excludes without an include list, taking everything else', () => {
+    const sub = makeSub({ excludeKeywords: ['shorts'] });
+    expect(entryMatches(sub, entry('https://y/shorts/1', 'Clip'))).toBe(false);
+    expect(entryMatches(sub, entry('https://y/watch/2', 'Full episode'))).toBe(true);
+  });
+
+  it('ignores case and stray whitespace in the rules', () => {
+    const sub = makeSub({ includeKeywords: ['  REVIEW  ', ''] });
+    expect(entryMatches(sub, entry('https://y/1', 'a review'))).toBe(true);
+  });
+
+  it('matches the URL too, not just the title', () => {
+    const sub = makeSub({ excludeKeywords: ['/live/'] });
+    expect(entryMatches(sub, entry('https://y/live/1', 'Stream'))).toBe(false);
+  });
+});
+
+describe('diffFeed with rules', () => {
+  it('remembers a filtered-out video as seen, so it is never reconsidered', () => {
+    const sub = makeSub({ excludeKeywords: ['trailer'] });
+    const feed = [entry('https://y/1', 'Trailer'), entry('https://y/2', 'Episode')];
+    const { newEntries, seenUrls } = diffFeed(sub, feed);
+    expect(newEntries.map(e => e.url)).toEqual(['https://y/2']);
+    // The rejected one is still seen — otherwise loosening the rules later
+    // would download the whole back catalogue at once.
+    expect(seenUrls).toContain('https://y/1');
+  });
+});
+
 describe('entryToDownloadItem', () => {
   const prefs: AppPreferences = { ...DEFAULT_PREFERENCES, defaultSaveFolder: '/dl', bandwidthLimit: 2 };
 
@@ -73,6 +120,14 @@ describe('entryToDownloadItem', () => {
       speedLimit: 2 * 1024 * 1024,
     });
     expect(item.settings.filename).toBe('My Video!');
+  });
+
+  it("files the download under the feed's category, and leaves it unset otherwise", () => {
+    const filed = entryToDownloadItem(entry('https://y/1'), makeSub({ categoryId: 'music' }), prefs);
+    // addToQueue only auto-sorts when no category is already set, so this
+    // wins over the site and engine rules.
+    expect(filed.settings.categoryId).toBe('music');
+    expect(entryToDownloadItem(entry('https://y/2'), makeSub(), prefs).settings.categoryId).toBeUndefined();
   });
 
   it('omits audioOnly and speedLimit when unset', () => {

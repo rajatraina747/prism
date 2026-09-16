@@ -211,9 +211,18 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       since a paused download never finishes on its own. A minute's countdown
       you can call off, and the action itself is a fixed per-platform command
       built in Rust — the string from the UI never reaches a shell.
-- [ ] Per-item post-completion actions (notify/open/reveal), scheduling, RSS
-      rules, duplicate detection, native menu, global shortcuts, Dock and
-      taskbar progress.
+- [x] Subscription rules: include/exclude keywords matched against a feed
+      entry's title and link, and a category a whole feed is filed under. A
+      video the rules turn down is still recorded as seen — otherwise every
+      poll would reconsider it, and loosening a rule later would pull in the
+      whole back catalogue at once.
+- [ ] Per-item post-completion actions (notify/open/reveal), scheduling,
+      duplicate detection, native menu, global shortcuts, Dock and taskbar
+      progress.
+- [ ] Undecided, not skipped: the plan's separate `rss_fetch` (reqwest +
+      `feed-rs`). `parsePlaylist` already reads RSS and Atom through yt-dlp,
+      so a second fetch path would add a dependency to do what works today —
+      worth a decision rather than quietly adding it.
 - [x] Statistics page (`stores/stats.ts`): counters kept as their own record,
       not a view of the Library, which is capped at 2,000 rows and forgets —
       seeded once from whatever history exists and updated where terminal

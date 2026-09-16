@@ -15,11 +15,37 @@ export interface SubscriptionCheckResult {
   seenUrls: string[];
 }
 
+/** Whether a feed entry is one this subscription wants.
+ *
+ * Matching is on the title and the URL, because a flat feed entry carries
+ * nothing else — there is no description or tag list to match against, and
+ * duration is often 0 until the video is actually parsed.
+ *
+ * Exclude beats include: someone who writes both means "these, but never
+ * those". An empty include list means everything, rather than nothing, since
+ * that is what a subscription with no rules has always meant. */
+export function entryMatches(sub: Subscription, entry: PlaylistEntry): boolean {
+  const clean = (words?: string[]) =>
+    (words ?? []).map(w => w.trim().toLowerCase()).filter(Boolean);
+  const include = clean(sub.includeKeywords);
+  const exclude = clean(sub.excludeKeywords);
+  if (include.length === 0 && exclude.length === 0) return true;
+
+  const haystack = `${entry.title}\n${entry.url}`.toLowerCase();
+  if (exclude.some(word => haystack.includes(word))) return false;
+  return include.length === 0 || include.some(word => haystack.includes(word));
+}
+
 /** Entries in the feed that this subscription hasn't seen yet, plus the
- * updated (capped) seen set. */
+ * updated (capped) seen set.
+ *
+ * Filtering happens after the seen set is built, deliberately: a video that
+ * the rules reject is still *seen*. Otherwise every poll would reconsider it
+ * forever, and loosening the rules later would suddenly download a channel's
+ * whole back catalogue. */
 export function diffFeed(sub: Subscription, feed: PlaylistEntry[]): SubscriptionCheckResult {
   const seen = new Set(sub.seenUrls);
-  const newEntries = feed.filter(e => !seen.has(e.url));
+  const newEntries = feed.filter(e => !seen.has(e.url) && entryMatches(sub, e));
   // Feed order first (newest first), then previously-seen URLs, capped.
   const merged = [...feed.map(e => e.url), ...sub.seenUrls.filter(u => !feed.some(e => e.url === u))];
   return { newEntries, seenUrls: merged.slice(0, SEEN_URLS_CAP) };
@@ -58,6 +84,9 @@ export function entryToDownloadItem(
       startImmediately: true,
       audioOnly: sub.audioOnly || undefined,
       speedLimit: speedLimitBytes || undefined,
+      // A feed's own category wins over the site/engine rules, the same way a
+      // category chosen by hand does: addToQueue leaves a pre-set id alone.
+      categoryId: sub.categoryId || undefined,
     },
     status: 'queued',
     progress: 0,

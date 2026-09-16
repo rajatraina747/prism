@@ -16,6 +16,8 @@ interface SubscriptionActions {
   restoreSubscription: (sub: Subscription) => void;
   toggleSubscription: (id: string) => void;
   setAudioOnly: (id: string, audioOnly: boolean) => void;
+  /** Change a subscription's own options — its keyword rules and category. */
+  updateSubscription: (id: string, patch: Partial<Subscription>) => void;
   /** Check one subscription (or all enabled ones) immediately. */
   checkNow: (id?: string) => Promise<void>;
   checking: boolean;
@@ -138,10 +140,16 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     setSubs(prev => prev.map(s => (s.id === id ? { ...s, audioOnly } : s)));
   }, []);
 
+  const updateSubscription = useCallback((id: string, patch: Partial<Subscription>) => {
+    // Deliberately a patch rather than another setter per field: the rules are
+    // several small options and the list would only grow.
+    setSubs(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
+  }, []);
+
   const checkNow = useCallback((id?: string) => runCheck(id), [runCheck]);
 
   return (
-    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, checkNow, checking }}>
+    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking }}>
       {children}
     </SubscriptionsContext.Provider>
   );

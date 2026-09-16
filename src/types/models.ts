@@ -385,6 +385,14 @@ export interface Subscription {
   seenUrls: string[];
   lastCheckedAt?: string;
   lastError?: string;
+  // Which of a feed's videos to actually take. Matched against the title and
+  // the URL — a flat feed entry carries nothing else to match on. Absent (or
+  // empty) means take everything, so older subscriptions are unaffected.
+  includeKeywords?: string[];
+  excludeKeywords?: string[];
+  /** File everything from this feed under a category, as if it had been
+   * added by hand with that category chosen. */
+  categoryId?: string;
 }
 
 export interface HistoryItem {

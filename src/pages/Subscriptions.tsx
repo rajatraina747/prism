@@ -2,7 +2,38 @@ import React, { useState, useCallback } from 'react';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { EmptyState } from '@/components/common';
 import { toast } from 'sonner';
-import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play } from 'lucide-react';
+import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play, Filter } from 'lucide-react';
+
+/** A comma-separated list of words, edited as plain text.
+ *
+ * The text is kept locally while typing and only committed on blur, so a
+ * half-typed rule never briefly becomes the live filter — and an empty box
+ * clears the rule rather than storing one empty word. */
+function KeywordField({ label, placeholder, words, onChange }: {
+  label: string;
+  placeholder: string;
+  words?: string[];
+  onChange: (words: string[]) => void;
+}) {
+  const joined = (words ?? []).join(', ');
+  const [draft, setDraft] = useState(joined);
+  React.useEffect(() => { setDraft(joined); }, [joined]);
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <input
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => onChange(draft.split(',').map(w => w.trim()).filter(Boolean))}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+        placeholder={placeholder}
+        spellCheck={false}
+        className="mt-0.5 w-full px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50"
+      />
+    </label>
+  );
+}
 
 function formatRelative(iso?: string): string {
   if (!iso) return 'never';
@@ -15,7 +46,9 @@ function formatRelative(iso?: string): string {
 }
 
 export default function Subscriptions() {
-  const { items, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, checkNow, checking } = useSubscriptions();
+  const { items, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking } = useSubscriptions();
+  // Which row has its rules open, if any — one at a time keeps the list tidy.
+  const [editingRules, setEditingRules] = useState<string | null>(null);
 
   // Per-item destructive action → undo toast rather than a confirm dialog.
   const unsubscribeWithUndo = useCallback((sub: (typeof items)[number]) => {
@@ -124,7 +157,30 @@ export default function Subscriptions() {
                     <span>·</span>
                     <span>{sub.audioOnly ? 'Audio only' : 'Video'}</span>
                     {!sub.enabled && (<><span>·</span><span>Paused</span></>)}
+                    {(sub.includeKeywords?.length || sub.excludeKeywords?.length) ? (
+                      <><span>·</span><span>Filtered</span></>
+                    ) : null}
                   </div>
+                  {editingRules === sub.id && (
+                    <div className="mt-2 space-y-1.5" onClick={e => e.stopPropagation()}>
+                      <KeywordField
+                        label="Only download titles containing"
+                        placeholder="review, episode — leave empty for everything"
+                        words={sub.includeKeywords}
+                        onChange={words => updateSubscription(sub.id, { includeKeywords: words })}
+                      />
+                      <KeywordField
+                        label="Never download titles containing"
+                        placeholder="trailer, shorts"
+                        words={sub.excludeKeywords}
+                        onChange={words => updateSubscription(sub.id, { excludeKeywords: words })}
+                      />
+                      <p className="text-[10px] text-muted-foreground/80">
+                        Matched against the title and the link, ignoring case. A video the rules turn
+                        down is still remembered, so changing them later won't pull in the back catalogue.
+                      </p>
+                    </div>
+                  )}
                   {sub.lastError && (
                     <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-destructive">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
@@ -140,6 +196,17 @@ export default function Subscriptions() {
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                   >
                     {sub.audioOnly ? <Music className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => setEditingRules(id => (id === sub.id ? null : sub.id))}
+                    title="Which videos to take"
+                    aria-label="Which videos to take"
+                    aria-expanded={editingRules === sub.id}
+                    className={`p-1.5 rounded-md hover:bg-secondary transition-colors active:scale-[0.95] ${
+                      editingRules === sub.id ? 'text-foreground bg-secondary' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Filter className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => checkNow(sub.id)}
