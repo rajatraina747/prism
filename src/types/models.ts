@@ -16,6 +16,11 @@ export type DownloadStatus =
 // existing item. 'torrent' routes through the librqbit engine instead.
 export type DownloadKind = 'http' | 'torrent' | 'direct';
 
+/** What Prism does once the queue finishes. The logic lives in
+ * src/stores/completion.ts; the type lives here with the rest so settings and
+ * that module don't have to import each other. */
+export type WhenDoneAction = 'nothing' | 'sleep' | 'shutdown' | 'quit';
+
 // One file inside a (multi-file) torrent, with per-file progress percent.
 export interface TorrentFileInfo {
   name: string;
@@ -322,6 +327,12 @@ export interface AppPreferences {
   // Labels are put on downloads by hand, several at a time. Unlike a category
   // they carry no settings — they only group things after the fact.
   labels: DownloadLabel[];
+  // What to do once the queue finishes. Fires on the transition from working
+  // to finished, never on a standing start; see src/stores/completion.ts.
+  whenDoneAction: WhenDoneAction;
+  // Seeding counts as work by default, so a machine doesn't sleep in the
+  // middle of uploading. This waives that.
+  whenDoneIgnoresSeeding: boolean;
   // The shape these settings were written in, so a later rename can migrate
   // them rather than read as the user unsetting something. Anything written
   // before 2.0 has no stamp at all; see src/stores/settings-migrations.ts.
@@ -450,6 +461,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   watchFolders: [],
   categories: [],
   labels: [],
+  whenDoneAction: 'nothing',
+  whenDoneIgnoresSeeding: false,
   settingsVersion: SETTINGS_VERSION,
 };
 
