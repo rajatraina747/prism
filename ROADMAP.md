@@ -275,7 +275,24 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [ ] Scheduling: the global quiet-hours half is done (`stores/schedule.ts` —
       `scheduleGate`, `quietHoursStatus`). Per-item `startAt` and weekday
       `scheduleDays` are not built.
-- [ ] Content-level duplicate detection (`contentKey`, `content-index.json`).
+- [x] Content-level duplicate detection, in the half that is actually
+      answerable. `content_index.rs` keys a finished file on its size plus a
+      SHA-256 of its first and last 4 MB, and reports "you already had this"
+      when the same content has landed before under another name or from
+      another URL. The plan put this at *add* time with an "Open existing /
+      Add anyway" prompt; that can't work as described, because before a
+      download there is no file to hash — only a URL, and URL-level dedupe
+      already exists (`sourceKey`: magnet infohash, YouTube id). Hashing only
+      the ends is a deliberate trade against re-reading gigabytes for a
+      convenience feature, and its blind spot — two files of equal length
+      differing only in the middle — is written down in a test rather than
+      left to be discovered. The index is capped, not uncapped as planned:
+      an install that runs for years shouldn't grow one without bound.
+- [ ] Open, from the same idea: capture yt-dlp's `id`/`extractor` at parse so
+      dedupe works on sites where `sourceKey` has no special case. Not free —
+      `YtDlpInfo` requests neither field, so it needs a parse-struct change, a
+      new `MediaMetadata` field and a `sourceKey` extension, and it only adds
+      anything beyond YouTube and magnets, which are already normalised.
 - [ ] Native menu bar with accelerators. The existing `tauri::menu` code in
       `lib.rs` builds the tray menu, not an application menu.
 - [x] Decided, and added: `rss_fetch` (reqwest + `feed-rs`). yt-dlp does read
