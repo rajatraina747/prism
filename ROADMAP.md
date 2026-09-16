@@ -151,8 +151,12 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       Disk images, archives, installers and documents route to it.
 - [x] "Download as a file" when yt-dlp says a link is unsupported (probes
       first; web pages are refused).
-- [ ] Direct links, still to add: a way to enter an expected SHA-256 (the
-      engine already verifies one).
+- [x] Direct links: an expected SHA-256 goes on a queued download from the
+      details panel (`stores/checksum.ts`), taken however it was published —
+      upper case, a `sha256:` prefix, a whole line of `shasum` output — and
+      refused rather than stored if it isn't one, since a mistyped hash that
+      is never checked is worse than no hash. Only before it starts: the
+      engine is handed the hash when it opens the file.
 - [x] Stream while downloading ("Play now") — see the torrent arc below.
 
 **Organising**

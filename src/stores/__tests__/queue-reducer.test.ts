@@ -79,6 +79,25 @@ describe('queueReducer', () => {
     expect(cleared[0].settings.labelIds).toBeUndefined();
   });
 
+  it('takes an expected checksum while queued, in whatever shape it was pasted', () => {
+    const hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    const set = queueReducer([makeItem({ kind: 'direct' })], { type: 'setChecksum', id: 'a', sha256: hash.toUpperCase() });
+    expect(set[0].settings.sha256).toBe(hash);
+
+    const cleared = queueReducer(set, { type: 'setChecksum', id: 'a', sha256: null });
+    expect(cleared[0].settings.sha256).toBeUndefined();
+
+    // A typo is refused rather than stored as a check that can never pass.
+    const rejected = queueReducer(set, { type: 'setChecksum', id: 'a', sha256: 'not-a-hash' });
+    expect(rejected[0].settings.sha256).toBeUndefined();
+  });
+
+  it('refuses a checksum once the download is under way', () => {
+    const hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    const running = queueReducer([makeItem({ kind: 'direct', status: 'downloading' })], { type: 'setChecksum', id: 'a', sha256: hash });
+    expect(running[0].settings.sha256).toBeUndefined();
+  });
+
   it('marks queued items started, but not paused ones', () => {
     const started = queueReducer([makeItem()], { type: 'markStarted', id: 'a', startedAt: 't' });
     expect(started[0].status).toBe('downloading');

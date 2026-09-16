@@ -203,7 +203,7 @@ export class TauriPrismService implements IPrismService {
           url: item.metadata.source.url,
           outputDir: dest,
           filename: item.settings.filename || null,
-          sha256: null,
+          sha256: item.settings.sha256 ?? null,
           speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
           filenameTemplate: item.settings.filenameTemplate ?? null,
           templateVars: templateVarsFor(item),

@@ -22,7 +22,7 @@ import type { TransfersFilter, TransfersSort } from '@/types/models';
 export default function Queue() {
   const {
     items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
-    startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, reannounceTorrent, recheckTorrent, removeWithData,
+    startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, reannounceTorrent, recheckTorrent, removeWithData,
     moveToTop, moveToBottom,
   } = useQueue();
   const { removeFromHistory } = useHistory();
@@ -341,6 +341,7 @@ export default function Queue() {
             onReannounce={reannounceTorrent}
             onSetCategory={setItemCategory}
             onSetLabels={setItemLabels}
+            onSetChecksum={setItemChecksum}
             playerAvailable={playerAvailable}
           />
         )}

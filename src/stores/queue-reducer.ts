@@ -1,5 +1,6 @@
 import type { DownloadItem, DownloadError, DownloadCategory } from '@/types/models';
 import { applyCategory } from '@/stores/categories';
+import { normalizeSha256 } from '@/stores/checksum';
 
 // The queue state machine. All transitions live here so their guards are
 // explicit and unit-testable; AppProvider only performs side effects
@@ -36,6 +37,7 @@ export type QueueAction =
   | { type: 'setSelectedFiles'; id: string; files: number[] }
   | { type: 'setCategory'; id: string; category: DownloadCategory | null }
   | { type: 'setLabels'; id: string; labelIds: string[] }
+  | { type: 'setChecksum'; id: string; sha256: string | null }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -177,6 +179,19 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
           labelIds: action.labelIds.length > 0 ? action.labelIds : undefined,
         },
       }));
+
+    case 'setChecksum':
+      // Only while it is still queued: the engine is handed the expected hash
+      // when it starts, so setting one on a download already under way would
+      // promise a check that never happens.
+      return update(queue, action.id, i => {
+        if (i.status !== 'queued') return i;
+        const settings = { ...i.settings };
+        const normalised = normalizeSha256(action.sha256);
+        if (normalised) settings.sha256 = normalised;
+        else delete settings.sha256;
+        return { ...i, settings };
+      });
 
     case 'remove':
       return queue.filter(i => i.id !== action.id);

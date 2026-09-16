@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { DownloadItem, DownloadCategory, TorrentDetails, TorrentPeer } from '@/types/models';
 import { useService } from '@/services/ServiceProvider';
 import { useSettings } from '@/stores/AppProvider';
+import { normalizeSha256 } from '@/stores/checksum';
 import { formatBytes, formatSpeed, formatEta } from '@/services/utils';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { ProgressBar } from '@/components/common';
@@ -21,6 +22,7 @@ export interface DetailPanelProps {
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   onSetLabels?: (id: string, labelIds: string[]) => void;
+  onSetChecksum?: (id: string, sha256: string | null) => void;
   playerAvailable?: boolean;
 }
 
@@ -33,7 +35,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -92,7 +94,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -130,11 +132,12 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels }: {
+function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum }: {
   item: DownloadItem;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   onSetLabels?: (id: string, labelIds: string[]) => void;
+  onSetChecksum?: (id: string, sha256: string | null) => void;
 }) {
   const service = useService();
   const { preferences } = useSettings();
@@ -192,6 +195,11 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels }: {
               {item.status === 'queued' ? '' : ' · label only while it runs'}
             </Row>
           )}
+          {/* Only before it starts, and only for a plain file download: the
+              engine is handed the expected hash when it opens the file. */}
+          {onSetChecksum && item.kind === 'direct' && item.status === 'queued' && (
+            <ChecksumRow item={item} onSetChecksum={onSetChecksum} />
+          )}
           <Row label="Added">{when(item.addedAt)}</Row>
           <Row label="Started">{when(item.startedAt)}</Row>
           {isTorrent && details && <Row label="Info hash" mono>{details.infoHash}</Row>}
@@ -235,6 +243,45 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels }: {
         </div>
       )}
     </ScrollArea>
+  );
+}
+
+/** The SHA-256 a finished file has to match. Typed into a draft and committed
+ * on blur, so a half-typed hash is never read as "stop checking"; a value that
+ * isn't a SHA-256 is left in the box with a hint rather than stored. */
+function ChecksumRow({ item, onSetChecksum }: {
+  item: DownloadItem;
+  onSetChecksum: (id: string, sha256: string | null) => void;
+}) {
+  const stored = item.settings.sha256 ?? '';
+  const [draft, setDraft] = React.useState(stored);
+  React.useEffect(() => { setDraft(stored); }, [item.id, stored]);
+  const invalid = draft.trim() !== '' && normalizeSha256(draft) === null;
+  const commit = () => {
+    if (invalid) return;
+    onSetChecksum(item.id, draft.trim() === '' ? null : normalizeSha256(draft));
+  };
+  return (
+    <Row label="Expected SHA-256">
+      <span className="flex flex-col gap-0.5">
+        <input
+          type="text"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+          placeholder="Optional — paste the published hash"
+          spellCheck={false}
+          aria-label="Expected SHA-256"
+          aria-invalid={invalid}
+          className={cn(
+            'w-64 max-w-full bg-input border rounded-md px-1.5 py-0.5 text-[11px] font-mono text-foreground outline-none',
+            invalid ? 'border-destructive/60' : 'border-border/40 focus:border-primary/50',
+          )}
+        />
+        {invalid && <span className="text-[10px] text-destructive">That isn't a SHA-256 (64 hex characters)</span>}
+      </span>
+    </Row>
   );
 }
 

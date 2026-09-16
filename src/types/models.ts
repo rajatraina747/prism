@@ -81,6 +81,9 @@ export interface DownloadSettings {
   // Labels put on this item by hand. Ids only: the names live in settings, so
   // renaming a label renames it everywhere at once. Absent = none.
   labelIds?: string[];
+  // Direct downloads only: a SHA-256 the finished file has to match, as 64
+  // lower-case hex digits. Absent = downloaded without being checked.
+  sha256?: string;
 }
 
 export interface PlaylistEntry {
