@@ -8,19 +8,14 @@ name: Media
 #
 # build.yml only runs on tags, so without these nothing exercises the fetch
 # path until a release is being cut, which is the worst moment to find out.
+# push only, deliberately. On a pull_request, GitHub matches these paths
+# against the whole PR diff rather than the push — and the long-lived v2.0
+# PR contains sidecars.lock from earlier commits, so every push to it
+# re-ran these jobs no matter what it touched. On a push the filter sees
+# only that push's own commits, which is the point of having one.
 on:
   push:
-    branches: [main]
-    paths:
-      - scripts/sidecars.lock
-      - scripts/fetch-sidecars.sh
-      - scripts/bundle-libmpv-macos.sh
-      - src-tauri/tauri.macos.conf.json
-      - src-tauri/tauri.windows.conf.json
-      - src-tauri/tauri.linux.conf.json
-      - .github/workflows/media.yml
-  pull_request:
-    branches: [main]
+    branches: [main, v2.0]
     paths:
       - scripts/sidecars.lock
       - scripts/fetch-sidecars.sh
