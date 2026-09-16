@@ -86,6 +86,12 @@ export interface StorageSummary {
   partial: boolean;
 }
 
+/** The conversions offered. Mirrors `Preset` in src-tauri/src/convert.rs,
+ * which serialises kebab-case. Deliberately a short list of destinations
+ * rather than a codec matrix: every extra option is one more way to end up
+ * with a file that won't play. */
+export type ConvertPreset = 'mp4-h264' | 'mp4-hevc' | 'mp4-remux' | 'mp3' | 'm4a' | 'opus';
+
 /** A download already holding the same content. Mirrors `IndexEntry` in
  * src-tauri/src/content_index.rs. */
 export interface ContentMatch {
@@ -194,6 +200,13 @@ export interface IPrismService {
    * what that means, so navigation keeps going through one place. Returns an
    * unsubscribe function. */
   onMenuAction(handler: (action: string) => void): () => void;
+
+  /** Convert a finished file. Reports through the same progress and completion
+   * events a download uses, under `id`, so a conversion appears as another
+   * running item. `durationSecs` comes from the item being converted, because
+   * ffmpeg reports a position but never a total; 0 means the percentage is
+   * left out rather than invented. */
+  convertFile(id: string, input: string, preset: ConvertPreset, durationSecs: number): Promise<void>;
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

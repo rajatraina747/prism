@@ -8,7 +8,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory). The webview's fs
@@ -515,6 +515,10 @@ export class TauriPrismService implements IPrismService {
 
   async indexDownload(path: string, title: string): Promise<ContentMatch | null> {
     return invoke<ContentMatch | null>('index_download', { path, title });
+  }
+
+  async convertFile(id: string, input: string, preset: ConvertPreset, durationSecs: number): Promise<void> {
+    return invoke('convert_file', { id, input, preset, durationSecs });
   }
 
   onMenuAction(handler: (action: string) => void): () => void {

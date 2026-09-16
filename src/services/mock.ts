@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -375,6 +375,18 @@ export class MockPrismService implements IPrismService {
   onMenuAction(_handler: (action: string) => void): () => void {
     // Web demo: a page has no application menu.
     return () => {};
+  }
+
+  async convertFile(
+    _id: string,
+    _input: string,
+    _preset: ConvertPreset,
+    _durationSecs: number,
+  ): Promise<void> {
+    // Web demo: no ffmpeg and no file on disk. Deliberately does nothing
+    // rather than emitting a completion — a converted file that isn't there
+    // would be a worse lie than an action that visibly doesn't happen.
+    throw new Error('Converting needs the desktop app');
   }
 
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
