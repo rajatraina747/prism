@@ -413,12 +413,23 @@ exposes. Shipped in one pass:
   `update_only_files` and silently dropping every other file the user chose.
   The CSP question turned out to be moot: mpv fetches the URL itself, so the
   webview never loads it.
-- [ ] **Watch folder.** Poll a user-chosen dir for new `.torrent` files →
-  add flow. Cheap via `notify` crate or a 10s scan; needs dedupe against
-  already-added infohashes.
-- [ ] **Move completed to folder.** Post-completion rename into a "done" dir;
-  interacts with seeding (librqbit holds file handles while seeding — move on
-  seed-complete, not download-complete).
+- [x] **Watch folder.** `watch.rs` polls the folders the user chose (started
+  from setup) and emits `watch-folder-links`, which the frontend feeds into the
+  ordinary add flow — so dedupe, categories and confirmation are the ones that
+  already exist rather than a second path beside them. Polling rather than the
+  `notify` crate on purpose: a watch folder is often a network share, where
+  filesystem events are unreliable. It picks up `.torrent` files and text files
+  of links, doesn't descend into subfolders, and renames what it has handled
+  instead of deleting it.
+- [x] **Move completed to folder.** `postprocess.rs`, wired into all three
+  engines. The move runs *before* completion is reported, so the Library
+  records where the file actually ended up instead of a path that is already
+  wrong — which is what keeps "Show in folder" and "Move to Trash" pointing at
+  a real file. Torrents move when seeding ends rather than when the download
+  finishes, because librqbit holds the file handles until then: a multi-file
+  torrent owns its folder and moves as one, a single-file torrent moves only
+  its own file out of the shared destination, and the recorded path is rebased
+  onto the new folder.
 
 ## Arc — In-app player (decided July 2026)
 
@@ -505,8 +516,12 @@ Everything below the line shipped in **v1.8.0**; what's left is open.
   corresponding-source tarball published beside them. Not yet released, and
   Intel Macs still use Homebrew locally.
 - [x] Virtualize the Library (1.9.0; the 2,000-row history cap stays).
-- [ ] Spawn yt-dlp in its own process group (`tokio::process` +
-  `process_group`) instead of the `ps`-snapshot tree kill.
+- [x] Spawn yt-dlp in its own process group (`spawn.rs`: `tokio::process` with
+  `process_group(0)`, signalled with `killpg`). Windows has no process groups,
+  so a run is put in a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+  instead — closing the one handle takes the whole tree with it. The
+  `ps`-snapshot tree kill in `proc.rs` was kept as a fallback rather than
+  removed: it still catches a stray descendant that escapes the group.
 - [x] Run the Playwright suite in CI against the web demo (1.9.0).
 
 ## Explicitly deferred
