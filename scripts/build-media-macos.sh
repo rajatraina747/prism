@@ -92,6 +92,19 @@ autotools_build() { # <name> [configure options…]
   (cd "$SRC/$name" && ./configure --prefix="$PREFIX" --disable-shared --enable-static "$@" && make -j "$JOBS" && make install)
 }
 
+# Point libplacebo's two undirected glslang probes at the build prefix.
+patch_libplacebo_glslang() {
+  local file="$SRC/libplacebo/src/glsl/meson.build" before after
+  before=$(grep -c "dirs: vulkan_lib_dirs" "$file")
+  perl -pi -e "s/cxx\.find_library\('glslang', required: required, static: static\)/cxx.find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)/; s/cxx\.find_library\('glslang-default-resource-limits', required: false\)/cxx.find_library('glslang-default-resource-limits', required: false, dirs: vulkan_lib_dirs)/" "$file"
+  after=$(grep -c "dirs: vulkan_lib_dirs" "$file")
+  if [ "$after" -lt $((before + 2)) ]; then
+    echo "✗ libplacebo's glslang probes are not the shape this patch expects" >&2
+    exit 1
+  fi
+  echo "    patched libplacebo's glslang probes"
+}
+
 echo "== Sources =="
 fetch dav1d "$DAV1D_URL" "$DAV1D_SHA256"
 fetch opus "$OPUS_URL" "$OPUS_SHA256"
@@ -137,13 +150,14 @@ cp "$MVK_ICD" "$PREFIX/share/vulkan/icd.d/"
 echo "== libplacebo =="
 python3 -m venv "$WORK/venv"
 "$WORK/venv/bin/pip" install --quiet jinja2 glad2
-# meson's find_library consults the compiler's own search path plus a
-# probe's explicit dirs: only — LIBRARY_PATH and link args do not reach it,
-# and libplacebo passes dirs: to the SPIRV probe but not to glslang. Bake the
-# prefix into the compiler it invokes so every probe can see it.
-CC="${CC:-clang} -L$PREFIX/lib" CXX="${CXX:-clang++} -L$PREFIX/lib" \
-  PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
-  -Dc_link_args="-L$PREFIX/lib" -Dcpp_link_args="-L$PREFIX/lib" \
+# libplacebo passes its search directory to the SPIRV probe but not to the
+# glslang ones, and meson's find_library reads only the compiler's built-in
+# paths plus a probe's own dirs:. LIBRARY_PATH, link arguments and a -L baked
+# into the compiler all fail to reach it (the last also fails compile-only
+# probes, which clang rejects for an unused -L). So give those two probes the
+# same directory every other one gets.
+patch_libplacebo_glslang
+PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
   -Dvulkan-registry="$PREFIX/share/vulkan/registry/vk.xml" -Dglslang=enabled -Dshaderc=disabled \
   -Dopengl=disabled -Dd3d11=disabled -Dlcms=enabled -Ddovi=disabled -Dlibdovi=disabled \
   -Ddemos=false -Dtests=false
