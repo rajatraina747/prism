@@ -293,8 +293,17 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       `YtDlpInfo` requests neither field, so it needs a parse-struct change, a
       new `MediaMetadata` field and a `sourceKey` extension, and it only adds
       anything beyond YouTube and magnets, which are already normalised.
-- [ ] Native menu bar with accelerators. The existing `tauri::menu` code in
-      `lib.rs` builds the tray menu, not an application menu.
+- [x] Native menu bar with accelerators (`app_menu.rs`): Add Link (⌘N) and a
+      Go submenu for the five pages and Settings (⌘1–⌘5, ⌘,). Built by
+      *extending* `Menu::default` rather than replacing it — on macOS the menu
+      is where the webview gets ⌘C, ⌘V and ⌘Z, so a hand-assembled one takes
+      them away from every text field in the app, which is the sort of thing
+      that goes unnoticed until someone tries to paste a URL. A menu item
+      names an intent and the shell decides what it means, so navigation still
+      goes through the one bus that owns it instead of a second path. Not yet
+      seen on screen: the table is unit-tested (unique ids and accelerators,
+      routes well-formed) but a menu bar can only really be checked by looking
+      at it.
 - [x] Decided, and added: `rss_fetch` (reqwest + `feed-rs`). yt-dlp does read
       RSS and Atom, but it returns each entry's *page* — and for a podcast or
       torrent feed the thing to download is the `<enclosure>`, a file or a
