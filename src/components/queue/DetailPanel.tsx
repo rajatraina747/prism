@@ -27,6 +27,7 @@ export interface DetailPanelProps {
   onSetChecksum?: (id: string, sha256: string | null) => void;
   onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
   onSetStartAt?: (id: string, startAt: string | null) => void;
+  onSetClip?: (id: string, clipStart: string | null, clipEnd: string | null, splitChapters: boolean) => void;
   playerAvailable?: boolean;
 }
 
@@ -50,7 +51,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt, onSetClip, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -109,7 +110,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} onSetWhenComplete={onSetWhenComplete} onSetStartAt={onSetStartAt} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} onSetWhenComplete={onSetWhenComplete} onSetStartAt={onSetStartAt} onSetClip={onSetClip} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -147,7 +148,7 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt }: {
+function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt, onSetClip }: {
   item: DownloadItem;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
@@ -155,6 +156,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
   onSetChecksum?: (id: string, sha256: string | null) => void;
   onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
   onSetStartAt?: (id: string, startAt: string | null) => void;
+  onSetClip?: (id: string, clipStart: string | null, clipEnd: string | null, splitChapters: boolean) => void;
 }) {
   const service = useService();
   const { preferences } = useSettings();
@@ -254,6 +256,64 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                 className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               />
             </Row>
+          )}
+          {/* yt-dlp only, and only before it starts: --download-sections means
+              nothing to the torrent or direct engines, and a range on a file
+              already downloading describes a cut of something being written.
+              The range is checked again in Rust, which is what actually
+              refuses an end before a start. */}
+          {onSetClip && item.status === 'queued' && item.kind !== 'torrent' && item.kind !== 'direct' && (
+            <>
+              <Row label="Clip">
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="from"
+                    value={item.settings.clipStart ?? ''}
+                    onChange={(e) => onSetClip(
+                      item.id,
+                      e.target.value || null,
+                      item.settings.clipEnd ?? null,
+                      item.settings.splitChapters ?? false,
+                    )}
+                    aria-label="Clip from"
+                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
+                  />
+                  <span className="text-muted-foreground">–</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="to"
+                    value={item.settings.clipEnd ?? ''}
+                    onChange={(e) => onSetClip(
+                      item.id,
+                      item.settings.clipStart ?? null,
+                      e.target.value || null,
+                      item.settings.splitChapters ?? false,
+                    )}
+                    aria-label="Clip to"
+                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
+                  />
+                  <span className="text-muted-foreground/70">e.g. 1:23</span>
+                </span>
+              </Row>
+              {/* Ignored when a range is set, so it is only offered without one. */}
+              {!item.settings.clipStart && !item.settings.clipEnd && (
+                <Row label="Split by chapter">
+                  <label className="inline-flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={item.settings.splitChapters ?? false}
+                      onChange={(e) => onSetClip(item.id, null, null, e.target.checked)}
+                      aria-label="Split by chapter"
+                      className="accent-primary"
+                    />
+                    <span className="text-[11px] text-muted-foreground">One file per chapter</span>
+                  </label>
+                </Row>
+              )}
+            </>
           )}
           <Row label="Added">{when(item.addedAt)}</Row>
           <Row label="Started">{when(item.startedAt)}</Row>

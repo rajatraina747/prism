@@ -1,4 +1,5 @@
 mod app_menu;
+mod clip;
 mod content_index;
 mod download_manager;
 mod engine;
@@ -466,7 +467,16 @@ async fn start_download(
     output_dir: Option<String>,
     filename_template: Option<String>,
     template_vars: Option<template::TemplateVars>,
+    clip_start: Option<String>,
+    clip_end: Option<String>,
+    split_chapters: Option<bool>,
 ) -> Result<(), String> {
+    // Validated here rather than deeper in: a bad range should be refused
+    // before anything is spawned, with a message the user can act on.
+    let clip_section = match (clip_start.as_deref(), clip_end.as_deref()) {
+        (None, None) => None,
+        (start, end) => Some(clip::section_arg(start, end)?),
+    };
     // Items queued with a file name template are named here, by the same code
     // Settings previews; older items arrive with a finished output path.
     let output_path = match (output_dir, filename_template) {
@@ -510,6 +520,8 @@ async fn start_download(
         download_subtitles.unwrap_or(false),
         subtitle_language,
         speed_limit,
+        clip_section,
+        split_chapters.unwrap_or(false),
     ).await;
     Ok(())
 }

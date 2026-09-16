@@ -67,6 +67,54 @@ describe('queueReducer setStartAt', () => {
   });
 });
 
+describe('queueReducer setClip', () => {
+  const clip = (
+    queue: DownloadItem[],
+    clipStart: string | null,
+    clipEnd: string | null,
+    splitChapters = false,
+  ) => queueReducer(queue, { type: 'setClip', id: 'a', clipStart, clipEnd, splitChapters });
+
+  it('records both ends of the range', () => {
+    const next = clip([makeItem()], '1:23', '2:34');
+    expect(next[0].settings.clipStart).toBe('1:23');
+    expect(next[0].settings.clipEnd).toBe('2:34');
+  });
+
+  it('keeps one end when only one is given', () => {
+    const next = clip([makeItem()], '1:23', null);
+    expect(next[0].settings.clipStart).toBe('1:23');
+    expect('clipEnd' in next[0].settings).toBe(false);
+  });
+
+  it('clears the range rather than storing empty values', () => {
+    const set = clip([makeItem()], '1:23', '2:34');
+    const cleared = clip(set, null, null);
+    expect('clipStart' in cleared[0].settings).toBe(false);
+    expect('clipEnd' in cleared[0].settings).toBe(false);
+  });
+
+  it('sets and unsets splitting by chapter', () => {
+    const on = clip([makeItem()], null, null, true);
+    expect(on[0].settings.splitChapters).toBe(true);
+    const off = clip(on, null, null, false);
+    expect('splitChapters' in off[0].settings).toBe(false);
+  });
+
+  it('refuses to change a download already running', () => {
+    // A range describes which part to fetch; one already downloading is past
+    // choosing. A silently ignored guard looks just like a working one.
+    const running = makeItem({ status: 'downloading' });
+    const next = clip([running], '1:23', '2:34');
+    expect(next[0].settings.clipStart).toBeUndefined();
+  });
+
+  it('leaves other items alone', () => {
+    const next = clip([makeItem(), makeItem({ id: 'b' })], '1:23', '2:34');
+    expect(next[1].settings.clipStart).toBeUndefined();
+  });
+});
+
 describe('queueReducer', () => {
   it('adds items', () => {
     const next = queueReducer([], { type: 'add', item: makeItem() });

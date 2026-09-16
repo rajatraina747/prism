@@ -227,6 +227,9 @@ export class TauriPrismService implements IPrismService {
         subtitleLanguage: item.settings.subtitleLanguage ?? null,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         expectedSize: item.settings.format?.fileSize || null,
+        clipStart: item.settings.clipStart ?? null,
+        clipEnd: item.settings.clipEnd ?? null,
+        splitChapters: item.settings.splitChapters ?? false,
         // With a template, Rust builds the output path itself from these.
         outputDir: dest,
         filenameTemplate: item.settings.filenameTemplate ?? null,

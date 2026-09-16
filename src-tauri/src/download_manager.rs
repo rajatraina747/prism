@@ -136,6 +136,9 @@ impl DownloadManager {
         download_subtitles: bool,
         subtitle_language: Option<String>,
         speed_limit: Option<u64>,
+        // Already validated into `*start-end` by `clip::section_arg`.
+        clip_section: Option<String>,
+        split_chapters: bool,
     ) {
         let downloads = self.downloads.clone();
         let reserved = self.reserved.clone();
@@ -235,6 +238,21 @@ impl DownloadManager {
                     args.push("--limit-rate".into());
                     args.push(limit.to_string());
                 }
+            }
+
+            // Part of the video rather than all of it. The range arrives
+            // already validated (clip.rs), so only digits and colons reach
+            // here. --force-keyframes-at-cuts re-encodes around the
+            // boundaries, so the cut lands where it was asked for instead of
+            // at the nearest keyframe.
+            if let Some(ref section) = clip_section {
+                args.push("--download-sections".into());
+                args.push(section.clone());
+                args.push("--force-keyframes-at-cuts".into());
+            } else if split_chapters {
+                // Only without a clip: splitting the chapters of an excerpt
+                // would be asking for two different cuts of one file.
+                args.push("--split-chapters".into());
             }
 
             // Resume partial (.part) files from a previous paused/cancelled run.

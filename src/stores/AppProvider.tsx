@@ -61,6 +61,9 @@ interface QueueActions {
   setItemWhenComplete: (id: string, action: PostCompletionAction | null) => void;
   /** Hold one download until a given time (RFC 3339); null starts it normally. */
   setItemStartAt: (id: string, startAt: string | null) => void;
+  /** Fetch part of a video rather than all of it, or split it by chapter. The
+   * three go together: Rust validates the range as a unit. */
+  setItemClip: (id: string, clipStart: string | null, clipEnd: string | null, splitChapters: boolean) => void;
   /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
   reannounceTorrent: (id: string) => void;
   /** Torrent: hash every piece on disk again ("Force re-check"). */
@@ -678,6 +681,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'setStartAt', id, startAt });
   }, []);
 
+  const setItemClip = useCallback(
+    (id: string, clipStart: string | null, clipEnd: string | null, splitChapters: boolean) => {
+      dispatch({ type: 'setClip', id, clipStart, clipEnd, splitChapters });
+    },
+    [],
+  );
+
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
       .then(() => toast.success('Asked trackers and DHT for peers'))
@@ -738,7 +748,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, restoreHistory, clearHistory }}>
           <StatsContext.Provider value={{ stats }}>
             {children}

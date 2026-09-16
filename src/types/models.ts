@@ -99,6 +99,14 @@ export interface DownloadSettings {
   // turn comes. It holds back only this item: the rest of the queue carries on
   // without it.
   startAt?: string;
+  // Download part of the video rather than all of it: "1:23" / "0:01:23" /
+  // "83". Either end may be left out (from the beginning, or to the end).
+  // Validated Rust-side into a range yt-dlp is given; see src-tauri/src/clip.rs.
+  clipStart?: string;
+  clipEnd?: string;
+  // Write one file per chapter. Ignored when a clip range is set, since
+  // splitting the chapters of an excerpt describes two different cuts.
+  splitChapters?: boolean;
 }
 
 export interface PlaylistEntry {

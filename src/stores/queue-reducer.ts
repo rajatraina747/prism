@@ -40,6 +40,7 @@ export type QueueAction =
   | { type: 'setChecksum'; id: string; sha256: string | null }
   | { type: 'setWhenComplete'; id: string; action: PostCompletionAction | null }
   | { type: 'setStartAt'; id: string; startAt: string | null }
+  | { type: 'setClip'; id: string; clipStart: string | null; clipEnd: string | null; splitChapters: boolean }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -213,6 +214,23 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
         const settings = { ...i.settings };
         if (action.startAt) settings.startAt = action.startAt;
         else delete settings.startAt;
+        return { ...i, settings };
+      });
+
+    case 'setClip':
+      // Queued only, like the start time: a range describes which part of the
+      // video to fetch, and one already downloading is past choosing. The
+      // three travel together because Rust validates them as a unit — an end
+      // before a start is refused there, so the UI must not hold them apart.
+      return update(queue, action.id, i => {
+        if (i.status !== 'queued') return i;
+        const settings = { ...i.settings };
+        if (action.clipStart) settings.clipStart = action.clipStart;
+        else delete settings.clipStart;
+        if (action.clipEnd) settings.clipEnd = action.clipEnd;
+        else delete settings.clipEnd;
+        if (action.splitChapters) settings.splitChapters = true;
+        else delete settings.splitChapters;
         return { ...i, settings };
       });
 
