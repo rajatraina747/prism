@@ -92,13 +92,16 @@ autotools_build() { # <name> [configure options…]
   (cd "$SRC/$name" && ./configure --prefix="$PREFIX" --disable-shared --enable-static "$@" && make -j "$JOBS" && make install)
 }
 
-# Point libplacebo's two undirected glslang probes at the build prefix.
+# Point libplacebo's two undirected glslang probes at the build prefix. The
+# path is written out rather than reusing libplacebo's own vulkan_lib_dirs:
+# the resource-limits probe runs before that variable is assigned, so naming
+# it there is a meson error. -Dvulkan-sdk is this same prefix, so the two are
+# the same directory either way.
 patch_libplacebo_glslang() {
-  local file="$SRC/libplacebo/src/glsl/meson.build" before after
-  before=$(grep -c "dirs: vulkan_lib_dirs" "$file")
-  perl -pi -e "s/cxx\.find_library\('glslang', required: required, static: static\)/cxx.find_library('glslang', required: required, static: static, dirs: vulkan_lib_dirs)/; s/cxx\.find_library\('glslang-default-resource-limits', required: false\)/cxx.find_library('glslang-default-resource-limits', required: false, dirs: vulkan_lib_dirs)/" "$file"
-  after=$(grep -c "dirs: vulkan_lib_dirs" "$file")
-  if [ "$after" -lt $((before + 2)) ]; then
+  local file="$SRC/libplacebo/src/glsl/meson.build" patched
+  perl -pi -e "s{cxx\.find_library\('glslang-default-resource-limits', required: false\)}{cxx.find_library('glslang-default-resource-limits', required: false, dirs: ['$PREFIX/lib'])}; s{cxx\.find_library\('glslang', required: required, static: static\)}{cxx.find_library('glslang', required: required, static: static, dirs: ['$PREFIX/lib'])}" "$file"
+  patched=$(grep -cF "dirs: ['" "$file")
+  if [ "$patched" -ne 2 ]; then
     echo "✗ libplacebo's glslang probes are not the shape this patch expects" >&2
     exit 1
   fi
