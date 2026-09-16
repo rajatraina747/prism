@@ -272,9 +272,18 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       stuck at 100% reads as stuck), and nothing running hides the bar rather
       than leaving it full. Pushed only when the shown value changes: the
       queue ticks several times a second and every push is an IPC call.
-- [ ] Scheduling: the global quiet-hours half is done (`stores/schedule.ts` —
-      `scheduleGate`, `quietHoursStatus`). Per-item `startAt` and weekday
-      `scheduleDays` are not built.
+- [x] Scheduling, both halves. Quiet hours now take chosen weekdays
+      (`scheduleDays`, none chosen = every day, so an existing schedule is
+      unchanged), and an overnight window belongs to the evening it *started*
+      on — with 22:00→06:00 and Monday picked, the small hours of Tuesday are
+      still Monday's window, which is what "quiet hours on Monday night" means
+      to a person. Per item, `startAt` holds one download back without
+      blocking the queue behind it: it filters the start list rather than
+      gating the whole effect, so a download set for midnight doesn't stop
+      everything else, and the existing minute tick starts it when its time
+      comes. Set in Settings (a weekday row) and per download (Detail panel →
+      Start after), which only appears while an item is still queued — a start
+      time on something already running describes a moment that has passed.
 - [x] Content-level duplicate detection, in the half that is actually
       answerable. `content_index.rs` keys a finished file on its size plus a
       SHA-256 of its first and last 4 MB, and reports "you already had this"
