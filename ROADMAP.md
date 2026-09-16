@@ -139,17 +139,19 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       assigning it.
 
 **Engines and media**
-- [ ] LGPL media toolchain. macOS arm64 is done: `build-media-macos.sh` builds
-      libmpv, ffmpeg and ffprobe from pinned sources, the workflow publishes
-      them on a dated release, and `sidecars.lock` pins that release by URL and
-      SHA-256, so a macOS build now unpacks it instead of installing Homebrew's
-      mpv. ffmpeg and ffprobe ride along as resources rather than Tauri
-      sidecars, because `externalBin` is shared with Windows and Linux.
-      CI fetches and unpacks it on a macOS runner on every push and checks the
-      binaries that land — LGPL buildconf, no x264/x265/rubberband, nothing
-      resolving to the build machine — because the release workflow only runs
-      on tags and would otherwise be the first thing ever to exercise it.
-      Remaining: pin BtbN's LGPL builds for those two (closes S-5 outright).
+- [x] LGPL media toolchain, on all three platforms — **closes S-5**. macOS
+      builds libmpv, ffmpeg and ffprobe from pinned sources
+      (`build-media-macos.sh`), the workflow publishes them on a dated release,
+      and `sidecars.lock` pins it by URL and SHA-256, so a build unpacks that
+      instead of installing Homebrew's mpv. Windows and Linux take BtbN's LGPL
+      ffmpeg, pinned to a dated autobuild tag on the same branch macOS builds.
+      All of it lands in `resources/lib/bin` rather than as Tauri sidecars,
+      because `externalBin` is shared across platforms and naming it there
+      would demand a sidecar on every one.
+      CI fetches all three on every push and *starts* the binaries — which is
+      what proves a shared build's libraries travelled with it — then reads the
+      licence off them, because the release workflow only runs on tags and
+      would otherwise be the first thing ever to exercise any of this.
       Intel Macs still fall back to Homebrew for local builds and are not
       released.
 - [x] Engine freshness check: daily, an unobtrusive nudge, and a newer bundled

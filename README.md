@@ -59,17 +59,12 @@ See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
 audio streams (every YouTube quality above 720p), audio extraction (MP3/M4A/Opus), the embedded
 thumbnails/metadata/chapters, SponsorBlock, and the MP4 remux.
 
-On **macOS it ships with Prism** — an LGPL build made from pinned sources, used in preference to
-anything on your machine. On Windows and Linux, install it yourself; Prism checks on first launch
-and shows the command:
+**It ships with Prism on every platform** — an LGPL build, pinned by checksum, and used in
+preference to anything already on your machine, so a download behaves the same everywhere and
+doesn't depend on what happens to be installed. macOS gets the toolchain Prism builds itself from
+pinned sources; Windows and Linux get BtbN's LGPL builds of the same ffmpeg branch.
 
-| OS | Install |
-|----|---------|
-| macOS | bundled — nothing to install |
-| Windows | `winget install Gyan.FFmpeg` |
-| Linux | `sudo apt install ffmpeg` (or your distro's package) |
-
-yt-dlp, Deno and the player's libmpv are bundled too; nothing else is required.
+yt-dlp, Deno and the player's libmpv are bundled too. **Nothing needs installing.**
 
 ## Download
 

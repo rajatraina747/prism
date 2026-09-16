@@ -90,6 +90,14 @@ jobs:
       - name: Fetch pinned, checksum-verified sidecars
         run: scripts/fetch-sidecars.sh linux
 
+      # Linux has a bundle config now too, and tauri-build resolves the
+      # lib/**/* resource glob at compile time, failing if it matches nothing.
+      # This job type-checks rather than bundling, so it doesn't fetch the
+      # media tools (65 MB a run) — give the glob one file, as the cross-check
+      # job does.
+      - name: Stage placeholder player resources
+        run: mkdir -p src-tauri/lib && echo "placeholder for cargo check; release builds bundle the real ffmpeg/libmpv tree" > src-tauri/lib/PLACEHOLDER.txt
+
       - name: Clippy (deny warnings)
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings

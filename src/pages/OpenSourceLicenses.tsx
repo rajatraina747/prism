@@ -29,12 +29,12 @@ const GROUPS: readonly CreditGroup[] = [
       { name: 'yt-dlp', version: 'pinned in scripts/sidecars.lock; self-updatable', license: 'Unlicense', url: 'https://github.com/yt-dlp/yt-dlp' },
       { name: 'Deno', version: 'pinned in scripts/sidecars.lock', license: 'MIT', url: 'https://github.com/denoland/deno' },
       { name: 'librqbit', version: '9.x (embedded BitTorrent engine)', license: 'Apache-2.0', url: 'https://github.com/ikatson/rqbit' },
-      { name: 'FFmpeg', version: 'macOS: bundled (LGPL build, see below) · Windows and Linux: used from your system when present', license: 'LGPL-2.1-or-later', url: 'https://ffmpeg.org' },
+      { name: 'FFmpeg', version: 'bundled on every platform — LGPL builds, see below', license: 'LGPL-2.1-or-later', url: 'https://ffmpeg.org' },
     ],
   },
   {
     title: 'Embedded player',
-    note: 'macOS ships the LGPL media toolchain Prism builds itself from pinned sources (scripts/build-media-macos.sh): libmpv built with -Dgpl=false, FFmpeg configured --disable-gpl --disable-nonfree, and a Vulkan driver. Nothing in it links x264, x265 or Rubber Band, and the build refuses to publish if any of that appears. Windows uses zhongfly\'s LGPL mpv build. The corresponding source for the macOS libraries — every upstream tarball, byte for byte, with the script that patches and builds them — is published beside the binaries on the media-toolchain release named in scripts/sidecars.lock. Full license texts ship in the app under resources/lib/licenses, and the exact versions are in resources/lib/VERSIONS.txt.',
+    note: 'macOS ships the LGPL media toolchain Prism builds itself from pinned sources (scripts/build-media-macos.sh): libmpv built with -Dgpl=false, FFmpeg configured --disable-gpl --disable-nonfree, and a Vulkan driver. Nothing in it links x264, x265 or Rubber Band, and the build refuses to publish if any of that appears. Windows uses zhongfly\'s LGPL mpv build, and Windows and Linux both take their ffmpeg and ffprobe from BtbN\'s LGPL builds of the same ffmpeg branch macOS compiles, pinned to a dated build in scripts/sidecars.lock. The corresponding source for the macOS libraries — every upstream tarball, byte for byte, with the script that patches and builds them — is published beside the binaries on the media-toolchain release named in scripts/sidecars.lock. Full license texts ship in the app under resources/lib/licenses, and the exact versions are in resources/lib/VERSIONS.txt.',
     items: [
       { name: 'mpv / libmpv', version: '0.41.0 (macOS: Prism\'s LGPL build, -Dgpl=false) · Windows: zhongfly/mpv-winbuild LGPL build', license: 'LGPL-2.1-or-later', url: 'https://github.com/mpv-player/mpv' },
       { name: 'libmpv-wrapper', version: 'pinned in scripts/sidecars.lock', license: 'LGPL-2.1', url: 'https://github.com/nini22P/libmpv-wrapper' },
