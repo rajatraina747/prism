@@ -158,9 +158,9 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       that has already started changes its label only, never where it is
       writing — and a category filter on Transfers and Library.
 - [x] Labels (several per item, unlike a category): defined in Settings, put on
-      by hand from the details dialog, shown on the transfer's row. Ids are
-      stored, not names, so renaming a label renames it everywhere.
-- [ ] Labels, still to add: filter Transfers and Library by label.
+      by hand from the details dialog, shown on the row, and a filter of their
+      own on Transfers and Library. Ids are stored, not names, so renaming a
+      label renames it everywhere.
 - [x] Watch folders (`watch.rs`): `.torrent` files and text files of links,
       polled every few seconds, fed into the ordinary add flow as an in-app
       add. Handled files are renamed (`.added`/`.failed`), never deleted.

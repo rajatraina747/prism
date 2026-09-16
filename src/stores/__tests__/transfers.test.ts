@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterCounts, visibleTransfers, nextSelection, sortTransfers, categoriesInUse } from '../transfers';
+import { filterCounts, visibleTransfers, nextSelection, sortTransfers, categoriesInUse, labelsInUse } from '../transfers';
 import type { DownloadItem, DownloadStatus } from '@/types/models';
 
 function item(id: string, status: DownloadStatus, extra: Partial<DownloadItem> = {}): DownloadItem {
@@ -54,10 +54,31 @@ describe('transfers helpers', () => {
       filed('d', 'queued'),
     ];
     expect(categoriesInUse(list)).toEqual([{ id: 'music', name: 'Music' }, { id: 'iso', name: 'ISOs' }]);
-    expect(visibleTransfers(list, 'all', 'added', '', 'music').map(i => i.id)).toEqual(['a', 'b']);
-    expect(visibleTransfers(list, 'queued', 'added', '', 'music').map(i => i.id)).toEqual(['b']);
+    expect(visibleTransfers(list, 'all', 'added', '', { categoryId: 'music' }).map(i => i.id)).toEqual(['a', 'b']);
+    expect(visibleTransfers(list, 'queued', 'added', '', { categoryId: 'music' }).map(i => i.id)).toEqual(['b']);
     // No category chosen is "all of them", not "the ones with no category".
-    expect(visibleTransfers(list, 'all', 'added', '', null).map(i => i.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(visibleTransfers(list, 'all', 'added', '', {}).map(i => i.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('filters by label, and offers only labels something carries', () => {
+    const tagged = (id: string, status: DownloadStatus, labelIds?: string[]) =>
+      item(id, status, {
+        settings: {
+          format: null, destination: '', filename: '', retryCount: 0, startImmediately: true,
+          ...(labelIds ? { labelIds } : {}),
+        },
+      });
+    const defined = [{ id: 'keep', name: 'Keep' }, { id: 'watch', name: 'Watch later' }, { id: 'unused', name: 'Unused' }];
+    const list = [
+      tagged('a', 'downloading', ['keep', 'watch']),
+      tagged('b', 'queued', ['watch']),
+      tagged('c', 'paused'),
+    ];
+    expect(labelsInUse(list, defined)).toEqual([{ id: 'keep', name: 'Keep' }, { id: 'watch', name: 'Watch later' }]);
+    expect(visibleTransfers(list, 'all', 'added', '', { labelId: 'watch' }).map(i => i.id)).toEqual(['a', 'b']);
+    expect(visibleTransfers(list, 'all', 'added', '', { labelId: 'keep' }).map(i => i.id)).toEqual(['a']);
+    // A category and a label together have to both match.
+    expect(visibleTransfers(list, 'all', 'added', '', { labelId: 'keep', categoryId: 'music' })).toEqual([]);
   });
 
   it('sorts by each key and keeps queue order under "added"', () => {

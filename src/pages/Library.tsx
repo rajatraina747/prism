@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { useHistory, useQueue } from '@/stores/AppProvider';
+import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
 import { FailureNote } from '@/components/common/FailureNote';
@@ -9,10 +9,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
-import { categoriesInUse } from '@/stores/transfers';
+import { categoriesInUse, labelsInUse } from '@/stores/transfers';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
-  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag,
+  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -76,9 +76,11 @@ function statusIcon(status: string) {
 export default function Library() {
   const { items, removeFromHistory, clearHistory } = useHistory();
   const { addToQueue } = useQueue();
+  const { preferences } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const [label, setLabel] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   // Torrent row whose per-file list is expanded (one at a time keeps it tidy).
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -115,12 +117,19 @@ export default function Library() {
   const categories = useMemo(() => categoriesInUse(items), [items]);
   // Survives a category being cleared out of the library entirely.
   const activeCategory = category && categories.some(c => c.id === category) ? category : null;
+  const labels = useMemo(() => labelsInUse(items, preferences.labels), [items, preferences.labels]);
+  const activeLabel = label && labels.some(l => l.id === label) ? label : null;
+  const labelNames = useMemo(
+    () => Object.fromEntries(preferences.labels.map(l => [l.id, l.name])),
+    [preferences.labels],
+  );
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return inTab.filter(i =>
       (!activeCategory || i.settings.categoryId === activeCategory)
+      && (!activeLabel || (i.settings.labelIds?.includes(activeLabel) ?? false))
       && (!q || i.metadata.title.toLowerCase().includes(q)));
-  }, [inTab, search, activeCategory]);
+  }, [inTab, search, activeCategory, activeLabel]);
 
   const tabs = (['all', 'completed', 'failed', 'canceled'] as const).map(key => ({
     key,
@@ -201,6 +210,22 @@ export default function Library() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+            {labels.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by label">
+                    <Tags className="w-3 h-3" />
+                    {activeLabel ? labels.find(l => l.id === activeLabel)?.name : 'All labels'}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onSelect={() => setLabel(null)} className={cn('text-xs', !activeLabel && 'text-primary')}>All labels</DropdownMenuItem>
+                  {labels.map(l => (
+                    <DropdownMenuItem key={l.id} onSelect={() => setLabel(l.id)} className={cn('text-xs', activeLabel === l.id && 'text-primary')}>{l.name || 'Unnamed'}</DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         )}
 
@@ -228,6 +253,7 @@ export default function Library() {
                   item={item}
                   expanded={expandedId === item.id}
                   playerAvailable={playerAvailable}
+                  labelNames={labelNames}
                   onToggleExpanded={toggleExpanded}
                   onRequeue={requeue}
                   onRemove={removeFromHistory}
@@ -256,11 +282,12 @@ export default function Library() {
 }
 
 const LibraryRow = React.memo(function LibraryRow({
-  item, expanded, playerAvailable, onToggleExpanded, onRequeue, onRemove,
+  item, expanded, playerAvailable, labelNames, onToggleExpanded, onRequeue, onRemove,
 }: {
   item: HistoryItem;
   expanded: boolean;
   playerAvailable: boolean;
+  labelNames?: Record<string, string>;
   onToggleExpanded: (id: string) => void;
   onRequeue: (item: HistoryItem) => void;
   onRemove: (id: string) => void;
@@ -300,6 +327,9 @@ const LibraryRow = React.memo(function LibraryRow({
             {item.settings.categoryName && (
               <span className="px-1.5 rounded bg-secondary text-secondary-foreground">{item.settings.categoryName}</span>
             )}
+            {item.settings.labelIds?.map(id => labelNames?.[id]).filter(Boolean).map(name => (
+              <span key={name} className="px-1.5 rounded bg-primary/10 text-primary/90">{name}</span>
+            ))}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
             <span>{formatWhen(item.completedAt)}</span>
           </div>

@@ -78,17 +78,29 @@ export function categoriesInUse(
   return [...seen].map(([id, name]) => ({ id, name }));
 }
 
+/** The labels these items carry, in the order they are defined in settings —
+ * a label nothing is tagged with is left out of the filter. */
+export function labelsInUse(
+  items: { settings: Pick<DownloadSettings, 'labelIds'> }[],
+  labels: { id: string; name: string }[],
+): { id: string; name: string }[] {
+  const used = new Set<string>();
+  for (const i of items) for (const id of i.settings.labelIds ?? []) used.add(id);
+  return labels.filter(l => used.has(l.id));
+}
+
 export function visibleTransfers(
   items: DownloadItem[],
   filter: TransfersFilter,
   sort: TransfersSort,
   search: string,
-  categoryId?: string | null,
+  tags: { categoryId?: string | null; labelId?: string | null } = {},
 ): DownloadItem[] {
   const q = search.trim().toLowerCase();
   const filtered = items.filter(
     i => isTransfer(i) && matchesFilter(i, filter)
-      && (!categoryId || i.settings.categoryId === categoryId)
+      && (!tags.categoryId || i.settings.categoryId === tags.categoryId)
+      && (!tags.labelId || (i.settings.labelIds?.includes(tags.labelId) ?? false))
       && (!q || i.metadata.title.toLowerCase().includes(q)),
   );
   return sortTransfers(filtered, sort);
