@@ -28,6 +28,8 @@ PREFIX="$WORK/prefix"
 mkdir -p "$SRC" "$BUILD" "$PREFIX"
 
 export MACOSX_DEPLOYMENT_TARGET=13.0
+export LIBRARY_PATH="$PREFIX/lib"
+export CPATH="$PREFIX/include"
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig"
 export PATH="$PREFIX/bin:$PATH"
 export CFLAGS="-O2 -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET -I$PREFIX/include"
