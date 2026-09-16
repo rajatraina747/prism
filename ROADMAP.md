@@ -136,14 +136,15 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [ ] Windows: kill runs with a Job Object (still `taskkill /T`).
 
 **Engines and media**
-- [ ] LGPL media toolchain. The macOS build is green: `build-media-macos.sh`
-      builds libmpv, ffmpeg and ffprobe from pinned sources and publishes them
-      on a dated release, gated on the binaries themselves (nothing GPL or
-      non-free, no build-machine paths, one rpath each). Still to do: pin that
-      release in sidecars.lock, pin BtbN's LGPL builds for Windows/Linux, and
-      have the bundle use them instead of Homebrew's libmpv — until it does,
-      none of this has reached anyone's machine (closes S-5 and the GPL macOS
-      bundle).
+- [ ] LGPL media toolchain. macOS arm64 is done: `build-media-macos.sh` builds
+      libmpv, ffmpeg and ffprobe from pinned sources, the workflow publishes
+      them on a dated release, and `sidecars.lock` pins that release by URL and
+      SHA-256, so a macOS build now unpacks it instead of installing Homebrew's
+      mpv. ffmpeg and ffprobe ride along as resources rather than Tauri
+      sidecars, because `externalBin` is shared with Windows and Linux.
+      Remaining: pin BtbN's LGPL builds for those two (closes S-5 outright).
+      Intel Macs still fall back to Homebrew for local builds and are not
+      released.
 - [x] Engine freshness check: daily, an unobtrusive nudge, and a newer bundled
       engine beats an older self-updated one.
 - [x] HTTP(S) direct-link engine (`http_engine.rs`): up to 4 connections,
@@ -418,13 +419,14 @@ Everything below the line shipped in **v1.8.0**; what's left is open.
 - [x] Player: mpv lockdown + Prism-owned allowlisting commands; plugin UB fix.
 - [x] Quarantine flag on downloads; media-only `open_file`.
 - [x] Legal pages, credits and bundled license texts.
-- [ ] **LGPL-only mpv/FFmpeg build for macOS** so the macOS bundle stops
+- [x] **LGPL-only mpv/FFmpeg build for macOS** so the macOS bundle stops
   carrying GPL x264/x265/rubberband (the player only decodes; nothing is
-  lost). The toolchain now builds and publishes from pinned sources
-  (`scripts/build-media-macos.sh`), but the bundle still picks up Homebrew's
-  libmpv, so the macOS binary is for now still distributed under
-  GPL-2.0-or-later terms with license texts + Homebrew source pointers
-  shipped in-app. That changes when sidecars.lock pins the built toolchain.
+  lost). Built from pinned sources by `scripts/build-media-macos.sh`,
+  published on a dated release, pinned in `sidecars.lock` and unpacked by
+  `fetch-sidecars.sh` — so from the next macOS build the bundle carries the
+  LGPL libmpv, ffmpeg and ffprobe, and the written offer is the
+  corresponding-source tarball published beside them. Not yet released, and
+  Intel Macs still use Homebrew locally.
 - [x] Virtualize the Library (1.9.0; the 2,000-row history cap stays).
 - [ ] Spawn yt-dlp in its own process group (`tokio::process` +
   `process_group`) instead of the `ps`-snapshot tree kill.

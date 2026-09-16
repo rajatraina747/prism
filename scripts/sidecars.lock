@@ -31,6 +31,17 @@ MPV_WINBUILD_TAG=2026-09-13-13a4bfbc1a
 MPV_WINBUILD_ASSET=mpv-dev-lgpl-x86_64-20260913-git-13a4bfbc1a.7z
 MPV_WINBUILD_SHA256=152188dd100c7206917ca5e4d43d5b548170ad91046cdb0415dfde0e168fb640
 
-# libmpv for macOS comes from Homebrew (see scripts/bundle-libmpv-macos.sh),
-# which has no stable download URL to pin; the exact formula versions used
-# are recorded into the bundle at resources/lib/VERSIONS.txt at build time.
+# LGPL media toolchain for macOS arm64 — libmpv, ffmpeg and ffprobe built from
+# pinned sources by scripts/build-media-macos.sh and published by
+# .github/workflows/media-toolchain.yml. This replaces the Homebrew libmpv
+# bundle, which had no stable URL to pin (the last open piece of S-5) and made
+# the macOS build GPL.
+#
+# prism-media-sources.tar.gz on the same release is the corresponding source
+# for the LGPL written offer: every upstream tarball byte for byte, next to the
+# script that patches and builds them. Keep it pinned so the offer can always
+# be honoured with exactly what these binaries were built from.
+MEDIA_MACOS_ARM64_URL=https://github.com/rajatraina747/prism/releases/download/media-toolchain-20260916/prism-media-macos-arm64.tar.xz
+MEDIA_MACOS_ARM64_SHA256=b6c173509e61d25ea95984b02f61adc00a1079fde9bbbba89e7d2611520c9f50
+MEDIA_MACOS_ARM64_SOURCES_URL=https://github.com/rajatraina747/prism/releases/download/media-toolchain-20260916/prism-media-sources.tar.gz
+MEDIA_MACOS_ARM64_SOURCES_SHA256=4bb9497c6f6f0d3747914466a1cbba15fca50c2ea5d5c60c38ba4198ffa54aa6

@@ -55,18 +55,21 @@ See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
 
 ## Requirements
 
-**ffmpeg** must be installed for anything beyond a plain single-stream download: merging separate
-video and audio streams (every YouTube quality above 720p), audio extraction (MP3/M4A/Opus), the
-embedded thumbnails/metadata/chapters, SponsorBlock, and the MP4 remux. Prism checks for it on
-first launch and shows the install command for your OS:
+**ffmpeg** is needed for anything beyond a plain single-stream download: merging separate video and
+audio streams (every YouTube quality above 720p), audio extraction (MP3/M4A/Opus), the embedded
+thumbnails/metadata/chapters, SponsorBlock, and the MP4 remux.
+
+On **macOS it ships with Prism** — an LGPL build made from pinned sources, used in preference to
+anything on your machine. On Windows and Linux, install it yourself; Prism checks on first launch
+and shows the command:
 
 | OS | Install |
 |----|---------|
-| macOS | `brew install ffmpeg` |
+| macOS | bundled — nothing to install |
 | Windows | `winget install Gyan.FFmpeg` |
 | Linux | `sudo apt install ffmpeg` (or your distro's package) |
 
-yt-dlp, Deno and the player's libmpv are bundled; nothing else is required.
+yt-dlp, Deno and the player's libmpv are bundled too; nothing else is required.
 
 ## Download
 
@@ -203,11 +206,17 @@ src-tauri/
 Prism's source code is [MIT](LICENSE) — Copyright 2025-2026 RainaCorp.
 
 The **release builds** also contain third-party software under its own licenses: yt-dlp (Unlicense),
-Deno (MIT), librqbit (Apache-2.0), and the embedded player's libraries. The macOS build bundles mpv from
-Homebrew together with a GPL-enabled FFmpeg, x264, x265 and Rubber Band, so the macOS binary as a whole is
-distributed under **GPL-2.0-or-later** terms; the Windows build uses an LGPL-only mpv. License texts ship
-inside the app (`resources/lib/licenses`, with a `MANIFEST.txt` and `VERSIONS.txt`), the full list is under
-Settings → Legal → Open Source Licenses, and the assembly recipe is `scripts/bundle-libmpv-macos.sh`.
+Deno (MIT), librqbit (Apache-2.0), and the embedded player's libraries. Both desktop builds use an
+**LGPL** mpv and FFmpeg — macOS from the toolchain Prism builds itself from pinned sources
+(`scripts/build-media-macos.sh`, `scripts/toolchain.lock`), Windows from zhongfly's LGPL build — so
+no GPL codec (x264, x265, Rubber Band) is linked into either. The build refuses to publish if one
+appears.
+
+As the LGPL requires, the corresponding source for the macOS libraries is published beside the
+binaries on the `media-toolchain-*` release pinned in `scripts/sidecars.lock`: every upstream
+tarball byte for byte, together with the script that patches and builds them. License texts ship
+inside the app (`resources/lib/licenses`, with `VERSIONS.txt`), and the full list is under
+Settings → Legal → Open Source Licenses.
 
 ---
 

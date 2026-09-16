@@ -17,8 +17,10 @@ interface CreditGroup {
 }
 
 // Keep in step with what actually ships: package.json / Cargo.toml for the
-// app, scripts/sidecars.lock for the sidecars, and the dylib set produced by
-// scripts/bundle-libmpv-macos.sh (resources/lib) for the macOS player.
+// app, scripts/sidecars.lock for the sidecars, and — for the macOS player and
+// media tools — scripts/toolchain.lock, which lists every source the bundled
+// libraries are built from (most of them linked statically, so they are
+// credited here even though there is no separate dylib in the bundle).
 const GROUPS: readonly CreditGroup[] = [
   {
     title: 'Download engines and sidecars',
@@ -27,55 +29,32 @@ const GROUPS: readonly CreditGroup[] = [
       { name: 'yt-dlp', version: 'pinned in scripts/sidecars.lock; self-updatable', license: 'Unlicense', url: 'https://github.com/yt-dlp/yt-dlp' },
       { name: 'Deno', version: 'pinned in scripts/sidecars.lock', license: 'MIT', url: 'https://github.com/denoland/deno' },
       { name: 'librqbit', version: '9.x (embedded BitTorrent engine)', license: 'Apache-2.0', url: 'https://github.com/ikatson/rqbit' },
-      { name: 'FFmpeg (your installation)', version: 'not bundled — used from your system when present', license: 'LGPL-2.1+ / GPL-2.0+', url: 'https://ffmpeg.org' },
+      { name: 'FFmpeg', version: 'macOS: bundled (LGPL build, see below) · Windows and Linux: used from your system when present', license: 'LGPL-2.1-or-later', url: 'https://ffmpeg.org' },
     ],
   },
   {
     title: 'Embedded player',
-    note: 'The macOS build bundles mpv from Homebrew, which links GPL-licensed codecs (x264, x265, rubberband) and a GPL-enabled FFmpeg. The macOS binary as a whole is therefore distributed under GPL-2.0-or-later terms; the Windows build uses an LGPL-only mpv. Full license texts ship in the app under resources/lib/licenses, and the exact versions used are recorded in resources/lib/VERSIONS.txt.',
+    note: 'macOS ships the LGPL media toolchain Prism builds itself from pinned sources (scripts/build-media-macos.sh): libmpv built with -Dgpl=false, FFmpeg configured --disable-gpl --disable-nonfree, and a Vulkan driver. Nothing in it links x264, x265 or Rubber Band, and the build refuses to publish if any of that appears. Windows uses zhongfly\'s LGPL mpv build. The corresponding source for the macOS libraries — every upstream tarball, byte for byte, with the script that patches and builds them — is published beside the binaries on the media-toolchain release named in scripts/sidecars.lock. Full license texts ship in the app under resources/lib/licenses, and the exact versions are in resources/lib/VERSIONS.txt.',
     items: [
-      { name: 'mpv / libmpv', version: '0.41 (macOS: Homebrew build, GPL) · Windows: zhongfly/mpv-winbuild LGPL build', license: 'GPL-2.0-or-later / LGPL-2.1-or-later', url: 'https://github.com/mpv-player/mpv' },
+      { name: 'mpv / libmpv', version: '0.41.0 (macOS: Prism\'s LGPL build, -Dgpl=false) · Windows: zhongfly/mpv-winbuild LGPL build', license: 'LGPL-2.1-or-later', url: 'https://github.com/mpv-player/mpv' },
       { name: 'libmpv-wrapper', version: 'pinned in scripts/sidecars.lock', license: 'LGPL-2.1', url: 'https://github.com/nini22P/libmpv-wrapper' },
       { name: 'tauri-plugin-libmpv', version: '0.3.2 (vendored, patched — see src-tauri/vendor)', license: 'MPL-2.0', url: 'https://github.com/nini22P/tauri-plugin-libmpv' },
-      { name: 'FFmpeg (libavcodec, libavformat, libavfilter, libavutil, libswscale, libswresample, libavdevice)', version: 'macOS bundle', license: 'GPL-2.0-or-later (built with --enable-gpl)', url: 'https://ffmpeg.org' },
-      { name: 'x264', version: 'macOS bundle', license: 'GPL-2.0-or-later', url: 'https://www.videolan.org/developers/x264.html' },
-      { name: 'x265', version: 'macOS bundle', license: 'GPL-2.0-or-later', url: 'https://bitbucket.org/multicoreware/x265_git' },
-      { name: 'Rubber Band', version: 'macOS bundle', license: 'GPL-2.0-or-later', url: 'https://breakfastquay.com/rubberband/' },
-      { name: 'libplacebo', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://code.videolan.org/videolan/libplacebo' },
-      { name: 'libass', version: 'macOS bundle', license: 'ISC', url: 'https://github.com/libass/libass' },
-      { name: 'dav1d', version: 'macOS bundle', license: 'BSD-2-Clause', url: 'https://code.videolan.org/videolan/dav1d' },
-      { name: 'SVT-AV1', version: 'macOS bundle', license: 'BSD-3-Clause-Clear', url: 'https://gitlab.com/AOMediaCodec/SVT-AV1' },
-      { name: 'libvpx', version: 'macOS bundle', license: 'BSD-3-Clause', url: 'https://chromium.googlesource.com/webm/libvpx' },
-      { name: 'libvmaf', version: 'macOS bundle', license: 'BSD-2-Clause-Patent', url: 'https://github.com/Netflix/vmaf' },
-      { name: 'LAME', version: 'macOS bundle', license: 'LGPL-2.0-or-later', url: 'https://lame.sourceforge.io' },
-      { name: 'Opus', version: 'macOS bundle', license: 'BSD-3-Clause', url: 'https://opus-codec.org' },
-      { name: 'libsamplerate', version: 'macOS bundle', license: 'BSD-2-Clause', url: 'https://github.com/libsndfile/libsamplerate' },
-      { name: 'zimg', version: 'macOS bundle', license: 'WTFPL', url: 'https://github.com/sekrit-twc/zimg' },
-      { name: 'FreeType', version: 'macOS bundle', license: 'FTL', url: 'https://freetype.org' },
-      { name: 'fontconfig', version: 'macOS bundle', license: 'MIT', url: 'https://www.freedesktop.org/wiki/Software/fontconfig/' },
-      { name: 'HarfBuzz', version: 'macOS bundle', license: 'MIT', url: 'https://github.com/harfbuzz/harfbuzz' },
-      { name: 'FriBidi', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://github.com/fribidi/fribidi' },
-      { name: 'Graphite2', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://github.com/silnrsi/graphite' },
-      { name: 'GLib', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://gitlab.gnome.org/GNOME/glib' },
-      { name: 'gettext (libintl)', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://www.gnu.org/software/gettext/' },
-      { name: 'libbluray', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://www.videolan.org/developers/libbluray.html' },
-      { name: 'libudfread', version: 'macOS bundle', license: 'LGPL-2.1-or-later', url: 'https://code.videolan.org/videolan/libudfread' },
-      { name: 'libarchive', version: 'macOS bundle', license: 'BSD-2-Clause', url: 'https://www.libarchive.org' },
-      { name: 'LuaJIT', version: 'macOS bundle', license: 'MIT', url: 'https://luajit.org' },
-      { name: 'MuJS', version: 'macOS bundle', license: 'ISC', url: 'https://mujs.com' },
-      { name: 'OpenSSL', version: 'macOS bundle', license: 'Apache-2.0', url: 'https://www.openssl.org' },
-      { name: 'uchardet', version: 'macOS bundle', license: 'MPL-1.1 / GPL-2.0+ / LGPL-2.1+', url: 'https://www.freedesktop.org/wiki/Software/uchardet/' },
-      { name: 'libunibreak', version: 'macOS bundle', license: 'Zlib', url: 'https://github.com/adah1972/libunibreak' },
-      { name: 'Little-CMS', version: 'macOS bundle', license: 'MIT', url: 'https://www.littlecms.com' },
-      { name: 'libjpeg-turbo', version: 'macOS bundle', license: 'IJG / BSD-3-Clause / Zlib', url: 'https://libjpeg-turbo.org' },
-      { name: 'libpng', version: 'macOS bundle', license: 'PNG Reference Library License', url: 'http://www.libpng.org' },
-      { name: 'shaderc', version: 'macOS bundle', license: 'Apache-2.0', url: 'https://github.com/google/shaderc' },
-      { name: 'Vulkan Loader', version: 'macOS bundle', license: 'Apache-2.0', url: 'https://github.com/KhronosGroup/Vulkan-Loader' },
-      { name: 'BLAKE2 (libb2)', version: 'macOS bundle', license: 'CC0-1.0', url: 'https://github.com/BLAKE2/libb2' },
-      { name: 'LZ4', version: 'macOS bundle', license: 'BSD-2-Clause', url: 'https://github.com/lz4/lz4' },
-      { name: 'XZ Utils (liblzma)', version: 'macOS bundle', license: '0BSD', url: 'https://tukaani.org/xz/' },
-      { name: 'Zstandard', version: 'macOS bundle', license: 'BSD-3-Clause', url: 'https://github.com/facebook/zstd' },
-      { name: 'PCRE2', version: 'macOS bundle', license: 'BSD-3-Clause', url: 'https://github.com/PCRE2Project/pcre2' },
+      { name: 'FFmpeg (libavcodec, libavformat, libavfilter, libavutil, libswscale, libswresample)', version: '8.1.2 (macOS bundle; ffmpeg and ffprobe also ship as tools)', license: 'LGPL-2.1-or-later (built --disable-gpl --disable-nonfree)', url: 'https://ffmpeg.org' },
+      { name: 'libplacebo', version: '7.360.1 (macOS bundle, static)', license: 'LGPL-2.1-or-later', url: 'https://code.videolan.org/videolan/libplacebo' },
+      { name: 'fast_float', version: '8.3.0 (macOS bundle, static — inside libplacebo)', license: 'Apache-2.0 / MIT / BSL-1.0', url: 'https://github.com/fastfloat/fast_float' },
+      { name: 'libass', version: '0.17.5 (macOS bundle, static)', license: 'ISC', url: 'https://github.com/libass/libass' },
+      { name: 'dav1d', version: '1.5.4 (macOS bundle, static)', license: 'BSD-2-Clause', url: 'https://code.videolan.org/videolan/dav1d' },
+      { name: 'LAME', version: '3.101 (macOS bundle, static)', license: 'LGPL-2.0-or-later', url: 'https://lame.sourceforge.io' },
+      { name: 'Opus', version: '1.5.2 (macOS bundle, static)', license: 'BSD-3-Clause', url: 'https://opus-codec.org' },
+      { name: 'zimg', version: '3.0.6 (macOS bundle, static)', license: 'WTFPL', url: 'https://github.com/sekrit-twc/zimg' },
+      { name: 'FreeType', version: '2.14.3 (macOS bundle, static)', license: 'FTL', url: 'https://freetype.org' },
+      { name: 'HarfBuzz', version: '14.4.0 (macOS bundle, static)', license: 'MIT', url: 'https://github.com/harfbuzz/harfbuzz' },
+      { name: 'FriBidi', version: '1.0.16 (macOS bundle, static)', license: 'LGPL-2.1-or-later', url: 'https://github.com/fribidi/fribidi' },
+      { name: 'Little-CMS', version: '2.19.1 (macOS bundle, static)', license: 'MIT', url: 'https://www.littlecms.com' },
+      { name: 'glslang', version: '16.6.0 (macOS bundle, static)', license: 'BSD-3-Clause / Apache-2.0', url: 'https://github.com/KhronosGroup/glslang' },
+      { name: 'Vulkan Loader', version: 'vulkan-sdk-1.4.357.0 (macOS bundle)', license: 'Apache-2.0', url: 'https://github.com/KhronosGroup/Vulkan-Loader' },
+      { name: 'Vulkan Headers', version: 'vulkan-sdk-1.4.357.0', license: 'Apache-2.0', url: 'https://github.com/KhronosGroup/Vulkan-Headers' },
+      { name: 'MoltenVK', version: '1.4.2 (macOS bundle — Vulkan on Metal)', license: 'Apache-2.0', url: 'https://github.com/KhronosGroup/MoltenVK' },
     ],
   },
   {
@@ -140,11 +119,14 @@ export default function OpenSourceLicenses() {
           <OutboundLink href="https://github.com/rajatraina747/prism" className="text-primary hover:underline">github.com/rajatraina747/prism</OutboundLink>{' '}
           (MIT). The full license text of every library bundled with the embedded player ships inside the
           app (macOS: <span className="font-mono">Prism.app/Contents/Resources/lib/licenses</span>), and the
-          exact versions are in <span className="font-mono">resources/lib/VERSIONS.txt</span>. The LGPL/GPL
-          libraries are unmodified Homebrew builds; their corresponding source is published by Homebrew
-          (<span className="font-mono">brew fetch --build-from-source &lt;formula&gt;</span>) and the exact
-          assembly recipe is <span className="font-mono">scripts/bundle-libmpv-macos.sh</span> in the repository.
-          To relink against a different libmpv, replace the dylibs under <span className="font-mono">resources/lib</span>.
+          exact versions are in <span className="font-mono">resources/lib/VERSIONS.txt</span>. On macOS those
+          libraries are Prism's own LGPL builds rather than a package manager's, so the corresponding source
+          is published with them: <span className="font-mono">prism-media-sources.tar.gz</span> on the{' '}
+          <span className="font-mono">media-toolchain</span> release pinned in{' '}
+          <span className="font-mono">scripts/sidecars.lock</span> holds every upstream tarball byte for byte,
+          together with <span className="font-mono">scripts/build-media-macos.sh</span> — which is also where
+          Prism's own change to them lives, a patch to libplacebo's library probes. To relink against a
+          different libmpv, replace the dylibs under <span className="font-mono">resources/lib</span>.
         </p>
       </div>
 

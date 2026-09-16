@@ -71,14 +71,11 @@ jobs:
 
       - run: npm ci
 
-      # Embedded player: self-contained libmpv + wrapper shipped under
-      # resources/lib (tauri.macos.conf.json). The bundle script rewrites every
-      # dependency to @loader_path and fails the build if anything still
-      # points at Homebrew; it also records the Homebrew mpv/ffmpeg versions
-      # into resources/lib/VERSIONS.txt.
-      - name: Install player build tools
-        run: brew install mpv dylibbundler
-
+      # Embedded player and media tools: the LGPL toolchain built from pinned
+      # sources by .github/workflows/media-toolchain.yml, fetched by SHA-256
+      # and unpacked into resources/lib (tauri.macos.conf.json), together with
+      # the pinned libmpv-wrapper. Nothing comes from Homebrew any more, so
+      # there are no player build tools to install.
       - name: Fetch pinned, checksum-verified sidecars + player libraries
         run: scripts/fetch-sidecars.sh macos --player
 

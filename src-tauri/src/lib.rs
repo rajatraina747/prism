@@ -1024,8 +1024,8 @@ async fn get_app_version() -> String {
 /// embedding, and SponsorBlock all silently degrade without it — the frontend
 /// surfaces a warning instead of leaving users guessing.
 #[tauri::command]
-async fn ffmpeg_available() -> bool {
-    find_ffmpeg().is_some()
+async fn ffmpeg_available(app: AppHandle) -> bool {
+    find_ffmpeg(&app).is_some()
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1575,7 +1575,18 @@ pub fn augmented_path() -> String {
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,
 /// so we check common locations per platform.
-pub fn find_ffmpeg() -> Option<String> {
+pub fn find_ffmpeg(app: &AppHandle) -> Option<String> {
+    // The LGPL ffmpeg shipped beside the player's libraries wins over whatever
+    // is on the machine: it is the build Prism was tested against, and a
+    // Finder-launched app often has no useful PATH at all.
+    if let Ok(resources) = app.path().resource_dir() {
+        let name = if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" };
+        let bundled = resources.join("lib").join("bin").join(name);
+        if bundled.exists() {
+            return Some(bundled.to_string_lossy().into_owned());
+        }
+    }
+
     #[cfg(target_os = "macos")]
     let candidates: &[&str] = &[
         "/opt/homebrew/bin/ffmpeg",

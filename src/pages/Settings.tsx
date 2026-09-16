@@ -337,8 +337,10 @@ export default function Settings() {
                     <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
                       Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
-                      won't work. On macOS install it with <span className="font-mono">brew install ffmpeg</span>,
-                      then restart Prism.
+                      won't work. Prism ships its own copy on macOS, so if it's missing there,
+                      reinstalling Prism restores it. On Windows install{' '}
+                      <span className="font-mono">winget install Gyan.FFmpeg</span>, on Linux your
+                      distro's <span className="font-mono">ffmpeg</span> package — then restart Prism.
                     </p>
                   </div>
                 </div>

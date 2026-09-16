@@ -107,7 +107,45 @@ if [ "$WITH_PLAYER" = 1 ]; then
   echo "== Embedded player libraries for $PLATFORM =="
   case "$PLATFORM" in
     macos)
-      "$ROOT/scripts/bundle-libmpv-macos.sh"
+      # Intel Macs have no published LGPL toolchain yet, and a local build
+      # sometimes wants Homebrew's copy. That path is GPL — never a release.
+      if [ "${PRISM_LIBMPV_FROM_BREW:-0}" = 1 ] || [ "$(uname -m)" != "arm64" ]; then
+        echo "(Homebrew libmpv — GPL, not for release)"
+        "$ROOT/scripts/bundle-libmpv-macos.sh"
+      else
+        # The LGPL toolchain built from pinned sources by
+        # .github/workflows/media-toolchain.yml: libmpv with its Vulkan driver,
+        # plus ffmpeg and ffprobe. Everything inside already points at
+        # @loader_path and carries one rpath — the build gated on that.
+        rm -rf "$LIB"
+        mkdir -p "$LIB"
+        fetch "$MEDIA_MACOS_ARM64_URL" "$TMP/prism-media.tar.xz" "$MEDIA_MACOS_ARM64_SHA256"
+        tar -xJf "$TMP/prism-media.tar.xz" -C "$TMP"
+        cp -R "$TMP/prism-media/lib/." "$LIB/"
+        # ffmpeg and ffprobe ride along as resources rather than Tauri
+        # sidecars: externalBin is shared with Windows and Linux, whose LGPL
+        # builds aren't pinned yet, and naming them there would break both.
+        mkdir -p "$LIB/bin"
+        cp "$TMP/prism-media/bin/ffmpeg" "$TMP/prism-media/bin/ffprobe" "$LIB/bin/"
+        chmod +x "$LIB/bin/ffmpeg" "$LIB/bin/ffprobe"
+        cp -R "$TMP/prism-media/licenses" "$LIB/licenses"
+        # The wrapper the vendored plugin loads libmpv through is built
+        # separately from the media toolchain, so it is still fetched here.
+        fetch "$WRAPPER_BASE/libmpv-wrapper-macos-aarch64.zip" "$TMP/wrapper.zip" \
+          "$LIBMPV_WRAPPER_SHA256_MACOS_AARCH64"
+        extract_member "$TMP/wrapper.zip" "bin/libmpv-wrapper.dylib" "$LIB/libmpv-wrapper.dylib"
+        extract_member "$TMP/wrapper.zip" "LICENSE" "$LIB/libmpv-wrapper-LICENSE"
+        {
+          echo "libmpv-wrapper $LIBMPV_WRAPPER_VERSION"
+          cat "$TMP/prism-media/VERSIONS.txt"
+        } > "$LIB/VERSIONS.txt"
+        # The gate the bundle script used to enforce, kept: nothing in a
+        # release may resolve to a library on the build machine.
+        if otool -L "$LIB"/*.dylib "$LIB"/bin/* 2>/dev/null | grep -qE "/opt/homebrew|/usr/local/(lib|opt)"; then
+          echo "✗ bundled media libraries still reference the build machine" >&2
+          exit 1
+        fi
+      fi
       ;;
     windows)
       mkdir -p "$LIB"

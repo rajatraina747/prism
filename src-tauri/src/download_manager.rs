@@ -273,10 +273,18 @@ impl DownloadManager {
             }
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
-            let ffmpeg = find_ffmpeg();
+            let ffmpeg = find_ffmpeg(&app);
             if let Some(ref ffmpeg_path) = ffmpeg {
                 args.push("--ffmpeg-location".into());
-                args.push(ffmpeg_path.clone());
+                // The folder, not the binary: yt-dlp looks for ffprobe beside
+                // what it is given, and both live in the same place whether
+                // they are the bundled pair or a package manager's.
+                args.push(
+                    std::path::Path::new(ffmpeg_path)
+                        .parent()
+                        .map(|dir| dir.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| ffmpeg_path.clone()),
+                );
             }
 
             // Embed cover art, tags, and chapter markers so files look right in
