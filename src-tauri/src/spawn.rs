@@ -5,8 +5,14 @@
 //! leaves that worker running (see `proc`). On unix every run now gets its own
 //! process group, so one `killpg` reaches the worker and anything it forked —
 //! including a child that was reparented after its parent exited, which a walk
-//! of the process table (`proc::kill_tree`) can't find. On Windows the tree is
-//! killed with `taskkill /T`, as before.
+//! of the process table (`proc::kill_tree`) can't find.
+//!
+//! Windows has no process groups, so a run is put in a job object instead:
+//! killing the job reaches everything in it, and because the job is set to end
+//! when its last handle closes, a run cannot outlive Prism however Prism ends.
+//! `taskkill /T` stays as the fallback for the sliver of time between starting
+//! a process and assigning it. The tests below are unix-only — the Windows
+//! path is compiled by CI's cross-check job and exercised by hand.
 
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
@@ -68,8 +74,18 @@ impl CommandSpec {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
+        // Made before the spawn so the gap before the process is assigned is
+        // as short as it can be; anything forked inside that gap is still
+        // covered by the `taskkill` fallback in `kill`.
+        #[cfg(windows)]
+        let job = job::create();
+
         let mut child = cmd.spawn()?;
         let pid = child.id().unwrap_or(0);
+        #[cfg(windows)]
+        if let Some(job) = job {
+            job::assign(job, pid);
+        }
         let (tx, rx) = mpsc::unbounded_channel();
         let stdout = child.stdout.take().map(|s| forward(s, tx.clone(), Event::Stdout));
         let stderr = child.stderr.take().map(|s| forward(s, tx.clone(), Event::Stderr));
@@ -85,9 +101,23 @@ impl CommandSpec {
             }
             let code = child.wait().await.ok().and_then(|status| status.code());
             exited_flag.store(true, Ordering::SeqCst);
+            // Letting go of the last handle ends the job, which also takes
+            // down anything the run forked and walked away from.
+            #[cfg(windows)]
+            if let Some(job) = job {
+                job::close(job);
+            }
             let _ = tx.send(Event::Terminated(code));
         });
-        Ok((rx, Child { pid, exited }))
+        Ok((
+            rx,
+            Child {
+                pid,
+                exited,
+                #[cfg(windows)]
+                job,
+            },
+        ))
     }
 }
 
@@ -115,15 +145,87 @@ where
     })
 }
 
+/// Everything Prism needs to reach one run's processes on Windows: a job
+/// object they are all in, held as a `usize` so `Child` stays `Send`.
+#[cfg(windows)]
+mod job {
+    use std::ffi::c_void;
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+
+    /// An unnamed job whose processes are killed when its last handle closes.
+    /// `None` if Windows refused, in which case the caller falls back to
+    /// killing the tree by pid.
+    pub fn create() -> Option<usize> {
+        // SAFETY: null attributes and a null name are the documented way to
+        // ask for an unnamed job; the handle is checked before it is used.
+        let handle: HANDLE = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if handle.is_null() {
+            return None;
+        }
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `limits` is a correctly sized, fully initialised struct of
+        // the class named, and outlives the call.
+        let set = unsafe {
+            SetInformationJobObject(
+                handle,
+                JobObjectExtendedLimitInformation,
+                std::ptr::addr_of!(limits) as *const c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if set == 0 {
+            // A job without the kill-on-close limit would let downloads
+            // outlive Prism, which is the whole point of having one.
+            let _ = unsafe { CloseHandle(handle) };
+            return None;
+        }
+        Some(handle as usize)
+    }
+
+    /// Put a process in the job. Best effort: a process that has already
+    /// exited can't be assigned, and doesn't need to be.
+    pub fn assign(job: usize, pid: u32) -> bool {
+        // SAFETY: the rights asked for are the ones assignment needs; the
+        // returned handle is checked and always closed again below.
+        let process = unsafe { OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid) };
+        if process.is_null() {
+            return false;
+        }
+        let assigned = unsafe { AssignProcessToJobObject(job as HANDLE, process) };
+        let _ = unsafe { CloseHandle(process) };
+        assigned != 0
+    }
+
+    pub fn terminate(job: usize) {
+        // SAFETY: `job` came from `create` and is closed only by `close`.
+        let _ = unsafe { TerminateJobObject(job as HANDLE, 1) };
+    }
+
+    pub fn close(job: usize) {
+        // SAFETY: as above; called once, from the run's own task.
+        let _ = unsafe { CloseHandle(job as HANDLE) };
+    }
+}
+
 /// A running command. Dropping it does not kill the process; `kill` does.
 pub struct Child {
     pid: u32,
     exited: Arc<AtomicBool>,
+    /// Windows only: the job object holding this run (see `job`).
+    #[cfg(windows)]
+    job: Option<usize>,
 }
 
 impl Child {
     /// Kill the whole run: its process group on unix (forked workers
-    /// included), its process tree on Windows. A no-op once it has exited,
+    /// included), its job object on Windows. A no-op once it has exited,
     /// when its pid may already belong to another process.
     pub fn kill(&self) {
         // pid 0 would make killpg signal Prism's own group.
@@ -134,7 +236,12 @@ impl Child {
         unsafe {
             libc::killpg(self.pid as libc::pid_t, libc::SIGKILL);
         }
-        // Unix: anything that left the group. Windows: the tree kill itself.
+        #[cfg(windows)]
+        if let Some(job) = self.job {
+            job::terminate(job);
+        }
+        // Unix: anything that left the group. Windows: anything that forked
+        // before the job assignment landed.
         crate::proc::kill_tree(self.pid);
     }
 }

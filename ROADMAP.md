@@ -133,7 +133,10 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       over the defaults, so a later rename can't read as the user unsetting
       something. Settings written by a newer Prism are left exactly as they
       are rather than stamped back down to this version.
-- [ ] Windows: kill runs with a Job Object (still `taskkill /T`).
+- [x] Windows: every run goes in a Job Object, so one call reaches whatever it
+      forked and a download can't outlive Prism however Prism ends. `taskkill
+      /T` stays as the fallback for the sliver between starting a process and
+      assigning it.
 
 **Engines and media**
 - [ ] LGPL media toolchain. macOS arm64 is done: `build-media-macos.sh` builds
