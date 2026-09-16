@@ -503,6 +503,21 @@ export default function Settings() {
                 )}
               </SettingGroup>
 
+              <SettingGroup title="When a download finishes">
+                <SettingRow label="Then" description="For every download, unless one is set differently in its details">
+                  <Select
+                    value={p.defaultWhenComplete}
+                    options={[
+                      { value: 'nothing', label: 'Do nothing' },
+                      { value: 'notify', label: 'Notify me' },
+                      { value: 'open', label: 'Open the file' },
+                      { value: 'reveal', label: 'Show in folder' },
+                    ]}
+                    onChange={v => updatePreference('defaultWhenComplete', v)}
+                  />
+                </SettingRow>
+              </SettingGroup>
+
               <SettingGroup title="When everything finishes">
                 <SettingRow label="Then" description="Happens a minute after the last download ends, and only after Prism has actually been working — with a countdown you can call off">
                   <Select

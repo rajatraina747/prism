@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isBusy, isQueueBusy, evaluateWhenDone, whenDoneLabel,
+  isBusy, isQueueBusy, evaluateWhenDone, whenDoneLabel, postCompletionFor, needsFile,
   IDLE_WHEN_DONE, type WhenDoneAction,
 } from '../completion';
-import type { DownloadItem, DownloadStatus } from '@/types/models';
+import type { DownloadItem, DownloadStatus, PostCompletionAction } from '@/types/models';
 
 function item(status: DownloadStatus): DownloadItem {
   return {
@@ -124,6 +124,31 @@ describe('isQueueBusy', () => {
     expect(isQueueBusy([item('completed'), item('downloading')])).toBe(true);
     expect(isQueueBusy([item('completed'), item('failed')])).toBe(false);
     expect(isQueueBusy([])).toBe(false);
+  });
+});
+
+describe('postCompletionFor', () => {
+  const prefs = (defaultWhenComplete: PostCompletionAction) => ({ defaultWhenComplete });
+  const withSetting = (whenComplete?: PostCompletionAction) => ({
+    settings: { format: null, destination: '', filename: '', retryCount: 0, startImmediately: true, whenComplete },
+  });
+
+  it('falls back to the default when the item says nothing', () => {
+    expect(postCompletionFor(withSetting(), prefs('notify'))).toBe('notify');
+    expect(postCompletionFor(withSetting(), prefs('nothing'))).toBe('nothing');
+  });
+
+  it("lets an item override the default, including turning it off", () => {
+    expect(postCompletionFor(withSetting('reveal'), prefs('notify'))).toBe('reveal');
+    // 'nothing' on the item is a decision, not an absence — it must win.
+    expect(postCompletionFor(withSetting('nothing'), prefs('open'))).toBe('nothing');
+  });
+
+  it('only open and reveal need a file to act on', () => {
+    expect(needsFile('open')).toBe(true);
+    expect(needsFile('reveal')).toBe(true);
+    expect(needsFile('notify')).toBe(false);
+    expect(needsFile('nothing')).toBe(false);
   });
 });
 

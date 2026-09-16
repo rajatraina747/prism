@@ -226,9 +226,14 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       video the rules turn down is still recorded as seen — otherwise every
       poll would reconsider it, and loosening a rule later would pull in the
       whole back catalogue at once.
-- [ ] Per-item post-completion actions (notify/open/reveal), scheduling,
-      duplicate detection, native menu, global shortcuts, Dock and taskbar
-      progress.
+- [x] Post-completion actions: notify, open, or show in folder — set once as a
+      default, or on a single download in its details. An item saying nothing
+      follows the default, which leaves "do nothing" free to mean a deliberate
+      no for that one download rather than an absence. A torrent can finish
+      without a file path, so open and reveal fall back to its folder instead
+      of failing.
+- [ ] Scheduling, duplicate detection, native menu, global shortcuts, Dock and
+      taskbar progress.
 - [ ] Undecided, not skipped: the plan's separate `rss_fetch` (reqwest +
       `feed-rs`). `parsePlaylist` already reads RSS and Atom through yt-dlp,
       so a second fetch path would add a dependency to do what works today —

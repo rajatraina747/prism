@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, type ReactNode } from 'react';
-import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory } from '@/types/models';
+import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
 import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
 import {
-  evaluateWhenDone, whenDoneLabel, IDLE_WHEN_DONE,
+  evaluateWhenDone, whenDoneLabel, IDLE_WHEN_DONE, postCompletionFor, needsFile,
   WHEN_DONE_COUNTDOWN_SECONDS, type WhenDoneState,
 } from '@/stores/completion';
 import { scheduleGate } from '@/stores/schedule';
@@ -56,6 +56,8 @@ interface QueueActions {
   setItemLabels: (id: string, labelIds: string[]) => void;
   /** The SHA-256 a queued direct download has to match (null clears it). */
   setItemChecksum: (id: string, sha256: string | null) => void;
+  /** What to do when this one finishes (null = follow the setting). */
+  setItemWhenComplete: (id: string, action: PostCompletionAction | null) => void;
   /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
   reannounceTorrent: (id: string) => void;
   /** Torrent: hash every piece on disk again ("Force re-check"). */
@@ -417,6 +419,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
               }
             }
             if (settings.soundEnabled) playNotificationSound();
+
+            // Then whatever was asked for this download in particular. A
+            // torrent can finish without a single file path, so opening or
+            // revealing falls back to the folder rather than throwing.
+            const after = postCompletionFor(item, settings);
+            const target = filePath ?? outputFolder ?? item.settings.destination;
+            if (after === 'notify') {
+              service.notify('Download complete', item.metadata.title).catch(() => {});
+            } else if (needsFile(after) && target) {
+              const act = after === 'open' ? service.openFile(target) : service.showInFolder(target);
+              act.catch(() => toast.error(`Couldn't ${after} ${item.metadata.title}`));
+            }
           } else {
             // Rust sends a structured EngineError; the web demo plain text.
             const { message, detail, engineCode } = errorText(errorMsg);
@@ -614,6 +628,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'setChecksum', id, sha256 });
   }, []);
 
+  const setItemWhenComplete = useCallback((id: string, action: PostCompletionAction | null) => {
+    dispatch({ type: 'setWhenComplete', id, action });
+  }, []);
+
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
       .then(() => toast.success('Asked trackers and DHT for peers'))
@@ -674,7 +692,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, restoreHistory, clearHistory }}>
           <StatsContext.Provider value={{ stats }}>
             {children}

@@ -21,6 +21,10 @@ export type DownloadKind = 'http' | 'torrent' | 'direct';
  * that module don't have to import each other. */
 export type WhenDoneAction = 'nothing' | 'sleep' | 'shutdown' | 'quit';
 
+/** What to do with one download the moment it finishes. Per item, falling
+ * back to a default in settings; see src/stores/completion.ts. */
+export type PostCompletionAction = 'nothing' | 'notify' | 'open' | 'reveal';
+
 // One file inside a (multi-file) torrent, with per-file progress percent.
 export interface TorrentFileInfo {
   name: string;
@@ -89,6 +93,8 @@ export interface DownloadSettings {
   // Direct downloads only: a SHA-256 the finished file has to match, as 64
   // lower-case hex digits. Absent = downloaded without being checked.
   sha256?: string;
+  // What to do when this one finishes. Absent = whatever the setting says.
+  whenComplete?: PostCompletionAction;
 }
 
 export interface PlaylistEntry {
@@ -329,6 +335,8 @@ export interface AppPreferences {
   labels: DownloadLabel[];
   // What to do once the queue finishes. Fires on the transition from working
   // to finished, never on a standing start; see src/stores/completion.ts.
+  // What happens as each download finishes, unless the item says otherwise.
+  defaultWhenComplete: PostCompletionAction;
   whenDoneAction: WhenDoneAction;
   // Seeding counts as work by default, so a machine doesn't sleep in the
   // middle of uploading. This waives that.
@@ -469,6 +477,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   watchFolders: [],
   categories: [],
   labels: [],
+  defaultWhenComplete: 'nothing',
   whenDoneAction: 'nothing',
   whenDoneIgnoresSeeding: false,
   settingsVersion: SETTINGS_VERSION,

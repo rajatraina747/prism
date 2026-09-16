@@ -1,9 +1,27 @@
-import type { AppPreferences, DownloadItem, WhenDoneAction } from '@/types/models';
+import type {
+  AppPreferences, DownloadItem, WhenDoneAction, PostCompletionAction,
+} from '@/types/models';
 
 // Re-exported so callers of this module have one place to import from, while
 // the type itself stays in models.ts — settings need it too, and the two
 // modules importing each other would be a cycle for no benefit.
-export type { WhenDoneAction };
+export type { WhenDoneAction, PostCompletionAction };
+
+/** What to do with a download that has just finished: whatever was chosen for
+ * that item, or the default. 'nothing' set on the item is a real choice and
+ * beats the default — otherwise it could never be turned off for one item. */
+export function postCompletionFor(
+  item: Pick<DownloadItem, 'settings'>,
+  prefs: Pick<AppPreferences, 'defaultWhenComplete'>,
+): PostCompletionAction {
+  return item.settings.whenComplete ?? prefs.defaultWhenComplete ?? 'nothing';
+}
+
+/** Whether an action needs a file to act on — `open` and `reveal` are
+ * meaningless without a path, and a torrent can finish without one. */
+export function needsFile(action: PostCompletionAction): boolean {
+  return action === 'open' || action === 'reveal';
+}
 
 // What happens once the queue finishes.
 //

@@ -1,6 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { DownloadItem, DownloadCategory, TorrentDetails, TorrentPeer } from '@/types/models';
+import type {
+  DownloadItem, DownloadCategory, TorrentDetails, TorrentPeer, PostCompletionAction,
+} from '@/types/models';
 import { useService } from '@/services/ServiceProvider';
 import { useSettings } from '@/stores/AppProvider';
 import { normalizeSha256 } from '@/stores/checksum';
@@ -23,6 +25,7 @@ export interface DetailPanelProps {
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   onSetLabels?: (id: string, labelIds: string[]) => void;
   onSetChecksum?: (id: string, sha256: string | null) => void;
+  onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
   playerAvailable?: boolean;
 }
 
@@ -35,7 +38,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -94,7 +97,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} onSetWhenComplete={onSetWhenComplete} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -132,12 +135,13 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum }: {
+function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete }: {
   item: DownloadItem;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   onSetLabels?: (id: string, labelIds: string[]) => void;
   onSetChecksum?: (id: string, sha256: string | null) => void;
+  onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
 }) {
   const service = useService();
   const { preferences } = useSettings();
@@ -199,6 +203,27 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
               engine is handed the expected hash when it opens the file. */}
           {onSetChecksum && item.kind === 'direct' && item.status === 'queued' && (
             <ChecksumRow item={item} onSetChecksum={onSetChecksum} />
+          )}
+          {/* Only while it can still finish: setting this on something already
+              finished would promise something that has already happened. */}
+          {onSetWhenComplete && item.status !== 'completed' && (
+            <Row label="When it finishes">
+              <select
+                value={item.settings.whenComplete ?? ''}
+                onChange={(e) => onSetWhenComplete(
+                  item.id,
+                  (e.target.value || null) as PostCompletionAction | null,
+                )}
+                aria-label="When it finishes"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+              >
+                <option value="">Use the default</option>
+                <option value="nothing">Do nothing</option>
+                <option value="notify">Notify me</option>
+                <option value="open">Open the file</option>
+                <option value="reveal">Show in folder</option>
+              </select>
+            </Row>
           )}
           <Row label="Added">{when(item.addedAt)}</Row>
           <Row label="Started">{when(item.startedAt)}</Row>

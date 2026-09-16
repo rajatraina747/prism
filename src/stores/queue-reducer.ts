@@ -1,4 +1,4 @@
-import type { DownloadItem, DownloadError, DownloadCategory } from '@/types/models';
+import type { DownloadItem, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { applyCategory } from '@/stores/categories';
 import { normalizeSha256 } from '@/stores/checksum';
 
@@ -38,6 +38,7 @@ export type QueueAction =
   | { type: 'setCategory'; id: string; category: DownloadCategory | null }
   | { type: 'setLabels'; id: string; labelIds: string[] }
   | { type: 'setChecksum'; id: string; sha256: string | null }
+  | { type: 'setWhenComplete'; id: string; action: PostCompletionAction | null }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -190,6 +191,16 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
         const normalised = normalizeSha256(action.sha256);
         if (normalised) settings.sha256 = normalised;
         else delete settings.sha256;
+        return { ...i, settings };
+      });
+
+    case 'setWhenComplete':
+      // null means "follow the setting" — distinct from 'nothing', which is a
+      // decision to do nothing for this one download in particular.
+      return update(queue, action.id, i => {
+        const settings = { ...i.settings };
+        if (action.action) settings.whenComplete = action.action;
+        else delete settings.whenComplete;
         return { ...i, settings };
       });
 
