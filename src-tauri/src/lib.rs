@@ -8,6 +8,7 @@ mod player;
 mod proc;
 mod quarantine;
 mod spawn;
+mod template;
 pub mod torrent;
 mod updater;
 
@@ -454,7 +455,18 @@ async fn start_download(
     subtitle_language: Option<String>,
     speed_limit: Option<u64>,
     expected_size: Option<u64>,
+    output_dir: Option<String>,
+    filename_template: Option<String>,
+    template_vars: Option<template::TemplateVars>,
 ) -> Result<(), String> {
+    // Items queued with a file name template are named here, by the same code
+    // Settings previews; older items arrive with a finished output path.
+    let output_path = match (output_dir, filename_template) {
+        (Some(dir), Some(tpl)) if !tpl.trim().is_empty() => {
+            templated_output_path(&dir, &tpl, &template_vars.unwrap_or_default())?
+        }
+        _ => output_path,
+    };
     let expanded_path = validate_download_path(&output_path, &picked_dirs(&app))?;
     // Auto-numbering against disk + other active downloads happens inside the
     // manager, atomically with reserving the template (two adds of the same
@@ -492,6 +504,14 @@ async fn start_download(
         speed_limit,
     ).await;
     Ok(())
+}
+
+/// yt-dlp's `-o` template for `dir`, named by a file name template: its
+/// subfolders kept, `%` escaped (yt-dlp would expand it), `.%(ext)s` appended.
+fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
+    let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
+    let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
+    Ok(format!("{}/{rel}.%(ext)s", dir.trim_end_matches(['/', '\\'])))
 }
 
 #[tauri::command]
@@ -1776,6 +1796,7 @@ pub fn run() {
             http_engine::start_http_download,
             http_engine::cancel_http_download,
             http_engine::set_http_rate_limit,
+            template::preview_filename_template,
             start_torrent,
             cancel_torrent,
             pause_torrent,
@@ -1827,6 +1848,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn templated_output_path_keeps_folders_and_escapes_percent() {
+        let vars = template::TemplateVars {
+            title: Some("100% Pure".into()),
+            uploader: Some("Chan/nel".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            templated_output_path("/dl/", "{uploader}/{title}", &vars).unwrap(),
+            "/dl/Chan-nel/100%% Pure.%(ext)s"
+        );
+        assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
+    }
 
     /// S-11: a torrent-controlled name can't break out of Explorer's quoting.
     #[test]

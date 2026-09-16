@@ -235,6 +235,17 @@ const HELP = {
   ipv4: ['IPv4-only', 'Many sites throttle or block downloads over IPv6. Turn this off only if your network has no IPv4.'],
 } satisfies Record<string, [string, string]>;
 
+/** Sample values for the file name template preview. */
+const SAMPLE_TEMPLATE_VARS = {
+  title: 'Never Gonna Give You Up',
+  uploader: 'Rick Astley',
+  site: 'youtube.com',
+  id: 'dQw4w9WgXcQ',
+  date: '20091025',
+  resolution: '1080p',
+  category: 'Music',
+};
+
 export default function Settings() {
   const { preferences: p, updatePreference, resetToDefaults } = useSettings();
   const service = useService();
@@ -256,6 +267,22 @@ export default function Settings() {
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [ffmpegOk, setFfmpegOk] = React.useState(true);
   const engine = useEngineStatus();
+  const [templatePreview, setTemplatePreview] = React.useState<{ ok: boolean; text: string } | null>(null);
+
+  // Live preview of the file name template, rendered by the same code that
+  // names real downloads.
+  React.useEffect(() => {
+    if (activeSection !== 'storage') return;
+    const timer = setTimeout(() => {
+      service.previewFilenameTemplate(p.filenameTemplate, SAMPLE_TEMPLATE_VARS)
+        .then(text => setTemplatePreview({ ok: true, text }))
+        .catch((e: unknown) => setTemplatePreview({
+          ok: false,
+          text: typeof e === 'string' ? e : e instanceof Error ? e.message : 'Invalid template',
+        }));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeSection, p.filenameTemplate, service]);
 
   React.useEffect(() => {
     if (activeSection !== 'updates') return;
@@ -496,6 +523,28 @@ export default function Settings() {
                     <FolderOpen className="w-3 h-3 shrink-0" />
                     {p.defaultSaveFolder}
                   </button>
+                </SettingRow>
+                <SettingRow label="File names" description="How new downloads are named. Placeholders: {title} {uploader} {site} {resolution} {date} (the day it was added); a / makes a subfolder. Torrents keep their own names">
+                  <div className="flex flex-col items-end gap-1">
+                    <input
+                      type="text"
+                      value={p.filenameTemplate}
+                      onChange={e => updatePreference('filenameTemplate', e.target.value)}
+                      placeholder="{title}"
+                      spellCheck={false}
+                      autoComplete="off"
+                      aria-label="File name template"
+                      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+                    />
+                    {templatePreview && (
+                      <span
+                        className={cn('text-[11px] max-w-56 truncate', templatePreview.ok ? 'text-muted-foreground' : 'text-destructive')}
+                        title={templatePreview.text}
+                      >
+                        {templatePreview.ok ? `e.g. ${templatePreview.text}.mp4` : templatePreview.text}
+                      </span>
+                    )}
+                  </div>
                 </SettingRow>
               </div>
             </TabsContent>

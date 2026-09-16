@@ -729,6 +729,7 @@ pub async fn probe_direct_link(app: AppHandle, url: String) -> Result<LinkProbe,
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn start_http_download(
     app: AppHandle,
     id: String,
@@ -737,6 +738,8 @@ pub async fn start_http_download(
     filename: Option<String>,
     sha256: Option<String>,
     speed_limit: Option<u64>,
+    filename_template: Option<String>,
+    template_vars: Option<crate::template::TemplateVars>,
 ) -> Result<(), PrismError> {
     let source = checked_url(&url)?;
     let sha256 = sha256.map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty());
@@ -753,11 +756,29 @@ pub async fn start_http_download(
     if link.is_web_page() {
         return Err(PrismError::new(ErrorCode::Unsupported, "That link opens a web page, not a file"));
     }
-    let name = filename
-        .map(|f| crate::torrent::safe_folder_name(&f))
-        .filter(|f| !f.is_empty())
-        .unwrap_or_else(|| link.filename.clone());
-    let wanted = dir.join(&name);
+    let wanted = match filename_template.filter(|t| !t.trim().is_empty()) {
+        // A file name template names it and may add subfolders; the server's
+        // own name is its {filename}.
+        Some(template) => {
+            let mut vars = template_vars.unwrap_or_default();
+            vars.filename = Some(link.filename.clone());
+            let rel = crate::template::render(&template, &vars)
+                .map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("File name template: {e}")))?;
+            let path = dir.join(rel);
+            crate::validate_download_path(&path.to_string_lossy(), &crate::picked_dirs(&app))
+                .map_err(|e| PrismError::new(ErrorCode::Permission, e))?;
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await.map_err(io_error)?;
+            }
+            path
+        }
+        None => dir.join(
+            filename
+                .map(|f| crate::torrent::safe_folder_name(&f))
+                .filter(|f| !f.is_empty())
+                .unwrap_or_else(|| link.filename.clone()),
+        ),
+    };
     // An unfinished download of this name resumes; anything else never
     // overwrites an existing file.
     let dest = if with_suffix(&wanted, STATE_SUFFIX).exists() { wanted } else { free_destination(&wanted) };

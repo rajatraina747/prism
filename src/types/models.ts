@@ -69,6 +69,10 @@ export interface DownloadSettings {
   speedLimit?: number; // bytes per second, 0 = unlimited
   // Torrent-only: indices of files to download. Undefined = all files.
   selectedFiles?: number[];
+  // The file name template in force when the item was queued (not for
+  // torrents). Fixed per item, so a resume finds its partial file even if the
+  // preference changed meanwhile. Absent = the plain title, as before 2.0.
+  filenameTemplate?: string;
 }
 
 export interface PlaylistEntry {
@@ -290,6 +294,9 @@ export interface AppPreferences {
   engineAutoCheck: boolean;
   // Install a newer engine as soon as the daily check finds one.
   engineAutoUpdate: boolean;
+  // How new downloads are named, e.g. "{uploader}/{title}" (a / makes a
+  // subfolder). Rendered and made safe in Rust (src-tauri/src/template.rs).
+  filenameTemplate: string;
 }
 
 export interface DiagnosticsEntry {
@@ -383,6 +390,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   forceIpv4: true,
   engineAutoCheck: true,
   engineAutoUpdate: false,
+  filenameTemplate: '{title}',
 };
 
 export const DEFAULT_PRESETS: DownloadPreset[] = [

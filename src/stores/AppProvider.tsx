@@ -370,8 +370,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);
-    dispatch({ type: 'add', item });
-  }, []);
+    // Fix the naming rule when the item is queued, so changing the preference
+    // later can't rename a download halfway (a resume must find its partial
+    // file). The default template leaves naming exactly as it was; torrents
+    // keep the names their creators gave them.
+    const template = settings.filenameTemplate.trim();
+    const stamped = item.kind === 'torrent' || item.settings.filenameTemplate || !template || template === '{title}'
+      ? item
+      : { ...item, settings: { ...item.settings, filenameTemplate: template } };
+    dispatch({ type: 'add', item: stamped });
+  }, [settings.filenameTemplate]);
 
   // Detach listeners AND kill the backend yt-dlp process for a download.
   const stopDownload = useCallback((id: string) => {

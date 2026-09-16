@@ -8,7 +8,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory). The webview's fs
@@ -64,6 +64,20 @@ function readLaunchLinks(): Promise<string[]> {
     })(),
   ]).then(([links, files]) => [...links, ...files]);
   return launchLinksPromise;
+}
+
+/** What a file name template can use for this item (template.rs). */
+function templateVarsFor(item: DownloadItem): TemplateVars {
+  return {
+    // A name typed in the details dialog wins over the site's title. Stored
+    // names are escaped for yt-dlp (% → %%); the template wants the raw text.
+    title: (item.settings.filename || item.metadata.title || '').replace(/%%/g, '%'),
+    uploader: item.metadata.uploader,
+    site: item.metadata.source.domain,
+    resolution: item.settings.format?.resolution,
+    // Sites don't report an upload date here; {date} is the day it was added.
+    date: item.metadata.source.addedAt,
+  };
 }
 
 export class TauriPrismService implements IPrismService {
@@ -191,6 +205,8 @@ export class TauriPrismService implements IPrismService {
           filename: item.settings.filename || null,
           sha256: null,
           speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
+          filenameTemplate: item.settings.filenameTemplate ?? null,
+          templateVars: templateVarsFor(item),
         });
         return;
       }
@@ -210,6 +226,10 @@ export class TauriPrismService implements IPrismService {
         subtitleLanguage: item.settings.subtitleLanguage ?? null,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         expectedSize: item.settings.format?.fileSize || null,
+        // With a template, Rust builds the output path itself from these.
+        outputDir: dest,
+        filenameTemplate: item.settings.filenameTemplate ?? null,
+        templateVars: templateVarsFor(item),
       });
     };
 
@@ -506,6 +526,10 @@ export class TauriPrismService implements IPrismService {
 
   async probeDirectLink(url: string): Promise<LinkProbe> {
     return invoke<LinkProbe>('probe_direct_link', { url });
+  }
+
+  async previewFilenameTemplate(template: string, vars: TemplateVars): Promise<string> {
+    return invoke<string>('preview_filename_template', { template, vars });
   }
 
   persistence = {

@@ -54,6 +54,20 @@ export interface EngineInfo {
   updateAvailable: boolean;
 }
 
+/** Mirrors `TemplateVars` in src-tauri/src/template.rs. */
+export interface TemplateVars {
+  title?: string;
+  uploader?: string;
+  site?: string;
+  id?: string;
+  /** `YYYYMMDD` or RFC 3339. */
+  date?: string;
+  resolution?: string;
+  /** The server's file name (direct links), extension included. */
+  filename?: string;
+  category?: string;
+}
+
 /** Mirrors `LinkProbe` in src-tauri/src/http_engine.rs. */
 export interface LinkProbe {
   finalUrl: string;
@@ -167,6 +181,9 @@ export interface IPrismService {
   checkEngineUpdate(force?: boolean): Promise<EngineInfo>;
   /** What an http(s) link points at — a file (name, size) or a web page. */
   probeDirectLink(url: string): Promise<LinkProbe>;
+  /** The relative path a file name template produces for `vars`; rejects with
+   * the template's mistake (unknown placeholder, unclosed brace). */
+  previewFilenameTemplate(template: string, vars: TemplateVars): Promise<string>;
 
   // Persistence
   persistence: {

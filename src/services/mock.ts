@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -389,6 +389,15 @@ export class MockPrismService implements IPrismService {
   async probeDirectLink(url: string): Promise<LinkProbe> {
     const name = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '') || 'download';
     return { finalUrl: url, filename: name, size: 250_000_000, acceptRanges: true, contentType: 'application/octet-stream' };
+  }
+
+  async previewFilenameTemplate(template: string, vars: TemplateVars): Promise<string> {
+    // The demo's stand-in for template.rs: token replacement only (no date
+    // formats, no validation).
+    const values: Record<string, string | undefined> = { ...vars, name: vars.filename?.replace(/\.[^.]+$/, '') };
+    const rendered = (template.trim() || '{title}')
+      .replace(/\{(\w+)(?::[^}]*)?\}/g, (_match, key: string) => (values[key] ?? '').replace(/[/\\]/g, '-'));
+    return rendered.split('/').map(part => part.trim()).filter(Boolean).join('/') || 'download';
   }
 
   persistence = {
