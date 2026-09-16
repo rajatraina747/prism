@@ -1,5 +1,5 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary } from './types';
 import { generateId } from './utils';
 
 // ── Mock Data ──
@@ -347,6 +347,12 @@ export class MockPrismService implements IPrismService {
 
   async ffmpegAvailable(): Promise<boolean> {
     return true;
+  }
+
+  async storageSummary(folder: string): Promise<StorageSummary> {
+    // Web demo: no disk to measure, so a plausible fixed answer rather than
+    // zeroes, which would read as "nothing downloaded".
+    return { folder, files: 12, bytes: 3_221_225_472, freeBytes: 128_849_018_880, partial: false };
   }
 
   async checkForUpdates() {

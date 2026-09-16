@@ -77,6 +77,15 @@ export interface LinkProbe {
   contentType: string | null;
 }
 
+export interface StorageSummary {
+  folder: string;
+  files: number;
+  bytes: number;
+  freeBytes: number;
+  /** The walk stopped early — treat `files`/`bytes` as a floor. */
+  partial: boolean;
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   version?: string;
@@ -143,6 +152,9 @@ export interface IPrismService {
   openExternal(url: string): Promise<void>;
   pickDirectory(): Promise<string | null>;
   getDefaultDownloadPath(): Promise<string>;
+  /** What a folder is holding and what its disk has left. The walk is capped,
+   * so `partial` means the totals are a floor rather than a final answer. */
+  storageSummary(folder: string): Promise<StorageSummary>;
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

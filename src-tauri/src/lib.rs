@@ -1070,6 +1070,76 @@ fn explorer_select_arg(path: &str) -> Result<String, String> {
     Ok(format!("/select,\"{}\"", path.replace('/', "\\")))
 }
 
+/// What one folder is holding, and what the disk it sits on has left.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageSummary {
+    pub folder: String,
+    pub files: u64,
+    pub bytes: u64,
+    pub free_bytes: u64,
+    /// True when the walk stopped early — the number is a floor, not a total,
+    /// and the UI says so rather than showing a wrong figure confidently.
+    pub partial: bool,
+}
+
+/// Cap the walk: the download folder is wherever the user pointed Prism,
+/// which can be a network share or an enormous tree. A settings tile is not
+/// worth an unbounded traversal, so it stops and admits it stopped.
+const STORAGE_WALK_MAX_ENTRIES: u64 = 50_000;
+const STORAGE_WALK_MAX_DEPTH: usize = 8;
+
+pub(crate) fn walk_storage(root: &std::path::Path) -> (u64, u64, bool) {
+    let (mut files, mut bytes, mut seen) = (0u64, 0u64, 0u64);
+    let mut partial = false;
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > STORAGE_WALK_MAX_ENTRIES {
+                return (files, bytes, true);
+            }
+            // Metadata, not follow: a symlink into another tree would be
+            // counted twice, or walked forever.
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                if depth < STORAGE_WALK_MAX_DEPTH {
+                    stack.push((entry.path(), depth + 1));
+                } else {
+                    partial = true;
+                }
+            } else if meta.is_file() {
+                files += 1;
+                bytes += meta.len();
+            }
+        }
+    }
+    (files, bytes, partial)
+}
+
+#[tauri::command]
+async fn storage_summary(folder: String) -> Result<StorageSummary, String> {
+    let expanded = expand_tilde(&folder);
+    let path = std::path::PathBuf::from(&expanded);
+    // A folder that doesn't exist yet is empty rather than an error: Prism
+    // creates it on the first download.
+    let (files, bytes, partial) = if path.is_dir() { walk_storage(&path) } else { (0, 0, false) };
+    // Free space comes from the nearest existing ancestor, so the figure is
+    // still right before the folder has been created.
+    let mut probe = path.as_path();
+    let free_bytes = loop {
+        match fs2::available_space(probe) {
+            Ok(free) => break free,
+            Err(_) => match probe.parent() {
+                Some(parent) => probe = parent,
+                None => break 0,
+            },
+        }
+    };
+    Ok(StorageSummary { folder: expanded, files, bytes, free_bytes, partial })
+}
+
 #[tauri::command]
 async fn get_default_download_path() -> Result<String, String> {
     let home = dirs::download_dir()
@@ -1930,6 +2000,7 @@ pub fn run() {
             player::player_seek,
             player::player_set,
             when_done,
+            storage_summary,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1960,6 +2031,40 @@ mod tests {
             "/dl/Chan-nel/100%% Pure.%(ext)s"
         );
         assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
+    }
+
+    #[test]
+    fn walk_storage_counts_files_and_stops_at_the_depth_limit() {
+        let root = std::env::temp_dir().join(format!("prism-storage-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("a/b")).unwrap();
+        std::fs::write(root.join("one.bin"), vec![0u8; 100]).unwrap();
+        std::fs::write(root.join("a/two.bin"), vec![0u8; 250]).unwrap();
+        std::fs::write(root.join("a/b/three.bin"), vec![0u8; 650]).unwrap();
+
+        let (files, bytes, partial) = walk_storage(&root);
+        assert_eq!(files, 3, "every file under the root is counted");
+        assert_eq!(bytes, 1000, "sizes add up across subfolders");
+        assert!(!partial, "a small tree is counted in full");
+
+        // Deeper than the cap: still counted, but reported as a floor.
+        let mut deep = root.join("deep");
+        for _ in 0..(STORAGE_WALK_MAX_DEPTH + 2) {
+            deep = deep.join("d");
+        }
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("buried.bin"), vec![0u8; 10]).unwrap();
+        let (_, _, partial_deep) = walk_storage(&root);
+        assert!(partial_deep, "a tree deeper than the cap admits it stopped");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn walk_storage_is_empty_for_a_folder_that_isnt_there() {
+        let missing = std::env::temp_dir().join("prism-storage-does-not-exist");
+        let _ = std::fs::remove_dir_all(&missing);
+        assert_eq!(walk_storage(&missing), (0, 0, false));
     }
 
     /// The argv is asserted, never run: a test that actually put the machine

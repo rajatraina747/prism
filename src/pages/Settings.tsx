@@ -6,6 +6,7 @@ import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes, generateId } from '@/services';
 import type { DownloadCategory } from '@/types/models';
+import type { StorageSummary } from '@/services/types';
 import { Panel, ConfirmDialog } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -121,6 +122,58 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         checked ? 'translate-x-4' : 'translate-x-0.5'
       )} />
     </button>
+  );
+}
+
+/** What the download folder is holding, above the setting that chooses it.
+ *
+ * The loader is passed in rather than the service: this sits outside the
+ * Settings component, so reaching for a `service` from here would bind to
+ * something that isn't in scope. */
+function StorageTile({ folder, load }: { folder: string; load: () => Promise<StorageSummary> }) {
+  const [summary, setSummary] = React.useState<StorageSummary | null>(null);
+  const [failed, setFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setSummary(null);
+    setFailed(false);
+    load()
+      .then(s => { if (!cancelled) setSummary(s); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+    // `load` closes over the folder, which is the only thing that changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folder]);
+
+  const size = (bytes: number) => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let n = bytes, i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+  };
+
+  return (
+    <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/30 border border-border/20">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[11px] text-muted-foreground">In this folder</span>
+        {failed ? (
+          <span className="text-[11px] text-muted-foreground">Couldn't read it</span>
+        ) : summary ? (
+          <span className="text-xs text-foreground tabular-nums">
+            {summary.partial && '≥ '}{size(summary.bytes)} · {summary.files.toLocaleString()} file{summary.files === 1 ? '' : 's'}
+            <span className="text-muted-foreground"> · {size(summary.freeBytes)} free</span>
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Measuring…</span>
+        )}
+      </div>
+      {summary?.partial && (
+        <p className="text-[10px] text-muted-foreground/80 mt-0.5">
+          A big folder — counting stopped early, so this is at least that much.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -558,6 +611,10 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="storage" className="mt-0">
+              <StorageTile
+                folder={p.defaultSaveFolder}
+                load={() => service.storageSummary(p.defaultSaveFolder)}
+              />
               <div className="divide-y divide-border/30">
                 <SettingRow label="Download location" description="Any folder you pick — including external drives and network shares — is allowed; system folders (Library, AppData, dotfiles) never are">
                   <button

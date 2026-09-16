@@ -208,7 +208,13 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       only, with an undo that genuinely restores them, since removing from the
       Library never touched the files. Rows are options of a multi-select
       listbox now, so the selection is announced rather than only drawn.
-- [ ] Library list model, grid view, density modes, storage tile.
+- [x] Storage tile: what the download folder is holding and what its disk has
+      left, shown above the setting that chooses that folder. The walk is
+      capped by depth and by entries — the folder is wherever the user pointed
+      Prism, which can be a network share or an enormous tree — and when it
+      stops early it says "at least" rather than reporting a wrong total
+      confidently.
+- [ ] Library list model, grid view, density modes.
 - [ ] Bulk "move to Trash" — needs the `trash` crate and would be the first
       thing in Prism that deletes a finished download, which the Clear dialog
       currently promises it won't. Worth deciding rather than assuming.
