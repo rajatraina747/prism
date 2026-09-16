@@ -1,5 +1,5 @@
 import type { Subscription, PlaylistEntry, DownloadItem, AppPreferences } from '@/types/models';
-import { generateId, sanitizeFilename } from '@/services/utils';
+import { generateId, sanitizeFilename, classifyLink } from '@/services/utils';
 
 // Pure logic for a subscription check: diff the feed against what we've seen
 // and build queue items for the new entries. IO (parsePlaylist, addToQueue,
@@ -95,7 +95,26 @@ export function entryToDownloadItem(
     downloadedBytes: 0,
     totalBytes: 500_000_000,
     retryAttempt: 0,
+    // An RSS enclosure can be a magnet or a plain file rather than a page, so
+    // the engine is chosen from the URL — with the same rule the Dashboard
+    // uses, so a feed link and a pasted link behave identically. Channel feeds
+    // classify as 'http' and go to yt-dlp exactly as before.
+    kind: classifyLink(entry.url),
   };
+}
+
+/** Which fetcher to try first for a feed URL.
+ *
+ * Only a guess, and deliberately a cheap one: the caller falls back to the
+ * other fetcher if this is wrong, so the cost of guessing badly is one wasted
+ * request rather than a failed subscription. It exists so that pasting a
+ * podcast URL doesn't sit through a long yt-dlp parse first. */
+export function likelyFeedType(url: string): 'channel' | 'rss' {
+  const clean = url.trim().toLowerCase();
+  const path = clean.split(/[?#]/)[0];
+  if (/\.(rss|atom|xml)$/.test(path)) return 'rss';
+  if (/(^|[/.])(rss|feed|feeds|atom)([/.]|$)/.test(path)) return 'rss';
+  return 'channel';
 }
 
 function extractDomain(url: string): string {

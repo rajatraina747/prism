@@ -354,6 +354,18 @@ export class MockPrismService implements IPrismService {
     return paths.length;
   }
 
+  async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
+    await delay(400);
+    const host = (() => { try { return new URL(url).hostname; } catch { return 'example.com'; } })();
+    const entries = Array.from({ length: Math.min(limit ?? 5, 5) }, (_, i) => ({
+      url: `https://${host}/files/episode-${i + 1}.mp3`,
+      title: `Episode ${i + 1}`,
+      duration: 0,
+      thumbnail: '',
+    }));
+    return { title: `${host} feed`, entries };
+  }
+
   async storageSummary(folder: string): Promise<StorageSummary> {
     // Web demo: no disk to measure, so a plausible fixed answer rather than
     // zeroes, which would read as "nothing downloaded".

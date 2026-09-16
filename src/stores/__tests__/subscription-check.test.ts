@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffFeed, entryToDownloadItem, entryMatches } from '../subscription-check';
+import { diffFeed, entryToDownloadItem, entryMatches, likelyFeedType } from '../subscription-check';
 import type { Subscription, PlaylistEntry, AppPreferences } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 
@@ -146,5 +146,41 @@ describe('entryToDownloadItem', () => {
   it('falls back to a safe filename for empty titles', () => {
     const item = entryToDownloadItem(entry('https://y/1', '  '), makeSub(), prefs);
     expect(item.settings.filename).toBe('video');
+  });
+
+  it('routes an enclosure to the engine that can fetch it', () => {
+    const magnet = entryToDownloadItem(entry('magnet:?xt=urn:btih:abc123'), makeSub(), prefs);
+    expect(magnet.kind).toBe('torrent');
+    const file = entryToDownloadItem(entry('https://ex.com/ep1.zip'), makeSub(), prefs);
+    expect(file.kind).toBe('direct');
+    // A normal channel entry is still a yt-dlp page, exactly as before.
+    const page = entryToDownloadItem(entry('https://youtube.com/watch?v=abc'), makeSub(), prefs);
+    expect(page.kind).toBe('http');
+  });
+});
+
+describe('likelyFeedType', () => {
+  it('spots the usual feed URLs', () => {
+    expect(likelyFeedType('https://example.com/feed')).toBe('rss');
+    expect(likelyFeedType('https://example.com/podcast.xml')).toBe('rss');
+    expect(likelyFeedType('https://example.com/index.rss')).toBe('rss');
+    expect(likelyFeedType('https://example.com/blog/atom')).toBe('rss');
+    // YouTube's own RSS endpoint, which is a feed even though the host is one
+    // yt-dlp would otherwise handle.
+    expect(likelyFeedType('https://youtube.com/feeds/videos.xml?channel_id=X')).toBe('rss');
+  });
+
+  it('treats channel and playlist URLs as channels', () => {
+    expect(likelyFeedType('https://www.youtube.com/@someone')).toBe('channel');
+    expect(likelyFeedType('https://www.youtube.com/playlist?list=PL123')).toBe('channel');
+  });
+
+  it('does not match a word that merely starts with feed', () => {
+    // The guess is cheap to get wrong, but /feedback is a page, not a feed.
+    expect(likelyFeedType('https://example.com/feedback')).toBe('channel');
+  });
+
+  it('ignores the query string when guessing', () => {
+    expect(likelyFeedType('https://example.com/feed?after=2020')).toBe('rss');
   });
 });

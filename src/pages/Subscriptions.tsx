@@ -71,7 +71,7 @@ export default function Subscriptions() {
       await addSubscription(trimmed);
       setUrl('');
     } catch (e) {
-      setAddError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Could not parse this URL as a channel or playlist');
+      setAddError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Could not read this URL as a channel, playlist, or feed');
     } finally {
       setAdding(false);
     }
@@ -108,7 +108,7 @@ export default function Subscriptions() {
             value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-            placeholder="Paste a channel or playlist URL to subscribe"
+            placeholder="Paste a channel, playlist, or RSS feed URL to subscribe"
             className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50"
             disabled={adding}
           />

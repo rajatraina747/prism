@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
-import type { Subscription } from '@/types/models';
-import { diffFeed, entryToDownloadItem } from '@/stores/subscription-check';
+import type { Subscription, PlaylistInfo } from '@/types/models';
+import { diffFeed, entryToDownloadItem, likelyFeedType } from '@/stores/subscription-check';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { generateId } from '@/services/utils';
@@ -54,6 +54,15 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { service.persistence.saveSubscriptions(subs); }, [subs, service]);
 
+  // The single place that decides which fetcher a feed uses. Both return the
+  // same shape, so everything downstream — the seen set, the keyword rules,
+  // the category — is identical whichever one ran.
+  const fetchFeed = useCallback(
+    (type: 'channel' | 'rss', url: string): Promise<PlaylistInfo> =>
+      type === 'rss' ? service.fetchRss(url, POLL_WINDOW) : service.parsePlaylist(url, POLL_WINDOW),
+    [service],
+  );
+
   const runCheck = useCallback(async (onlyId?: string) => {
     if (checkingRef.current) return;
     checkingRef.current = true;
@@ -63,7 +72,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
       for (const sub of targets) {
         const checkedAt = new Date().toISOString();
         try {
-          const feed = await service.parsePlaylist(sub.url, POLL_WINDOW);
+          const feed = await fetchFeed(sub.type ?? 'channel', sub.url);
           const { newEntries, seenUrls } = diffFeed(sub, feed.entries);
           for (const entry of newEntries) {
             addToQueue(entryToDownloadItem(entry, sub, prefsRef.current));
@@ -89,7 +98,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
       checkingRef.current = false;
       setChecking(false);
     }
-  }, [service, addToQueue]);
+  }, [fetchFeed, addToQueue]);
 
   // Scheduler: one check shortly after launch, then on the configured interval.
   useEffect(() => {
@@ -107,10 +116,29 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     if (subsRef.current.some(s => s.url === url)) {
       throw new Error('Already subscribed to this URL');
     }
-    const feed = await service.parsePlaylist(url, POLL_WINDOW);
+    // Guess which kind of feed this is, then try the other one if the guess
+    // was wrong — so the user pastes a URL and doesn't have to know, or care,
+    // whether Prism reads it with yt-dlp or as RSS.
+    const guess = likelyFeedType(url);
+    let type: 'channel' | 'rss' = guess;
+    let feed: PlaylistInfo;
+    try {
+      feed = await fetchFeed(guess, url);
+    } catch (primary) {
+      const other = guess === 'rss' ? 'channel' : 'rss';
+      try {
+        feed = await fetchFeed(other, url);
+        type = other;
+      } catch {
+        // Report the guess's failure, not the fallback's: for a URL that looks
+        // like a channel, "couldn't parse as a channel" is the useful message.
+        throw primary;
+      }
+    }
     const sub: Subscription = {
       id: generateId(),
       url,
+      type,
       title: feed.title,
       addedAt: new Date().toISOString(),
       enabled: true,
@@ -120,7 +148,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     setSubs(prev => [...prev, sub]);
     diagnostics.log('info', `Subscribed: ${sub.title} (${feed.entries.length} existing videos marked seen)`);
     return sub;
-  }, [service]);
+  }, [fetchFeed]);
 
   const removeSubscription = useCallback((id: string) => {
     setSubs(prev => prev.filter(s => s.id !== id));

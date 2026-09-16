@@ -498,6 +498,10 @@ export class TauriPrismService implements IPrismService {
     return invoke<number>('move_to_trash', { paths });
   }
 
+  async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
+    return invoke<PlaylistInfo>('rss_fetch', { url, limit });
+  }
+
   async checkForUpdates(): Promise<UpdateCheckResult> {
     // The check runs in Rust (`check_app_update`) so its HTTP client can carry
     // a connect timeout — see src-tauri/src/updater.rs. One retry for a

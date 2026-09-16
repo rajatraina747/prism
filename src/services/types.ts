@@ -159,6 +159,11 @@ export interface IPrismService {
    * delete. Returns how many items were moved. */
   moveToTrash(paths: string[]): Promise<number>;
 
+  /** Read an RSS/Atom feed, taking each entry's enclosure where it has one.
+   * Returns the same shape as `parsePlaylist` so subscription checking doesn't
+   * have to care which fetcher ran. */
+  fetchRss(url: string, limit?: number): Promise<PlaylistInfo>;
+
   // Clipboard
   copyToClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;

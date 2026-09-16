@@ -1,3 +1,5 @@
+import type { DownloadKind } from '@/types/models';
+
 export function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 11);
 }
@@ -99,6 +101,18 @@ export function isDirectFileUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Which engine a link belongs to.
+ *
+ * Composed from the two predicates above rather than re-deriving the rules, so
+ * a magnet arriving in an RSS enclosure is classified exactly the way the same
+ * magnet pasted into the Dashboard is. A second, subtly different rule here is
+ * how feeds would start behaving differently from hand-added links. */
+export function classifyLink(url: string): DownloadKind {
+  if (isTorrentUrl(url)) return 'torrent';
+  if (isDirectFileUrl(url)) return 'direct';
+  return 'http';
 }
 
 /** File name a direct link points at, for the queue until the server names it. */

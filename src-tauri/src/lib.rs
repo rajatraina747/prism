@@ -9,6 +9,7 @@ mod player_state;
 mod postprocess;
 mod proc;
 mod quarantine;
+mod rss;
 mod spawn;
 mod stream_server;
 mod template;
@@ -2035,6 +2036,7 @@ pub fn run() {
             when_done,
             storage_summary,
             move_to_trash,
+            rss::rss_fetch,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

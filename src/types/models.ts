@@ -387,6 +387,12 @@ export interface Subscription {
   id: string;
   url: string;
   title: string;
+  /** How the feed is read. Absent means 'channel' — yt-dlp's flat playlist
+   * dump, which is what every subscription before 2.0 was — so existing
+   * subscriptions keep working untouched. 'rss' parses an RSS/Atom feed and
+   * takes its enclosures, which may be torrents or plain files rather than
+   * pages yt-dlp understands. */
+  type?: 'channel' | 'rss';
   addedAt: string;
   enabled: boolean;
   audioOnly: boolean;
