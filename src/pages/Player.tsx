@@ -82,6 +82,9 @@ export default function Player() {
   const [eof, setEof] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  // Set when this file was left partway through, so the jump is visible and
+  // undoable rather than the video mysteriously starting in the middle.
+  const [resumedFrom, setResumedFrom] = useState<number | null>(null);
 
   // While the user drags the seek bar, ignore time-pos updates so the thumb
   // doesn't fight the stream.
@@ -111,6 +114,17 @@ export default function Player() {
       setLoadError(e instanceof Error ? e.message : String(e));
       throw e;
     }
+    // Pick up where this one was left, if it was left partway through. Rust
+    // knows which item is open; this only asks for the number.
+    try {
+      const at = await invoke<number | null>('player_resume_position');
+      if (at && at > 0) {
+        await invoke('player_seek', { seconds: at, relative: false });
+        setResumedFrom(at);
+      } else {
+        setResumedFrom(null);
+      }
+    } catch { /* a missing position is not worth reporting */ }
     // Re-run the macOS adoption pass in case mpv (re)created its video window
     // for this load — idempotent, no-op elsewhere. See src-tauri/src/player.rs.
     invoke('fixup_player_video').catch(() => {});
@@ -188,6 +202,25 @@ export default function Player() {
       invoke('player_destroy').catch(() => {});
     };
   }, [loadFile]);
+
+  // Remember the position periodically and when the window goes away. Rust
+  // decides what is worth keeping (and forgets anything watched to the end),
+  // so this just reports where the player is.
+  const progressRef = useRef({ timePos: 0, duration: 0 });
+  progressRef.current = { timePos, duration };
+  useEffect(() => {
+    const save = () => {
+      const { timePos: position, duration: total } = progressRef.current;
+      if (position > 0) invoke('player_save_position', { position, duration: total }).catch(() => {});
+    };
+    const t = setInterval(save, 5000);
+    window.addEventListener('beforeunload', save);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('beforeunload', save);
+      save();
+    };
+  }, []);
 
   // Non-mac: native fullscreen can change outside our button — track the real
   // state on resizes. On macOS we use *simple* fullscreen (below) whose state
@@ -349,6 +382,15 @@ export default function Player() {
             <span role="alert" className="shrink-0 max-w-[60%] truncate text-[11px] px-1.5 py-0.5 rounded bg-red-500/80 text-white" title={loadError}>
               {loadError}
             </span>
+          )}
+          {resumedFrom !== null && (
+            <button
+              onClick={() => { seek(0).catch(() => {}); setResumedFrom(null); }}
+              className="shrink-0 pointer-events-auto text-[11px] px-1.5 py-0.5 rounded bg-white/15 text-white/90 hover:bg-white/25 transition-colors"
+              title={`Resumed from ${formatDuration(resumedFrom)}`}
+            >
+              Resumed from {formatDuration(resumedFrom)} · Start over
+            </button>
           )}
           {isHdr && (
             <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-400/90 text-black">

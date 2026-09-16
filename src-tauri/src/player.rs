@@ -331,6 +331,14 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
     if !crate::is_openable_media(&validated) {
         return Err("The player only opens media files".into());
     }
+    {
+        use tauri::Manager;
+        let title = std::path::Path::new(&validated)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned());
+        app.state::<crate::player_state::PlayerState>()
+            .set_current(crate::player_state::key_for_path(&validated), title);
+    }
     mpv_worker(&app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
             mpv.command("loadfile", vec![serde_json::json!(validated)], PLAYER_LABEL)?;
@@ -368,6 +376,10 @@ pub async fn player_load_stream(
         .state::<crate::stream_server::StreamServer>()
         .url_for(&app, &torrent_id, file_idx)
         .await?;
+    app.state::<crate::player_state::PlayerState>().set_current(
+        crate::player_state::key_for_stream(&torrent_id, file_idx),
+        Some(name),
+    );
     mpv_worker(&app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
             // A swarm that stalls mid-file should make the player wait, not
@@ -400,6 +412,30 @@ pub async fn player_seek(
             )
         })
         .await
+}
+
+/// Remember where the player is in whatever it currently has open. The window
+/// reports only the number: which item it belongs to is Rust's to know, from
+/// the last `player_load`/`player_load_stream`.
+#[tauri::command]
+pub async fn player_save_position(
+    app: AppHandle,
+    window: tauri::Window,
+    position: f64,
+    duration: f64,
+) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    crate::player_state::save_current(&app, position, duration)
+}
+
+/// Where to pick up whatever is open, if it was left partway through.
+#[tauri::command]
+pub async fn player_resume_position(
+    app: AppHandle,
+    window: tauri::Window,
+) -> Result<Option<f64>, String> {
+    ensure_player_window(&window)?;
+    Ok(crate::player_state::resume_current(&app))
 }
 
 /// The only properties the UI may set, each with its value shape checked.

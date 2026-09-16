@@ -166,7 +166,12 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       add. Handled files are renamed (`.added`/`.failed`), never deleted.
 
 **Player**
-- [ ] Resume position, chapters, external subtitles, track menus, mini player.
+- [x] Resume position (`player_state.rs`): where you stopped is kept per file —
+      and per file of a torrent, so it survives the move from streaming to
+      playing off disk — offered on reopen with "Start over", and forgotten
+      once you have watched something to the end. The window reports only the
+      number; which item it belongs to is Rust's to know.
+- [ ] Chapters, external subtitles, track menus, mini player.
 
 **Library and automation**
 - [ ] Library list model, grid, bulk actions, storage, undo that resumes.
