@@ -136,6 +136,7 @@ echo "== libplacebo =="
 python3 -m venv "$WORK/venv"
 "$WORK/venv/bin/pip" install --quiet jinja2 glad2
 PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
+  -Dc_link_args="-L$PREFIX/lib" -Dcpp_link_args="-L$PREFIX/lib" \
   -Dvulkan-registry="$PREFIX/share/vulkan/registry/vk.xml" -Dglslang=enabled -Dshaderc=disabled \
   -Dopengl=disabled -Dd3d11=disabled -Dlcms=enabled -Ddovi=disabled -Dlibdovi=disabled \
   -Ddemos=false -Dtests=false
