@@ -240,6 +240,19 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels }: {
 
 // ── Files ───────────────────────────────────────────────────────────────
 
+/** Whether to offer "Play now" for a file. The list in
+ * src-tauri/src/stream_server.rs is the authority — it refuses anything else —
+ * so this only decides whether the button is worth showing. */
+const STREAMABLE = [
+  'mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'mpg', 'mpeg', 'ts', 'm2ts', 'wmv', 'flv', 'ogv',
+  'mp3', 'm4a', 'flac', 'opus', 'ogg', 'wav', 'aac',
+];
+
+function isStreamable(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase();
+  return !!ext && ext !== name.toLowerCase() && STREAMABLE.includes(ext);
+}
+
 interface FileNode { index: number; name: string; size: number; progress: number }
 interface FolderNode { path: string; files: FileNode[]; size: number; done: number }
 
@@ -311,6 +324,15 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
                     <div className="w-24"><ProgressBar value={sel ? f.progress : 0} /></div>
                     <span className="w-9 text-right text-muted-foreground">{sel ? `${f.progress.toFixed(0)}%` : '—'}</span>
                     <span className="flex items-center gap-0.5 w-16 justify-end">
+                      {/* Play while it downloads. Only for files the torrent is
+                          actually fetching: selecting one here would mean
+                          dropping every other file the user chose. */}
+                      {!complete && sel && playerAvailable && isStreamable(base) && (
+                        <button title="Play now — streams while it downloads" aria-label={`Play ${base} now`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                          onClick={() => import('@/lib/player-window').then(({ openInPlayer }) => openInPlayer({ stream: { torrentId: item.id, fileIdx: f.index }, title: base })).catch(errToast)}>
+                          <MonitorPlay className="w-3 h-3" />
+                        </button>
+                      )}
                       {complete && playerAvailable && (
                         <button title="Play in Prism" aria-label={`Play ${base} in Prism`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
                           onClick={() => import('@/lib/player-window').then(({ openInPlayer }) => openInPlayer({ path: full, title: base })).catch(errToast)}>

@@ -94,10 +94,18 @@ export default function Player() {
       setTitle(src.title);
       getCurrentWindow().setTitle(src.title).catch(() => {});
     }
-    // Rust validates the path (allowed roots + media type) and unpauses. A
-    // failure (bad path, or the engine timing out) is shown, not swallowed.
+    // Rust validates either way (a path against the allowed roots and media
+    // types; a stream against the torrent's own file list) and unpauses. A
+    // failure — bad path, file not in the torrent, engine timing out — is
+    // shown, not swallowed.
     try {
-      await invoke('player_load', { path: src.path });
+      if (src.stream) {
+        await invoke('player_load_stream', { torrentId: src.stream.torrentId, fileIdx: src.stream.fileIdx });
+      } else if (src.path) {
+        await invoke('player_load', { path: src.path });
+      } else {
+        return;
+      }
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
@@ -161,9 +169,14 @@ export default function Player() {
       setReady(true);
 
       const params = new URLSearchParams(window.location.search);
+      const title = params.get('title') ?? undefined;
+      const torrentId = params.get('torrentId');
+      const fileIdx = params.get('fileIdx');
       const src = params.get('src');
-      if (src) {
-        await loadFile({ path: src, title: params.get('title') ?? undefined }).catch(() => {});
+      if (torrentId && fileIdx !== null) {
+        await loadFile({ stream: { torrentId, fileIdx: Number(fileIdx) }, title }).catch(() => {});
+      } else if (src) {
+        await loadFile({ path: src, title }).catch(() => {});
       }
     })();
 

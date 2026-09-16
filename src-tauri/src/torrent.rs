@@ -404,6 +404,33 @@ impl TorrentManager {
         self.session.lock().await.as_ref().map(|(s, _)| s.clone())
     }
 
+    /// The `Api` half of the session slot — the only route to the piece
+    /// bitfield and to a file stream of a torrent still downloading.
+    pub async fn api(&self) -> Option<Arc<Api>> {
+        self.session.lock().await.as_ref().map(|(_, a)| a.clone())
+    }
+
+    /// What the stream server needs to serve one file: librqbit's own id for
+    /// the torrent, and the file's name and length. Keeps librqbit's types
+    /// inside this module, and refuses an index the torrent doesn't have
+    /// rather than letting the server ask for it.
+    pub async fn stream_target(
+        &self,
+        id: &str,
+        file_idx: usize,
+    ) -> Result<(TorrentIdOrHash, String, u64), String> {
+        let handle = self.handle_of(id).await?;
+        let file = handle
+            .with_metadata(|m| {
+                m.file_infos
+                    .get(file_idx)
+                    .map(|fi| (fi.relative_filename.to_string_lossy().into_owned(), fi.len))
+            })
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "That file is not in this torrent".to_string())?;
+        Ok((TorrentIdOrHash::from(handle.id()), file.0, file.1))
+    }
+
     /// Set the session-wide download/upload rate limits (bytes/sec; None = unlimited).
     /// Applies live if a session exists, and is remembered for the next one.
     pub async fn set_rate_limit(&self, download_bps: Option<NonZeroU32>, upload_bps: Option<NonZeroU32>) {

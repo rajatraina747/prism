@@ -9,6 +9,7 @@ mod postprocess;
 mod proc;
 mod quarantine;
 mod spawn;
+mod stream_server;
 mod template;
 pub mod torrent;
 mod watch;
@@ -1722,6 +1723,7 @@ pub fn run() {
         .manage(DownloadManager::new())
         .manage(http_engine::HttpEngine::new())
         .manage(torrent::TorrentManager::new())
+        .manage(stream_server::StreamServer::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .manage(updater::PendingUpdate::default())
         // Embedded player (separate "player" window). The plugin cleans up its
@@ -1842,6 +1844,7 @@ pub fn run() {
             player::player_init,
             player::player_destroy,
             player::player_load,
+            player::player_load_stream,
             player::player_seek,
             player::player_set,
         ])

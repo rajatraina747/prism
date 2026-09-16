@@ -6,8 +6,18 @@ import { emitTo } from '@tauri-apps/api/event';
 // the whole webview — doing that to the main window would force the entire UI
 // to manage transparency. See src/pages/Player.tsx.
 
+/** A file of a torrent that is still downloading, served over loopback by
+ * src-tauri/src/stream_server.rs rather than opened from disk. */
+export interface PlayerStream {
+  torrentId: string;
+  fileIdx: number;
+}
+
 export interface PlayerSource {
-  path: string;
+  /** A file on disk. Absent when playing a `stream`. */
+  path?: string;
+  /** A torrent file to stream while it downloads. Takes precedence over `path`. */
+  stream?: PlayerStream;
   title?: string;
 }
 
@@ -23,7 +33,7 @@ async function expandTilde(p: string): Promise<string> {
 }
 
 export async function openInPlayer(raw: PlayerSource): Promise<void> {
-  const src: PlayerSource = { ...raw, path: await expandTilde(raw.path) };
+  const src: PlayerSource = raw.path ? { ...raw, path: await expandTilde(raw.path) } : raw;
   const existing = await WebviewWindow.getByLabel('player');
   if (existing) {
     await emitTo('player', PLAYER_LOAD_EVENT, src);
@@ -32,7 +42,13 @@ export async function openInPlayer(raw: PlayerSource): Promise<void> {
     return;
   }
 
-  const params = new URLSearchParams({ src: src.path });
+  const params = new URLSearchParams();
+  if (src.stream) {
+    params.set('torrentId', src.stream.torrentId);
+    params.set('fileIdx', String(src.stream.fileIdx));
+  } else if (src.path) {
+    params.set('src', src.path);
+  }
   if (src.title) params.set('title', src.title);
 
   const win = new WebviewWindow('player', {

@@ -4219,9 +4219,11 @@ name = "prism"
 version = "1.9.2"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "dirs",
  "fs2",
+ "getrandom 0.3.4",
  "libc",
  "libloading 0.8.9",
  "librqbit",
@@ -4251,6 +4253,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tokio",
+ "tokio-util",
  "url",
 ]
 

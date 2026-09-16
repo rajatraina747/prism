@@ -143,7 +143,7 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       first; web pages are refused).
 - [ ] Direct links, still to add: a way to enter an expected SHA-256 (the
       engine already verifies one).
-- [ ] Stream while downloading ("Play now") — see the torrent arc below.
+- [x] Stream while downloading ("Play now") — see the torrent arc below.
 
 **Organising**
 - [x] Filename templates (`template.rs`): rendered in Rust, previewed in
@@ -302,13 +302,16 @@ exposes. Shipped in one pass:
   trackers to a running torrent, sequential download / piece priorities,
   availability, moving a torrent's folder, per-torrent limits after add,
   protocol encryption. Upstream PR territory; the UI says so rather than faking it.
-- [ ] **Stream-while-downloading (flagship candidate).** librqbit's
-  `FileStream` (AsyncRead+AsyncSeek, on-demand piece prioritization) served
-  over a localhost HTTP server (Range support) → "Play now" on a downloading
-  torrent. Design sketch: axum/hyper listener on 127.0.0.1:<random>, one route
-  per (torrent, file); Play button switches label while status=downloading;
-  CSP already allows localhost? verify `connect-src`/media loading. Biggest
-  remaining UI+backend lift; do as its own arc.
+- [x] **Stream-while-downloading.** librqbit's `FileStream` (AsyncRead+AsyncSeek,
+  on-demand piece prioritization) served over a loopback HTTP server
+  (`stream_server.rs`): axum on 127.0.0.1 with a port the OS picks, one route
+  per (torrent, file), a token minted per launch and compared in constant time,
+  a `Host` check, no CORS header, and a single Range per request. "Play now"
+  appears in the details Files tab for a file the torrent is already fetching —
+  selecting one there would mean calling librqbit's all-or-nothing
+  `update_only_files` and silently dropping every other file the user chose.
+  The CSP question turned out to be moot: mpv fetches the URL itself, so the
+  webview never loads it.
 - [ ] **Watch folder.** Poll a user-chosen dir for new `.torrent` files →
   add flow. Cheap via `notify` crate or a 10s scan; needs dedupe against
   already-added infohashes.
@@ -358,9 +361,10 @@ Phased:
   Open file…, simple fullscreen. Gated behind `player_available` (the libmpv
   wrapper staged next to the exe — build.rs does this for dev) so release
   builds hide the buttons until Distribution ships.
-- [ ] **Phase 2 — converge with stream-while-downloading.** The localhost
-  FileStream server (above) feeds the same player: "Play now" on a downloading
-  torrent. mpv handles growing files / Range streams natively.
+- [x] **Phase 2 — converged with stream-while-downloading.** The loopback
+  FileStream server (above) feeds the same player through `player_load_stream`:
+  "Play now" on a downloading torrent. mpv handles growing files / Range
+  streams natively.
 - [x] **Distribution (v1.7.1).** macOS: `scripts/bundle-libmpv-macos.sh`
   collects brew libmpv + full dep tree via dylibbundler (all references
   rewritten to @loader_path, verified no /opt/homebrew remains, ~61 MB) into

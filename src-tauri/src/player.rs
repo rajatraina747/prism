@@ -339,6 +339,46 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
         .await
 }
 
+/// Play a file of a torrent that is still downloading. Unlike `player_load`
+/// this never opens the half-written file on disk: it is served over loopback
+/// by `stream_server`, which is also what makes librqbit fetch the pieces the
+/// player is about to want.
+///
+/// The file has to be one the torrent is already downloading. Selecting it
+/// here would mean calling librqbit's all-or-nothing `update_only_files` and
+/// silently dropping every other file the user chose, which is worse than the
+/// button not being offered — so the UI only offers it for selected files.
+#[tauri::command]
+pub async fn player_load_stream(
+    app: AppHandle,
+    window: tauri::Window,
+    torrent_id: String,
+    file_idx: usize,
+) -> Result<(), String> {
+    use tauri::Manager;
+    ensure_player_window(&window)?;
+    let (_, name, _) = app
+        .state::<crate::torrent::TorrentManager>()
+        .stream_target(&torrent_id, file_idx)
+        .await?;
+    if !crate::stream_server::is_media_file(&name) {
+        return Err("The player only opens media files".into());
+    }
+    let url = app
+        .state::<crate::stream_server::StreamServer>()
+        .url_for(&app, &torrent_id, file_idx)
+        .await?;
+    mpv_worker(&app)
+        .run("loadfile", LOAD_TIMEOUT, move |mpv| {
+            // A swarm that stalls mid-file should make the player wait, not
+            // give up on the stream.
+            mpv.set_property("network-timeout", &serde_json::json!("60"), PLAYER_LABEL)?;
+            mpv.command("loadfile", vec![serde_json::json!(url)], PLAYER_LABEL)?;
+            mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
+        })
+        .await
+}
+
 #[tauri::command]
 pub async fn player_seek(
     app: AppHandle,
