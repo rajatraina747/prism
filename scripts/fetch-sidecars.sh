@@ -37,19 +37,30 @@ sha256_of() {
 
 # fetch <url> <dest> <expected-sha256>
 fetch() {
-  local url=$1 dest=$2 want=$3 got
+  local url=$1 dest=$2 want=$3 got tmp
   echo "→ $url"
-  curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"
-  got=$(sha256_of "$dest")
+  # Download beside the destination and move it into place only once it has
+  # been verified. Writing straight to the destination meant a connection that
+  # dropped mid-transfer left a truncated binary sitting there looking like a
+  # finished one — which a later build would happily bundle.
+  tmp="$dest.part"
+  rm -f "$tmp"
+  if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
+    rm -f "$tmp"
+    echo "✗ could not download $(basename "$dest") from $url" >&2
+    exit 1
+  fi
+  got=$(sha256_of "$tmp")
   if [ "$got" != "$want" ]; then
     echo "✗ SHA-256 mismatch for $(basename "$dest")" >&2
     echo "    expected $want" >&2
     echo "    got      $got" >&2
     echo "  Refusing to build with an unverified binary. If upstream re-published the" >&2
     echo "  asset, re-run scripts/update-sidecars.sh, review the diff and commit." >&2
-    rm -f "$dest"
+    rm -f "$tmp"
     exit 1
   fi
+  mv -f "$tmp" "$dest"
   echo "✓ $(basename "$dest") verified"
 }
 
