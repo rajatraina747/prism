@@ -363,6 +363,10 @@ export class MockPrismService implements IPrismService {
     return () => {};
   }
 
+  async setProgress(_percent: number | null, _paused: boolean): Promise<void> {
+    // Web demo: a page has no Dock or taskbar to draw on.
+  }
+
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
     await new Promise(r => setTimeout(r, 400));
     const host = (() => { try { return new URL(url).hostname; } catch { return 'example.com'; } })();

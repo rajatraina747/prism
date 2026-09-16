@@ -12,6 +12,7 @@ import {
 import { scheduleGate } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
+import { overallProgress } from '@/stores/progress';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
 import { classifyError, errorText } from '@/services/errors';
@@ -299,6 +300,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = setInterval(() => setScheduleTick(x => x + 1), 60_000);
     return () => clearInterval(t);
   }, [settings.scheduleEnabled]);
+
+  // Dock (macOS) and taskbar (Windows) progress. Keyed on the value actually
+  // shown: the queue ticks several times a second and every push is an IPC
+  // call, so only a change someone could see is worth sending.
+  const shownProgress = useRef('');
+  useEffect(() => {
+    const overall = overallProgress(queue);
+    const key = overall ? `${overall.percent}:${overall.paused}` : 'idle';
+    if (key === shownProgress.current) return;
+    shownProgress.current = key;
+    void service.setProgress(overall?.percent ?? null, overall?.paused ?? false);
+  }, [queue, service]);
 
   // Sleep, shut down or quit once everything has finished. The decision is
   // made in stores/completion.ts, which only says yes after the queue has

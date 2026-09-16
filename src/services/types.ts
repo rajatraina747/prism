@@ -171,6 +171,10 @@ export interface IPrismService {
   /** A registered global hotkey fired. Returns an unsubscribe function. */
   onShortcut(handler: (action: ShortcutAction) => void): () => void;
 
+  /** Dock (macOS) and taskbar (Windows) progress, 0–100. `null` hides the bar.
+   * What the number *is* comes from src/stores/progress.ts. */
+  setProgress(percent: number | null, paused: boolean): Promise<void>;
+
   // Clipboard
   copyToClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;

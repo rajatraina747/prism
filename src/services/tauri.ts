@@ -506,6 +506,10 @@ export class TauriPrismService implements IPrismService {
     return invoke('set_shortcuts', { shortcuts });
   }
 
+  async setProgress(percent: number | null, paused: boolean): Promise<void> {
+    return invoke('set_progress', { percent, paused });
+  }
+
   onShortcut(handler: (action: ShortcutAction) => void): () => void {
     let unlisten: UnlistenFn | undefined;
     let cancelled = false;

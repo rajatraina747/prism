@@ -1175,6 +1175,41 @@ async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, Stri
     Ok(count)
 }
 
+/// The OS progress bar's state for a given overall progress.
+///
+/// Pure so the mapping is testable without a window: `None` hides the bar
+/// entirely, which is what "nothing is downloading" has to mean — a bar left
+/// sitting at 100% reads as a stuck download rather than a finished one.
+pub(crate) fn progress_state(
+    percent: Option<u64>,
+    paused: bool,
+) -> (Option<tauri::window::ProgressBarStatus>, Option<u64>) {
+    use tauri::window::ProgressBarStatus;
+    match percent {
+        None => (Some(ProgressBarStatus::None), None),
+        Some(p) => (
+            Some(if paused { ProgressBarStatus::Paused } else { ProgressBarStatus::Normal }),
+            Some(p.min(100)),
+        ),
+    }
+}
+
+/// Dock (macOS) and taskbar (Windows) progress. Deciding *what* the number is
+/// belongs to src/stores/progress.ts; this only shows it.
+#[tauri::command]
+async fn set_progress(app: AppHandle, percent: Option<u64>, paused: bool) -> Result<(), String> {
+    use tauri::Manager;
+    let (status, progress) = progress_state(percent, paused);
+    // No window yet (or already gone) is not a failure worth reporting: the
+    // bar is decoration, and the caller is a render effect.
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    window
+        .set_progress_bar(tauri::window::ProgressBarState { status, progress })
+        .map_err(|e| format!("Couldn't set the progress bar: {e}"))
+}
+
 #[tauri::command]
 async fn get_default_download_path() -> Result<String, String> {
     let home = dirs::download_dir()
@@ -2046,6 +2081,7 @@ pub fn run() {
             move_to_trash,
             rss::rss_fetch,
             shortcuts::set_shortcuts,
+            set_progress,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -2076,6 +2112,28 @@ mod tests {
             "/dl/Chan-nel/100%% Pure.%(ext)s"
         );
         assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
+    }
+
+    /// `matches!` rather than `assert_eq!` — ProgressBarStatus isn't declared
+    /// here and comparing it would rest on a derive this doesn't control.
+    #[test]
+    fn progress_state_hides_the_bar_when_there_is_nothing_to_show() {
+        use tauri::window::ProgressBarStatus;
+
+        let (status, progress) = progress_state(None, false);
+        assert!(matches!(status, Some(ProgressBarStatus::None)));
+        assert_eq!(progress, None, "a hidden bar carries no number");
+
+        let (status, progress) = progress_state(Some(42), false);
+        assert!(matches!(status, Some(ProgressBarStatus::Normal)));
+        assert_eq!(progress, Some(42));
+
+        let (status, _) = progress_state(Some(42), true);
+        assert!(matches!(status, Some(ProgressBarStatus::Paused)));
+
+        // The OS takes 0-100; a bad number from an engine must not reach it.
+        let (_, progress) = progress_state(Some(500), false);
+        assert_eq!(progress, Some(100));
     }
 
     /// The refusals are what matter here. Nothing is actually trashed: a test
