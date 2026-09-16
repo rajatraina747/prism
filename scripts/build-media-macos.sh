@@ -137,7 +137,12 @@ cp "$MVK_ICD" "$PREFIX/share/vulkan/icd.d/"
 echo "== libplacebo =="
 python3 -m venv "$WORK/venv"
 "$WORK/venv/bin/pip" install --quiet jinja2 glad2
-PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
+# meson's find_library consults the compiler's own search path plus a
+# probe's explicit dirs: only — LIBRARY_PATH and link args do not reach it,
+# and libplacebo passes dirs: to the SPIRV probe but not to glslang. Bake the
+# prefix into the compiler it invokes so every probe can see it.
+CC="${CC:-clang} -L$PREFIX/lib" CXX="${CXX:-clang++} -L$PREFIX/lib" \
+  PATH="$WORK/venv/bin:$PATH" meson_build libplacebo -Dvulkan=enabled -Dvulkan-sdk="$PREFIX" \
   -Dc_link_args="-L$PREFIX/lib" -Dcpp_link_args="-L$PREFIX/lib" \
   -Dvulkan-registry="$PREFIX/share/vulkan/registry/vk.xml" -Dglslang=enabled -Dshaderc=disabled \
   -Dopengl=disabled -Dd3d11=disabled -Dlcms=enabled -Ddovi=disabled -Dlibdovi=disabled \
