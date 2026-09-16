@@ -143,6 +143,51 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
+  # `fetch-sidecars.sh macos --player` is what turns the published LGPL
+  # toolchain into the bundle's resources/lib, and build.yml only runs on tags —
+  # so without this job nothing exercises that path until a release is being
+  # cut, which is the worst moment to find out. It re-checks here what the
+  # toolchain build checked at the other end: nothing GPL, nothing from the
+  # machine it was built on. macos-latest is arm64, the toolchain's target.
+  media-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Fetch the pinned player libraries and media tools
+        run: scripts/fetch-sidecars.sh macos --player
+
+      - name: Check what actually landed
+        run: |
+          set -euo pipefail
+          test -f src-tauri/lib/libmpv.dylib
+          test -f src-tauri/lib/libmpv-wrapper.dylib
+          test -f src-tauri/lib/libMoltenVK.dylib
+          test -f src-tauri/lib/vulkan/icd.d/MoltenVK_icd.json
+          test -x src-tauri/lib/bin/ffmpeg
+          test -x src-tauri/lib/bin/ffprobe
+
+          # LGPL, read off the binary rather than trusting the flags we passed.
+          buildconf="$(src-tauri/lib/bin/ffmpeg -hide_banner -buildconf)"
+          if echo "$buildconf" | grep -qE -- '--enable-(gpl|nonfree)'; then
+            echo "✗ bundled ffmpeg is not an LGPL build" >&2; exit 1
+          fi
+          if src-tauri/lib/bin/ffmpeg -hide_banner -L | grep -qi 'GNU General Public License'; then
+            echo "✗ bundled ffmpeg reports a GPL license" >&2; exit 1
+          fi
+
+          # The GPL codecs the old Homebrew bundle carried must be gone, and
+          # nothing may resolve to a library on the build machine.
+          if otool -L src-tauri/lib/*.dylib src-tauri/lib/bin/* | grep -qiE 'x264|x265|rubberband'; then
+            echo "✗ a GPL codec is linked into the bundle" >&2; exit 1
+          fi
+          if otool -L src-tauri/lib/*.dylib src-tauri/lib/bin/* | grep -qE '/opt/homebrew|/usr/local/(lib|opt)'; then
+            echo "✗ bundled media libraries reference the build machine" >&2; exit 1
+          fi
+
+          src-tauri/lib/bin/ffprobe -hide_banner -version | head -1
+          cat src-tauri/lib/VERSIONS.txt
+
   # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
   audit:
     runs-on: ubuntu-latest

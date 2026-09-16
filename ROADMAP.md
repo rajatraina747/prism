@@ -142,6 +142,10 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       SHA-256, so a macOS build now unpacks it instead of installing Homebrew's
       mpv. ffmpeg and ffprobe ride along as resources rather than Tauri
       sidecars, because `externalBin` is shared with Windows and Linux.
+      CI fetches and unpacks it on a macOS runner on every push and checks the
+      binaries that land — LGPL buildconf, no x264/x265/rubberband, nothing
+      resolving to the build machine — because the release workflow only runs
+      on tags and would otherwise be the first thing ever to exercise it.
       Remaining: pin BtbN's LGPL builds for those two (closes S-5 outright).
       Intel Macs still fall back to Homebrew for local builds and are not
       released.
