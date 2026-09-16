@@ -238,6 +238,11 @@ pub async fn convert_file(
     preset: Preset,
     duration_secs: f64,
 ) -> Result<(), String> {
+    // Checked like every other path the webview names: inside the allowed
+    // roots, and really there. Without this the command would run ffmpeg on
+    // anything and write its output alongside, which is not a power the page
+    // is given anywhere else.
+    let input = crate::validate_open_path(&input, false, &crate::picked_dirs(&app))?;
     let source = PathBuf::from(&input);
     if !source.is_file() {
         return Err("That file isn't there any more".into());
