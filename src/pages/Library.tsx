@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
+import { sortHistory, gridColumns, LIBRARY_SORTS } from '@/stores/library';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -12,11 +13,12 @@ import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/servic
 import { categoriesInUse, labelsInUse, nextSelection } from '@/stores/transfers';
 import {
   Clock, Search, Trash2, ListX, CheckCircle2, XCircle, Ban, RotateCcw,
+  LayoutGrid, Rows3, ArrowUpDown, AlignJustify,
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import type { HistoryItem } from '@/types/models';
+import type { HistoryItem, ListDensity } from '@/types/models';
 
 type FilterTab = 'all' | 'completed' | 'failed' | 'canceled';
 
@@ -76,7 +78,7 @@ function statusIcon(status: string) {
 export default function Library() {
   const { items, removeFromHistory, restoreHistory, clearHistory } = useHistory();
   const { addToQueue } = useQueue();
-  const { preferences } = useSettings();
+  const { preferences, updatePreference } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>(null);
@@ -140,6 +142,24 @@ export default function Library() {
       && (!q || i.metadata.title.toLowerCase().includes(q)));
   }, [inTab, search, activeCategory, activeLabel]);
 
+  const sorted = useMemo(
+    () => sortHistory(filtered, preferences.librarySort),
+    [filtered, preferences.librarySort],
+  );
+
+  // Columns come from the list's real width rather than a breakpoint guess, so
+  // a narrow window gets one readable column instead of three cramped ones.
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [listWidth, setListWidth] = useState(0);
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(entries => setListWidth(entries[0].contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const columns = preferences.libraryView === 'grid' ? gridColumns(listWidth) : 1;
+
   const tabs = (['all', 'completed', 'failed', 'canceled'] as const).map(key => ({
     key,
     label: TAB_LABELS[key],
@@ -153,7 +173,8 @@ export default function Library() {
 
   const toggleExpanded = useCallback((id: string) => setExpandedId(cur => (cur === id ? null : id)), []);
 
-  const orderedIds = useMemo(() => filtered.map(i => i.id), [filtered]);
+  // Follows the order on screen, so shift-select picks the run the user sees.
+  const orderedIds = useMemo(() => sorted.map(i => i.id), [sorted]);
   const onSelect = useCallback((id: string, mods: { shift: boolean; meta: boolean }) => {
     setSelected(cur => {
       const next = nextSelection(cur, anchor, orderedIds, id, mods);
@@ -163,7 +184,7 @@ export default function Library() {
   }, [anchor, orderedIds]);
   // Only what is both selected and currently visible: a filter or tab change
   // shouldn't act on rows the user can no longer see.
-  const selectedItems = useMemo(() => filtered.filter(i => selected.has(i.id)), [filtered, selected]);
+  const selectedItems = useMemo(() => sorted.filter(i => selected.has(i.id)), [sorted, selected]);
   const clearSelection = useCallback(() => { setSelected(new Set()); setAnchor(null); }, []);
 
   const revealSelected = useCallback(() => {
@@ -217,15 +238,69 @@ export default function Library() {
           <h2 className="page-title">Library</h2>
           <p className="page-subtitle">Completed, failed, and canceled downloads</p>
         </div>
-        {inTab.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setConfirmClear(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
-          >
-            <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {items.length > 0 && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
+                    aria-label="Sort library"
+                  >
+                    <ArrowUpDown className="w-3 h-3" />
+                    {LIBRARY_SORTS.find(s => s.id === preferences.librarySort)?.label ?? 'Newest'}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  {LIBRARY_SORTS.map(s => (
+                    <DropdownMenuItem
+                      key={s.id}
+                      onSelect={() => updatePreference('librarySort', s.id)}
+                      className={cn('text-xs', preferences.librarySort === s.id && 'text-primary')}
+                    >
+                      {s.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={() => updatePreference('libraryView', preferences.libraryView === 'grid' ? 'list' : 'grid')}
+                aria-label={preferences.libraryView === 'grid' ? 'Show as a list' : 'Show as a grid'}
+                title={preferences.libraryView === 'grid' ? 'Show as a list' : 'Show as a grid'}
+                className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
+              >
+                {preferences.libraryView === 'grid'
+                  ? <Rows3 className="w-3.5 h-3.5" />
+                  : <LayoutGrid className="w-3.5 h-3.5" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updatePreference('listDensity', preferences.listDensity === 'compact' ? 'comfortable' : 'compact')}
+                aria-label={preferences.listDensity === 'compact' ? 'Use comfortable spacing' : 'Use compact spacing'}
+                title={preferences.listDensity === 'compact' ? 'Use comfortable spacing' : 'Use compact spacing'}
+                aria-pressed={preferences.listDensity === 'compact'}
+                className={cn(
+                  'p-1.5 rounded-lg transition-colors hover:bg-secondary hover:text-secondary-foreground',
+                  preferences.listDensity === 'compact' ? 'text-primary' : 'text-muted-foreground',
+                )}
+              >
+                <AlignJustify className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          {inTab.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmClear(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
+            </button>
+          )}
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
@@ -314,8 +389,8 @@ export default function Library() {
           </div>
         )}
 
-        <TabsContent value={tab} className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-          {filtered.length === 0 ? (
+        <TabsContent ref={listRef} value={tab} className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+          {sorted.length === 0 ? (
             <EmptyState
               icon={tab === 'failed' ? XCircle : Clock}
               title={tab === 'failed' ? 'No failed downloads' : 'Nothing here yet'}
@@ -327,9 +402,14 @@ export default function Library() {
             />
           ) : (
             <VirtualList
-              items={filtered}
+              items={sorted}
               getKey={item => item.id}
-              estimateSize={64}
+              columns={columns}
+              // A grid cell leads with a thumbnail and is much taller than a
+              // row, so the estimate has to follow the layout — a fixed one
+              // would leave the windowing maths wrong in whichever mode it
+              // wasn't measured for.
+              estimateSize={columns > 1 ? 188 : preferences.listDensity === 'compact' ? 48 : 64}
               gap={6}
               aria-label={`${TAB_LABELS[tab]} downloads`}
               role="listbox"
@@ -337,6 +417,8 @@ export default function Library() {
               renderItem={item => (
                 <LibraryRow
                   item={item}
+                  density={preferences.listDensity}
+                  grid={columns > 1}
                   expanded={expandedId === item.id}
                   playerAvailable={playerAvailable}
                   labelNames={labelNames}
@@ -385,12 +467,16 @@ export default function Library() {
 }
 
 const LibraryRow = React.memo(function LibraryRow({
-  item, expanded, playerAvailable, labelNames, selected, onSelect, onToggleExpanded, onRequeue, onRemove,
+  item, expanded, playerAvailable, labelNames, selected, density = 'comfortable', grid = false,
+  onSelect, onToggleExpanded, onRequeue, onRemove,
 }: {
   item: HistoryItem;
   expanded: boolean;
   playerAvailable: boolean;
   labelNames?: Record<string, string>;
+  density?: ListDensity;
+  /** Laid out as a grid cell: thumbnail on top, details under it. */
+  grid?: boolean;
   selected?: boolean;
   onSelect?: (id: string, mods: { shift: boolean; meta: boolean }) => void;
   onToggleExpanded: (id: string) => void;
@@ -413,15 +499,28 @@ const LibraryRow = React.memo(function LibraryRow({
       role="option"
       aria-selected={!!selected}
       onClick={handleClick}
-      className={cn('surface-row rounded-xl p-3', selected && 'ring-1 ring-primary/60 bg-primary/5')}
+      className={cn(
+        'surface-row rounded-xl',
+        density === 'compact' ? 'p-2' : 'p-3',
+        selected && 'ring-1 ring-primary/60 bg-primary/5',
+      )}
     >
-      <div className="flex items-start gap-3">
+      {/* A grid cell leads with the picture, which is the useful handle for
+          finished video; a row leads with the title. */}
+      <div className={grid ? 'flex flex-col gap-2' : 'flex items-start gap-3'}>
         {isFailed ? (
-          <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5">
+          <div className={cn(
+            'rounded-lg bg-destructive/10 flex items-center justify-center shrink-0',
+            grid ? 'w-full h-24' : 'w-8 h-8 mt-0.5',
+          )}>
             <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
           </div>
         ) : (
-          <Thumb src={item.metadata.thumbnail} className="w-[72px] h-10" fallbackIcon={statusIcon(item.status)} />
+          <Thumb
+            src={item.metadata.thumbnail}
+            className={grid ? 'w-full h-24' : 'w-[72px] h-10'}
+            fallbackIcon={statusIcon(item.status)}
+          />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">

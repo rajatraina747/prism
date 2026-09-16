@@ -309,6 +309,7 @@ export default function Queue() {
           <TabsContent value={filter} className="flex-1 min-h-0 overflow-auto mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
             <QueueTable
               items={visibleItems}
+              density={preferences.listDensity}
               heldUntil={quiet?.mode === 'pause' ? quiet.until : undefined}
               labelNames={labelNames}
               selectedIds={selected}

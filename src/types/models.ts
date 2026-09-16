@@ -202,6 +202,17 @@ export interface SessionStats {
 export type TransfersSort = 'added' | 'name' | 'progress' | 'speed' | 'eta' | 'size' | 'ratio';
 export type TransfersFilter = 'all' | 'downloading' | 'seeding' | 'paused' | 'queued' | 'errored';
 
+/** How the Library is ordered. Separate from TransfersSort: a finished
+ * download has no speed, ETA or progress to sort on. */
+export type LibrarySort = 'newest' | 'oldest' | 'title' | 'size';
+
+/** Library layout. A grid leads with the thumbnail, which is the useful
+ * handle for finished video; a list leads with the title. */
+export type LibraryView = 'list' | 'grid';
+
+/** How tightly rows are packed, on the Library and Transfers alike. */
+export type ListDensity = 'comfortable' | 'compact';
+
 export interface DownloadError {
   code: string;
   message: string;
@@ -293,6 +304,11 @@ export interface AppPreferences {
   // Transfers page memory.
   transfersSort: TransfersSort;
   transfersFilter: TransfersFilter;
+  // Library page memory, the same way the two above remember Transfers.
+  librarySort: LibrarySort;
+  libraryView: LibraryView;
+  // Applies to both lists. Compact fits roughly a third more rows on screen.
+  listDensity: ListDensity;
   detailPanelHeight: number;
   // Offer to fetch video URLs found on the clipboard when the window regains
   // focus. Reads the clipboard, so it's a user choice.
@@ -508,6 +524,9 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultWhenComplete: 'nothing',
   whenDoneAction: 'nothing',
   whenDoneIgnoresSeeding: false,
+  librarySort: 'newest',
+  libraryView: 'list',
+  listDensity: 'comfortable',
   // All unassigned: Prism claims no system-wide key until asked to.
   shortcuts: { addFromClipboard: '', showPrism: '', pauseAll: '' },
   settingsVersion: SETTINGS_VERSION,

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import type { DownloadItem } from '@/types/models';
+import type { DownloadItem, ListDensity } from '@/types/models';
 import { StatusBadge, ProgressBar, Thumb } from '@/components/common';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { formatBytes, formatSpeed, formatEta } from '@/services';
@@ -48,9 +48,12 @@ interface QueueTableProps extends QueueRowActions {
   /** Label id → name, so a row can show its labels without reading settings
    * (the table is also rendered on its own, in tests and the web demo). */
   labelNames?: Record<string, string>;
+  /** How tightly rows are packed. Optional with a default, because the table
+   * is also rendered on its own in tests and the web demo. */
+  density?: ListDensity;
 }
 
-export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil, labelNames, ...actions }: QueueTableProps) {
+export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil, labelNames, density = 'comfortable', ...actions }: QueueTableProps) {
   // Roving tabindex: one row is in the tab order — the first selected one,
   // else the first row — and arrow keys (global shortcuts) move from there.
   const focusIndex = Math.max(0, items.findIndex(i => selectedIds?.has(i.id)));
@@ -124,6 +127,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
               focusable={index === focusIndex}
               heldUntil={heldUntil}
               labelNames={labelNames}
+              density={density}
               onSelect={onSelect}
               onReorder={onReorder}
               {...actions}
@@ -137,7 +141,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
 }
 
 const QueueRow = React.memo(function QueueRow({
-  item, index, count, selected, focusable, heldUntil, labelNames, onSelect,
+  item, index, count, selected, focusable, heldUntil, labelNames, density = 'comfortable', onSelect,
   onPause, onResume, onCancel, onRetry, onRemove, onReorder, onUpdateFiles,
   onReannounce, onRecheck, onRemoveWithData, onMoveTop, onMoveBottom, onShowInFolder, onOpenDetails,
 }: QueueRowActions & {
@@ -146,6 +150,7 @@ const QueueRow = React.memo(function QueueRow({
   focusable: boolean;
   heldUntil?: string;
   labelNames?: Record<string, string>;
+  density?: ListDensity;
   onSelect?: (id: string, mods: SelectMods) => void;
 }) {
   // When the keyboard moves the selection, move focus with it — but only if
@@ -193,7 +198,8 @@ const QueueRow = React.memo(function QueueRow({
       onClick={handleClick}
       onDoubleClick={() => onOpenDetails?.(item.id)}
       className={cn(
-        'surface-row rounded-xl p-3.5 animate-fade-in cursor-default transition-shadow',
+        'surface-row rounded-xl animate-fade-in cursor-default transition-shadow',
+        density === 'compact' ? 'p-2' : 'p-3.5',
         selected && 'ring-1 ring-primary/60 bg-primary/5',
       )}
       style={{ animationDelay: `${Math.min(index, 10) * 40}ms` }}

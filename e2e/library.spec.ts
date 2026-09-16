@@ -28,7 +28,9 @@ test.describe('Library', () => {
   test('windows a long list and still reaches the last entry', async ({ page }) => {
     await page.goto('/library');
     await expect(page.getByRole('tab', { name: new RegExp(`All\\s*${COUNT}`) })).toBeVisible();
-    await expect(page.getByText('Library entry 0', { exact: true })).toBeVisible();
+    // Newest first by default, and the fixture stamps entry i one minute later
+    // than entry i-1 — so the highest-numbered entry is the one at the top.
+    await expect(page.getByText(`Library entry ${COUNT - 1}`, { exact: true })).toBeVisible();
 
     // Rows are options of a multi-select listbox, not plain list items — the
     // list is selectable now, and that is what a screen reader is told.
@@ -38,8 +40,29 @@ test.describe('Library', () => {
 
     // Scroll the page's scroller to the end; the last row gets mounted.
     await page.locator('main').evaluate(el => { el.scrollTop = el.scrollHeight; });
-    await expect(page.getByText(`Library entry ${COUNT - 1}`, { exact: true })).toBeVisible();
+    await expect(page.getByText('Library entry 0', { exact: true })).toBeVisible();
     expect(await page.getByRole('option').count()).toBeLessThan(100);
+  });
+
+  // Ordering had no coverage of its own, so changing the default sort surfaced
+  // as a confusing failure in the windowing test instead of here.
+  test('sorts newest first, and can be switched to oldest', async ({ page }) => {
+    await page.goto('/library');
+    const firstRow = page.getByRole('option').first();
+    await expect(firstRow).toContainText(`Library entry ${COUNT - 1}`);
+
+    await page.getByRole('button', { name: 'Sort library' }).click();
+    await page.getByRole('menuitem', { name: 'Oldest first' }).click();
+    await expect(firstRow).toContainText('Library entry 0');
+  });
+
+  test('can be laid out as a grid', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByRole('button', { name: 'Show as a grid' }).click();
+    // Still a selectable listbox — a grid changes the layout, not the meaning,
+    // so a screen reader is told the same thing either way.
+    expect(await page.getByRole('option').count()).toBeGreaterThan(0);
+    await expect(page.getByRole('button', { name: 'Show as a list' })).toBeVisible();
   });
 
   test('search narrows the list', async ({ page }) => {
