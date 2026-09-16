@@ -632,7 +632,9 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 }
 
 /// `name.ext`, or `name (1).ext`, `name (2).ext`… — never an existing file.
-fn free_destination(wanted: &Path) -> PathBuf {
+/// A path next to `wanted` that nothing occupies yet. Shared with the
+/// converter: "never overwrite someone's file" deserves one implementation.
+pub(crate) fn free_destination(wanted: &Path) -> PathBuf {
     if !wanted.exists() {
         return wanted.to_path_buf();
     }

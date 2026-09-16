@@ -1,6 +1,7 @@
 mod app_menu;
 mod clip;
 mod content_index;
+mod convert;
 mod download_manager;
 mod engine;
 mod errors;
@@ -2114,6 +2115,7 @@ pub fn run() {
             shortcuts::set_shortcuts,
             set_progress,
             content_index::index_download,
+            convert::convert_file,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
