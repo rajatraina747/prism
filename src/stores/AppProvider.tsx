@@ -4,6 +4,7 @@ import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
+import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
 import { scheduleGate } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
@@ -73,10 +74,15 @@ interface SettingsActions {
   resetToDefaults: () => void;
 }
 
+interface StatsValue {
+  stats: Stats;
+}
+
 // ── Contexts ──
 const QueueContext = createContext<QueueActions | null>(null);
 const HistoryContext = createContext<HistoryActions | null>(null);
 const SettingsContext = createContext<SettingsActions | null>(null);
+const StatsContext = createContext<StatsValue | null>(null);
 
 export function useQueue() {
   const ctx = useContext(QueueContext);
@@ -96,6 +102,12 @@ export function useSettings() {
   return ctx;
 }
 
+export function useStats() {
+  const ctx = useContext(StatsContext);
+  if (!ctx) throw new Error('useStats must be used within AppProvider');
+  return ctx;
+}
+
 // ── Provider ──
 export function AppProvider({ children }: { children: ReactNode }) {
   const service = useService();
@@ -110,6 +122,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...DEFAULT_PREFERENCES,
     ...migrateSettings(service.persistence.loadSettings()),
   }));
+  // Lifetime counters. Their own record rather than a view of history, which
+  // is capped at 2,000 rows and forgets everything older.
+  const [stats, setStats] = useState<Stats>(() => hydrateStats(service.persistence.loadStats()));
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
   // Items whose backend kill hasn't come back yet — see the auto-start effect.
@@ -137,6 +152,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = setTimeout(() => service.persistence.saveSettings(settings), 300);
     return () => clearTimeout(t);
   }, [settings, service]);
+  useEffect(() => {
+    const t = setTimeout(() => service.persistence.saveStats(stats), 300);
+    return () => clearTimeout(t);
+  }, [stats, service]);
+
+  // Seed the counters from whatever history exists, once. Older downloads are
+  // the only record of themselves, and history is forgotten as it grows past
+  // its cap — so this is the one chance to count them. Safe to run again: it
+  // only picks up rows newer than the last backfill.
+  useEffect(() => {
+    setStats(s => backfillFromHistory(s, service.persistence.loadHistory()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync log level preference to diagnostics service
   useEffect(() => { diagnostics.setLogLevel(settings.logLevel); }, [settings.logLevel]);
@@ -229,6 +257,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         actualHeight: i.actualHeight,
         outputFolder: i.outputFolder,
       }));
+      // Count them here rather than at each call site: this is the one place
+      // every finished download passes through, and while they are still
+      // queue items their engine and uploaded bytes are known — neither
+      // survives into history.
+      setStats(s => terminal.reduce(
+        (acc, i) => recordCompletion(acc, i, i.status as 'completed' | 'failed' | 'canceled'),
+        s,
+      ));
       // Cap history so history.json can't grow (and load/render) unboundedly
       setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
@@ -579,7 +615,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
       <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
-          {children}
+          <StatsContext.Provider value={{ stats }}>
+            {children}
+          </StatsContext.Provider>
         </HistoryContext.Provider>
       </QueueContext.Provider>
     </SettingsContext.Provider>

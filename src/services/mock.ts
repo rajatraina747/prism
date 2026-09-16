@@ -53,6 +53,7 @@ const STORAGE_KEYS = {
   history: 'prism_history',
   settings: 'prism_settings',
   subscriptions: 'prism_subscriptions',
+  stats: 'prism_stats',
 } as const;
 
 // ── Mock Service Implementation ──
@@ -434,6 +435,15 @@ export class MockPrismService implements IPrismService {
     },
     saveSettings(prefs: AppPreferences) {
       try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(prefs)); } catch {}
+    },
+    loadStats(): unknown {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.stats);
+        return data ? JSON.parse(data) : null;
+      } catch { return null; }
+    },
+    saveStats(stats: unknown) {
+      try { localStorage.setItem(STORAGE_KEYS.stats, JSON.stringify(stats)); } catch {}
     },
     loadSubscriptions(): Subscription[] {
       try {

@@ -195,5 +195,9 @@ export interface IPrismService {
     saveSettings(prefs: AppPreferences): void;
     loadSubscriptions(): Subscription[];
     saveSubscriptions(subs: Subscription[]): void;
+    /** Download counters. Their own record rather than a view of history,
+     * which is capped and forgets. */
+    loadStats(): unknown;
+    saveStats(stats: unknown): void;
   };
 }

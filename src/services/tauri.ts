@@ -20,6 +20,7 @@ const FILES = {
   history: 'history.json',
   settings: 'settings.json',
   subscriptions: 'subscriptions.json',
+  stats: 'stats.json',
 } as const;
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {
@@ -555,6 +556,8 @@ export class TauriPrismService implements IPrismService {
     _historyCache: [] as HistoryItem[],
     _settingsCache: null as AppPreferences | null,
     _subscriptionsCache: [] as Subscription[],
+    // Shape-checked by stores/stats.ts on the way in, like settings.
+    _statsCache: null as unknown,
     _loaded: false,
 
     async _ensureLoaded() {
@@ -570,6 +573,7 @@ export class TauriPrismService implements IPrismService {
       this._historyCache = await readJson<HistoryItem[]>(FILES.history, []);
       this._settingsCache = await readJson<AppPreferences | null>(FILES.settings, null);
       this._subscriptionsCache = await readJson<Subscription[]>(FILES.subscriptions, []);
+      this._statsCache = await readJson<unknown>(FILES.stats, null);
     },
 
     loadQueue(): DownloadItem[] {
@@ -611,6 +615,15 @@ export class TauriPrismService implements IPrismService {
     saveSubscriptions: (subs: Subscription[]) => {
       this.persistence._subscriptionsCache = subs;
       if (this._initDone) writeJson(FILES.subscriptions, subs).catch(() => {});
+    },
+
+    loadStats(): unknown {
+      return this._statsCache;
+    },
+
+    saveStats: (stats: unknown) => {
+      this.persistence._statsCache = stats;
+      if (this._initDone) writeJson(FILES.stats, stats).catch(() => {});
     },
   };
 }

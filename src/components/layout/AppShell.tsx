@@ -18,6 +18,7 @@ import {
   Settings2,
   Info,
   Plus,
+  BarChart3,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { path: '/queue', icon: ArrowDownToLine, label: 'Transfers' },
   { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
   { path: '/library', icon: LibraryIcon, label: 'Library' },
+  { path: '/statistics', icon: BarChart3, label: 'Statistics' },
 ] as const;
 
 const BOTTOM_ITEMS = [

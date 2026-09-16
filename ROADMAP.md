@@ -206,8 +206,16 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [ ] Post-completion actions (including sleep/shutdown), scheduling, RSS
       rules, duplicate detection, native menu, global shortcuts, Dock and
       taskbar progress.
+- [x] Statistics page (`stores/stats.ts`): counters kept as their own record,
+      not a view of the Library, which is capped at 2,000 rows and forgets —
+      seeded once from whatever history exists and updated where terminal
+      items are archived, the one place every finished download passes through
+      while its engine and uploaded bytes are still known. Upload is shown as
+      a since-this-version figure rather than a lifetime one, because nothing
+      in history records it. Charts are hand-drawn SVG, as the player's speed
+      graph already is; no charting dependency.
 - [ ] Clip download, chapter split, conversion presets, settings/Library
-      export, qBittorrent and Transmission import, statistics page.
+      export, qBittorrent and Transmission import.
 
 **Distribution**
 - [ ] Chrome/Edge and Firefox extension builds; hosted privacy page; winget;

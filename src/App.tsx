@@ -17,6 +17,7 @@ import Library from "@/pages/Library";
 import Settings from "@/pages/Settings";
 import About from "@/pages/About";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import Statistics from "@/pages/Statistics";
 import TermsOfService from "@/pages/TermsOfService";
 import OpenSourceLicenses from "@/pages/OpenSourceLicenses";
 import NotFound from "@/pages/NotFound";
@@ -77,6 +78,7 @@ const App = () => {
                 <Route path="/queue" element={<Queue />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/library" element={<Library />} />
+                <Route path="/statistics" element={<Statistics />} />
                 {/* Old routes — Downloads/Failed/History merged into Library */}
                 <Route path="/downloads" element={<Navigate to="/library" replace />} />
                 <Route path="/failed" element={<Navigate to="/library" replace />} />
