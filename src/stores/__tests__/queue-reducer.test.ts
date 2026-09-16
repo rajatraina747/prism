@@ -37,6 +37,36 @@ const err: DownloadError = {
   timestamp: '2026-07-03T00:00:00Z',
 };
 
+describe('queueReducer setStartAt', () => {
+  const at = '2026-09-20T18:00:00.000Z';
+
+  it('holds a queued item until the given time', () => {
+    const next = queueReducer([makeItem()], { type: 'setStartAt', id: 'a', startAt: at });
+    expect(next[0].settings.startAt).toBe(at);
+  });
+
+  it('clears the time when given null', () => {
+    const held = queueReducer([makeItem()], { type: 'setStartAt', id: 'a', startAt: at });
+    const cleared = queueReducer(held, { type: 'setStartAt', id: 'a', startAt: null });
+    expect(cleared[0].settings.startAt).toBeUndefined();
+    expect('startAt' in cleared[0].settings).toBe(false);
+  });
+
+  it('refuses to schedule something already running', () => {
+    // A start time on a download that has started describes a moment that has
+    // been and gone. Ignoring it silently is the bug this guards against.
+    const running = makeItem({ status: 'downloading' });
+    const next = queueReducer([running], { type: 'setStartAt', id: 'a', startAt: at });
+    expect(next[0].settings.startAt).toBeUndefined();
+  });
+
+  it('leaves other items alone', () => {
+    const queue = [makeItem(), makeItem({ id: 'b' })];
+    const next = queueReducer(queue, { type: 'setStartAt', id: 'a', startAt: at });
+    expect(next[1].settings.startAt).toBeUndefined();
+  });
+});
+
 describe('queueReducer', () => {
   it('adds items', () => {
     const next = queueReducer([], { type: 'add', item: makeItem() });

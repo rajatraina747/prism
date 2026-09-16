@@ -11,6 +11,7 @@ import { Panel, ConfirmDialog } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { DAY_NAMES } from '@/stores/schedule';
 import { toast } from 'sonner';
 import {
   FolderOpen, Film, Magnet, Gauge, Globe, Bell, Palette, HardDrive,
@@ -552,6 +553,40 @@ export default function Settings() {
                         <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', v)} min={1} max={1000} unit="MB/s" />
                       </SettingRow>
                     )}
+                    <SettingRow
+                      label="Days"
+                      description="Which days the window applies on. None chosen means every day. A window that runs past midnight belongs to the evening it started on"
+                    >
+                      <div className="flex items-center gap-1">
+                        {DAY_NAMES.map((name, day) => {
+                          const chosen = p.scheduleDays?.includes(day) ?? false;
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              aria-pressed={chosen}
+                              aria-label={name}
+                              title={name}
+                              onClick={() => {
+                                const current = p.scheduleDays ?? [];
+                                const next = chosen
+                                  ? current.filter(d => d !== day)
+                                  : [...current, day].sort((a, b) => a - b);
+                                updatePreference('scheduleDays', next);
+                              }}
+                              className={cn(
+                                'w-7 h-7 rounded-md text-[11px] font-medium transition-colors',
+                                chosen
+                                  ? 'bg-primary/15 text-primary'
+                                  : 'bg-secondary text-muted-foreground hover:text-secondary-foreground',
+                              )}
+                            >
+                              {name[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </SettingRow>
                   </>
                 )}
               </SettingGroup>

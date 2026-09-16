@@ -39,6 +39,7 @@ export type QueueAction =
   | { type: 'setLabels'; id: string; labelIds: string[] }
   | { type: 'setChecksum'; id: string; sha256: string | null }
   | { type: 'setWhenComplete'; id: string; action: PostCompletionAction | null }
+  | { type: 'setStartAt'; id: string; startAt: string | null }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -201,6 +202,17 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
         const settings = { ...i.settings };
         if (action.action) settings.whenComplete = action.action;
         else delete settings.whenComplete;
+        return { ...i, settings };
+      });
+
+    case 'setStartAt':
+      // Only while it is still queued: a start time on something already
+      // running would describe a moment that has been and gone.
+      return update(queue, action.id, i => {
+        if (i.status !== 'queued') return i;
+        const settings = { ...i.settings };
+        if (action.startAt) settings.startAt = action.startAt;
+        else delete settings.startAt;
         return { ...i, settings };
       });
 

@@ -95,6 +95,10 @@ export interface DownloadSettings {
   sha256?: string;
   // What to do when this one finishes. Absent = whatever the setting says.
   whenComplete?: PostCompletionAction;
+  // Don't start this one before this time (RFC 3339). Absent = start when its
+  // turn comes. It holds back only this item: the rest of the queue carries on
+  // without it.
+  startAt?: string;
 }
 
 export interface PlaylistEntry {
@@ -256,6 +260,10 @@ export interface AppPreferences {
   scheduleEndHour: number;
   scheduleMode: 'pause' | 'limit';
   scheduleLimitMBps: number;
+  // Which days quiet hours apply on (0 = Sunday … 6 = Saturday). Absent or
+  // empty means every day, so a schedule set before this existed is unchanged.
+  // An overnight window belongs to the day it started on — see schedule.ts.
+  scheduleDays?: number[];
   // Opt-in crash reporting (Sentry). Off by default; also requires the app to
   // have been built with a DSN. Frontend toggles live; Rust panics follow the
   // setting on next launch.

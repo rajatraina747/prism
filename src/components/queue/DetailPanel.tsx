@@ -26,7 +26,19 @@ export interface DetailPanelProps {
   onSetLabels?: (id: string, labelIds: string[]) => void;
   onSetChecksum?: (id: string, sha256: string | null) => void;
   onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
+  onSetStartAt?: (id: string, startAt: string | null) => void;
   playerAvailable?: boolean;
+}
+
+/** An RFC 3339 stamp as the value a `datetime-local` input wants: local time,
+ * no zone, "YYYY-MM-DDTHH:mm". A stamp that won't parse shows as empty rather
+ * than as an invalid date the input would silently discard. */
+function toLocalDateTimeInput(iso?: string): string {
+  if (!iso) return '';
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 const MIN_H = 160;
@@ -38,7 +50,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -97,7 +109,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} onSetWhenComplete={onSetWhenComplete} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} onSetLabels={onSetLabels} onSetChecksum={onSetChecksum} onSetWhenComplete={onSetWhenComplete} onSetStartAt={onSetStartAt} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -135,13 +147,14 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete }: {
+function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetChecksum, onSetWhenComplete, onSetStartAt }: {
   item: DownloadItem;
   onReannounce?: (id: string) => void;
   onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   onSetLabels?: (id: string, labelIds: string[]) => void;
   onSetChecksum?: (id: string, sha256: string | null) => void;
   onSetWhenComplete?: (id: string, action: PostCompletionAction | null) => void;
+  onSetStartAt?: (id: string, startAt: string | null) => void;
 }) {
   const service = useService();
   const { preferences } = useSettings();
@@ -223,6 +236,23 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                 <option value="open">Open the file</option>
                 <option value="reveal">Show in folder</option>
               </select>
+            </Row>
+          )}
+          {/* Only while it is still queued: this holds the item back, and one
+              already running is past the point of being held. It delays this
+              download alone — the rest of the queue carries on without it. */}
+          {onSetStartAt && item.status === 'queued' && (
+            <Row label="Start after">
+              <input
+                type="datetime-local"
+                value={toLocalDateTimeInput(item.settings.startAt)}
+                onChange={(e) => onSetStartAt(
+                  item.id,
+                  e.target.value ? new Date(e.target.value).toISOString() : null,
+                )}
+                aria-label="Start after"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+              />
             </Row>
           )}
           <Row label="Added">{when(item.addedAt)}</Row>

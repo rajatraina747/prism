@@ -9,7 +9,7 @@ import {
   evaluateWhenDone, whenDoneLabel, IDLE_WHEN_DONE, postCompletionFor, needsFile,
   WHEN_DONE_COUNTDOWN_SECONDS, type WhenDoneState,
 } from '@/stores/completion';
-import { scheduleGate } from '@/stores/schedule';
+import { scheduleGate, itemStartBlocked } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { overallProgress } from '@/stores/progress';
@@ -59,6 +59,8 @@ interface QueueActions {
   setItemChecksum: (id: string, sha256: string | null) => void;
   /** What to do when this one finishes (null = follow the setting). */
   setItemWhenComplete: (id: string, action: PostCompletionAction | null) => void;
+  /** Hold one download until a given time (RFC 3339); null starts it normally. */
+  setItemStartAt: (id: string, startAt: string | null) => void;
   /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
   reannounceTorrent: (id: string) => void;
   /** Torrent: hash every piece on disk again ("Force re-check"). */
@@ -407,6 +409,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // leaving the item 'downloading' with nothing behind it. stoppedTick
       // re-runs this effect as each kill settles.
       .filter(i => i.status === 'queued' && !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id))
+      // An item waiting for its own start time holds back only itself — the
+      // rest of the queue carries on, which is the whole point of scheduling
+      // one download for later. The minute tick above re-runs this, so it
+      // starts on its own when the time comes.
+      .filter(i => !itemStartBlocked(i, new Date()))
       .slice(0, available);
 
     if (toStart.length === 0) return;
@@ -667,6 +674,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'setWhenComplete', id, action });
   }, []);
 
+  const setItemStartAt = useCallback((id: string, startAt: string | null) => {
+    dispatch({ type: 'setStartAt', id, startAt });
+  }, []);
+
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
       .then(() => toast.success('Asked trackers and DHT for peers'))
@@ -727,7 +738,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, restoreHistory, clearHistory }}>
           <StatsContext.Provider value={{ stats }}>
             {children}
