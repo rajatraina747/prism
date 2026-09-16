@@ -79,8 +79,52 @@ extract_member() {
   rm -rf "$tmp"
 }
 
+# BtbN's LGPL ffmpeg builds for Windows and Linux; macOS gets ffmpeg from the
+# toolchain Prism builds itself (see the player section below).
+BTBN_BASE="https://github.com/BtbN/FFmpeg-Builds/releases/download/$BTBN_TAG"
 YTDLP_BASE="https://github.com/yt-dlp/yt-dlp/releases/download/$YTDLP_VERSION"
 DENO_BASE="https://github.com/denoland/deno/releases/download/$DENO_VERSION"
+
+# stage_ffmpeg <archive> — unpack one of BtbN's builds and put ffmpeg, ffprobe
+# and the libraries they need under $LIB, in the same shape macOS uses, so
+# find_ffmpeg looks in one place on every platform (resources/lib/bin).
+#
+# The binaries are located rather than assumed: if upstream rearranges its
+# archive this fails loudly instead of quietly bundling nothing.
+stage_ffmpeg() {
+  local archive=$1 tmp found bindir libdir
+  tmp=$(mktemp -d)
+  case "$archive" in
+    *.zip)
+      if command -v unzip >/dev/null 2>&1; then unzip -q -o "$archive" -d "$tmp"
+      else 7z x -y -o"$tmp" "$archive" >/dev/null; fi ;;
+    *.tar.xz) tar -xJf "$archive" -C "$tmp" ;;
+    *) echo "unknown archive type: $archive" >&2; exit 1 ;;
+  esac
+
+  found=$(find "$tmp" -type f \( -name ffmpeg -o -name ffmpeg.exe \) | head -1)
+  if [ -z "$found" ]; then
+    echo "✗ no ffmpeg inside $(basename "$archive") — has the archive layout changed?" >&2
+    exit 1
+  fi
+  bindir=$(dirname "$found")
+
+  mkdir -p "$LIB/bin"
+  # Everything beside it (on Windows that is the DLLs a shared build needs),
+  # minus ffplay, which Prism never runs.
+  find "$bindir" -maxdepth 1 -type f ! -name 'ffplay*' -exec cp {} "$LIB/bin/" \;
+  chmod +x "$LIB"/bin/* 2>/dev/null || true
+
+  # A shared build on Linux keeps its libraries in a sibling lib/ and finds
+  # them through an $ORIGIN/../lib rpath, so that relationship has to survive
+  # the copy: resources/lib/bin/ffmpeg then resolves resources/lib/lib.
+  libdir="$(dirname "$bindir")/lib"
+  if [ -d "$libdir" ]; then
+    mkdir -p "$LIB/lib"
+    find "$libdir" -maxdepth 1 -name '*.so*' -exec cp -a {} "$LIB/lib/" \;
+  fi
+  rm -rf "$tmp"
+}
 WRAPPER_BASE="https://github.com/nini22P/libmpv-wrapper/releases/download/$LIBMPV_WRAPPER_VERSION"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -168,13 +212,21 @@ if [ "$WITH_PLAYER" = 1 ]; then
       fetch "https://github.com/zhongfly/mpv-winbuild/releases/download/$MPV_WINBUILD_TAG/$MPV_WINBUILD_ASSET" \
         "$TMP/mpv-dev.7z" "$MPV_WINBUILD_SHA256"
       extract_member "$TMP/mpv-dev.7z" "libmpv-2.dll" "$LIB/libmpv-2.dll"
+      fetch "$BTBN_BASE/$BTBN_FFMPEG_WIN64" "$TMP/ffmpeg-win64.zip" "$BTBN_FFMPEG_WIN64_SHA256"
+      stage_ffmpeg "$TMP/ffmpeg-win64.zip"
       {
         echo "libmpv-wrapper $LIBMPV_WRAPPER_VERSION"
         echo "libmpv (zhongfly/mpv-winbuild, LGPL build) $MPV_WINBUILD_ASSET"
+        echo "ffmpeg (BtbN LGPL build) $BTBN_FFMPEG_WIN64"
       } > "$LIB/VERSIONS.txt"
       ;;
     linux)
-      echo "(no embedded player on Linux yet — skipping)"
+      # No embedded player on Linux yet, but ffmpeg is bundled all the same, so
+      # merging and audio extraction don't depend on what the distro ships.
+      mkdir -p "$LIB"
+      fetch "$BTBN_BASE/$BTBN_FFMPEG_LINUX64" "$TMP/ffmpeg-linux64.tar.xz" "$BTBN_FFMPEG_LINUX64_SHA256"
+      stage_ffmpeg "$TMP/ffmpeg-linux64.tar.xz"
+      echo "ffmpeg (BtbN LGPL build) $BTBN_FFMPEG_LINUX64" > "$LIB/VERSIONS.txt"
       ;;
   esac
 fi

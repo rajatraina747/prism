@@ -45,3 +45,18 @@ MEDIA_MACOS_ARM64_URL=https://github.com/rajatraina747/prism/releases/download/m
 MEDIA_MACOS_ARM64_SHA256=b6c173509e61d25ea95984b02f61adc00a1079fde9bbbba89e7d2611520c9f50
 MEDIA_MACOS_ARM64_SOURCES_URL=https://github.com/rajatraina747/prism/releases/download/media-toolchain-20260916/prism-media-sources.tar.gz
 MEDIA_MACOS_ARM64_SOURCES_SHA256=4bb9497c6f6f0d3747914466a1cbba15fca50c2ea5d5c60c38ba4198ffa54aa6
+
+# ffmpeg for Windows and Linux — BtbN's LGPL builds,
+# https://github.com/BtbN/FFmpeg-Builds (hashes from the release's
+# checksums.sha256). Pinned to a dated autobuild tag: `latest` there is a
+# rolling tag and would silently change what a release ships.
+#
+# The 8.1 branch on purpose — it is the same ffmpeg the macOS toolchain builds
+# (8.1.2), so a bug report means the same thing on every platform. Shared
+# rather than static: the static build is roughly twice the size for the same
+# two programs, and the libraries travel with them.
+BTBN_TAG=autobuild-2026-09-15-13-18
+BTBN_FFMPEG_WIN64=ffmpeg-n8.1.2-53-g1005b294ff-win64-lgpl-shared-8.1.zip
+BTBN_FFMPEG_WIN64_SHA256=3b8e88c903043650350bf39adcd96c686e348e35857fd3476603e4d4ce126063
+BTBN_FFMPEG_LINUX64=ffmpeg-n8.1.2-53-g1005b294ff-linux64-lgpl-shared-8.1.tar.xz
+BTBN_FFMPEG_LINUX64_SHA256=c8fb071899337b16680ea1848c87fac27c3f31ff2c88e3c3b6c813f2625e9af1

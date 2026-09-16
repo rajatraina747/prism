@@ -28,6 +28,27 @@ MPV_WINBUILD_TAG=$(gh api repos/zhongfly/mpv-winbuild/releases/latest --jq .tag_
 MPV_WINBUILD_ASSET=$(gh api repos/zhongfly/mpv-winbuild/releases/latest --jq '.assets[] | select(.name|test("^mpv-dev-lgpl-x86_64-[0-9]")) | .name' | head -1)
 MPV_WINBUILD_SHA256=$(gh api repos/zhongfly/mpv-winbuild/releases/latest --jq ".assets[] | select(.name==\"$MPV_WINBUILD_ASSET\") | .digest" | sed 's/^sha256://')
 
+echo "Prism's own media toolchain…"
+# This one Prism publishes itself (.github/workflows/media-toolchain.yml):
+# take the newest dated release and the checksums published with it.
+PRISM_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+MEDIA_TAG=$(gh api "repos/$PRISM_REPO/releases" --jq '[.[] | select(.tag_name|startswith("media-toolchain-"))][0].tag_name')
+media_asset_id() { gh api "repos/$PRISM_REPO/releases/tags/$MEDIA_TAG" --jq ".assets[] | select(.name==\"$1\") | .id"; }
+MEDIA_SUMS=$(gh api -H "Accept: application/octet-stream" "repos/$PRISM_REPO/releases/assets/$(media_asset_id SHA256SUMS.txt)")
+media_sum() { echo "$MEDIA_SUMS" | awk -v n="$1" '$2==n{print tolower($1)}'; }
+
+echo "BtbN ffmpeg…"
+# The branch tracks the ffmpeg the macOS toolchain builds (scripts/toolchain.lock)
+# so a bug report means the same thing on every platform — change it here when
+# that moves, not by hand in the lock.
+BTBN_BRANCH=8.1
+BTBN_TAG=$(gh api repos/BtbN/FFmpeg-Builds/releases --jq '[.[] | select(.tag_name|startswith("autobuild-"))][0].tag_name')
+BTBN_SUMS=$(curl -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/$BTBN_TAG/checksums.sha256")
+btbn_asset() { echo "$BTBN_SUMS" | awk -v p="$1" '$2 ~ p {print $2}' | head -1; }
+btbn_sum() { echo "$BTBN_SUMS" | awk -v n="$1" '$2==n{print tolower($1)}'; }
+BTBN_FFMPEG_WIN64=$(btbn_asset "win64-lgpl-shared-$BTBN_BRANCH\\.zip$")
+BTBN_FFMPEG_LINUX64=$(btbn_asset "linux64-lgpl-shared-$BTBN_BRANCH\\.tar\\.xz$")
+
 # Keep the explanatory header, rewrite the values.
 HEADER=$(awk '/^# yt-dlp/{exit} {print}' "$LOCK")
 {
@@ -56,9 +77,34 @@ HEADER=$(awk '/^# yt-dlp/{exit} {print}' "$LOCK")
   echo "MPV_WINBUILD_ASSET=$MPV_WINBUILD_ASSET"
   echo "MPV_WINBUILD_SHA256=$MPV_WINBUILD_SHA256"
   echo
-  echo "# libmpv for macOS comes from Homebrew (see scripts/bundle-libmpv-macos.sh),"
-  echo "# which has no stable download URL to pin; the exact formula versions used"
-  echo "# are recorded into the bundle at resources/lib/VERSIONS.txt at build time."
+  echo "# LGPL media toolchain for macOS arm64 — libmpv, ffmpeg and ffprobe built"
+  echo "# from pinned sources by scripts/build-media-macos.sh and published by"
+  echo "# .github/workflows/media-toolchain.yml. This replaces the Homebrew libmpv"
+  echo "# bundle, which had no stable URL to pin and made the macOS build GPL."
+  echo "#"
+  echo "# prism-media-sources.tar.gz on the same release is the corresponding source"
+  echo "# for the LGPL written offer: every upstream tarball byte for byte, next to"
+  echo "# the script that patches and builds them. Keep it pinned so the offer can"
+  echo "# always be honoured with exactly what these binaries were built from."
+  echo "MEDIA_MACOS_ARM64_URL=https://github.com/$PRISM_REPO/releases/download/$MEDIA_TAG/prism-media-macos-arm64.tar.xz"
+  echo "MEDIA_MACOS_ARM64_SHA256=$(media_sum prism-media-macos-arm64.tar.xz)"
+  echo "MEDIA_MACOS_ARM64_SOURCES_URL=https://github.com/$PRISM_REPO/releases/download/$MEDIA_TAG/prism-media-sources.tar.gz"
+  echo "MEDIA_MACOS_ARM64_SOURCES_SHA256=$(media_sum prism-media-sources.tar.gz)"
+  echo
+  echo "# ffmpeg for Windows and Linux — BtbN's LGPL builds,"
+  echo "# https://github.com/BtbN/FFmpeg-Builds (hashes from the release's"
+  echo "# checksums.sha256). Pinned to a dated autobuild tag: \`latest\` there is a"
+  echo "# rolling tag and would silently change what a release ships."
+  echo "#"
+  echo "# The $BTBN_BRANCH branch on purpose — it is the same ffmpeg the macOS toolchain"
+  echo "# builds, so a bug report means the same thing on every platform. Shared"
+  echo "# rather than static: the static build is roughly twice the size for the"
+  echo "# same two programs, and the libraries travel with them."
+  echo "BTBN_TAG=$BTBN_TAG"
+  echo "BTBN_FFMPEG_WIN64=$BTBN_FFMPEG_WIN64"
+  echo "BTBN_FFMPEG_WIN64_SHA256=$(btbn_sum "$BTBN_FFMPEG_WIN64")"
+  echo "BTBN_FFMPEG_LINUX64=$BTBN_FFMPEG_LINUX64"
+  echo "BTBN_FFMPEG_LINUX64_SHA256=$(btbn_sum "$BTBN_FFMPEG_LINUX64")"
 } > "$LOCK.new"
 mv "$LOCK.new" "$LOCK"
 echo "Updated $LOCK — review with: git diff scripts/sidecars.lock"

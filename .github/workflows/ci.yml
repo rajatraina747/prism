@@ -188,6 +188,58 @@ jobs:
           src-tauri/lib/bin/ffprobe -hide_banner -version | head -1
           cat src-tauri/lib/VERSIONS.txt
 
+  # Windows and Linux get BtbN's LGPL ffmpeg the same way macOS gets the
+  # toolchain Prism builds, and build.yml only runs on tags — so the staging is
+  # proved here rather than while a release is being cut. Starting the binary is
+  # the real check: a shared build whose libraries didn't travel with it fails
+  # exactly here, which is the mistake this would otherwise ship.
+  media-windows-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            exe: .exe
+          - os: ubuntu-latest
+            platform: linux
+            exe: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Fetch the pinned media tools
+        shell: bash
+        run: scripts/fetch-sidecars.sh ${{ matrix.platform }} --player
+
+      - name: Check what actually landed
+        shell: bash
+        run: |
+          set -euo pipefail
+          ff="src-tauri/lib/bin/ffmpeg${{ matrix.exe }}"
+          probe="src-tauri/lib/bin/ffprobe${{ matrix.exe }}"
+          test -f "$ff"
+          test -f "$probe"
+
+          # ffplay is deliberately left behind.
+          if ls src-tauri/lib/bin/ffplay* >/dev/null 2>&1; then
+            echo "✗ ffplay was bundled" >&2; exit 1
+          fi
+
+          # Both have to start — on Linux that also proves the shared
+          # libraries were staged where the rpath expects them.
+          "$probe" -hide_banner -version | head -1
+
+          # LGPL, read off the binary rather than trusting the asset name.
+          if "$ff" -hide_banner -buildconf | grep -qE -- '--enable-(gpl|nonfree)'; then
+            echo "✗ bundled ffmpeg is not an LGPL build" >&2; exit 1
+          fi
+          if "$ff" -hide_banner -L | grep -qi 'GNU General Public License'; then
+            echo "✗ bundled ffmpeg reports a GPL license" >&2; exit 1
+          fi
+
+          cat src-tauri/lib/VERSIONS.txt
+
   # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
   audit:
     runs-on: ubuntu-latest
