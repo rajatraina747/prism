@@ -349,6 +349,11 @@ export class MockPrismService implements IPrismService {
     return true;
   }
 
+  async moveToTrash(paths: string[]): Promise<number> {
+    // Web demo: no files to move, so report what would have gone.
+    return paths.length;
+  }
+
   async storageSummary(folder: string): Promise<StorageSummary> {
     // Web demo: no disk to measure, so a plausible fixed answer rather than
     // zeroes, which would read as "nothing downloaded".

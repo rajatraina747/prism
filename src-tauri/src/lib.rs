@@ -1140,6 +1140,39 @@ async fn storage_summary(folder: String) -> Result<StorageSummary, String> {
     Ok(StorageSummary { folder: expanded, files, bytes, free_bytes, partial })
 }
 
+/// Most items one call may trash. A bulk action over a selection, not a way
+/// to hand the backend an unbounded list.
+const MAX_TRASH_PATHS: usize = 1000;
+
+/// The paths a trash request is actually allowed to touch. Every one goes
+/// through the same check as any other path from the webview — inside the
+/// allowed roots, and really there — before anything is deleted.
+///
+/// Split out from the command so the refusals are testable without a test
+/// that throws real files away.
+pub(crate) fn trashable_paths(paths: &[String], roots: &[PathBuf]) -> Result<Vec<String>, String> {
+    if paths.is_empty() {
+        return Err("Nothing to move to the Trash".into());
+    }
+    if paths.len() > MAX_TRASH_PATHS {
+        return Err(format!("Too many items at once (limit {MAX_TRASH_PATHS})"));
+    }
+    // Folders too: a multi-file torrent is one folder, not a list of files.
+    paths.iter().map(|p| validate_open_path(p, true, roots)).collect()
+}
+
+/// Move finished downloads to the OS Trash. Deliberately not a delete: this
+/// is the only thing in Prism that removes a file someone downloaded, so it
+/// has to be something they can undo outside the app.
+#[tauri::command]
+async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
+    let validated = trashable_paths(&paths, &picked_dirs(&app))?;
+    let count = validated.len();
+    trash::delete_all(&validated).map_err(|e| format!("Couldn't move to the Trash: {e}"))?;
+    log::info!("moved {count} item(s) to the Trash");
+    Ok(count)
+}
+
 #[tauri::command]
 async fn get_default_download_path() -> Result<String, String> {
     let home = dirs::download_dir()
@@ -2001,6 +2034,7 @@ pub fn run() {
             player::player_set,
             when_done,
             storage_summary,
+            move_to_trash,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -2031,6 +2065,30 @@ mod tests {
             "/dl/Chan-nel/100%% Pure.%(ext)s"
         );
         assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
+    }
+
+    /// The refusals are what matter here. Nothing is actually trashed: a test
+    /// that threw real files away to prove it could would be a bad trade.
+    #[test]
+    fn trashable_paths_refuses_what_it_should() {
+        assert!(trashable_paths(&[], &[]).is_err(), "an empty request is a mistake, not a no-op");
+
+        let many: Vec<String> = (0..MAX_TRASH_PATHS + 1).map(|i| format!("/tmp/{i}")).collect();
+        assert!(trashable_paths(&many, &[]).is_err(), "an unbounded list is refused");
+
+        // Exists, but outside every allowed root.
+        assert!(trashable_paths(&["/etc/hosts".to_string()], &[]).is_err());
+
+        // A real file under a root the user picked is fine — and so is the
+        // folder itself, because a multi-file torrent is a folder.
+        let dir = std::env::temp_dir().join(format!("prism-trash-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("inner")).unwrap();
+        let file = dir.join("inner/a.bin");
+        std::fs::write(&file, b"x").unwrap();
+        let roots = vec![dir.clone()];
+        assert!(trashable_paths(&[file.to_string_lossy().into_owned()], &roots).is_ok());
+        assert!(trashable_paths(&[dir.join("inner").to_string_lossy().into_owned()], &roots).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

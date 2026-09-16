@@ -155,6 +155,9 @@ export interface IPrismService {
   /** What a folder is holding and what its disk has left. The walk is capped,
    * so `partial` means the totals are a floor rather than a final answer. */
   storageSummary(folder: string): Promise<StorageSummary>;
+  /** Move finished downloads to the OS Trash — recoverable there, unlike a
+   * delete. Returns how many items were moved. */
+  moveToTrash(paths: string[]): Promise<number>;
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

@@ -494,6 +494,10 @@ export class TauriPrismService implements IPrismService {
     return invoke<StorageSummary>('storage_summary', { folder });
   }
 
+  async moveToTrash(paths: string[]): Promise<number> {
+    return invoke<number>('move_to_trash', { paths });
+  }
+
   async checkForUpdates(): Promise<UpdateCheckResult> {
     // The check runs in Rust (`check_app_update`) so its HTTP client can carry
     // a connect timeout — see src-tauri/src/updater.rs. One retry for a

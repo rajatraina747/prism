@@ -54,6 +54,14 @@ getrandom = "0.3"
 # In-app player engine (embeds mpv). Vendored with a resource-dir search
 # patch so releases can bundle libmpv — see vendor/tauri-plugin-libmpv/README.md.
 tauri-plugin-libmpv = { path = "vendor/tauri-plugin-libmpv" }
+# Bulk delete puts files in the OS Trash rather than unlinking them: the one
+# place Prism removes a finished download, so it has to be recoverable.
+trash = "5.2.3"
+# Arbitrary RSS/Atom feeds — podcasts and torrent feeds, whose enclosures are
+# files rather than pages. yt-dlp still handles channel and playlist URLs.
+feed-rs = "2.4.0"
+# Opt-in global hotkeys (add from clipboard, show Prism, pause all).
+tauri-plugin-global-shortcut = "2.3.2"
 
 # Signalling yt-dlp's process tree on kill (see src/proc.rs).
 [target.'cfg(unix)'.dependencies]

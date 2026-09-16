@@ -11,7 +11,7 @@ import {
 import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
 import { categoriesInUse, labelsInUse, nextSelection } from '@/stores/transfers';
 import {
-  Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
+  Clock, Search, Trash2, ListX, CheckCircle2, XCircle, Ban, RotateCcw,
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -82,6 +82,7 @@ export default function Library() {
   const [category, setCategory] = useState<string | null>(null);
   const [label, setLabel] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmTrash, setConfirmTrash] = useState(false);
   // Torrent row whose per-file list is expanded (one at a time keeps it tidy).
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Multi-select, using the same click/shift/meta rules as Transfers rather
@@ -185,6 +186,30 @@ export default function Library() {
     });
   }, [selectedItems, removeFromHistory, restoreHistory, clearSelection]);
 
+  // A real file, or a torrent's own folder. Deliberately *not* falling back to
+  // settings.destination the way revealSelected does: that is the whole
+  // download folder, and trashing it would take every other download with it.
+  const trashTargets = useMemo(
+    () => selectedItems.map(i => i.filePath ?? i.outputFolder).filter((p): p is string => !!p),
+    [selectedItems],
+  );
+
+  const trashSelected = useCallback(async () => {
+    setConfirmTrash(false);
+    const removed = selectedItems.filter(i => i.filePath ?? i.outputFolder);
+    try {
+      const count = await service.moveToTrash(trashTargets);
+      removed.forEach(i => removeFromHistory(i.id));
+      clearSelection();
+      // No Undo offered: the files are in the OS Trash now, and restoring the
+      // entries would leave them pointing at paths that have moved. The Trash
+      // itself is the undo.
+      toast.success(`Moved ${count} ${count === 1 ? 'item' : 'items'} to the Trash`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not move those to the Trash');
+    }
+  }, [selectedItems, trashTargets, service, removeFromHistory, clearSelection]);
+
   return (
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
@@ -198,7 +223,7 @@ export default function Library() {
             onClick={() => setConfirmClear(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
-            <Trash2 className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
+            <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
           </button>
         )}
       </div>
@@ -275,7 +300,10 @@ export default function Library() {
             <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
             <BulkButton icon={RotateCcw} label="Download again" onClick={() => selectedItems.forEach(requeue)} />
             <BulkButton icon={FolderOpen} label="Show in folder" onClick={revealSelected} />
-            <BulkButton icon={Trash2} label="Remove" onClick={removeSelected} />
+            <BulkButton icon={ListX} label="Remove" onClick={removeSelected} />
+            {trashTargets.length > 0 && (
+              <BulkButton icon={Trash2} label="Move to Trash" onClick={() => setConfirmTrash(true)} />
+            )}
             <button
               onClick={clearSelection}
               aria-label="Clear selection"
@@ -336,6 +364,21 @@ export default function Library() {
         confirmLabel={tab === 'all' ? 'Clear Everything' : `Clear ${TAB_LABELS[tab]}`}
         destructive
         onConfirm={clearCurrent}
+      />
+
+      <ConfirmDialog
+        open={confirmTrash}
+        onOpenChange={setConfirmTrash}
+        title={`Move ${trashTargets.length} ${trashTargets.length === 1 ? 'download' : 'downloads'} to the Trash?`}
+        description={[
+          'The files go to your system Trash, where you can put them back. Their library entries are removed too.',
+          selectedItems.length > trashTargets.length
+            ? `${selectedItems.length - trashTargets.length} selected ${selectedItems.length - trashTargets.length === 1 ? 'item has' : 'items have'} no file on disk and will be left alone.`
+            : '',
+        ].join(' ').trim()}
+        confirmLabel="Move to Trash"
+        destructive
+        onConfirm={trashSelected}
       />
     </div>
   );
@@ -527,7 +570,7 @@ const LibraryRow = React.memo(function LibraryRow({
             aria-label="Remove from library"
             className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <ListX className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
