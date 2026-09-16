@@ -234,7 +234,18 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       allowed roots, and only a file or a torrent's own folder is ever a
       target: never `settings.destination`, which is the whole download folder
       and would take every other download with it.
-- [ ] Undo that resumes (cancel-undo keeping partials).
+- [x] Undo that resumes. The premise here was wrong in a useful way: partial
+      files were never lost on cancel. `cancel_download` only stops the
+      process, yt-dlp is already given `--continue`, and the direct engine
+      keeps its `.prismpart` and state file (the deletions in `http_engine.rs`
+      are a checksum mismatch and post-rename cleanup, not cancellation). What
+      actually restarted was the *display*: the undo handler re-queued with
+      `progress: 0, downloadedBytes: 0`, showing a fresh start the engine was
+      never going to perform. The counters now carry over. Torrents are paused
+      for the length of the toast instead of cancelled, so undo keeps the
+      engine's handle and costs no hash re-check, with the real cancel fired
+      when the toast closes. Not verified by hand: proving a resume needs a
+      live download in a running build.
 - [x] Sleep, shut down or quit once the queue finishes
       (`stores/completion.ts`). It fires on the change from working to
       finished, never on a standing start — otherwise switching it on with an
