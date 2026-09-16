@@ -151,8 +151,13 @@ cp "$MVK_DYLIB" "$PREFIX/lib/"
 cp "$MVK_ICD" "$PREFIX/share/vulkan/icd.d/"
 
 echo "== libplacebo =="
+# meson goes in the venv alongside libplacebo's build-time Python modules, and
+# meson_build picks it up from PATH below. libplacebo asks meson for a Python
+# interpreter, and meson answers with the one it is itself running under — so a
+# system meson would look for jinja2 in the system Python and not find it, no
+# matter what the venv on PATH holds.
 python3 -m venv "$WORK/venv"
-"$WORK/venv/bin/pip" install --quiet jinja2 glad2
+"$WORK/venv/bin/pip" install --quiet meson ninja jinja2 glad2
 # libplacebo passes its search directory to the SPIRV probe but not to the
 # glslang ones, and meson's find_library reads only the compiler's built-in
 # paths plus a probe's own dirs:. LIBRARY_PATH, link arguments and a -L baked
