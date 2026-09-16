@@ -203,7 +203,15 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 
 **Library and automation**
 - [ ] Library list model, grid, bulk actions, storage, undo that resumes.
-- [ ] Post-completion actions (including sleep/shutdown), scheduling, RSS
+- [x] Sleep, shut down or quit once the queue finishes
+      (`stores/completion.ts`). It fires on the change from working to
+      finished, never on a standing start — otherwise switching it on with an
+      empty queue would sleep the machine on the spot. Seeding counts as work
+      unless explicitly waived, so nothing sleeps mid-upload; paused does not,
+      since a paused download never finishes on its own. A minute's countdown
+      you can call off, and the action itself is a fixed per-platform command
+      built in Rust — the string from the UI never reaches a shell.
+- [ ] Per-item post-completion actions (notify/open/reveal), scheduling, RSS
       rules, duplicate detection, native menu, global shortcuts, Dock and
       taskbar progress.
 - [x] Statistics page (`stores/stats.ts`): counters kept as their own record,

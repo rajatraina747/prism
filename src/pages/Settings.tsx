@@ -502,6 +502,33 @@ export default function Settings() {
                   </>
                 )}
               </SettingGroup>
+
+              <SettingGroup title="When everything finishes">
+                <SettingRow label="Then" description="Happens a minute after the last download ends, and only after Prism has actually been working — with a countdown you can call off">
+                  <Select
+                    value={p.whenDoneAction}
+                    options={[
+                      { value: 'nothing', label: 'Do nothing' },
+                      { value: 'sleep', label: 'Sleep' },
+                      { value: 'shutdown', label: 'Shut down' },
+                      { value: 'quit', label: 'Quit Prism' },
+                    ]}
+                    onChange={v => updatePreference('whenDoneAction', v)}
+                  />
+                </SettingRow>
+                {p.whenDoneAction !== 'nothing' && (
+                  <SettingRow label="Seeding torrents" description="Uploading counts as work, so nothing happens while a torrent is still seeding">
+                    <Select
+                      value={p.whenDoneIgnoresSeeding ? 'ignore' : 'wait'}
+                      options={[
+                        { value: 'wait', label: 'Wait for seeding' },
+                        { value: 'ignore', label: "Don't wait" },
+                      ]}
+                      onChange={v => updatePreference('whenDoneIgnoresSeeding', v === 'ignore')}
+                    />
+                  </SettingRow>
+                )}
+              </SettingGroup>
             </TabsContent>
 
             <TabsContent value="network" className="mt-0">

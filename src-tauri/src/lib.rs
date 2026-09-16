@@ -995,6 +995,70 @@ async fn show_in_folder(app: AppHandle, path: String) -> Result<(), String> {
     }
 }
 
+/// The program that puts this machine to sleep or shuts it down. Split out
+/// from `when_done` so the argv can be asserted in a test — a test that
+/// actually suspended the machine running it would be a poor trade.
+///
+/// Only these fixed pairs are ever produced: the action comes from the
+/// frontend, and nothing derived from it reaches a shell.
+#[allow(clippy::needless_return)] // cfg-gated blocks need explicit returns
+pub(crate) fn when_done_command(action: &str) -> Result<(String, Vec<String>), String> {
+    let unknown = || format!("Unknown when-done action: {action}");
+    #[cfg(target_os = "macos")]
+    {
+        return match action {
+            // Both are what the Apple menu does — no privileges needed.
+            "sleep" => Ok(("pmset".into(), vec!["sleepnow".into()])),
+            "shutdown" => Ok((
+                "osascript".into(),
+                vec!["-e".into(), "tell application \"System Events\" to shut down".into()],
+            )),
+            _ => Err(unknown()),
+        };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return match action {
+            "sleep" => Ok((
+                "rundll32.exe".into(),
+                vec!["powrprof.dll,SetSuspendState".into(), "0,1,0".into()],
+            )),
+            // A minute's grace, which `shutdown /a` can still abort — so a
+            // countdown someone missed isn't the end of the story.
+            "shutdown" => Ok(("shutdown".into(), vec!["/s".into(), "/t".into(), "60".into()])),
+            _ => Err(unknown()),
+        };
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return match action {
+            "sleep" => Ok(("systemctl".into(), vec!["suspend".into()])),
+            "shutdown" => Ok(("systemctl".into(), vec!["poweroff".into()])),
+            _ => Err(unknown()),
+        };
+    }
+}
+
+/// Carry out what the user asked for once the queue finished. Deciding *when*
+/// is the frontend's job (src/stores/completion.ts) — and it only decides that
+/// after work has actually finished, never from a standing start.
+#[tauri::command]
+async fn when_done(app: AppHandle, action: String) -> Result<(), String> {
+    // Quitting is in-process; there is no command for it.
+    if action == "quit" {
+        log::info!("when-done: quitting");
+        app.exit(0);
+        return Ok(());
+    }
+    let (program, args) = when_done_command(&action)?;
+    log::info!("when-done: {action} via {program}");
+    std::process::Command::new(&program)
+        .args(&args)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Couldn't {action}: {e}"))
+}
+
 /// Explorer's `/select,"<path>"` argument. The path comes from a torrent's
 /// name, so it's quoted explicitly and a `"` (which Windows paths can't
 /// contain anyway) is refused rather than allowed to end the quoting (S-11).
@@ -1865,6 +1929,7 @@ pub fn run() {
             player::player_set_mini,
             player::player_seek,
             player::player_set,
+            when_done,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1895,6 +1960,35 @@ mod tests {
             "/dl/Chan-nel/100%% Pure.%(ext)s"
         );
         assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
+    }
+
+    /// The argv is asserted, never run: a test that actually put the machine
+    /// running it to sleep would be a poor trade for the coverage.
+    #[test]
+    fn when_done_builds_only_known_commands() {
+        for action in ["sleep", "shutdown"] {
+            let (program, args) = when_done_command(action).expect("a known action");
+            assert!(!program.is_empty(), "{action} needs a program");
+            assert!(!args.is_empty(), "{action} needs arguments");
+        }
+        // Anything else is refused rather than passed along.
+        for action in ["reboot", "", "sleep; rm -rf /", "SLEEP"] {
+            assert!(when_done_command(action).is_err(), "{action:?} should be refused");
+        }
+        // Quit is handled in-process, so it is deliberately not a command.
+        assert!(when_done_command("quit").is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn when_done_uses_the_unprivileged_macos_paths() {
+        assert_eq!(
+            when_done_command("sleep").unwrap(),
+            ("pmset".to_string(), vec!["sleepnow".to_string()])
+        );
+        let (program, args) = when_done_command("shutdown").unwrap();
+        assert_eq!(program, "osascript");
+        assert!(args.iter().any(|a| a.contains("shut down")));
     }
 
     /// S-11: a torrent-controlled name can't break out of Explorer's quoting.

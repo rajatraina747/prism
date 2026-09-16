@@ -5,6 +5,10 @@ import { queueReducer } from '@/stores/queue-reducer';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
 import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
+import {
+  evaluateWhenDone, whenDoneLabel, IDLE_WHEN_DONE,
+  WHEN_DONE_COUNTDOWN_SECONDS, type WhenDoneState,
+} from '@/stores/completion';
 import { scheduleGate } from '@/stores/schedule';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
@@ -125,6 +129,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Lifetime counters. Their own record rather than a view of history, which
   // is capped at 2,000 rows and forgets everything older.
   const [stats, setStats] = useState<Stats>(() => hydrateStats(service.persistence.loadStats()));
+  // Whether the queue has been busy, so "when done" fires on finishing rather
+  // than the moment it is switched on. A ref, not state: it must not cause a
+  // render, and the effect below reads it on every queue change anyway.
+  const whenDoneRef = useRef<WhenDoneState>(IDLE_WHEN_DONE);
+  // The running countdown. Held in a ref rather than in the effect's scope:
+  // the effect re-runs on every queue change, and clearing the timer in its
+  // cleanup would cancel a countdown already under way the moment any late
+  // event arrived — which is exactly when nobody is watching.
+  const whenDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cleanupRefs = useRef<Map<string, () => void>>(new Map());
   const startedRef = useRef<Set<string>>(new Set());
   // Items whose backend kill hasn't come back yet — see the auto-start effect.
@@ -280,6 +293,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const t = setInterval(() => setScheduleTick(x => x + 1), 60_000);
     return () => clearInterval(t);
   }, [settings.scheduleEnabled]);
+
+  // Sleep, shut down or quit once everything has finished. The decision is
+  // made in stores/completion.ts, which only says yes after the queue has
+  // actually been working — turning the setting on with an empty queue must
+  // not put the machine to sleep on the spot.
+  useEffect(() => {
+    const { state, start } = evaluateWhenDone(whenDoneRef.current, queue, settings);
+    whenDoneRef.current = state;
+    if (!start) return;
+
+    const action = settings.whenDoneAction;
+    const cancel = () => {
+      if (whenDoneTimerRef.current) clearTimeout(whenDoneTimerRef.current);
+      whenDoneTimerRef.current = null;
+    };
+    cancel();
+    whenDoneTimerRef.current = setTimeout(() => {
+      whenDoneTimerRef.current = null;
+      service.whenDone(action).catch(e => {
+        toast.error(`Couldn't ${action}: ${e instanceof Error ? e.message : e}`);
+      });
+    }, WHEN_DONE_COUNTDOWN_SECONDS * 1000);
+
+    toast(`${whenDoneLabel(action)} in ${WHEN_DONE_COUNTDOWN_SECONDS} seconds`, {
+      description: 'Everything has finished downloading.',
+      duration: WHEN_DONE_COUNTDOWN_SECONDS * 1000,
+      action: { label: 'Cancel', onClick: cancel },
+    });
+  }, [queue, settings, service]);
+
+  // Only on unmount: a countdown must survive the effect above re-running.
+  useEffect(() => () => {
+    if (whenDoneTimerRef.current) clearTimeout(whenDoneTimerRef.current);
+  }, []);
 
   // Push the effective session-wide torrent caps: the user's download/upload
   // limits, tightened by the Quiet Hours override while it's active. yt-dlp

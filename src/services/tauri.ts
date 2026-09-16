@@ -7,7 +7,7 @@ import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars } from './types';
 import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
 
@@ -352,6 +352,11 @@ export class TauriPrismService implements IPrismService {
 
   async readClipboard(): Promise<string> {
     return (await readText()) ?? '';
+  }
+
+  async whenDone(action: WhenDoneAction): Promise<void> {
+    // Rust refuses anything but a known action; the string never reaches a shell.
+    await invoke('when_done', { action });
   }
 
   async notify(title: string, body: string): Promise<void> {

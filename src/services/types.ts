@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
 import type { EngineError } from '@/services/errors';
 
 export type ProgressCallback = (data: {
@@ -152,6 +152,9 @@ export interface IPrismService {
    * the tray, where in-app toasts are invisible. Best-effort (no-op if the OS
    * denies permission). */
   notify(title: string, body: string): Promise<void>;
+  /** Sleep, shut down, or quit once the queue has finished. Deciding *when* is
+   * src/stores/completion.ts; this only carries it out. */
+  whenDone(action: WhenDoneAction): Promise<void>;
 
   // Deep links (prism://add?url=..., magnet:, .torrent files, tray paste) —
   // handler receives the extracted URL and where it came from.

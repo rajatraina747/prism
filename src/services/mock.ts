@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars } from './types';
 import { generateId } from './utils';
 
@@ -311,6 +311,10 @@ export class MockPrismService implements IPrismService {
 
   async notify(_title: string, _body: string): Promise<void> {
     // Web demo: in-app toasts cover it.
+  }
+
+  async whenDone(_action: WhenDoneAction): Promise<void> {
+    // Web demo: there is no machine here to sleep or shut down.
   }
 
   onDeepLink(_handler: (url: string, origin: import('./types').LinkOrigin) => void): () => void {
