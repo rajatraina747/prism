@@ -29,7 +29,15 @@ jobs:
       - run: npm ci
 
       - name: TypeScript type check
-        run: npx tsc --noEmit
+        # The root tsconfig is solution-style (files: [] + references), so a
+        # bare `tsc --noEmit` resolves no files, checks nothing and always
+        # exits 0 — this step passed on code that genuinely didn't typecheck.
+        # Check the referenced projects directly. Not `tsc -b`: that needs
+        # composite: true, which tsconfig.app.json doesn't set. Both projects
+        # are noEmit, so neither of these writes anything.
+        run: |
+          npx tsc -p tsconfig.app.json --noEmit
+          npx tsc -p tsconfig.node.json --noEmit
 
       - name: Lint
         run: npm run lint

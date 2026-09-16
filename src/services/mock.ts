@@ -364,7 +364,7 @@ export class MockPrismService implements IPrismService {
   }
 
   async fetchRss(url: string, limit?: number): Promise<PlaylistInfo> {
-    await delay(400);
+    await new Promise(r => setTimeout(r, 400));
     const host = (() => { try { return new URL(url).hostname; } catch { return 'example.com'; } })();
     const entries = Array.from({ length: Math.min(limit ?? 5, 5) }, (_, i) => ({
       url: `https://${host}/files/episode-${i + 1}.mp3`,
