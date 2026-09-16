@@ -214,7 +214,17 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       Prism, which can be a network share or an enormous tree — and when it
       stops early it says "at least" rather than reporting a wrong total
       confidently.
-- [ ] Library list model, grid view, density modes.
+- [x] Library sort, grid view, density modes. The plan called for extracting a
+      `useListModel` from Transfers, which turned out to be the wrong shape:
+      that logic already lives in `stores/transfers.ts` as pure functions the
+      Library was reusing. So `stores/library.ts` follows the same pattern —
+      `sortHistory` and `gridColumns`, pure and unit-tested — rather than
+      wrapping what exists in a hook to satisfy the word "model". The grid is
+      the virtualizer's lanes, not a second list: doing it only in the
+      non-windowed path would have meant grid silently stopping at 60 rows.
+      Column count comes from the measured width, so a narrow window gets one
+      readable column instead of three cramped ones, and density applies to
+      Transfers as well.
 - [x] Bulk "move to Trash" — the first thing in Prism that removes a file
       someone downloaded, so it goes to the OS Trash rather than being
       unlinked: the Trash is the undo, which is why no Undo toast is offered.
