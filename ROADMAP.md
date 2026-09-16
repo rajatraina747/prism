@@ -344,8 +344,22 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       a since-this-version figure rather than a lifetime one, because nothing
       in history records it. Charts are hand-drawn SVG, as the player's speed
       graph already is; no charting dependency.
-- [ ] Clip download, chapter split, conversion presets, settings/Library
-      export, qBittorrent and Transmission import.
+- [x] Clip download and chapter split. A range is typed as `1:23` / `0:01:23`
+      / `83`, with either end optional, and `clip.rs` turns it into yt-dlp's
+      `--download-sections "*start-end"`. The range is rebuilt from the parsed
+      seconds rather than echoed back, so what reaches yt-dlp is something
+      Prism produced — arguments go to argv rather than a shell, but a range
+      is user text reaching a command line and the narrow rule is cheap. Tests
+      cover the injection-shaped inputs. `--force-keyframes-at-cuts` goes with
+      it so a cut lands where it was asked for instead of at the nearest
+      keyframe. `--split-chapters` applies only when there is no range:
+      splitting the chapters of an excerpt describes two different cuts of one
+      file. Offered on yt-dlp items only (the flag means nothing to the
+      torrent or direct engines) and only while queued. Not verified by hand —
+      proving a cut lands at 1:23 needs a real download.
+- [ ] Conversion presets, settings/Library export, qBittorrent and
+      Transmission import. All three genuinely absent: no `convert.rs`, no
+      `kind: 'convert'`, no `prism-export`, no `.fastresume` reader.
 
 **Distribution**
 - [ ] Chrome/Edge and Firefox extension builds; hosted privacy page; winget;
