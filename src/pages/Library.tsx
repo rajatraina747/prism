@@ -5,10 +5,14 @@ import { EmptyState, Thumb, ConfirmDialog } from '@/components/common';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
+import { categoriesInUse } from '@/stores/transfers';
 import {
   Clock, Search, Trash2, CheckCircle2, XCircle, Ban, RotateCcw,
-  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight,
+  FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -74,6 +78,7 @@ export default function Library() {
   const { addToQueue } = useQueue();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   // Torrent row whose per-file list is expanded (one at a time keeps it tidy).
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -107,10 +112,15 @@ export default function Library() {
   }, [addToQueue, removeFromHistory]);
 
   const inTab = useMemo(() => items.filter(i => tab === 'all' || i.status === tab), [items, tab]);
+  const categories = useMemo(() => categoriesInUse(items), [items]);
+  // Survives a category being cleared out of the library entirely.
+  const activeCategory = category && categories.some(c => c.id === category) ? category : null;
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return q ? inTab.filter(i => i.metadata.title.toLowerCase().includes(q)) : inTab;
-  }, [inTab, search]);
+    return inTab.filter(i =>
+      (!activeCategory || i.settings.categoryId === activeCategory)
+      && (!q || i.metadata.title.toLowerCase().includes(q)));
+  }, [inTab, search, activeCategory]);
 
   const tabs = (['all', 'completed', 'failed', 'canceled'] as const).map(key => ({
     key,
@@ -161,18 +171,36 @@ export default function Library() {
           ))}
         </TabsList>
 
-        {/* Search */}
+        {/* Search + category */}
         {items.length > 0 && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40 mb-4 max-w-sm">
-            <Search className="w-3.5 h-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search library..."
-              aria-label="Search library"
-              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
-            />
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40 w-full max-w-sm">
+              <Search className="w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search library..."
+                aria-label="Search library"
+                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+              />
+            </div>
+            {categories.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by category">
+                    <Tag className="w-3 h-3" />
+                    {activeCategory ? categories.find(c => c.id === activeCategory)?.name : 'All categories'}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>All categories</DropdownMenuItem>
+                  {categories.map(c => (
+                    <DropdownMenuItem key={c.id} onSelect={() => setCategory(c.id)} className={cn('text-xs', activeCategory === c.id && 'text-primary')}>{c.name}</DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         )}
 
@@ -269,6 +297,9 @@ const LibraryRow = React.memo(function LibraryRow({
               return label ? <span>{label}</span> : null;
             })()}
             {item.settings.audioOnly && <span>Audio</span>}
+            {item.settings.categoryName && (
+              <span className="px-1.5 rounded bg-secondary text-secondary-foreground">{item.settings.categoryName}</span>
+            )}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
             <span>{formatWhen(item.completedAt)}</span>
           </div>

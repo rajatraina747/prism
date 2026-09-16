@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterCounts, visibleTransfers, nextSelection, sortTransfers } from '../transfers';
+import { filterCounts, visibleTransfers, nextSelection, sortTransfers, categoriesInUse } from '../transfers';
 import type { DownloadItem, DownloadStatus } from '@/types/models';
 
 function item(id: string, status: DownloadStatus, extra: Partial<DownloadItem> = {}): DownloadItem {
@@ -37,6 +37,27 @@ describe('transfers helpers', () => {
     expect(visibleTransfers(items, 'all', 'added', '').map(i => i.id)).toEqual(['a', 'b', 'c', 'd', 'f']);
     expect(visibleTransfers(items, 'errored', 'added', '').map(i => i.id)).toEqual(['d']);
     expect(visibleTransfers(items, 'all', 'added', 'aard').map(i => i.id)).toEqual(['f']);
+  });
+
+  it('filters by category, and lists only the categories in use', () => {
+    const filed = (id: string, status: DownloadStatus, categoryId?: string, categoryName?: string) =>
+      item(id, status, {
+        settings: {
+          format: null, destination: '', filename: '', retryCount: 0, startImmediately: true,
+          ...(categoryId ? { categoryId, categoryName } : {}),
+        },
+      });
+    const list = [
+      filed('a', 'downloading', 'music', 'Music'),
+      filed('b', 'queued', 'music', 'Music'),
+      filed('c', 'paused', 'iso', 'ISOs'),
+      filed('d', 'queued'),
+    ];
+    expect(categoriesInUse(list)).toEqual([{ id: 'music', name: 'Music' }, { id: 'iso', name: 'ISOs' }]);
+    expect(visibleTransfers(list, 'all', 'added', '', 'music').map(i => i.id)).toEqual(['a', 'b']);
+    expect(visibleTransfers(list, 'queued', 'added', '', 'music').map(i => i.id)).toEqual(['b']);
+    // No category chosen is "all of them", not "the ones with no category".
+    expect(visibleTransfers(list, 'all', 'added', '', null).map(i => i.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('sorts by each key and keeps queue order under "added"', () => {

@@ -8,7 +8,7 @@ import { EmptyState, ConfirmDialog } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
-import { FILTERS, SORTS, filterCounts, visibleTransfers, nextSelection, isTransfer } from '@/stores/transfers';
+import { FILTERS, SORTS, filterCounts, visibleTransfers, nextSelection, isTransfer, categoriesInUse } from '@/stores/transfers';
 import { useTransferShortcuts, type TransferShortcutHandlers } from '@/hooks/use-transfer-shortcuts';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -16,13 +16,13 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ArrowDownToLine, Pause, Play, Search, ArrowUpDown, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, Pause, Play, Search, ArrowUpDown, RefreshCw, Trash2, Tag, X } from 'lucide-react';
 import type { TransfersFilter, TransfersSort } from '@/types/models';
 
 export default function Queue() {
   const {
     items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
-    startAll, pauseAll, reorderQueue, updateTorrentFiles, reannounceTorrent, recheckTorrent, removeWithData,
+    startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, reannounceTorrent, recheckTorrent, removeWithData,
     moveToTop, moveToBottom,
   } = useQueue();
   const { removeFromHistory } = useHistory();
@@ -53,6 +53,9 @@ export default function Queue() {
   }, [items, cancelDownload, removeFromQueue, removeFromHistory, addToQueue]);
 
   const [search, setSearch] = useState('');
+  // Kept local, like the search box: a filter you can't see the effect of is
+  // worse after a restart than a fresh list.
+  const [category, setCategory] = useState<string | null>(null);
   const filter = preferences.transfersFilter;
   const sort = preferences.transfersSort;
   const setFilter = (f: TransfersFilter) => updatePreference('transfersFilter', f);
@@ -62,12 +65,19 @@ export default function Queue() {
   const quiet = quietHoursStatus(preferences, now);
   const activeItems = useMemo(() => items.filter(isTransfer), [items]);
   const counts = useMemo(() => filterCounts(activeItems), [activeItems]);
-  const visibleItems = useMemo(() => visibleTransfers(items, filter, sort, search), [items, filter, sort, search]);
+  const categories = useMemo(() => categoriesInUse(activeItems), [activeItems]);
+  // Heal the filter when its last transfer is archived, rather than leaving
+  // the list mysteriously empty under a category that is no longer there.
+  const activeCategory = category && categories.some(c => c.id === category) ? category : null;
+  const visibleItems = useMemo(
+    () => visibleTransfers(items, filter, sort, search, activeCategory),
+    [items, filter, sort, search, activeCategory],
+  );
   const orderedIds = useMemo(() => visibleItems.map(i => i.id), [visibleItems]);
 
   // Reorder only under "Added" order with no search: any other view maps
   // visible indexes onto a different order than the queue's.
-  const canReorder = sort === 'added' && !search && filter === 'all';
+  const canReorder = sort === 'added' && !search && filter === 'all' && !activeCategory;
   const reorderVisible = useCallback((fromIndex: number, toIndex: number) => {
     const fromId = visibleItems[fromIndex]?.id;
     const toId = visibleItems[toIndex]?.id;
@@ -215,6 +225,22 @@ export default function Queue() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {categories.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by category">
+                  <Tag className="w-3 h-3" />
+                  {activeCategory ? categories.find(c => c.id === activeCategory)?.name : 'All categories'}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>All categories</DropdownMenuItem>
+                {categories.map(c => (
+                  <DropdownMenuItem key={c.id} onSelect={() => setCategory(c.id)} className={cn('text-xs', activeCategory === c.id && 'text-primary')}>{c.name}</DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-input border border-border/40 ml-auto w-56">
             <Search className="w-3.5 h-3.5 text-muted-foreground" />
             <input
@@ -289,6 +315,7 @@ export default function Queue() {
             onClose={() => setDetailsOpen(false)}
             onUpdateFiles={updateTorrentFiles}
             onReannounce={reannounceTorrent}
+            onSetCategory={setItemCategory}
             playerAvailable={playerAvailable}
           />
         )}

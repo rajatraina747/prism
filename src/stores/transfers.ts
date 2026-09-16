@@ -1,4 +1,4 @@
-import type { DownloadItem, TransfersFilter, TransfersSort } from '@/types/models';
+import type { DownloadItem, DownloadSettings, TransfersFilter, TransfersSort } from '@/types/models';
 
 // Pure helpers for the Transfers page: status filtering, sorting and the
 // counts shown on the filter tabs. Kept out of the component so they're
@@ -63,15 +63,33 @@ export function sortTransfers(items: DownloadItem[], sort: TransfersSort): Downl
   return [...items].sort(cmp[sort]);
 }
 
+/** The categories these items are actually filed under, in the order they
+ * first appear. The filter offers only these, so it never lists a category
+ * nothing is in — including ones since renamed or deleted, which keep the
+ * name they were given at the time. */
+export function categoriesInUse(
+  items: { settings: Pick<DownloadSettings, 'categoryId' | 'categoryName'> }[],
+): { id: string; name: string }[] {
+  const seen = new Map<string, string>();
+  for (const i of items) {
+    const id = i.settings.categoryId;
+    if (id && !seen.has(id)) seen.set(id, i.settings.categoryName || id);
+  }
+  return [...seen].map(([id, name]) => ({ id, name }));
+}
+
 export function visibleTransfers(
   items: DownloadItem[],
   filter: TransfersFilter,
   sort: TransfersSort,
   search: string,
+  categoryId?: string | null,
 ): DownloadItem[] {
   const q = search.trim().toLowerCase();
   const filtered = items.filter(
-    i => isTransfer(i) && matchesFilter(i, filter) && (!q || i.metadata.title.toLowerCase().includes(q)),
+    i => isTransfer(i) && matchesFilter(i, filter)
+      && (!categoryId || i.settings.categoryId === categoryId)
+      && (!q || i.metadata.title.toLowerCase().includes(q)),
   );
   return sortTransfers(filtered, sort);
 }

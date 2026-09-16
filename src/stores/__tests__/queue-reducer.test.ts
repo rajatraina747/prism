@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { queueReducer } from '../queue-reducer';
-import type { DownloadItem, DownloadError } from '@/types/models';
+import type { DownloadItem, DownloadError, DownloadCategory } from '@/types/models';
 
 function makeItem(overrides: Partial<DownloadItem> = {}): DownloadItem {
   return {
@@ -41,6 +41,35 @@ describe('queueReducer', () => {
   it('adds items', () => {
     const next = queueReducer([], { type: 'add', item: makeItem() });
     expect(next).toHaveLength(1);
+  });
+
+  it('re-files a queued item into a category, taking its destination and naming', () => {
+    const music: DownloadCategory = {
+      id: 'music', name: 'Music', destination: '~/Music',
+      filenameTemplate: '{uploader}/{title}', domains: [], kinds: [],
+    };
+    const next = queueReducer([makeItem()], { type: 'setCategory', id: 'a', category: music });
+    expect(next[0].settings.categoryId).toBe('music');
+    expect(next[0].settings.destination).toBe('~/Music');
+    expect(next[0].settings.filenameTemplate).toBe('{uploader}/{title}');
+  });
+
+  it('only labels an item that is already running — its destination stays put', () => {
+    const music: DownloadCategory = {
+      id: 'music', name: 'Music', destination: '~/Music', filenameTemplate: '', domains: [], kinds: [],
+    };
+    const next = queueReducer([makeItem({ status: 'downloading' })], { type: 'setCategory', id: 'a', category: music });
+    expect(next[0].settings.categoryName).toBe('Music');
+    expect(next[0].settings.destination).toBe('~/Downloads/Prism');
+  });
+
+  it('clears a category without disturbing the rest of the settings', () => {
+    const base = makeItem();
+    const filed = makeItem({ settings: { ...base.settings, categoryId: 'music', categoryName: 'Music' } });
+    const next = queueReducer([filed], { type: 'setCategory', id: 'a', category: null });
+    expect(next[0].settings.categoryId).toBeUndefined();
+    expect(next[0].settings.categoryName).toBeUndefined();
+    expect(next[0].settings.destination).toBe('~/Downloads/Prism');
   });
 
   it('marks queued items started, but not paused ones', () => {

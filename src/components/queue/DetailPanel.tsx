@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { DownloadItem, TorrentDetails, TorrentPeer } from '@/types/models';
+import type { DownloadItem, DownloadCategory, TorrentDetails, TorrentPeer } from '@/types/models';
 import { useService } from '@/services/ServiceProvider';
 import { useSettings } from '@/stores/AppProvider';
 import { formatBytes, formatSpeed, formatEta } from '@/services/utils';
@@ -19,6 +19,7 @@ export interface DetailPanelProps {
   onClose: () => void;
   onUpdateFiles?: (id: string, onlyFiles: number[]) => void;
   onReannounce?: (id: string) => void;
+  onSetCategory?: (id: string, category: DownloadCategory | null) => void;
   playerAvailable?: boolean;
 }
 
@@ -31,7 +32,7 @@ type Tab = 'general' | 'files' | 'peers' | 'trackers' | 'speed';
  * while visible (peers every 2 s, details once per item), and the speed
  * graph keeps its own 60-sample ring buffer per item.
  */
-export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, playerAvailable }: DetailPanelProps) {
+export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFiles, onReannounce, onSetCategory, playerAvailable }: DetailPanelProps) {
   const [tab, setTab] = React.useState<Tab>('general');
   const isTorrent = item?.kind === 'torrent';
   React.useEffect(() => {
@@ -90,7 +91,7 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
           </button>
         </div>
 
-        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} /></TabsContent>
+        <TabsContent value="general" className="flex-1 min-h-0 mt-2"><GeneralTab item={item} onReannounce={onReannounce} onSetCategory={onSetCategory} /></TabsContent>
         {isTorrent && <TabsContent value="files" className="flex-1 min-h-0 mt-2"><FilesTab item={item} onUpdateFiles={onUpdateFiles} playerAvailable={playerAvailable} /></TabsContent>}
         {isTorrent && <TabsContent value="peers" className="flex-1 min-h-0 mt-2"><PeersTab item={item} active={tab === 'peers'} /></TabsContent>}
         {isTorrent && <TabsContent value="trackers" className="flex-1 min-h-0 mt-2"><TrackersTab item={item} onReannounce={onReannounce} /></TabsContent>}
@@ -128,9 +129,19 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   );
 }
 
-function GeneralTab({ item, onReannounce }: { item: DownloadItem; onReannounce?: (id: string) => void }) {
+function GeneralTab({ item, onReannounce, onSetCategory }: {
+  item: DownloadItem;
+  onReannounce?: (id: string) => void;
+  onSetCategory?: (id: string, category: DownloadCategory | null) => void;
+}) {
   const service = useService();
+  const { preferences } = useSettings();
   const details = useDetails(item);
+  // A category the item was filed under and that has since been deleted still
+  // labels it — keep it in the list so picking something else is a choice, not
+  // a side effect of opening the menu.
+  const filedUnderMissing = !!item.settings.categoryId
+    && !preferences.categories.some(c => c.id === item.settings.categoryId);
   const isTorrent = item.kind === 'torrent';
   const dest = item.settings.destination || '~/Downloads/Prism';
   const when = (iso?: string) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
@@ -162,6 +173,23 @@ function GeneralTab({ item, onReannounce }: { item: DownloadItem; onReannounce?:
               <FolderOpen className="w-3 h-3 shrink-0" /><span className="truncate">{dest}</span>
             </button>
           </Row>
+          {onSetCategory && (
+            <Row label="Category">
+              <select
+                value={item.settings.categoryId ?? ''}
+                onChange={(e) => onSetCategory(item.id, preferences.categories.find(c => c.id === e.target.value) ?? null)}
+                aria-label="Category"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+              >
+                <option value="">None</option>
+                {preferences.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {filedUnderMissing && (
+                  <option value={item.settings.categoryId}>{item.settings.categoryName ?? 'Deleted category'}</option>
+                )}
+              </select>
+              {item.status === 'queued' ? '' : ' · label only while it runs'}
+            </Row>
+          )}
           <Row label="Added">{when(item.addedAt)}</Row>
           <Row label="Started">{when(item.startedAt)}</Row>
           {isTorrent && details && <Row label="Info hash" mono>{details.infoHash}</Row>}

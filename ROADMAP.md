@@ -154,8 +154,9 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
 - [x] Categories (`stores/categories.ts`): rules on site and engine, each with
       its own destination and file name template, applied when an item is
       queued and shown as a chip on its row.
-- [ ] Categories, still to add: pick one by hand in the details dialog, and
-      filter Transfers and Library by category.
+- [x] Categories by hand: a picker in the details dialog — re-filing something
+      that has already started changes its label only, never where it is
+      writing — and a category filter on Transfers and Library.
 - [ ] Labels (several per item, unlike a category).
 - [x] Watch folders (`watch.rs`): `.torrent` files and text files of links,
       polled every few seconds, fed into the ordinary add flow as an in-app

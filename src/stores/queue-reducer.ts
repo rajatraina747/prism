@@ -1,4 +1,5 @@
-import type { DownloadItem, DownloadError } from '@/types/models';
+import type { DownloadItem, DownloadError, DownloadCategory } from '@/types/models';
+import { applyCategory } from '@/stores/categories';
 
 // The queue state machine. All transitions live here so their guards are
 // explicit and unit-testable; AppProvider only performs side effects
@@ -33,6 +34,7 @@ export type QueueAction =
   | { type: 'cancel'; id: string }
   | { type: 'retry'; id: string }
   | { type: 'setSelectedFiles'; id: string; files: number[] }
+  | { type: 'setCategory'; id: string; category: DownloadCategory | null }
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
@@ -147,6 +149,22 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
         ...i,
         settings: { ...i.settings, selectedFiles: action.files },
       }));
+
+    case 'setCategory':
+      // Re-filing something that hasn't started yet also takes the category's
+      // destination and naming. Once it is running, only the label moves:
+      // changing where a live download writes would strand its partial file.
+      return update(queue, action.id, i => {
+        if (!action.category) {
+          const settings = { ...i.settings };
+          delete settings.categoryId;
+          delete settings.categoryName;
+          return { ...i, settings };
+        }
+        return i.status === 'queued'
+          ? applyCategory(i, action.category)
+          : { ...i, settings: { ...i.settings, categoryId: action.category.id, categoryName: action.category.name } };
+      });
 
     case 'remove':
       return queue.filter(i => i.id !== action.id);

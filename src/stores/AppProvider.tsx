@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, type ReactNode } from 'react';
-import type { DownloadItem, HistoryItem, AppPreferences, DownloadError } from '@/types/models';
+import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { applyCategory, categoryFor } from '@/stores/categories';
@@ -44,6 +44,8 @@ interface QueueActions {
   pauseAll: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   updateTorrentFiles: (id: string, onlyFiles: number[]) => void;
+  /** File an item under a category by hand (null clears it). */
+  setItemCategory: (id: string, category: DownloadCategory | null) => void;
   /** Torrent: fresh announce to trackers/DHT ("Update tracker"). */
   reannounceTorrent: (id: string) => void;
   /** Torrent: hash every piece on disk again ("Force re-check"). */
@@ -504,6 +506,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .catch((e) => toast.error(`Couldn't update file selection: ${e}`));
   }, [service]);
 
+  const setItemCategory = useCallback((id: string, category: DownloadCategory | null) => {
+    dispatch({ type: 'setCategory', id, category });
+  }, []);
+
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
       .then(() => toast.success('Asked trackers and DHT for peers'))
@@ -554,7 +560,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
+      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
         <HistoryContext.Provider value={{ items: history, removeFromHistory, clearHistory }}>
           {children}
         </HistoryContext.Provider>
