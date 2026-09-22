@@ -185,6 +185,21 @@ jobs:
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # linuxdeploy, its GTK/GStreamer plugins and its appimage plugin are
+          # themselves AppImages, and an AppImage self-mounts through FUSE 2.
+          # ubuntu-24.04 runners carry libfuse3 only, so they cannot mount and
+          # die without stderr of their own — tauri reports the whole thing as
+          # "failed to run linuxdeploy" (v2.0.0-rc.1, run 35155594489: deb and
+          # rpm bundled fine, AppImage died 11 s after the plugin downloads).
+          # Extracting each AppImage instead of mounting it needs no kernel
+          # support at all, so it holds whatever the image ships; installing
+          # libfuse2 would also work today but pins us to a transitional
+          # package Ubuntu is retiring.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          # linuxdeploy strips every ELF it bundles. The LGPL media sidecars
+          # arrive stripped already, and its strip pass is a second known way
+          # this step fails, so it buys us nothing here.
+          NO_STRIP: 'true'
         with:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
