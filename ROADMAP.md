@@ -112,7 +112,7 @@ fixed on the `v2.0` branch.
       loader pointed at a missing driver the video output fails to start; with
       the bundled manifest alone it plays.
 
-### v2.0 — "Download manager" (in progress on `v2.0`)
+### v2.0 — "Download manager" (merged to `main`; release candidate)
 
 Decided 2026-09-15: the bundle id becomes `com.rainacorp.prism`; a basic
 HTTP(S) engine is in; the extension goes to Edge Add-ons and AMO, with Chrome
@@ -357,9 +357,21 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       file. Offered on yt-dlp items only (the flag means nothing to the
       torrent or direct engines) and only while queued. Not verified by hand —
       proving a cut lands at 1:23 needs a real download.
-- [ ] Conversion presets, settings/Library export, qBittorrent and
-      Transmission import. All three genuinely absent: no `convert.rs`, no
-      `kind: 'convert'`, no `prism-export`, no `.fastresume` reader.
+- [x] Conversion presets (`convert.rs`, `kind: 'convert'`). Six destinations —
+      MP4/H.264, MP4/HEVC, MP4 remux, MP3, M4A, Opus — rather than a codec
+      matrix, because every extra option is one more way to produce a file
+      that won't play. The module decides only what to run and what ffmpeg
+      said, both pure, so the argument building and the progress arithmetic are
+      tested without spawning anything. Running it goes through `spawn.rs` like
+      every other child, so stopping one takes the process group on unix and
+      the Job Object on Windows instead of leaving ffmpeg behind; `running()`
+      tracks conversions by id and `cancel_convert` is a no-op for an id it
+      doesn't own, so the frontend can signal every engine without knowing
+      which one holds the job.
+- [ ] Settings/Library export and qBittorrent/Transmission import. Both still
+      genuinely absent: no `prism-export`, and no `.fastresume` reader — the
+      only `fastresume` in the tree is librqbit's own session persistence,
+      which is a different thing.
 
 **Distribution**
 - [ ] Chrome/Edge and Firefox extension builds; hosted privacy page; winget;
