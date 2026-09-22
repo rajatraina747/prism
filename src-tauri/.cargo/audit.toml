@@ -4,4 +4,22 @@
 # comment saying why it doesn't apply to Prism and when to re-check; keep
 # this list as short as possible.
 [advisories]
-ignore = []
+ignore = [
+  # RUSTSEC-2026-0293 — ringbuf 0.4.8: double free / use-after-free in
+  # Consumer::skip and Consumer::clear *when an element's Drop panics*.
+  #
+  # Reached as prism → librqbit 9.0.1 → librqbit-utp 0.7.0 → ringbuf. Both
+  # librqbit crates are already at their latest published versions, and the fix
+  # landed in ringbuf 0.5.2, a semver break from the ^0.4 librqbit-utp pins, so
+  # there is nothing to update to: cargo update locks 0 packages.
+  #
+  # It does not apply to us. librqbit-utp's buffer is
+  # `type RingBuf = SharedRb<Heap<u8>>` (stream_tx.rs:129) — the element is u8,
+  # which is Copy and has no Drop, so the panicking destructor the advisory
+  # needs cannot exist. Consumer::skip is genuinely called (stream_tx.rs:83);
+  # the call is real, the hazard is not.
+  #
+  # Re-check when librqbit-utp moves to ringbuf 0.5.x, and drop this entry
+  # then. If the element type ever stops being u8, this reasoning is void.
+  "RUSTSEC-2026-0293",
+]
