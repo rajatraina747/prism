@@ -52,8 +52,14 @@ jobs:
           file src-tauri/lib/bin/* 2>/dev/null || true
           echo "── symlinks (cp -a preserves the .so version chains) ──"
           find src-tauri/lib -type l -ls 2>/dev/null || true
-          echo "── rpaths on ffmpeg ──"
+          echo "── rpath on ffmpeg (expect \$ORIGIN/../lib) ──"
           readelf -d src-tauri/lib/bin/ffmpeg 2>/dev/null | grep -Ei 'rpath|runpath' || true
+          echo "── runpath on each real .so (expect \$ORIGIN on every one) ──"
+          for so in src-tauri/lib/lib/*.so.*.*.*; do
+            [ -f "$so" ] || continue
+            printf '%s\t%s\n' "$(basename "$so")" \
+              "$(readelf -d "$so" 2>/dev/null | grep -Eio 'R(UN)?PATH.*' || echo 'NONE')"
+          done
 
       - name: Build (verbose; allowed to fail so the next step can run)
         id: build
@@ -65,25 +71,37 @@ jobs:
           NO_STRIP: 'true'
         run: npx tauri build --verbose
 
-      # If --verbose still swallowed it, run linuxdeploy against the AppDir
-      # tauri left behind, by hand, with nothing capturing its stderr.
-      - name: Make linuxdeploy talk
+      # The build step is allowed to fail so this one always runs, which means
+      # the job's own green tick proves nothing — this is the real gate.
+      - name: Did an AppImage actually come out
         if: always()
         run: |
-          set +e
           BUNDLE=src-tauri/target/release/bundle/appimage
           echo "── bundle dir ──"
-          ls -la "$BUNDLE" || { echo "no appimage bundle dir — build died earlier"; exit 0; }
-          APPDIR=$(find "$BUNDLE" -maxdepth 1 -name '*.AppDir' | head -1)
-          echo "APPDIR=$APPDIR"
-          [ -n "$APPDIR" ] && find "$APPDIR" -maxdepth 4 | sort | head -80
-          LD=$(find "$BUNDLE" -maxdepth 2 -name 'linuxdeploy*.AppImage' | head -1)
-          echo "LD=$LD"
-          if [ -n "$LD" ] && [ -n "$APPDIR" ]; then
-            chmod +x "$LD"
-            echo "── linuxdeploy, direct ──"
-            APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true \
-              "$LD" --appdir "$APPDIR" --plugin gtk --output appimage -v0
-            echo "── exit $? ──"
+          ls -la "$BUNDLE" 2>/dev/null || { echo "no appimage bundle dir at all"; exit 1; }
+          IMG=$(find "$BUNDLE" -maxdepth 1 -name '*.AppImage' | head -1)
+          if [ -z "$IMG" ]; then
+            echo "✗ no .AppImage — linuxdeploy still refused. The AppDir it left:"
+            find "$BUNDLE" -maxdepth 1 -name '*.AppDir' -exec find {} -maxdepth 4 \; | sort | head -60
+            # linuxdeploy is cached outside the bundle dir; run it by hand so
+            # its stderr reaches the log uncaptured.
+            LD=$HOME/.cache/tauri/linuxdeploy-x86_64.AppImage
+            APPDIR=$(find "$BUNDLE" -maxdepth 1 -name '*.AppDir' | head -1)
+            if [ -x "$LD" ] && [ -n "$APPDIR" ]; then
+              echo "── linuxdeploy, direct ──"
+              APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true "$LD" --appdir "$APPDIR" --output appimage || true
+            fi
+            exit 1
           fi
-          exit 0
+          echo "✓ $IMG ($(du -h "$IMG" | cut -f1))"
+          # An AppImage that exists but ships an ffmpeg that cannot find its
+          # own libraries is not a fix. Unpack and check the relationship the
+          # staging comment promises: resources/lib/bin/ffmpeg → ../lib.
+          cd "$BUNDLE" && "./$(basename "$IMG")" --appimage-extract >/dev/null 2>&1 || true
+          FF=$(find squashfs-root -path '*/lib/bin/ffmpeg' | head -1)
+          echo "bundled ffmpeg: ${FF:-NOT FOUND}"
+          if [ -n "$FF" ]; then
+            chmod +x "$FF"
+            echo "── ldd ──"; ldd "$FF" | grep -E 'libav|libsw' || true
+            echo "── it runs ──"; "$FF" -hide_banner -version | head -2
+          fi

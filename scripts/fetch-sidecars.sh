@@ -122,6 +122,35 @@ stage_ffmpeg() {
   if [ -d "$libdir" ]; then
     mkdir -p "$LIB/lib"
     find "$libdir" -maxdepth 1 -name '*.so*' -exec cp -a {} "$LIB/lib/" \;
+
+    # These libraries reference each other by bare soname — libswscale.so.9
+    # needs libavutil.so.60 — and carry no RUNPATH of their own. At runtime
+    # that is fine, because the loader is searching on behalf of ffmpeg and
+    # ffmpeg's own $ORIGIN/../lib rpath covers the whole set.
+    #
+    # linuxdeploy does not work that way. It walks every ELF in the AppDir and
+    # resolves each one's dependencies in isolation, with no executable's rpath
+    # in play, so libswscale.so.9 sends it looking for libavutil.so.60 on the
+    # system, where a bundled ffmpeg's libraries are of course not installed.
+    # It then fails the entire AppImage:
+    #
+    #     ERROR: Could not find dependency: libavutil.so.60
+    #     ERROR: Failed to deploy dependencies for existing files
+    #
+    # and tauri reports only `failed to run linuxdeploy` (v2.0.0-rc.1 and
+    # rc.2). Giving each library $ORIGIN makes the sibling lookup succeed for
+    # linuxdeploy and the loader alike, and resolves to these same files rather
+    # than to a second copy deployed into usr/lib. Only the real files are
+    # patched: the version symlinks beside them would be replaced by regular
+    # files, and the chain is what the sonames point at.
+    if [ "$PLATFORM" = linux ]; then
+      if ! command -v patchelf >/dev/null 2>&1; then
+        echo "✗ patchelf is needed to stage the Linux ffmpeg libraries" >&2
+        exit 1
+      fi
+      find "$LIB/lib" -maxdepth 1 -type f -name '*.so*' \
+        -exec patchelf --set-rpath '$ORIGIN' {} \;
+    fi
   fi
   rm -rf "$tmp"
 }
