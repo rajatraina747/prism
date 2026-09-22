@@ -1,0 +1,89 @@
+# TEMPORARY — delete once the Linux AppImage build is fixed.
+#
+# Build & Release only triggers on `v*` tags, so every attempt at the AppImage
+# break costs a release candidate. This runs the same Linux build off a branch
+# instead, and its whole purpose is to make linuxdeploy talk: tauri pipes the
+# bundler's output and only prints it under --verbose, which is why the release
+# log says nothing but `failed to run linuxdeploy`.
+name: Debug Linux AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [debug/linux-appimage]
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: npm ci
+
+      - name: Fetch pinned, checksum-verified sidecars
+        run: scripts/fetch-sidecars.sh linux --player
+
+      # v1.9.2's AppImage built on this same runner image in 85 s. The one
+      # thing 2.0 adds is this tree, so record exactly what goes in.
+      - name: What the bundle now carries that 1.9.2 did not
+        run: |
+          echo "── src-tauri/lib ──"
+          find src-tauri/lib -maxdepth 3 | sort
+          echo "── ELF types ──"
+          file src-tauri/lib/bin/* 2>/dev/null || true
+          echo "── symlinks (cp -a preserves the .so version chains) ──"
+          find src-tauri/lib -type l -ls 2>/dev/null || true
+          echo "── rpaths on ffmpeg ──"
+          readelf -d src-tauri/lib/bin/ffmpeg 2>/dev/null | grep -Ei 'rpath|runpath' || true
+
+      - name: Build (verbose; allowed to fail so the next step can run)
+        id: build
+        continue-on-error: true
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          NO_STRIP: 'true'
+        run: npx tauri build --verbose
+
+      # If --verbose still swallowed it, run linuxdeploy against the AppDir
+      # tauri left behind, by hand, with nothing capturing its stderr.
+      - name: Make linuxdeploy talk
+        if: always()
+        run: |
+          set +e
+          BUNDLE=src-tauri/target/release/bundle/appimage
+          echo "── bundle dir ──"
+          ls -la "$BUNDLE" || { echo "no appimage bundle dir — build died earlier"; exit 0; }
+          APPDIR=$(find "$BUNDLE" -maxdepth 1 -name '*.AppDir' | head -1)
+          echo "APPDIR=$APPDIR"
+          [ -n "$APPDIR" ] && find "$APPDIR" -maxdepth 4 | sort | head -80
+          LD=$(find "$BUNDLE" -maxdepth 2 -name 'linuxdeploy*.AppImage' | head -1)
+          echo "LD=$LD"
+          if [ -n "$LD" ] && [ -n "$APPDIR" ]; then
+            chmod +x "$LD"
+            echo "── linuxdeploy, direct ──"
+            APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true \
+              "$LD" --appdir "$APPDIR" --plugin gtk --output appimage -v0
+            echo "── exit $? ──"
+          fi
+          exit 0
