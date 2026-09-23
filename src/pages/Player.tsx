@@ -121,6 +121,13 @@ export default function Player() {
     try {
       if (src.stream) {
         await invoke('player_load_stream', { torrentId: src.stream.torrentId, fileIdx: src.stream.fileIdx });
+      } else if (src.pick) {
+        // The picker runs in Rust so the pick itself is the permission: the
+        // player loads only files Prism downloaded when it's handed a path.
+        const name = await invoke<string | null>('player_open_file');
+        if (name === null) return;
+        setTitle(name);
+        getCurrentWindow().setTitle(name).catch(() => {});
       } else if (src.path) {
         await invoke('player_load', { path: src.path });
       } else {
@@ -312,18 +319,7 @@ export default function Player() {
   }, [fullscreen]);
 
   const pickAndPlay = useCallback(() => {
-    openFileDialog({
-      multiple: false,
-      filters: [{
-        name: 'Media',
-        extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'opus', 'flac', 'wav', 'ogg'],
-      }],
-    }).then((picked) => {
-      if (typeof picked === 'string') {
-        const name = picked.split('/').pop() ?? picked;
-        loadFile({ path: picked, title: name }).catch(() => {});
-      }
-    }).catch(() => {});
+    loadFile({ pick: true }).catch(() => {});
   }, [loadFile]);
 
   const goChapter = useCallback((delta: number) => {

@@ -8,6 +8,7 @@ mod engine;
 mod errors;
 mod http_engine;
 mod jobs;
+mod ledger;
 mod migrate;
 mod mpv_worker;
 mod player;
@@ -978,6 +979,7 @@ pub(crate) fn is_openable_media(path: &str) -> bool {
 #[tauri::command]
 async fn open_file(app: AppHandle, path: String) -> Result<(), String> {
     let expanded = validate_open_path(&path, false, &picked_dirs(&app))?;
+    ledger::require_recorded(&app, &expanded)?;
     if !is_openable_media(&expanded) {
         return Err(
             "Prism only opens media, subtitle, image and text files. Use \"Show in Folder\" for anything else."
@@ -1309,6 +1311,11 @@ fn folders_from_settings(app: &AppHandle, with_watch_folders: bool) -> Vec<PathB
 #[tauri::command]
 async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
     let validated = trashable_paths(&paths, &picked_dirs(&app), &protected_folders(&app))?;
+    // Only what Prism downloaded: the page's own records once pointed a row
+    // at the whole download folder (B-3); the ledger is Rust's record.
+    for path in &validated {
+        ledger::require_recorded(&app, path)?;
+    }
     let count = validated.len();
     // Moving a large folder to the Trash can take a while: off the async workers (P-2).
     tauri::async_runtime::spawn_blocking(move || trash::delete_all(&validated))
@@ -2274,6 +2281,7 @@ pub fn run() {
             player::player_destroy,
             player::player_load,
             player::player_load_stream,
+            player::player_open_file,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -2595,7 +2603,7 @@ mod tests {
     fn every_command_is_declared_and_granted_to_the_right_window() {
         const PLAYER_ONLY: &[&str] = &[
             "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
-            "player_save_position", "player_resume_position", "player_add_subtitle",
+            "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
         let build = include_str!("../build.rs");

@@ -66,6 +66,7 @@ const COMMANDS: &[&str] = &[
     "player_destroy",
     "player_load",
     "player_load_stream",
+    "player_open_file",
     "player_save_position",
     "player_resume_position",
     "player_add_subtitle",

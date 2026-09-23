@@ -33,6 +33,7 @@
     "allow-player-sibling-subtitles",
     "allow-player-set-mini",
     "allow-player-seek",
-    "allow-player-set"
+    "allow-player-set",
+    "allow-player-open-file"
   ]
 }

@@ -18,6 +18,8 @@ export interface PlayerSource {
   path?: string;
   /** A torrent file to stream while it downloads. Takes precedence over `path`. */
   stream?: PlayerStream;
+  /** "Open file…": Rust shows the picker and loads whatever is chosen. */
+  pick?: true;
   title?: string;
 }
 

@@ -532,6 +532,7 @@ impl DownloadManager {
             // applies its usual checks if it's opened outside Prism.
             if let Some(p) = &final_path {
                 crate::quarantine::mark_downloaded(p);
+                crate::ledger::record(&app, p);
             }
 
             let file_size = final_path.as_ref().and_then(|p| {

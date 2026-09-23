@@ -356,6 +356,41 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
     if !crate::is_openable_media(&validated) {
         return Err("The player only opens media files".into());
     }
+    // A path from the page must be something Prism downloaded (ledger.rs).
+    // Any other file comes in through `player_open_file`, where the user
+    // picks it in a dialog Rust shows.
+    crate::ledger::require_recorded(&app, &validated)?;
+    load_validated(&app, validated).await
+}
+
+/// "Open file…" in the player: Rust shows the dialog, so the user's pick is
+/// the permission, and loads the file. Returns its name, or None if the user
+/// cancelled.
+#[tauri::command]
+pub async fn player_open_file(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    ensure_player_window(&window)?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Media", &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "mp3", "m4a", "opus", "flac", "wav", "ogg"])
+        .pick_file(move |picked| {
+            let _ = tx.send(picked);
+        });
+    let Some(picked) = rx.await.map_err(|_| "File picker was closed".to_string())? else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| format!("Invalid file: {e}"))?;
+    let validated = crate::validate_open_path(&path.to_string_lossy(), false, &crate::picked_dirs(&app))?;
+    if !crate::is_openable_media(&validated) {
+        return Err("The player only opens media files".into());
+    }
+    let name = std::path::Path::new(&validated).file_name().map(|n| n.to_string_lossy().into_owned());
+    load_validated(&app, validated).await?;
+    Ok(name)
+}
+
+async fn load_validated(app: &AppHandle, validated: String) -> Result<(), String> {
     {
         use tauri::Manager;
         let title = std::path::Path::new(&validated)
@@ -367,7 +402,7 @@ pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) ->
             Some(validated.clone()),
         );
     }
-    mpv_worker(&app)
+    mpv_worker(app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
             mpv.command("loadfile", vec![serde_json::json!(validated)], PLAYER_LABEL)?;
             mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
