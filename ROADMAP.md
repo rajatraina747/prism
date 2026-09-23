@@ -52,33 +52,43 @@ rest of the hardening follows, and the 2.1 features wait for both.
       with a `%` in it.
 - [x] The Trash dialog names any folder it is about to trash.
 
-### v2.0.2 — Correctness & security hardening
+### v2.0.2 — Player fix, correctness & security hardening
 
-- [ ] **B-5** One job registry across the four engines: a pending entry with a
-      cancel flag before the first await, and one `kill_all` on Exit.
-- [ ] **B-7** Take yt-dlp's real output path from
-      `--print after_move:...%(filepath)s` instead of guessing it (also fixes
-      split chapters).
-- [ ] **B-8** Lock the content index and write it off the async workers.
-- [ ] **B-9** Check a 206's `Content-Range` start.
-- [ ] **S-1** Text-list links from watch folders go through the confirmation
-      card; a watch folder may not be the destination; files that yield nothing
-      are left unrenamed.
-- [ ] **S-2** App-command ACL manifest with per-window allows; the player
-      window can't emit events. Capability test extended to commands.
-- [ ] **S-4** `storage_summary` validated and on `spawn_blocking`.
-- [ ] **S-5** RSS polls refuse to run under a SOCKS proxy they can't honour.
-- [ ] **S-6** Bound line length in `spawn.rs` `forward`.
-- [ ] **S-7** `protocol_whitelist=file` for local file loads only — never for
-      `player_load_stream`, which is `http://127.0.0.1`.
-- [ ] **P-1 (part one)** Memoized context values and `queueRef` in callbacks,
+- [x] **The macOS player never started in 2.0.0 or 2.0.1** (found while
+      checking S-7). The LGPL libmpv shipped since 2.0 is built without Lua,
+      so `osc`/`ytdl` don't exist, and the wrapper fails create on an option
+      it can't set. `player.rs` reads the bundled libmpv's embedded
+      `-Dlua=disabled` and sets them only when Lua is there (Windows' build
+      has it). Verified with `examples/mpv_thread_repro` against the shipped
+      libraries; it hung at create before.
+- [x] **B-5** One ticket per start (`jobs.rs`), taken before the first
+      await; every engine's cancel marks it and each engine checks it before
+      registering. The frontend also stops before invoking when cancelled
+      during setup.
+- [x] **B-7** yt-dlp prints `after_move:PRISM:PATH=%(filepath)s` and
+      completion uses it (split chapters too); yt-dlp runs with
+      `PYTHONIOENCODING=utf-8`.
+- [x] **B-8** Content index read-modify-write under a mutex, on the blocking
+      pool.
+- [x] **B-9** A 206 must start where it was asked to, or the download fails.
+- [x] **S-1** Text-list links from watch folders go through the
+      confirmation card; a watch folder may not be a download destination;
+      text files with no links are left unrenamed.
+- [x] **S-2** App-command ACL manifest (`build.rs`) with per-window grants;
+      the player window can't emit events. Tests cover both.
+- [x] **S-4** `storage_summary` validated and on `spawn_blocking`.
+- [x] **S-5** RSS polls use a SOCKS proxy too (reqwest's `socks` was already
+      compiled in by librqbit).
+- [x] **S-6** Bound line length in `spawn.rs` `forward`.
+- [x] **S-7** `access-references=no`. The review's
+      `protocol_whitelist=file` does not work: mpv parses `#EXTM3U` itself,
+      and still fetched the entry with it set. Play now is unaffected.
+- [x] **P-1 (part one)** Memoized context values and `queueRef` in callbacks,
       so `QueueRow`'s memo holds.
-- [ ] **P-2** Remaining blocking work onto `spawn_blocking`.
-- [ ] Completion reads the current settings, not the ones captured at start.
-- [ ] A title with `%` is escaped twice: `MediaDetailsModal` and
-      `subscription-check` store `sanitizeFilename(title)` (already `%%`), and
-      `tauri.ts` sanitizes it again, so yt-dlp writes `100%% Pure.mp4`. Store
-      the plain name; escape once, where `-o` is built.
+- [x] **P-2** Remaining blocking work onto `spawn_blocking`.
+- [x] Completion reads the current settings, not the ones captured at start.
+- [x] A title with `%` is no longer escaped twice: `sanitizeFilename` makes
+      a name and `-o` is escaped once, with `ytdlpLiteral`.
 
 ### v2.1 — Export, import, dedupe, and the structural fixes
 
