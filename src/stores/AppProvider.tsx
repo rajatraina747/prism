@@ -263,6 +263,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // actually finishes; the queue is read through a ref when it fires.
   const queueRef = useRef(queue);
   queueRef.current = queue;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   // Read through a ref for the same reason as the queue above: this effect is
   // keyed on terminalKey alone and must not re-arm. Making the service a
   // dependency would put that back at the mercy of an identity change.
@@ -451,6 +453,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'progress', id: item.id, data: rest, seeding });
         },
         (success, errorMsg, filePath, fileSize, actualHeight, outputFolder) => {
+          // The settings as they are now, not as they were when this download
+          // started: turning notifications off mid-download has to count
+          // (REVIEW 2026-09-23).
+          const current = settingsRef.current;
           startedRef.current.delete(item.id);
           cleanupRefs.current.delete(item.id);
           if (success) {
@@ -467,7 +473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 duration: 8000,
               });
             }
-            if (settings.notificationsEnabled) {
+            if (current.notificationsEnabled) {
               toast.success(`Downloaded: ${item.metadata.title}`);
               // Toasts are invisible when the window is hidden/in the tray —
               // that's exactly when a finished download needs an OS notification.
@@ -475,12 +481,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 service.notify('Download complete', item.metadata.title).catch(() => {});
               }
             }
-            if (settings.soundEnabled) playNotificationSound();
+            if (current.soundEnabled) playNotificationSound();
 
             // Then whatever was asked for this download in particular. A
             // torrent can finish without a single file path, so opening or
             // revealing falls back to the folder rather than throwing.
-            const after = postCompletionFor(item, settings);
+            const after = postCompletionFor(item, current);
             const target = filePath ?? outputFolder ?? item.settings.destination;
             if (after === 'notify') {
               service.notify('Download complete', item.metadata.title).catch(() => {});
@@ -505,7 +511,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
 
             diagnostics.log('error', `Download failed: ${item.metadata.title}`, { error: errorMsg });
-            if (settings.notificationsEnabled) {
+            if (current.notificationsEnabled) {
               toast.error(`Failed: ${item.metadata.title}`, {
                 description: suggestion,
                 action: action === 'cookies'

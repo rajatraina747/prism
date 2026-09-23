@@ -3,6 +3,8 @@ import { render, act, waitFor } from '@testing-library/react';
 import { AppProvider, useQueue, useHistory, useSettings } from '../AppProvider';
 import { ServiceProvider } from '@/services/ServiceProvider';
 import type { DownloadItem } from '@/types/models';
+import { MockPrismService } from '@/services/mock';
+import { toast } from 'sonner';
 
 function makeItem(id: string, status: DownloadItem['status'] = 'queued'): DownloadItem {
   return {
@@ -256,6 +258,42 @@ describe('AppProvider - stable callbacks', () => {
       expect(q![name], name).toBe(before[name]);
     }
     expect(s, 'settings context untouched by a queue change').toBe(settingsBefore);
+  });
+});
+
+// Regression (REVIEW 2026-09-23): completion read the settings captured when
+// the download started, so turning notifications off mid-download did nothing.
+describe('AppProvider - completion reads current settings', () => {
+  it('honours notifications turned off while the download ran', async () => {
+    type Complete = Parameters<MockPrismService['startDownload']>[2];
+    let complete: Complete | null = null;
+    const start = vi.spyOn(MockPrismService.prototype, 'startDownload').mockImplementation((_item, _progress, done) => {
+      complete = done;
+      return () => {};
+    });
+    const success = vi.spyOn(toast, 'success');
+    try {
+      let q: ReturnType<typeof useQueue> | null = null;
+      let s: ReturnType<typeof useSettings> | null = null;
+      await renderAndWait(
+        <Wrapper>
+          <QueueHelper onReady={a => { q = a; }} />
+          <SettingsHelper onReady={a => { s = a; }} />
+        </Wrapper>,
+      );
+      await waitFor(() => expect(q).not.toBeNull());
+      act(() => { s!.updatePreference('notificationsEnabled', true); });
+      const item = { ...makeItem('n1'), settings: { ...makeItem('n1').settings, startImmediately: true } };
+      act(() => { q!.addToQueue(item); });
+      await waitFor(() => expect(complete).not.toBeNull());
+      act(() => { s!.updatePreference('notificationsEnabled', false); });
+      success.mockClear();
+      act(() => { complete!(true, undefined, '/downloads/n1.mp4', 10); });
+      expect(success).not.toHaveBeenCalledWith(expect.stringContaining('Downloaded:'));
+    } finally {
+      start.mockRestore();
+      success.mockRestore();
+    }
   });
 });
 
