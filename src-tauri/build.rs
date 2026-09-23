@@ -9,8 +9,78 @@ fn main() {
     stage_player_libs();
     export_bundled_ytdlp_version();
 
-    tauri_build::build()
+    // Prism's own commands go through the ACL like the plugins' do: each
+    // window may call only what its capability grants (capabilities/*.json).
+    // Without an app manifest every command was callable from every window,
+    // the player's included (REVIEW 2026-09-23 S-2). Keep this in step with
+    // `generate_handler!` in src/lib.rs; a test there checks it.
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
+    )
+    .expect("failed to run tauri-build")
 }
+
+/// Every command registered in `generate_handler!`.
+const COMMANDS: &[&str] = &[
+    "parse_url",
+    "parse_playlist",
+    "start_download",
+    "cancel_download",
+    "probe_direct_link",
+    "start_http_download",
+    "cancel_http_download",
+    "set_http_rate_limit",
+    "preview_filename_template",
+    "start_torrent",
+    "cancel_torrent",
+    "pause_torrent",
+    "resume_torrent",
+    "update_torrent_files",
+    "parse_torrent",
+    "set_torrent_rate_limit",
+    "reannounce_torrent",
+    "recheck_torrent",
+    "torrent_peers",
+    "torrent_details",
+    "open_file",
+    "open_external",
+    "show_in_folder",
+    "get_default_download_path",
+    "get_launch_torrent_files",
+    "import_torrent_file",
+    "pick_download_dir",
+    "get_app_version",
+    "ffmpeg_available",
+    "get_ytdlp_version",
+    "update_ytdlp",
+    "reset_ytdlp",
+    "get_engine_info",
+    "check_engine_update",
+    "check_app_update",
+    "install_app_update",
+    "fixup_player_video",
+    "player_available",
+    "player_init",
+    "player_destroy",
+    "player_load",
+    "player_load_stream",
+    "player_save_position",
+    "player_resume_position",
+    "player_add_subtitle",
+    "player_sibling_subtitles",
+    "player_set_mini",
+    "player_seek",
+    "player_set",
+    "when_done",
+    "storage_summary",
+    "move_to_trash",
+    "rss_fetch",
+    "set_shortcuts",
+    "set_progress",
+    "index_download",
+    "convert_file",
+    "cancel_convert",
+];
 
 /// The yt-dlp version scripts/sidecars.lock pins, so the app can tell whether
 /// a self-updated engine is newer than the one it ships with (engine.rs).

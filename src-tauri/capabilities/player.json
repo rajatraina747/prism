@@ -1,12 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "player",
-  "description": "Embedded media player window: the window chrome it drives (title, fullscreen, close). mpv itself is reached only through Prism's allowlisting player_* commands (src-tauri/src/player.rs) — the libmpv plugin's raw command/set_property/init passthrough is deliberately NOT granted.",
+  "description": "Embedded media player window: the window chrome it drives (title, fullscreen, close), listening for events, and Prism's player_* commands, each granted by name. mpv itself is reached only through those allowlisting commands (src-tauri/src/player.rs); the libmpv plugin's raw command/set_property/init passthrough is deliberately NOT granted. No core:default: its event permissions would let this window emit quick-add-url or watch-folder-links, which the main window treats as in-app (REVIEW 2026-09-23 S-2).",
   "windows": [
     "player"
   ],
   "permissions": [
-    "core:default",
+    "core:app:default",
+    "core:path:default",
+    "core:resources:default",
+    "core:image:default",
+    "core:webview:default",
+    "core:window:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "dialog:default",
     "core:window:allow-set-title",
     "core:window:allow-set-fullscreen",
@@ -14,6 +21,18 @@
     "core:window:allow-is-fullscreen",
     "core:window:allow-close",
     "core:window:allow-set-focus",
-    "core:window:allow-unminimize"
+    "core:window:allow-unminimize",
+    "allow-fixup-player-video",
+    "allow-player-init",
+    "allow-player-destroy",
+    "allow-player-load",
+    "allow-player-load-stream",
+    "allow-player-save-position",
+    "allow-player-resume-position",
+    "allow-player-add-subtitle",
+    "allow-player-sibling-subtitles",
+    "allow-player-set-mini",
+    "allow-player-seek",
+    "allow-player-set"
   ]
 }
