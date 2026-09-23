@@ -23,7 +23,7 @@ regression test at the seam the review names — no existing test would have
 caught B-1 to B-5. Order decided 2026-09-23: the P0s ship alone and fast, the
 rest of the hardening follows, and the 2.1 features wait for both.
 
-### v2.0.1 — "Don't lose it, don't destroy it" (P0 patch)
+### v2.0.1 — "Don't lose it, don't destroy it" (shipped 2.0.1)
 
 - [x] **B-1** Queue saved while downloads run. A change to which items exist
       or their status saves at once; progress alone is throttled (2 s
