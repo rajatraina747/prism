@@ -30,10 +30,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
       `maxWait`); the reducer returns the same array for events it ignores. A
       flush on quit was dropped: ⌘Q reaches Rust only as `RunEvent::Exit`,
       too late to wait on the webview (`stores/queue-save.ts`).
-- [ ] **B-2** Finished torrents leave the librqbit session once seeding ends
-      (`delete(id, false)` before the move). Torrents that already leaked — a
-      restored handle no queue item adopts — are pruned at startup, never with
-      their data.
+- [x] **B-2** Finished torrents leave the librqbit session once seeding ends
+      (`delete(id, false)` before the move). Torrents that already leaked are
+      **paused** when the session restores them, not deleted: `add_or_adopt`
+      unpauses the ones a queue item adopts, and deleting one a queued item
+      still wants would cost a full re-hash (`pause_restored`).
 - [ ] **B-3 + S-3** `resolve_completion_path` never falls back to the shared
       destination; `trashable_paths` refuses every root and every ancestor of
       one, which also neutralises rows already recorded with a folder path.
