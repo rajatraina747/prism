@@ -1137,8 +1137,17 @@ pub(crate) fn walk_storage(root: &std::path::Path) -> (u64, u64, bool) {
 }
 
 #[tauri::command]
-async fn storage_summary(folder: String) -> Result<StorageSummary, String> {
-    let expanded = expand_tilde(&folder);
+async fn storage_summary(app: AppHandle, folder: String) -> Result<StorageSummary, String> {
+    // Only a folder downloads may go to: the walk would otherwise read any
+    // tree the page named (REVIEW 2026-09-23 S-4). It runs on the blocking
+    // pool, since the folder may be a network share or a huge tree (P-2).
+    let expanded = validate_download_path(&folder, &picked_dirs(&app))?;
+    tauri::async_runtime::spawn_blocking(move || summarize_storage(expanded))
+        .await
+        .map_err(|e| format!("Storage summary: {e}"))?
+}
+
+fn summarize_storage(expanded: String) -> Result<StorageSummary, String> {
     let path = std::path::PathBuf::from(&expanded);
     // A folder that doesn't exist yet is empty rather than an error: Prism
     // creates it on the first download.
@@ -1264,7 +1273,11 @@ fn protected_folders(app: &AppHandle) -> Vec<PathBuf> {
 async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
     let validated = trashable_paths(&paths, &picked_dirs(&app), &protected_folders(&app))?;
     let count = validated.len();
-    trash::delete_all(&validated).map_err(|e| format!("Couldn't move to the Trash: {e}"))?;
+    // Moving a large folder to the Trash can take a while: off the async workers (P-2).
+    tauri::async_runtime::spawn_blocking(move || trash::delete_all(&validated))
+        .await
+        .map_err(|e| format!("Couldn't move to the Trash: {e}"))?
+        .map_err(|e| format!("Couldn't move to the Trash: {e}"))?;
     log::info!("moved {count} item(s) to the Trash");
     Ok(count)
 }
@@ -1323,7 +1336,7 @@ async fn get_app_version() -> String {
 /// surfaces a warning instead of leaving users guessing.
 #[tauri::command]
 async fn ffmpeg_available(app: AppHandle) -> bool {
-    find_ffmpeg(&app).is_some()
+    find_ffmpeg_blocking(&app).await.is_some()
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1869,6 +1882,13 @@ pub fn augmented_path() -> String {
     let sep = ";";
 
     format!("{}{}{}", extra.join(sep), sep, base)
+}
+
+/// `find_ffmpeg` from async code. Its last resort runs `which`/`where`, a
+/// child process that must not hold up an async worker (REVIEW 2026-09-23 P-2).
+pub async fn find_ffmpeg_blocking(app: &AppHandle) -> Option<String> {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || find_ffmpeg(&app)).await.ok().flatten()
 }
 
 /// Find ffmpeg on the system. Desktop apps may not have it in PATH,

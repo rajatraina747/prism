@@ -8,7 +8,6 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
 use crate::errors::{classify_output, ErrorCode, PrismError};
-use crate::find_ffmpeg;
 use crate::spawn::{Child, Event};
 
 static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
@@ -291,7 +290,7 @@ impl DownloadManager {
             }
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
-            let ffmpeg = find_ffmpeg(&app);
+            let ffmpeg = crate::find_ffmpeg_blocking(&app).await;
             if let Some(ref ffmpeg_path) = ffmpeg {
                 args.push("--ffmpeg-location".into());
                 // The folder, not the binary: yt-dlp looks for ffprobe beside
