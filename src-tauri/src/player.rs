@@ -268,10 +268,18 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         // binary can add behaviour to the player.
         ("config", "no"),
         ("load-scripts", "no"),
-        ("ytdl", "no"),
     ];
     for (k, v) in fixed {
         initial.insert((*k).into(), serde_json::json!(v));
+    }
+    // The on-screen controller and the youtube-dl hook are Lua scripts, and
+    // their options exist only in a libmpv built with Lua. The macOS build
+    // Prism ships since 2.0 has none, and setting an option mpv doesn't have
+    // fails the whole init: the player never started in 2.0.0 or 2.0.1.
+    // Without Lua neither script exists, so the lockdown holds either way.
+    if libmpv_has_lua(app) {
+        initial.insert("osc".into(), serde_json::json!("no"));
+        initial.insert("ytdl".into(), serde_json::json!("no"));
     }
     let observed = serde_json::json!({
         "pause": "flag",
@@ -642,6 +650,17 @@ pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    // Regression (2.0.2): the macOS libmpv shipped since 2.0 is built without
+    // Lua, so `osc`/`ytdl` don't exist and setting them failed player init.
+    #[test]
+    fn reads_whether_libmpv_was_built_with_lua() {
+        let config = |line: &str| format!("\0mpv\0Configuration: {line}\0").into_bytes();
+        assert!(super::lua_disabled(&config("-Dgpl=false -Dlibmpv=true -Dlua=disabled -Dvulkan=enabled")));
+        assert!(!super::lua_disabled(&config("-Dlibmpv=true -Dlua=enabled")));
+        assert!(!super::lua_disabled(&config("-Dlua=luajit")));
+        assert!(!super::lua_disabled(b"no configuration here"), "unknown means Lua is assumed");
+    }
+
     use super::validate_player_property;
     use serde_json::json;
 
@@ -701,8 +720,6 @@ fn bundled_vulkan_manifest() -> Option<std::path::PathBuf> {
 /// embedding isn't supported yet).
 #[tauri::command]
 pub fn player_available(app: tauri::AppHandle) -> bool {
-    use tauri::Manager;
-
     #[cfg(target_os = "windows")]
     let name = "libmpv-wrapper.dll";
     #[cfg(target_os = "macos")]
@@ -710,6 +727,13 @@ pub fn player_available(app: tauri::AppHandle) -> bool {
     #[cfg(all(unix, not(target_os = "macos")))]
     let name = "libmpv-wrapper.so";
 
+    library_dirs(&app).iter().any(|d| d.join(name).exists())
+}
+
+/// Where the player's libraries may be: next to the executable (dev builds
+/// stage them there, see build.rs) or in the bundled resources.
+fn library_dirs(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    use tauri::Manager;
     let mut dirs: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(d) = exe.parent() {
@@ -721,5 +745,37 @@ pub fn player_available(app: tauri::AppHandle) -> bool {
         dirs.push(res.join("lib"));
         dirs.push(res);
     }
-    dirs.iter().any(|d| d.join(name).exists())
+    dirs
+}
+
+/// Whether mpv's build configuration, as embedded in libmpv, disabled Lua.
+/// mpv stores its configure line (`… -Dlua=disabled …`) in the library.
+pub(crate) fn lua_disabled(library: &[u8]) -> bool {
+    const MARKER: &[u8] = b"-Dlua=disabled";
+    library.windows(MARKER.len()).any(|w| w == MARKER)
+}
+
+/// Whether the bundled libmpv has Lua (and so the `osc` and `ytdl` options).
+/// Read once. When the library can't be found or read, assume it does: the
+/// options then stay set, which is the locked-down choice.
+fn libmpv_has_lua(app: &AppHandle) -> bool {
+    static HAS_LUA: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HAS_LUA.get_or_init(|| {
+        #[cfg(target_os = "windows")]
+        let names: &[&str] = &["libmpv-2.dll", "mpv-2.dll"];
+        #[cfg(target_os = "macos")]
+        let names: &[&str] = &["libmpv.dylib", "libmpv.2.dylib"];
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let names: &[&str] = &["libmpv.so.2", "libmpv.so"];
+        let found = library_dirs(app)
+            .iter()
+            .flat_map(|d| names.iter().map(move |n| d.join(n)))
+            .find(|p| p.is_file());
+        let has_lua = match found.as_deref().map(std::fs::read) {
+            Some(Ok(bytes)) => !lua_disabled(&bytes),
+            _ => true,
+        };
+        log::info!("player: libmpv {:?} has Lua: {has_lua}", found);
+        has_lua
+    })
 }
