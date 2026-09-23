@@ -180,6 +180,15 @@ export class TauriPrismService implements IPrismService {
         );
       });
 
+      // Stopped while the listeners were being set up: the cancel's cleanup
+      // ran before they existed, so drop them now, and don't start at all
+      // (REVIEW 2026-09-23 B-5). A stop after this point reaches the engine,
+      // which checks for one before it registers the job.
+      if (cancelled) {
+        cleanup();
+        return;
+      }
+
       const dest = item.settings.destination || '~/Downloads/Prism';
 
       if (isTorrent) {

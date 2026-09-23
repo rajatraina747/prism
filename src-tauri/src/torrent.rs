@@ -546,6 +546,9 @@ impl TorrentManager {
         cfg: SessionConfig,
         download_limit: Option<u64>,
     ) {
+        // Taken now, before the task's first await: fetching a magnet's
+        // metadata can take 45 s, and a stop in that time must be seen (B-5).
+        let ticket = crate::jobs::begin(&id);
         let session_slot = self.session.clone();
         let active = self.active.clone();
         let limits_slot = self.limits.clone();
@@ -577,6 +580,16 @@ impl TorrentManager {
                 Ok(pair) => pair,
                 Err(e) => return emit_failure(&app, &id, e),
             };
+
+            // Removed while its metadata was being fetched: take it back out
+            // of the session (files kept), or it would download and seed with
+            // no queue item to show it.
+            if ticket.cancelled() {
+                let _ = session.delete(TorrentIdOrHash::from(handle.id()), false).await;
+                log::info!("torrent {id}: stopped before it started");
+                return;
+            }
+            drop(ticket);
 
             active.lock().await.insert(
                 id.clone(),
@@ -969,6 +982,7 @@ impl TorrentManager {
     /// emit the same success completion the poll loop would, letting the
     /// frontend record it as completed with an openable path.
     pub async fn cancel_torrent(&self, app: &AppHandle, id: &str, delete_files: bool) -> bool {
+        crate::jobs::cancel(id);
         let entry = self.active.lock().await.remove(id);
         match entry {
             Some(ActiveTorrent { handle: h, output_dir, .. }) => {

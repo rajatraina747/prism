@@ -32,6 +32,7 @@ fn running() -> &'static Mutex<HashMap<String, Child>> {
 /// frontend can signal every engine without knowing which one has the job.
 #[tauri::command]
 pub async fn cancel_convert(id: String) -> Result<(), String> {
+    crate::jobs::cancel(&id);
     let child = running().lock().ok().and_then(|mut map| map.remove(&id));
     if let Some(child) = child {
         child.kill();
@@ -251,6 +252,8 @@ pub async fn convert_file(
     preset: Preset,
     duration_secs: f64,
 ) -> Result<(), String> {
+    // Taken before the first await, so a stop that arrives meanwhile is seen.
+    let ticket = crate::jobs::begin(&id);
     // Checked like every other path the webview names: inside the allowed
     // roots, and really there. Without this the command would run ffmpeg on
     // anything and write its output alongside, which is not a power the page
@@ -266,6 +269,10 @@ pub async fn convert_file(
 
     let destination = output_path(&source, preset);
     let args = preset_args(preset, &input, &destination.to_string_lossy());
+    if ticket.cancelled() {
+        log::info!("convert {id}: stopped before it started");
+        return Ok(());
+    }
 
     let (mut events, child) = CommandSpec::new(&ffmpeg)
         .args(&args)

@@ -6,6 +6,7 @@ mod download_manager;
 mod engine;
 mod errors;
 mod http_engine;
+mod jobs;
 mod migrate;
 mod mpv_worker;
 mod player;
