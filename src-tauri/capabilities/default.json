@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins, and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs.",
+  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins, and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs. Prism's own commands: everything except the player window's (see player.json), each granted by name.",
   "windows": [
     "main"
   ],
@@ -14,21 +14,82 @@
     "fs:deny-default",
     {
       "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "$APPDATA/*.json" }]
+      "allow": [
+        {
+          "path": "$APPDATA/*.json"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "$APPDATA/*.json.tmp" }]
+      "allow": [
+        {
+          "path": "$APPDATA/*.json.tmp"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-rename",
-      "allow": [{ "path": "$APPDATA/*.json" }, { "path": "$APPDATA/*.json.tmp" }]
+      "allow": [
+        {
+          "path": "$APPDATA/*.json"
+        },
+        {
+          "path": "$APPDATA/*.json.tmp"
+        }
+      ]
     },
     "process:allow-restart",
     "process:allow-exit",
     "notification:default",
     "core:webview:allow-create-webview-window",
     "core:window:allow-set-focus",
-    "core:window:allow-unminimize"
+    "core:window:allow-unminimize",
+    "allow-parse-url",
+    "allow-parse-playlist",
+    "allow-start-download",
+    "allow-cancel-download",
+    "allow-probe-direct-link",
+    "allow-start-http-download",
+    "allow-cancel-http-download",
+    "allow-set-http-rate-limit",
+    "allow-preview-filename-template",
+    "allow-start-torrent",
+    "allow-cancel-torrent",
+    "allow-pause-torrent",
+    "allow-resume-torrent",
+    "allow-update-torrent-files",
+    "allow-parse-torrent",
+    "allow-set-torrent-rate-limit",
+    "allow-reannounce-torrent",
+    "allow-recheck-torrent",
+    "allow-torrent-peers",
+    "allow-torrent-details",
+    "allow-open-file",
+    "allow-open-external",
+    "allow-show-in-folder",
+    "allow-get-default-download-path",
+    "allow-get-launch-torrent-files",
+    "allow-import-torrent-file",
+    "allow-pick-download-dir",
+    "allow-get-app-version",
+    "allow-ffmpeg-available",
+    "allow-get-ytdlp-version",
+    "allow-update-ytdlp",
+    "allow-reset-ytdlp",
+    "allow-get-engine-info",
+    "allow-check-engine-update",
+    "allow-check-app-update",
+    "allow-install-app-update",
+    "allow-player-available",
+    "allow-when-done",
+    "allow-storage-summary",
+    "allow-move-to-trash",
+    "allow-rss-fetch",
+    "allow-set-shortcuts",
+    "allow-set-progress",
+    "allow-index-download",
+    "allow-convert-file",
+    "allow-cancel-convert"
   ]
 }

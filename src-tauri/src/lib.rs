@@ -2503,6 +2503,92 @@ mod tests {
         }
     }
 
+    /// The commands `generate_handler!` registers, read from this file.
+    fn registered_commands() -> Vec<String> {
+        let src = include_str!("lib.rs");
+        let start = src.find(".invoke_handler(tauri::generate_handler![").expect("generate_handler");
+        let body = &src[start..];
+        let body = &body[body.find('[').unwrap() + 1..body.find("])").unwrap()];
+        body.split(',')
+            .map(|c| c.trim().rsplit("::").next().unwrap().to_string())
+            .filter(|c| !c.is_empty())
+            .collect()
+    }
+
+    fn capability(name: &str) -> Vec<String> {
+        let raw = std::fs::read_to_string(format!("{}/capabilities/{name}.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let cap: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        cap["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| p.as_str().or_else(|| p["identifier"].as_str()).map(str::to_string))
+            .collect()
+    }
+
+    /// S-2: every command is declared in build.rs's app manifest, and each
+    /// window is granted exactly its own. The player window gets its
+    /// player_* commands and nothing that could add a download or touch a
+    /// file, and it can't emit events the main window trusts.
+    #[test]
+    fn every_command_is_declared_and_granted_to_the_right_window() {
+        const PLAYER_ONLY: &[&str] = &[
+            "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
+            "player_save_position", "player_resume_position", "player_add_subtitle",
+            "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
+        ];
+        let build = include_str!("../build.rs");
+        let (main, player) = (capability("default"), capability("player"));
+        let allow = |c: &str| format!("allow-{}", c.replace('_', "-"));
+        let registered = registered_commands();
+        assert!(registered.len() > 40, "parsed the handler list");
+        for command in &registered {
+            assert!(build.contains(&format!("\"{command}\"")), "{command} is missing from build.rs COMMANDS");
+            let only_player = PLAYER_ONLY.contains(&command.as_str());
+            assert_eq!(main.contains(&allow(command)), !only_player, "main window and {command}");
+            assert_eq!(player.contains(&allow(command)), only_player, "player window and {command}");
+        }
+        for id in &player {
+            assert!(
+                !matches!(id.as_str(), "core:default" | "core:event:default" | "core:event:allow-emit" | "core:event:allow-emit-to"),
+                "the player window may not emit events ({id})"
+            );
+        }
+    }
+
+    /// S-2 end to end: Tauri's ACL (mock runtime, the real capabilities)
+    /// refuses a Prism command the player window isn't granted.
+    #[test]
+    fn the_player_window_cannot_call_main_window_commands() {
+        use tauri::ipc::{CallbackFn, InvokeBody};
+        use tauri::webview::InvokeRequest;
+
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![get_app_version])
+            .build(tauri::generate_context!(test = true))
+            .expect("mock app");
+        let call = |label: &str, cmd: &str| {
+            let webview = tauri::WebviewWindowBuilder::new(&app, label, Default::default()).build().expect("webview");
+            let response = tauri::test::get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: InvokeBody::default(),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            );
+            let _ = webview.close();
+            response
+        };
+        assert!(call("main", "get_app_version").is_ok(), "granted to main");
+        let refused = format!("{:?}", call("player", "get_app_version"));
+        assert!(refused.contains("not allowed on window"), "the player window called a main-window command: {refused}");
+    }
+
     #[test]
     fn extracts_domains() {
         assert_eq!(extract_domain("https://www.youtube.com/watch?v=x"), "www.youtube.com");
