@@ -169,7 +169,12 @@ pub fn ytdlp_command(app: &AppHandle) -> Result<CommandSpec, String> {
         Some(managed) if prefer_managed(&managed, BUNDLED_VERSION) => managed,
         _ => bundled_ytdlp_path()?,
     };
-    Ok(CommandSpec::new(program).args(LOCKDOWN_ARGS).env("PATH", augmented_path()))
+    // UTF-8 output everywhere: Prism reads it as UTF-8, and on Windows yt-dlp
+    // would otherwise print paths in the console code page (B-7).
+    Ok(CommandSpec::new(program)
+        .args(LOCKDOWN_ARGS)
+        .env("PATH", augmented_path())
+        .env("PYTHONIOENCODING", "utf-8"))
 }
 
 /// The sidecar Tauri places beside the app binary (`externalBin`, target
