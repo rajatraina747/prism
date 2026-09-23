@@ -50,6 +50,7 @@ const COMMANDS: &[&str] = &[
     "import_torrent_file",
     "pick_download_dir",
     "open_backup_file",
+    "import_torrent_client",
     "get_app_version",
     "ffmpeg_available",
     "get_ytdlp_version",

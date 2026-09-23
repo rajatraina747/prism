@@ -230,6 +230,8 @@ export interface IPrismService {
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
   /** Save a backup file where the user picks; false if they cancelled. */
   saveBackup(json: string, suggestedName: string): Promise<boolean>;
+  /** Pick another client's folder and read its torrents; null if cancelled. */
+  importTorrentClient(client: 'qbittorrent' | 'transmission'): Promise<{ torrents: { magnet: string; savePath: string | null }[]; skipped: number } | null>;
   /** Read a backup file the user picks; null if they cancelled. */
   openBackup(): Promise<string | null>;
   /** Whether ffmpeg is installed — merges, embedding, and SponsorBlock need it. */

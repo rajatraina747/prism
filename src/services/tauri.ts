@@ -529,6 +529,10 @@ export class TauriPrismService implements IPrismService {
     return true;
   }
 
+  async importTorrentClient(client: 'qbittorrent' | 'transmission') {
+    return invoke<{ torrents: { magnet: string; savePath: string | null }[]; skipped: number } | null>('import_torrent_client', { client });
+  }
+
   async openBackup(): Promise<string | null> {
     // Rust shows the dialog and reads the file: the main window's fs access
     // is limited to Prism's own data files, and stays that way.

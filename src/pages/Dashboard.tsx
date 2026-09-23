@@ -11,6 +11,7 @@ import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
+import { buildTorrentItem } from '@/stores/torrent-item';
 import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
 import type { DownloadStatus, HistoryItem } from '@/types/models';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
@@ -62,40 +63,6 @@ function presetToFormat(preset: DownloadPreset): FormatOption | null {
     codec: 'h264/aac',
     fileSize: 0,
     quality: (preset.quality as FormatOption['quality']) || 'high',
-  };
-}
-
-/** Build a queue item for a magnet/.torrent source. Skips yt-dlp parsing —
- * librqbit resolves the real name/size once peers deliver the metadata. */
-function buildTorrentItem(url: string, destination: string, selectedFiles?: number[]): DownloadItem {
-  const title = torrentDisplayName(url);
-  let domain = 'torrent';
-  try { domain = new URL(url).hostname || 'magnet'; } catch { /* magnet has no host */ }
-  return {
-    id: generateId(),
-    metadata: {
-      title,
-      duration: 0,
-      thumbnail: '',
-      source: { url, domain, addedAt: new Date().toISOString() },
-      formats: [],
-    },
-    settings: {
-      format: null,
-      destination,
-      filename: title,
-      retryCount: 0,
-      startImmediately: true,
-      selectedFiles,
-    },
-    status: 'queued',
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    retryAttempt: 0,
-    kind: 'torrent',
   };
 }
 

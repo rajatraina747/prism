@@ -1,4 +1,5 @@
 mod app_menu;
+mod client_import;
 mod clip;
 mod content_index;
 mod convert;
@@ -2235,6 +2236,7 @@ pub fn run() {
             import_torrent_file,
             pick_download_dir,
             open_backup_file,
+            client_import::import_torrent_client,
             get_app_version,
             ffmpeg_available,
             engine::get_ytdlp_version,

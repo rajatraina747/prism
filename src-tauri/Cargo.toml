@@ -43,6 +43,8 @@ sentry = { version = "0.48", default-features = false, features = ["backtrace", 
 anyhow = "1"
 # BitTorrent second-engine spike (go/no-go). See ROADMAP.md.
 librqbit = "9"
+# Already in the tree through librqbit; used to read other clients' resume files (client_import.rs).
+librqbit-bencode = "9"
 # Loopback server that streams a torrent's file to the player while it is still
 # downloading (see src/stream_server.rs). Both already come in with librqbit,
 # so naming them directly adds no new build weight.
