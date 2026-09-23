@@ -228,6 +228,10 @@ export interface IPrismService {
 
   // System
   exportLogs(logs: DiagnosticsEntry[]): Promise<void>;
+  /** Save a backup file where the user picks; false if they cancelled. */
+  saveBackup(json: string, suggestedName: string): Promise<boolean>;
+  /** Read a backup file the user picks; null if they cancelled. */
+  openBackup(): Promise<string | null>;
   /** Whether ffmpeg is installed — merges, embedding, and SponsorBlock need it. */
   ffmpegAvailable(): Promise<boolean>;
   checkForUpdates(): Promise<UpdateCheckResult>;

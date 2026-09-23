@@ -1730,6 +1730,39 @@ pub(crate) fn picked_dirs(app: &AppHandle) -> Vec<PathBuf> {
 /// Native folder picker, run from Rust so the *choice itself* is the trust
 /// signal: whatever the user picks (minus the deny-list) becomes an allowed
 /// root for downloads and open/reveal. Returns None if cancelled.
+/// Largest backup Prism will read: a full Library of 2,000 entries is a few MB.
+const MAX_BACKUP_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Open a Prism backup the user picks and return its text. The dialog runs
+/// here rather than in the page, so the page never names a file to read: the
+/// user's choice is the only way in, as with `pick_download_dir`.
+#[tauri::command]
+async fn open_backup_file(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose a Prism backup to import")
+        .add_filter("Prism backup", &["json"])
+        .pick_file(move |picked| {
+            let _ = tx.send(picked);
+        });
+    let Some(picked) = rx.await.map_err(|_| "File picker was closed".to_string())? else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| format!("Invalid file: {e}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let size = std::fs::metadata(&path).map_err(|e| format!("Couldn't read that file: {e}"))?.len();
+        if size > MAX_BACKUP_BYTES {
+            return Err("That file is too large to be a Prism backup".to_string());
+        }
+        std::fs::read_to_string(&path).map(Some).map_err(|e| format!("Couldn't read that file: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Couldn't read that file: {e}"))?
+}
+
 #[tauri::command]
 async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -2201,6 +2234,7 @@ pub fn run() {
             get_launch_torrent_files,
             import_torrent_file,
             pick_download_dir,
+            open_backup_file,
             get_app_version,
             ffmpeg_available,
             engine::get_ytdlp_version,

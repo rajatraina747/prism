@@ -90,6 +90,7 @@
     "allow-set-progress",
     "allow-index-download",
     "allow-convert-file",
-    "allow-cancel-convert"
+    "allow-cancel-convert",
+    "allow-open-backup-file"
   ]
 }

@@ -4,6 +4,7 @@ import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { createThrottledSaver, queueShape } from '@/stores/queue-save';
 import { installAppUpdate } from '@/stores/app-update';
+import { mergeHistory, mergeSettings } from '@/stores/backup';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
 import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
@@ -83,6 +84,8 @@ interface HistoryActions {
    * drops the record — the files are untouched — so this genuinely restores
    * everything that was lost. */
   restoreHistory: (item: HistoryItem) => void;
+  /** Merge a backup's Library into this one (see stores/backup.ts). */
+  importHistory: (items: HistoryItem[]) => void;
   clearHistory: () => void;
 }
 
@@ -90,6 +93,8 @@ interface SettingsActions {
   preferences: AppPreferences;
   updatePreference: <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => void;
   resetToDefaults: () => void;
+  /** Take a backup's settings, keeping this machine's folders. */
+  importSettings: (incoming: Partial<AppPreferences>) => void;
 }
 
 interface StatsValue {
@@ -761,6 +766,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearHistory = useCallback(() => { setHistory([]); }, []);
+  const importHistory = useCallback((items: HistoryItem[]) => {
+    setHistory(prev => mergeHistory(prev, items));
+  }, []);
+  const importSettings = useCallback((incoming: Partial<AppPreferences>) => {
+    setSettings(prev => mergeSettings(prev, incoming));
+  }, []);
 
   const updatePreference = useCallback(<K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -773,16 +784,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // otherwise every tick handed every consumer a new object and broke
   // QueueRow's memo (REVIEW 2026-09-23 P-1).
   const settingsValue = useMemo(
-    () => ({ preferences: settings, updatePreference, resetToDefaults }),
-    [settings, updatePreference, resetToDefaults],
+    () => ({ preferences: settings, updatePreference, resetToDefaults, importSettings }),
+    [settings, updatePreference, resetToDefaults, importSettings],
   );
   const queueValue = useMemo(
     () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }),
     [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom],
   );
   const historyValue = useMemo(
-    () => ({ items: history, removeFromHistory, restoreHistory, clearHistory }),
-    [history, removeFromHistory, restoreHistory, clearHistory],
+    () => ({ items: history, removeFromHistory, restoreHistory, importHistory, clearHistory }),
+    [history, removeFromHistory, restoreHistory, importHistory, clearHistory],
   );
   const statsValue = useMemo(() => ({ stats }), [stats]);
 
