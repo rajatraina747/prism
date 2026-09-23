@@ -2205,6 +2205,8 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::Exit) {
                 let manager = app.state::<DownloadManager>();
                 tauri::async_runtime::block_on(manager.kill_all());
+                // Conversions too: ffmpeg has its own process group.
+                convert::kill_all();
             }
         });
 }

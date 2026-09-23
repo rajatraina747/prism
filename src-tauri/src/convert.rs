@@ -39,6 +39,19 @@ pub async fn cancel_convert(id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Stop every running conversion. Called on app exit: a conversion runs in its
+/// own process group, so quitting Prism didn't take ffmpeg with it (REVIEW
+/// 2026-09-23 B-6).
+pub fn kill_all() {
+    let children: Vec<Child> = running()
+        .lock()
+        .map(|mut map| map.drain().map(|(_, child)| child).collect())
+        .unwrap_or_default();
+    for child in &children {
+        child.kill();
+    }
+}
+
 /// The conversions offered. Deliberately a short list of destinations people
 /// actually want, rather than a codec matrix: every extra option here is one
 /// more way to produce a file that won't play.
