@@ -237,18 +237,16 @@ fn mpv_worker(app: &AppHandle) -> tauri::State<'_, MpvWorker> {
 }
 
 /// Options mpv starts with. Fixed here, not in the webview.
-fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
-    use tauri::Manager;
-    let mut initial = serde_json::Map::new();
-    // mpv's own log — the only record of why a video output failed to come
-    // up. Lands beside the app's data so a user can send it.
-    if let Ok(dir) = app.path().app_data_dir() {
-        initial.insert(
-            "log-file".into(),
-            serde_json::json!(dir.join("mpv.log").to_string_lossy()),
-        );
-    }
-    let fixed: &[(&str, &str)] = &[
+/// The options every player starts with.
+///
+/// The on-screen controller and the youtube-dl hook are Lua scripts, and their
+/// options exist only in a libmpv built with Lua. The macOS build Prism ships
+/// since 2.0 has none, and setting an option mpv doesn't have fails the whole
+/// init: the player never started in 2.0.0 to 2.0.2 (2.0.2 still set `osc` from
+/// this list). Without Lua neither script exists, so the lockdown holds either
+/// way. Pure so a test pins exactly what each kind of build is sent.
+pub(crate) fn fixed_options(has_lua: bool) -> Vec<(&'static str, &'static str)> {
+    let mut options = vec![
         ("vo", "gpu-next"),
         ("hwdec", "auto-safe"),
         // Survive EOF so the user can replay instead of the window dying.
@@ -262,7 +260,6 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         ("target-colorspace-hint", "yes"),
         // The webview owns all input and chrome.
         ("input-default-bindings", "no"),
-        ("osc", "no"),
         // Lockdown: no user config, no Lua/JS scripts, no youtube-dl hook.
         // Playback is identical on every machine and nothing outside this
         // binary can add behaviour to the player.
@@ -276,17 +273,26 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         // itself, not a reference.
         ("access-references", "no"),
     ];
-    for (k, v) in fixed {
-        initial.insert((*k).into(), serde_json::json!(v));
+    if has_lua {
+        options.push(("osc", "no"));
+        options.push(("ytdl", "no"));
     }
-    // The on-screen controller and the youtube-dl hook are Lua scripts, and
-    // their options exist only in a libmpv built with Lua. The macOS build
-    // Prism ships since 2.0 has none, and setting an option mpv doesn't have
-    // fails the whole init: the player never started in 2.0.0 or 2.0.1.
-    // Without Lua neither script exists, so the lockdown holds either way.
-    if libmpv_has_lua(app) {
-        initial.insert("osc".into(), serde_json::json!("no"));
-        initial.insert("ytdl".into(), serde_json::json!("no"));
+    options
+}
+
+fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
+    use tauri::Manager;
+    let mut initial = serde_json::Map::new();
+    // mpv's own log — the only record of why a video output failed to come
+    // up. Lands beside the app's data so a user can send it.
+    if let Ok(dir) = app.path().app_data_dir() {
+        initial.insert(
+            "log-file".into(),
+            serde_json::json!(dir.join("mpv.log").to_string_lossy()),
+        );
+    }
+    for (k, v) in fixed_options(libmpv_has_lua(app)) {
+        initial.insert(k.into(), serde_json::json!(v));
     }
     let observed = serde_json::json!({
         "pause": "flag",
@@ -659,6 +665,27 @@ pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
 mod tests {
     // Regression (2.0.2): the macOS libmpv shipped since 2.0 is built without
     // Lua, so `osc`/`ytdl` don't exist and setting them failed player init.
+    // Regression (2.0.3): 2.0.2 still set `osc` from the fixed list, so a
+    // Lua-less libmpv refused the whole init. Only a Lua build gets the two
+    // Lua-script options; every build gets the lockdown.
+    #[test]
+    fn lua_only_options_go_only_to_a_lua_build() {
+        let keys = |has_lua| super::fixed_options(has_lua).into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+        let without = keys(false);
+        assert!(!without.contains(&"osc") && !without.contains(&"ytdl"), "{without:?}");
+        let with = keys(true);
+        assert!(with.contains(&"osc") && with.contains(&"ytdl"));
+        for build in [&without, &with] {
+            for required in ["config", "load-scripts", "access-references", "input-default-bindings"] {
+                assert!(build.contains(&required), "{required} missing");
+            }
+            let mut unique = build.to_vec();
+            unique.sort();
+            unique.dedup();
+            assert_eq!(unique.len(), build.len(), "an option is set twice");
+        }
+    }
+
     #[test]
     fn reads_whether_libmpv_was_built_with_lua() {
         let config = |line: &str| format!("\0mpv\0Configuration: {line}\0").into_bytes();
