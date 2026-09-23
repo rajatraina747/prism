@@ -35,14 +35,18 @@ rest of the hardening follows, and the 2.1 features wait for both.
       **paused** when the session restores them, not deleted: `add_or_adopt`
       unpauses the ones a queue item adopts, and deleting one a queued item
       still wants would cost a full re-hash (`pause_restored`).
-- [ ] **B-3 + S-3** `resolve_completion_path` never falls back to the shared
+- [x] **B-3 + S-3** `resolve_completion_path` never falls back to the shared
       destination; `trashable_paths` refuses every root and every ancestor of
       one, which also neutralises rows already recorded with a folder path.
+      Protected: home and the standard user folders, picked roots, and from
+      settings the default folder, move-completed folder, category
+      destinations and watch folders. The Library sends only what
+      `trashTarget` allows.
 - [ ] **B-4** Direct downloads reserve their file name per id, as yt-dlp's
       `reserved` map does.
 - [ ] **B-6** `convert::kill_all()` in the Exit handler.
 - [ ] **B-10** Escape `%` in the folder part of yt-dlp's `-o`.
-- [ ] The Trash dialog names any folder it is about to trash.
+- [x] The Trash dialog names any folder it is about to trash.
 
 ### v2.0.2 — Correctness & security hardening
 

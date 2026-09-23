@@ -1167,15 +1167,93 @@ const MAX_TRASH_PATHS: usize = 1000;
 ///
 /// Split out from the command so the refusals are testable without a test
 /// that throws real files away.
-pub(crate) fn trashable_paths(paths: &[String], roots: &[PathBuf]) -> Result<Vec<String>, String> {
+///
+/// `protected` names folders that may never go, on top of the user's own
+/// folders (home, Downloads, Documents…): the download destination, category
+/// folders and the like. Neither they nor any folder that contains one can be
+/// trashed. Before 2.0.1 a single-file torrent could record the shared
+/// destination as its path, and trashing that row trashed every download
+/// (REVIEW 2026-09-23 B-3, S-3).
+pub(crate) fn trashable_paths(
+    paths: &[String],
+    roots: &[PathBuf],
+    protected: &[PathBuf],
+) -> Result<Vec<String>, String> {
     if paths.is_empty() {
         return Err("Nothing to move to the Trash".into());
     }
     if paths.len() > MAX_TRASH_PATHS {
         return Err(format!("Too many items at once (limit {MAX_TRASH_PATHS})"));
     }
-    // Folders too: a multi-file torrent is one folder, not a list of files.
-    paths.iter().map(|p| validate_open_path(p, true, roots)).collect()
+    let canon = |p: &PathBuf| p.canonicalize().unwrap_or_else(|_| p.clone());
+    let mut keep: Vec<PathBuf> = [
+        dirs::home_dir(),
+        dirs::download_dir(),
+        dirs::desktop_dir(),
+        dirs::document_dir(),
+        dirs::video_dir(),
+        dirs::audio_dir(),
+        dirs::picture_dir(),
+        dirs::public_dir(),
+    ]
+    .into_iter()
+    .flatten()
+    .chain(roots.iter().cloned())
+    .chain(protected.iter().cloned())
+    .map(|p| canon(&p))
+    .collect();
+    keep.dedup();
+
+    paths
+        .iter()
+        .map(|p| {
+            // Folders too: a multi-file torrent is one folder, not a list of files.
+            let valid = validate_open_path(p, true, roots)?;
+            let candidate = std::path::Path::new(&valid);
+            if candidate.parent().is_none() {
+                return Err("Prism won't move a whole drive to the Trash".to_string());
+            }
+            // `keep` inside `candidate` means the candidate is that folder or
+            // one of its ancestors.
+            if keep.iter().any(|k| strip_prefix_fs(k, candidate).is_some()) {
+                let name = candidate
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| valid.clone());
+                return Err(format!(
+                    "Prism won't move \"{name}\" to the Trash: it's a folder your downloads or your own files live in, not a download"
+                ));
+            }
+            Ok(valid)
+        })
+        .collect()
+}
+
+/// Folders from the settings that `move_to_trash` must never remove: where
+/// downloads go, where finished ones move to, category destinations and
+/// watch folders.
+fn protected_folders(app: &AppHandle) -> Vec<PathBuf> {
+    let text = |v: Option<&serde_json::Value>| {
+        v.and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| PathBuf::from(expand_tilde(s)))
+    };
+    let path = match app.path().app_data_dir() {
+        Ok(dir) => dir.join("settings.json"),
+        Err(_) => return Vec::new(),
+    };
+    let Some(settings) = settings_snapshot(&path) else { return Vec::new() };
+    let mut out: Vec<PathBuf> = ["defaultSaveFolder", "moveCompletedTo"]
+        .iter()
+        .filter_map(|k| text(settings.get(*k)))
+        .collect();
+    for (list, key) in [("categories", "destination"), ("watchFolders", "path")] {
+        if let Some(items) = settings.get(list).and_then(|v| v.as_array()) {
+            out.extend(items.iter().filter_map(|i| text(i.get(key))));
+        }
+    }
+    out
 }
 
 /// Move finished downloads to the OS Trash. Deliberately not a delete: this
@@ -1183,7 +1261,7 @@ pub(crate) fn trashable_paths(paths: &[String], roots: &[PathBuf]) -> Result<Vec
 /// has to be something they can undo outside the app.
 #[tauri::command]
 async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, String> {
-    let validated = trashable_paths(&paths, &picked_dirs(&app))?;
+    let validated = trashable_paths(&paths, &picked_dirs(&app), &protected_folders(&app))?;
     let count = validated.len();
     trash::delete_all(&validated).map_err(|e| format!("Couldn't move to the Trash: {e}"))?;
     log::info!("moved {count} item(s) to the Trash");
@@ -2175,13 +2253,13 @@ mod tests {
     /// that threw real files away to prove it could would be a bad trade.
     #[test]
     fn trashable_paths_refuses_what_it_should() {
-        assert!(trashable_paths(&[], &[]).is_err(), "an empty request is a mistake, not a no-op");
+        assert!(trashable_paths(&[], &[], &[]).is_err(), "an empty request is a mistake, not a no-op");
 
         let many: Vec<String> = (0..MAX_TRASH_PATHS + 1).map(|i| format!("/tmp/{i}")).collect();
-        assert!(trashable_paths(&many, &[]).is_err(), "an unbounded list is refused");
+        assert!(trashable_paths(&many, &[], &[]).is_err(), "an unbounded list is refused");
 
         // Exists, but outside every allowed root.
-        assert!(trashable_paths(&["/etc/hosts".to_string()], &[]).is_err());
+        assert!(trashable_paths(&["/etc/hosts".to_string()], &[], &[]).is_err());
 
         // A real file under a root the user picked is fine — and so is the
         // folder itself, because a multi-file torrent is a folder.
@@ -2190,8 +2268,24 @@ mod tests {
         let file = dir.join("inner/a.bin");
         std::fs::write(&file, b"x").unwrap();
         let roots = vec![dir.clone()];
-        assert!(trashable_paths(&[file.to_string_lossy().into_owned()], &roots).is_ok());
-        assert!(trashable_paths(&[dir.join("inner").to_string_lossy().into_owned()], &roots).is_ok());
+        assert!(trashable_paths(&[file.to_string_lossy().into_owned()], &roots, &[]).is_ok());
+        assert!(trashable_paths(&[dir.join("inner").to_string_lossy().into_owned()], &roots, &[]).is_ok());
+
+        // Regression (REVIEW 2026-09-23 B-3, S-3): never a root, a protected
+        // folder, or anything that contains one.
+        let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
+        assert!(trashable_paths(&[s(&dir)], &roots, &[]).is_err(), "a picked root itself");
+        assert!(trashable_paths(&[s(&dir.join("inner"))], &roots, &[dir.join("inner")]).is_err(), "the destination");
+        std::fs::create_dir_all(dir.join("outer/dest")).unwrap();
+        assert!(trashable_paths(&[s(&dir.join("outer"))], &roots, &[dir.join("outer/dest")]).is_err(), "a parent of the destination");
+        assert!(trashable_paths(&[s(&dir.join("outer/dest"))], &roots, &[dir.join("inner")]).is_ok(), "an unrelated folder is fine");
+        if let Some(home) = dirs::home_dir() {
+            assert!(trashable_paths(&[s(&home)], &[], &[]).is_err(), "home");
+            let documents = home.join("Documents");
+            if documents.is_dir() {
+                assert!(trashable_paths(&[s(&documents)], &[], &[]).is_err(), "~/Documents");
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
