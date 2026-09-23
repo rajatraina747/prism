@@ -3,6 +3,7 @@ import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, Download
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
 import { createThrottledSaver, queueShape } from '@/stores/queue-save';
+import { installAppUpdate } from '@/stores/app-update';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
 import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
@@ -235,7 +236,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               onClick: async () => {
                 toast.info('Downloading and installing — Prism will restart shortly...');
                 try {
-                  await service.installUpdate();
+                  // Joins an install already running from Settings rather
+                  // than starting a second download.
+                  await installAppUpdate(onProgress => service.installUpdate(onProgress));
                   toast.success('Update installed! Please restart Prism to apply.');
                 } catch (e) {
                   toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));

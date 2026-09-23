@@ -112,6 +112,19 @@ pub async fn install_app_update(
         .map_err(|_| "Update state lock poisoned".to_string())?
         .clone()
         .ok_or("No update available to install — check for updates first")?;
+    // One install at a time. A second request used to start a second
+    // download of the whole app beside the first, each at half speed.
+    static INSTALLING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if INSTALLING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Err("An update is already downloading".into());
+    }
+    struct Release;
+    impl Drop for Release {
+        fn drop(&mut self) {
+            INSTALLING.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _release = Release;
     log::info!("installing update {}", update.version);
     let mut downloaded: u64 = 0;
     update

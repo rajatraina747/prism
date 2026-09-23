@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { DAY_NAMES } from '@/stores/schedule';
 import { toast } from 'sonner';
+import { useUpdateInstall, installAppUpdate, formatUpdateProgress } from '@/stores/app-update';
 import {
   FolderOpen, Film, Magnet, Gauge, Globe, Bell, Palette, HardDrive,
   RefreshCw, Bug, Shield, ChevronRight, ChevronDown, Loader2, AlertTriangle, HelpCircle,
@@ -313,7 +314,11 @@ export default function Settings() {
   React.useEffect(() => {
     if (requestedSection) setActiveSection(requestedSection);
   }, [requestedSection]);
-  const [updateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
+  const [pageUpdateState, setUpdateState] = React.useState<'idle' | 'checking' | 'available' | 'installing' | 'up-to-date' | 'error'>('idle');
+  // An install outlives this page: leaving Settings and coming back must show
+  // it still running, not offer Install again (stores/app-update.ts).
+  const updateInstall = useUpdateInstall();
+  const updateState = updateInstall.installing ? 'installing' : pageUpdateState;
   const [updateVersion, setUpdateVersion] = React.useState<string | undefined>();
   const [updateNotes, setUpdateNotes] = React.useState<string | undefined>();
   const [updateError, setUpdateError] = React.useState<string | undefined>();
@@ -901,6 +906,7 @@ export default function Settings() {
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
                 </SettingRow>
                 <SettingRow label="Check for updates" description={
+                  updateState === 'installing' ? `Downloading the update: ${formatUpdateProgress(updateInstall)}` :
                   updateState === 'available' ? `Version ${updateVersion} is available` :
                   updateState === 'up-to-date' ? 'You are on the latest version' :
                   updateState === 'error' ? `Could not check for updates${updateError ? ` — ${updateError}` : ''}` :
@@ -911,10 +917,9 @@ export default function Settings() {
                       <button
                         type="button"
                         onClick={async () => {
-                          setUpdateState('installing');
                           toast.info('Downloading and installing update — Prism will restart shortly...');
                           try {
-                            await service.installUpdate();
+                            await installAppUpdate(onProgress => service.installUpdate(onProgress));
                             // relaunch() is called inside installUpdate — if we reach here it didn't restart
                             toast.success('Update installed! Please restart Prism to apply.');
                           } catch (e) {
@@ -962,7 +967,7 @@ export default function Settings() {
                       ) : updateState === 'installing' ? (
                         <span className="flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Installing...
+                          {formatUpdateProgress(updateInstall)}
                         </span>
                       ) : 'Check Now'}
                     </button>
