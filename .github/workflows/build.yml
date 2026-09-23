@@ -44,7 +44,8 @@ jobs:
             echo "- yt-dlp ${YTDLP_VERSION} (self-updatable from Settings)"
             echo "- Deno ${DENO_VERSION}"
             echo "- libmpv-wrapper ${LIBMPV_WRAPPER_VERSION}"
-            echo "- libmpv: Windows — zhongfly/mpv-winbuild ${MPV_WINBUILD_TAG} (LGPL build); macOS — Homebrew mpv (exact versions in the bundle's resources/lib/VERSIONS.txt)"
+            MEDIA_RELEASE="${MEDIA_MACOS_ARM64_URL%/*}"; MEDIA_RELEASE="${MEDIA_RELEASE##*/}"
+            echo "- libmpv: Windows — zhongfly/mpv-winbuild ${MPV_WINBUILD_TAG} (LGPL build); macOS — Prism's own LGPL build, ${MEDIA_RELEASE} (exact versions in the bundle's resources/lib/VERSIONS.txt)"
             echo
             echo 'All pinned and checksum-verified at build time — see scripts/sidecars.lock.'
             echo 'RELEASE_NOTES_EOF'
