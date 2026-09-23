@@ -343,10 +343,36 @@ async fn ensure_session(
         ..defaults
     };
     let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
+    pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
     *guard = Some((session.clone(), api));
     spawn_session_stats(app.clone(), session.clone(), active.clone(), cfg);
     Ok(session)
+}
+
+/// Pause every torrent librqbit restored from its persisted session.
+///
+/// librqbit re-adds each persisted torrent at startup and starts it at once,
+/// whether or not any queue item still wants it. A torrent that finished
+/// before 2.0.1 was never removed from the session, so it seeded invisibly on
+/// every launch (REVIEW 2026-09-23 B-2). `add_or_adopt` unpauses the ones a
+/// queue item adopts, so a relaunch still resumes without re-hashing. The rest
+/// stay paused, with their files, and use no network.
+async fn pause_restored(session: &Arc<Session>) {
+    let restored: Vec<ManagedTorrentHandle> = session.with_torrents(|torrents| {
+        torrents
+            .filter(|(_, h)| !h.is_paused())
+            .map(|(_, h)| h.clone())
+            .collect()
+    });
+    for h in &restored {
+        if let Err(e) = session.pause(h).await {
+            log::warn!("torrent session: could not pause restored torrent {}: {e}", h.info_hash().as_string());
+        }
+    }
+    if !restored.is_empty() {
+        log::info!("torrent session: paused {} restored torrent(s) until a queue item adopts them", restored.len());
+    }
 }
 
 /// Emit `torrent-session-stats` once a second while torrents are active
@@ -745,11 +771,18 @@ impl TorrentManager {
             let total = handle.stats().total_bytes;
             let file_path = resolve_completion_path(&handle, &output_dir);
             mark_torrent_files_downloaded(&handle, &output_dir);
-            // Seeding is over, so librqbit has let go of the files. A
-            // multi-file torrent owns its folder and moves as one; a
+            let single_file = handle.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
+            // Seeding is over, so take the torrent out of the session, keeping
+            // its files. Leaving it in kept it uploading after "Completed", and
+            // librqbit re-added it on every launch (REVIEW 2026-09-23 B-2).
+            // It must go before the move: a torrent still in the session would
+            // point at the old folder.
+            if let Err(e) = session.delete(TorrentIdOrHash::from(handle.id()), false).await {
+                log::warn!("torrent {id}: could not leave the session after seeding: {e}");
+            }
+            // A multi-file torrent owns its folder and moves as one; a
             // single-file torrent sits in the shared destination, so only its
             // own file moves.
-            let single_file = handle.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
             let (file_path, output_dir) = if single_file {
                 let moved = file_path
                     .as_deref()
@@ -1625,5 +1658,53 @@ mod tests {
         assert_eq!(fallback_folder_name(&http), "thing");
         let file = TorrentSource::Bytes { key: "/Users/x/Downloads/pack.torrent".into(), bytes: vec![], trackers: vec![] };
         assert_eq!(fallback_folder_name(&file), "pack");
+    }
+
+    // A session with no network at all, persisting into `dir`.
+    async fn offline_session(dir: &std::path::Path) -> Arc<Session> {
+        Session::new_with_opts(
+            dir.join("dl"),
+            SessionOptions {
+                dht: None,
+                listen: None,
+                disable_local_service_discovery: true,
+                persistence: Some(SessionPersistenceConfig::Json { folder: Some(dir.join("session")) }),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("session")
+    }
+
+    // Regression (REVIEW 2026-09-23 B-2): librqbit restarts every persisted
+    // torrent at startup, so one left in the session seeded on every launch
+    // with no queue item showing it.
+    #[tokio::test]
+    async fn restored_torrents_come_back_paused() {
+        let dir = std::env::temp_dir().join(format!("prism-b2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("dl")).unwrap();
+
+        let first = offline_session(&dir).await;
+        let added = first
+            .add_torrent(
+                AddTorrent::from_bytes(single_file_torrent("leaked.bin")),
+                Some(AddTorrentOptions { overwrite: true, ..Default::default() }),
+            )
+            .await
+            .expect("add");
+        assert!(matches!(added, AddTorrentResponse::Added(..)));
+        first.stop().await;
+        drop(first);
+
+        let second = offline_session(&dir).await;
+        let restored = second.with_torrents(|t| t.map(|(_, h)| h.clone()).collect::<Vec<_>>());
+        assert_eq!(restored.len(), 1, "librqbit should have restored the torrent");
+        assert!(!restored[0].is_paused(), "precondition: librqbit restarts restored torrents");
+
+        pause_restored(&second).await;
+        assert!(restored[0].is_paused());
+        second.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
