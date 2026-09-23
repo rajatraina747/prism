@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -242,5 +242,15 @@ describe('ytdlpLiteral', () => {
   it('escapes every percent sign', () => {
     expect(ytdlpLiteral('/Users/r/100% Music')).toBe('/Users/r/100%% Music');
     expect(ytdlpLiteral('/plain/path')).toBe('/plain/path');
+  });
+});
+
+describe('isSameFolder', () => {
+  it('matches the download folder however it is written', () => {
+    expect(isSameFolder('/Users/r/Downloads/Prism', '~/Downloads/Prism')).toBe(true);
+    expect(isSameFolder('/Users/r/Downloads/Prism/', '/Users/r/Downloads/Prism')).toBe(true);
+    expect(isSameFolder('/Users/r/Downloads', '~/Downloads/Prism')).toBe(false);
+    expect(isSameFolder('/Users/r/Downloads/Prism Extra', '~/Downloads/Prism')).toBe(false);
+    expect(isSameFolder('/x', '')).toBe(false);
   });
 });

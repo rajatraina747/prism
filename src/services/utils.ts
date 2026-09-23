@@ -37,6 +37,18 @@ export function sanitizeFilename(name: string): string {
   return cleaned || 'video';
 }
 
+// Whether a picked folder (absolute) is a folder from settings, which may be
+// written with a leading `~`. The frontend doesn't know the home folder, so a
+// `~/…` setting matches any absolute path ending in the same components.
+export function isSameFolder(picked: string, setting: string): boolean {
+  const trim = (p: string) => p.trim().replace(/[\\/]+$/, '');
+  const a = trim(picked);
+  const b = trim(setting);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return b.startsWith('~/') && a.endsWith(b.slice(1));
+}
+
 // A folder path as yt-dlp's `-o` should see it: `%` starts a template field
 // there, so a literal one is written `%%`. A destination such as
 // `~/100% Music` otherwise broke every download into it (REVIEW 2026-09-23

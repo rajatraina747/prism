@@ -1243,6 +1243,16 @@ pub(crate) fn trashable_paths(
 /// downloads go, where finished ones move to, category destinations and
 /// watch folders.
 fn protected_folders(app: &AppHandle) -> Vec<PathBuf> {
+    folders_from_settings(app, true)
+}
+
+/// Where downloads land: the default folder, the move-completed folder and
+/// category destinations.
+pub(crate) fn download_destinations(app: &AppHandle) -> Vec<PathBuf> {
+    folders_from_settings(app, false)
+}
+
+fn folders_from_settings(app: &AppHandle, with_watch_folders: bool) -> Vec<PathBuf> {
     let text = |v: Option<&serde_json::Value>| {
         v.and_then(|v| v.as_str())
             .map(str::trim)
@@ -1259,6 +1269,9 @@ fn protected_folders(app: &AppHandle) -> Vec<PathBuf> {
         .filter_map(|k| text(settings.get(*k)))
         .collect();
     for (list, key) in [("categories", "destination"), ("watchFolders", "path")] {
+        if list == "watchFolders" && !with_watch_folders {
+            continue;
+        }
         if let Some(items) = settings.get(list).and_then(|v| v.as_array()) {
             out.extend(items.iter().filter_map(|i| text(i.get(key))));
         }
