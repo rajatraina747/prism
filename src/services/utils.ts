@@ -25,12 +25,14 @@ export function formatSpeed(bytesPerSec: number): string {
 }
 
 // Titles come from the remote site and are untrusted: they can contain path
-// separators (escaping the destination dir) or yt-dlp %(...)s template
-// sequences (expanded by yt-dlp when building the output path).
+// separators (escaping the destination dir). This makes a *name*; it doesn't
+// escape `%` for yt-dlp, because the name is also shown, stored and used by
+// the direct engine, none of which expand templates. Escaping it here as
+// well as where `-o` is built wrote `100% Pure` as `100%% Pure.mp4`. yt-dlp's
+// `-o` is escaped once, with ytdlpLiteral, where it is built.
 export function sanitizeFilename(name: string): string {
   const cleaned = name
     .replace(/[/\\]/g, '-')
-    .replace(/%/g, '%%')
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f]/g, '')
     .trim();

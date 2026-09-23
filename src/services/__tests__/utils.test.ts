@@ -11,8 +11,12 @@ describe('sanitizeFilename', () => {
     expect(sanitizeFilename('../../etc/passwd')).toBe('..-..-etc-passwd');
   });
 
-  it('escapes yt-dlp template sequences', () => {
-    expect(sanitizeFilename('cool %(channel)s clip')).toBe('cool %%(channel)s clip');
+  // Regression: it used to escape `%` too, and the -o builder escaped it
+  // again, so `100% Pure` downloaded as `100%% Pure.mp4`. It makes a name;
+  // the yt-dlp escaping happens once, with ytdlpLiteral.
+  it('leaves % alone; escaping it for yt-dlp is ytdlpLiteral\'s job', () => {
+    expect(sanitizeFilename('100% Pure')).toBe('100% Pure');
+    expect(ytdlpLiteral(sanitizeFilename('cool %(channel)s clip'))).toBe('cool %%(channel)s clip');
   });
 
   it('strips control characters and trims', () => {

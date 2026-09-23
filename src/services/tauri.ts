@@ -237,8 +237,9 @@ export class TauriPrismService implements IPrismService {
       // Use %(ext)s template so yt-dlp can download video+audio separately
       // then merge them. --merge-output-format mp4 ensures final output is .mp4
       const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
-      // The file name is already escaped by sanitizeFilename; the folder isn't.
-      const outputPath = `${ytdlpLiteral(dest)}/${filename}.%(ext)s`;
+      // `%` is literal in both, and yt-dlp would expand it: escape it here,
+      // once (the name comes back from sanitizeFilename unescaped).
+      const outputPath = `${ytdlpLiteral(dest)}/${ytdlpLiteral(filename)}.%(ext)s`;
 
       await invoke('start_download', {
         id: item.id,
