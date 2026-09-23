@@ -2048,6 +2048,8 @@ pub fn run() {
     // Before any thread starts: this sets process environment (player.rs).
     #[cfg(target_os = "macos")]
     player::use_bundled_vulkan_driver();
+    #[cfg(target_os = "macos")]
+    player::keep_prism_dock_icon();
 
     // Before the builder: Tauri opens windows and plugins open their files
     // before `setup`, so data must already be under the new identifier.

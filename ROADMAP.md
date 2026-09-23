@@ -102,6 +102,9 @@ rest of the hardening follows, and the 2.1 features wait for both.
 - [x] The player window can't be closed while mpv's init hangs: the vendored
       libmpv plugin holds its `instances` lock across `mpv_wrapper_create`, and
       the close handler's `try_lock` then refuses. Create outside the lock.
+- [x] The Dock icon turned into mpv's once a video played, until Prism quit:
+      mpv's macOS output sets its own icon unless `MPVBUNDLE=true`
+      (`player::keep_prism_dock_icon`, measured with the harness).
 - [x] Updater UI: Settings shows only "Installing…" although
       `app-update-progress` is emitted; show the percentage. A second click
       starts a second download beside the first; refuse while one runs.

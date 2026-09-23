@@ -260,7 +260,21 @@ mod mac {
         args
     }
 
+    /// A fingerprint of the Dock icon (its TIFF size), to see whether mpv
+    /// replaced it. Read on the main thread, as AppKit requires.
+    fn dock_icon(runner: &Runner) -> usize {
+        runner.run(Site::Main, "read dock icon", || {
+            let mtm = MainThreadMarker::new().expect("main thread");
+            NSApplication::sharedApplication(mtm)
+                .applicationIconImage()
+                .and_then(|image| image.TIFFRepresentation())
+                .map(|data| data.len())
+                .unwrap_or(0)
+        })
+    }
+
     fn iteration(runner: &Runner, ffi: Ffi, plan: &Scenario, options: &str, clip: &str, set: Option<(String, String)>, i: usize) {
+        let icon_before = dock_icon(runner);
         let started = Instant::now();
         let opts = options.to_string();
         let handle = runner.run(plan.init, "create", move || {
@@ -308,6 +322,11 @@ mod mac {
             }
         }
         let played = started.elapsed();
+        let icon_after = dock_icon(runner);
+        println!(
+            "iteration {i}: dock icon {} ({icon_before} -> {icon_after} bytes)",
+            if icon_before == icon_after { "unchanged" } else { "CHANGED" }
+        );
 
         runner.run(plan.rest, "destroy", move || unsafe { (ffi.destroy)(handle as *mut c_void) });
         println!(
