@@ -33,16 +33,14 @@ fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
     if crate::force_ipv4(app) {
         builder = builder.local_address(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
     }
+    // Every proxy the downloads use, SOCKS included. Feeds used to skip a
+    // SOCKS proxy and poll directly, revealing the user's address and
+    // subscriptions on a schedule (REVIEW 2026-09-23 S-5). reqwest's `socks`
+    // feature is compiled in anyway (librqbit enables it).
     if let Some(proxy) = crate::proxy_url(app) {
-        if proxy.starts_with("http://") || proxy.starts_with("https://") {
-            let proxy = reqwest::Proxy::all(&proxy).map_err(|e| {
-                PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}"))
-            })?;
-            builder = builder.proxy(proxy);
-        }
-        // A SOCKS proxy is left alone rather than refused: it applies to video
-        // downloads, and failing the whole subscription over it would be worse
-        // than fetching the feed directly.
+        let proxy = reqwest::Proxy::all(&proxy)
+            .map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))?;
+        builder = builder.proxy(proxy);
     }
     builder
         .build()
@@ -337,5 +335,16 @@ mod tests {
             </channel></rss>"#,
         );
         assert!(info.entries.is_empty());
+    }
+
+    // Regression (REVIEW 2026-09-23 S-5): feeds skipped a SOCKS proxy. Every
+    // scheme the proxy setting accepts must be one reqwest can route through.
+    #[test]
+    fn every_accepted_proxy_scheme_builds_a_client() {
+        for raw in ["http://127.0.0.1:8080", "https://p.example:443", "socks5://127.0.0.1:1080", "socks5h://127.0.0.1:1080", "socks4://127.0.0.1:1080"] {
+            let accepted = crate::parse_proxy_url(raw).expect(raw);
+            let proxy = reqwest::Proxy::all(&accepted).unwrap_or_else(|e| panic!("{raw}: {e}"));
+            reqwest::Client::builder().proxy(proxy).build().unwrap_or_else(|e| panic!("{raw}: {e}"));
+        }
     }
 }
