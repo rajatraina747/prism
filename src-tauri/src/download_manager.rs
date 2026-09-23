@@ -139,6 +139,8 @@ impl DownloadManager {
         clip_section: Option<String>,
         split_chapters: bool,
     ) {
+        // Taken before the first await, so a stop that arrives meanwhile is seen.
+        let ticket = crate::jobs::begin(&id);
         let downloads = self.downloads.clone();
         let reserved = self.reserved.clone();
 
@@ -378,8 +380,18 @@ impl DownloadManager {
             let alive = Arc::new(AtomicBool::new(true));
             {
                 let mut map = downloads.lock().await;
+                // Stopped while it was being set up: nothing is tracking it,
+                // so end it here rather than let it run unowned (B-5).
+                if ticket.cancelled() {
+                    drop(map);
+                    child.kill();
+                    reserved.lock().await.remove(&id);
+                    log::info!("download {id}: stopped before it started");
+                    return;
+                }
                 map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
             }
+            drop(ticket);
             log::info!("download {id}: yt-dlp started");
 
             let mut success = false;
@@ -539,6 +551,7 @@ impl DownloadManager {
     }
 
     pub async fn cancel_download(&self, id: &str) -> bool {
+        crate::jobs::cancel(id);
         let stopped = {
             let mut map = self.downloads.lock().await;
             match map.remove(id) {

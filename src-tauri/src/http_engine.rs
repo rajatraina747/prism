@@ -805,6 +805,9 @@ pub async fn start_http_download(
     filename_template: Option<String>,
     template_vars: Option<crate::template::TemplateVars>,
 ) -> Result<(), PrismError> {
+    // Taken before the first await: the probe can take over a minute, and a
+    // stop in that time must be seen (B-5).
+    let ticket = crate::jobs::begin(&id);
     let source = checked_url(&url)?;
     let sha256 = sha256.map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty());
     if sha256.as_deref().is_some_and(|s| s.len() != 64 || !s.chars().all(|c| c.is_ascii_hexdigit())) {
@@ -867,9 +870,18 @@ pub async fn start_http_download(
         dest
     };
     let transfer_state = Transfer::new(speed_limit.unwrap_or(0), engine.global.clone());
-    if let Some(previous) = engine.active.lock().await.insert(id.clone(), transfer_state.cancel.clone()) {
-        previous.store(true, Ordering::Relaxed);
+    {
+        let mut active = engine.active.lock().await;
+        if ticket.cancelled() {
+            // The path stays reserved for this id: a resume goes back to it.
+            log::info!("direct download {id}: stopped before it started");
+            return Ok(());
+        }
+        if let Some(previous) = active.insert(id.clone(), transfer_state.cancel.clone()) {
+            previous.store(true, Ordering::Relaxed);
+        }
     }
+    drop(ticket);
     let job = Job {
         source: source.to_string(),
         url: link.final_url.clone(),
@@ -979,6 +991,7 @@ async fn progress_ticker(app: AppHandle, id: String, size: Option<u64>, t: Trans
 /// Stop a direct download, keeping the partial file so it can resume.
 #[tauri::command]
 pub async fn cancel_http_download(app: AppHandle, id: String) -> Result<(), String> {
+    crate::jobs::cancel(&id);
     if let Some(cancel) = app.state::<HttpEngine>().active.lock().await.remove(&id) {
         cancel.store(true, Ordering::Relaxed);
     }
