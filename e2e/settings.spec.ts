@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
 test.describe('Settings', () => {
@@ -42,5 +43,29 @@ test.describe('Settings', () => {
   test('old section links still land on the right section', async ({ page }) => {
     await page.goto('/settings?section=downloads');
     await expect(page.getByRole('combobox', { name: 'Browser cookies' })).toBeVisible();
+  });
+
+  test('exports a backup and imports it back', async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('tab', { name: 'Storage' }).click();
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export…' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^prism-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    const file = await download.path();
+    const backup = JSON.parse(readFileSync(file, 'utf8'));
+    expect(backup.format).toBe('prism-export');
+    expect(backup.settings.defaultSaveFolder).toBeUndefined();
+
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button', { name: 'Import…' }).click(),
+    ]);
+    await chooser.setFiles(file);
+    await expect(page.getByRole('alertdialog', { name: 'Import this backup?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(page.getByText('Backup imported')).toBeVisible();
   });
 });

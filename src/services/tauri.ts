@@ -519,6 +519,22 @@ export class TauriPrismService implements IPrismService {
     }
   }
 
+  async saveBackup(json: string, suggestedName: string): Promise<boolean> {
+    const path = await dialogSave({
+      defaultPath: suggestedName,
+      filters: [{ name: 'Prism backup', extensions: ['json'] }],
+    });
+    if (!path) return false;
+    await writeTextFile(path, json);
+    return true;
+  }
+
+  async openBackup(): Promise<string | null> {
+    // Rust shows the dialog and reads the file: the main window's fs access
+    // is limited to Prism's own data files, and stays that way.
+    return invoke<string | null>('open_backup_file');
+  }
+
   async ffmpegAvailable(): Promise<boolean> {
     return invoke<boolean>('ffmpeg_available').catch(() => true);
   }

@@ -335,6 +335,31 @@ export class MockPrismService implements IPrismService {
     return null;
   }
 
+  async saveBackup(json: string, suggestedName: string): Promise<boolean> {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
+  }
+
+  async openBackup(): Promise<string | null> {
+    // Web demo: a file input stands in for the native dialog.
+    return new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json,.json';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return resolve(null);
+        file.text().then(resolve, () => resolve(null));
+      };
+      input.click();
+    });
+  }
+
   async exportLogs(logs: import('@/types/models').DiagnosticsEntry[]): Promise<void> {
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

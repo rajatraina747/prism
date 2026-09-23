@@ -3,6 +3,7 @@ import type { Subscription, PlaylistInfo } from '@/types/models';
 import { diffFeed, entryToDownloadItem, likelyFeedType } from '@/stores/subscription-check';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
+import { mergeSubscriptions } from '@/stores/backup';
 import { generateId } from '@/services/utils';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
@@ -14,6 +15,8 @@ interface SubscriptionActions {
   addSubscription: (url: string) => Promise<Subscription>;
   removeSubscription: (id: string) => void;
   restoreSubscription: (sub: Subscription) => void;
+  /** Add the feeds from a backup this machine doesn't already follow. */
+  importSubscriptions: (subs: Subscription[]) => void;
   toggleSubscription: (id: string) => void;
   setAudioOnly: (id: string, audioOnly: boolean) => void;
   /** Change a subscription's own options — its keyword rules and category. */
@@ -160,6 +163,10 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     setSubs(prev => (prev.some(s => s.id === sub.id) ? prev : [...prev, sub]));
   }, []);
 
+  const importSubscriptions = useCallback((incoming: Subscription[]) => {
+    setSubs(prev => mergeSubscriptions(prev, incoming));
+  }, []);
+
   const toggleSubscription = useCallback((id: string) => {
     setSubs(prev => prev.map(s => (s.id === id ? { ...s, enabled: !s.enabled } : s)));
   }, []);
@@ -177,7 +184,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
   const checkNow = useCallback((id?: string) => runCheck(id), [runCheck]);
 
   return (
-    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking }}>
+    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, importSubscriptions, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking }}>
       {children}
     </SubscriptionsContext.Provider>
   );
