@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -233,5 +233,14 @@ describe('siteKey (per-site preset memory)', () => {
     expect(siteKey('magnet:?xt=urn:btih:abc')).toBeNull();
     expect(siteKey('not a url')).toBeNull();
     expect(siteKey('')).toBeNull();
+  });
+});
+
+// Regression (REVIEW 2026-09-23 B-10): yt-dlp expands `%` in `-o`, so a
+// folder with one in its name broke every download into it.
+describe('ytdlpLiteral', () => {
+  it('escapes every percent sign', () => {
+    expect(ytdlpLiteral('/Users/r/100% Music')).toBe('/Users/r/100%% Music');
+    expect(ytdlpLiteral('/plain/path')).toBe('/plain/path');
   });
 });
