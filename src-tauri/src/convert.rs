@@ -260,7 +260,8 @@ pub async fn convert_file(
     if !source.is_file() {
         return Err("That file isn't there any more".into());
     }
-    let ffmpeg = crate::find_ffmpeg(&app)
+    let ffmpeg = crate::find_ffmpeg_blocking(&app)
+        .await
         .ok_or_else(|| "Converting needs ffmpeg, which isn't installed".to_string())?;
 
     let destination = output_path(&source, preset);
