@@ -360,3 +360,24 @@ describe('torrent parity fields', () => {
     expect(kept[0].addedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 });
+
+describe('queueReducer ignored events', () => {
+  // Every new array re-runs the effects keyed on the queue, the save among
+  // them (REVIEW 2026-09-23 B-1). An event the guards ignore changes nothing.
+  it('returns the same array for progress on an item that is not running', () => {
+    const queue = [makeItem({ status: 'paused' })];
+    expect(queueReducer(queue, { type: 'progress', id: 'a', data: { progress: 50 } })).toBe(queue);
+  });
+
+  it('returns the same array for an id that is not in the queue', () => {
+    const queue = [makeItem({ status: 'downloading' })];
+    expect(queueReducer(queue, { type: 'progress', id: 'gone', data: { progress: 50 } })).toBe(queue);
+  });
+
+  it('still returns a new array when progress applies', () => {
+    const queue = [makeItem({ status: 'downloading' })];
+    const next = queueReducer(queue, { type: 'progress', id: 'a', data: { progress: 50 } });
+    expect(next).not.toBe(queue);
+    expect(next[0].progress).toBe(50);
+  });
+});

@@ -58,7 +58,17 @@ function update(
   id: string,
   fn: (item: DownloadItem) => DownloadItem,
 ): DownloadItem[] {
-  return queue.map(i => (i.id === id ? fn(i) : i));
+  // Hand back the same array when nothing changed. Guards ignore late backend
+  // events several times a second, and a fresh array for each of them re-runs
+  // every effect keyed on the queue — including the one that saves it.
+  let changed = false;
+  const next = queue.map(i => {
+    if (i.id !== id) return i;
+    const updated = fn(i);
+    if (updated !== i) changed = true;
+    return updated;
+  });
+  return changed ? next : queue;
 }
 
 export function queueReducer(queue: DownloadItem[], action: QueueAction): DownloadItem[] {

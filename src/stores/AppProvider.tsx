@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer } from '@/stores/queue-reducer';
+import { createThrottledSaver, queueShape } from '@/stores/queue-save';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
 import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
@@ -156,14 +157,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stoppingRef = useRef<Set<string>>(new Set());
   const [stoppedTick, setStoppedTick] = useState(0);
 
-  // Persist. Queue writes are debounced: progress events mutate the queue
-  // several times per second, and each save serializes the whole list to disk.
-  // A trailing write within 300ms is plenty — on restart, in-flight items are
-  // reset to 'queued' anyway, so losing the final progress tick is harmless.
+  // Persist. A change to which items exist or their status is saved at once,
+  // because the next launch acts on it. Progress alone is throttled: it
+  // arrives several times a second, and each save serializes the whole list.
+  // See stores/queue-save.ts for why this can't be a debounce or a flush on quit.
+  const queueSaver = useMemo(
+    () => createThrottledSaver<DownloadItem[]>(q => service.persistence.saveQueue(q), { wait: 300, maxWait: 2000 }),
+    [service],
+  );
+  const queueShapeRef = useRef<string | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => service.persistence.saveQueue(queue), 300);
-    return () => clearTimeout(t);
-  }, [queue, service]);
+    const shape = queueShape(queue);
+    if (shape !== queueShapeRef.current) {
+      queueShapeRef.current = shape;
+      queueSaver.flush(queue);
+    } else {
+      queueSaver.schedule(queue);
+    }
+  }, [queue, queueSaver]);
+  useEffect(() => () => queueSaver.flush(), [queueSaver]);
   // History is rewritten in full on every completion (and can hold 2,000
   // rows) — debounce it like the queue so a burst of finishing playlist items
   // doesn't serialize the file once per item.
