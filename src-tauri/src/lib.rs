@@ -64,6 +64,10 @@ pub struct MediaMetadata {
     pub formats: Vec<FormatOption>,
     pub description: Option<String>,
     pub uploader: Option<String>,
+    /// `<extractor>:<id>`: the same video however its URL is written, on any
+    /// site yt-dlp supports (see `media_key`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +112,23 @@ struct YtDlpInfo {
     description: Option<String>,
     uploader: Option<String>,
     formats: Option<Vec<YtDlpFormat>>,
+    id: Option<String>,
+    extractor_key: Option<String>,
+}
+
+/// A key for "the same video" that doesn't depend on how its URL was written:
+/// yt-dlp's extractor plus that site's own id. URL-level dedupe (`sourceKey`
+/// in the frontend) only knows YouTube and magnets; this covers every site.
+///
+/// Not for yt-dlp's `Generic` extractor: there the id is just the file name
+/// (`video` for any `…/video.mp4`), so unrelated files on different sites
+/// would share a key. Those keep the URL-level check.
+pub(crate) fn media_key(extractor_key: Option<&str>, id: Option<&str>) -> Option<String> {
+    let extractor = extractor_key
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("generic"))?;
+    let id = id.map(str::trim).filter(|s| !s.is_empty())?;
+    Some(format!("{}:{}", extractor.to_ascii_lowercase(), id))
 }
 
 #[derive(Debug, Deserialize)]
@@ -358,6 +379,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         formats: unique_formats,
         description: info.description,
         uploader: info.uploader,
+        media_key: media_key(info.extractor_key.as_deref(), info.id.as_deref()),
     })
 }
 
@@ -2626,6 +2648,18 @@ mod tests {
         assert!(call("main", "get_app_version").is_ok(), "granted to main");
         let refused = format!("{:?}", call("player", "get_app_version"));
         assert!(refused.contains("not allowed on window"), "the player window called a main-window command: {refused}");
+    }
+
+    #[test]
+    fn media_key_names_the_video_not_the_url() {
+        assert_eq!(media_key(Some("Vimeo"), Some("76979871")).as_deref(), Some("vimeo:76979871"));
+        assert_eq!(media_key(Some("Vimeo"), Some("")), None);
+        // Seen with the bundled yt-dlp: a plain file's id is its name.
+        assert_eq!(media_key(Some("Generic"), Some("stream")), None);
+        assert_eq!(media_key(None, Some("x")), None);
+        // yt-dlp's JSON carries both fields.
+        let info: YtDlpInfo = serde_json::from_str(r#"{"id":"abc","extractor_key":"Twitch","title":"t"}"#).unwrap();
+        assert_eq!(media_key(info.extractor_key.as_deref(), info.id.as_deref()).as_deref(), Some("twitch:abc"));
     }
 
     #[test]

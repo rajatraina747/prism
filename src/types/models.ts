@@ -73,6 +73,9 @@ export interface MediaMetadata {
   formats: FormatOption[];
   description?: string;
   uploader?: string;
+  /** `<extractor>:<id>` from yt-dlp: the same video however its URL is
+   * written. Absent for torrents, direct files and older records. */
+  mediaKey?: string;
 }
 
 export interface DownloadSettings {

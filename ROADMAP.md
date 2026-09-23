@@ -113,9 +113,12 @@ rest of the hardening follows, and the 2.1 features wait for both.
       wrong when the engine hung or refused its options, as in 2.0.0–2.0.1:
       offer the reinstall hint only when the library is missing, and
       otherwise point at updating and at `mpv.log`.
-- [ ] Settings/Library export and qBittorrent/Transmission import (the open
-      line under v2.0 → Library).
-- [ ] yt-dlp `id`/`extractor` dedupe extension.
+- [x] Settings/Library export and qBittorrent/Transmission import (the open
+      line under v2.0 → Library): `stores/backup.ts` + `open_backup_file`;
+      `client_import.rs` + Settings → BitTorrent → Import torrents.
+- [x] yt-dlp `id`/`extractor` dedupe extension: `mediaKey` on lookups,
+      checked after the lookup (single and batch); not for the `Generic`
+      extractor, whose id is just a file name.
 - [ ] A completion ledger owned by Rust: open, trash, convert and index accept
       only paths an engine recorded (review Idea #1). The 2.0.1 root refusal
       stays as a second layer.
@@ -420,7 +423,7 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       differing only in the middle — is written down in a test rather than
       left to be discovered. The index is capped, not uncapped as planned:
       an install that runs for years shouldn't grow one without bound.
-- [ ] Open, from the same idea: capture yt-dlp's `id`/`extractor` at parse so
+- [x] Open, from the same idea: capture yt-dlp's `id`/`extractor` at parse so
       dedupe works on sites where `sourceKey` has no special case. Not free —
       `YtDlpInfo` requests neither field, so it needs a parse-struct change, a
       new `MediaMetadata` field and a `sourceKey` extension, and it only adds

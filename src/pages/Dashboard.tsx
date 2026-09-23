@@ -12,8 +12,8 @@ import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal'
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey, sanitizeFilename } from '@/services';
-import type { DownloadStatus, HistoryItem } from '@/types/models';
+import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
@@ -97,16 +97,6 @@ function buildDirectItem(url: string, destination: string, speedLimit?: number, 
     retryAttempt: 0,
     kind: 'direct',
   };
-}
-
-const ACTIVE_STATUSES: DownloadStatus[] = ['queued', 'parsing', 'ready', 'downloading', 'seeding', 'paused'];
-
-/** Is this source already in the active queue or completed history? */
-function findDuplicate(url: string, queue: DownloadItem[], history: HistoryItem[]): 'queue' | 'completed' | null {
-  const key = sourceKey(url);
-  if (queue.some(i => ACTIVE_STATUSES.includes(i.status) && sourceKey(i.metadata.source.url) === key)) return 'queue';
-  if (history.some(i => i.status === 'completed' && sourceKey(i.metadata.source.url) === key)) return 'completed';
-  return null;
 }
 
 /** A YouTube watch URL that also carries a playlist: return both "just this
@@ -310,6 +300,13 @@ export default function Dashboard() {
 
       lastParsedUrlRef.current = url;
       const metadata = await service.parseUrl(url);
+      // The same video under a URL the check above didn't recognise: now the
+      // lookup has named it (extractor + the site's own id), ask again.
+      if (dup === null) {
+        const again = findMediaDuplicate(metadata.mediaKey, queueItems, historyItems);
+        if (again === 'queue') { toast.warning('That’s already in your queue'); return; }
+        if (again === 'completed') toast.info('You’ve downloaded this before — fetching again');
+      }
       setParsedMetadata(metadata);
       setShowMediaModal(true);
     } catch (err: unknown) {
@@ -381,6 +378,13 @@ export default function Dashboard() {
           continue;
         }
         const metadata = await service.parseUrl(urls[i]);
+        // Two URLs for the same video, one of them already queued (or earlier
+        // in this batch): the lookup's mediaKey says so where the URLs don't.
+        if (findMediaDuplicate(metadata.mediaKey, [...queueItems, ...added], []) === 'queue') {
+          skipped++;
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
         const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
         const item: DownloadItem = {
           id: generateId(),
