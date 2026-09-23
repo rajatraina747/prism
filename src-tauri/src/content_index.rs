@@ -154,6 +154,10 @@ pub async fn index_download(
     let Some(index_file) = index_path(&app) else {
         return Ok(None);
     };
+    // It reads the file, so only one Prism downloaded (ledger.rs); it used to
+    // take any path the page named.
+    let path = crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?;
+    crate::ledger::require_recorded(&app, &path)?;
     tauri::async_runtime::spawn_blocking(move || {
         let file = Path::new(&path);
         if !file.is_file() {

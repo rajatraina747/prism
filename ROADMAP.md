@@ -121,9 +121,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
 - [x] yt-dlp `id`/`extractor` dedupe extension: `mediaKey` on lookups,
       checked after the lookup (single and batch); not for the `Generic`
       extractor, whose id is just a file name.
-- [ ] A completion ledger owned by Rust: open, trash, convert and index accept
+- [x] A completion ledger owned by Rust: open, trash, convert and index accept
       only paths an engine recorded (review Idea #1). The 2.0.1 root refusal
-      stays as a second layer.
+      stays as a second layer. `ledger.rs` (in `app_data/ledger/`, out of the
+      page's fs scope), seeded once from the Library; the player takes
+      unrecorded files only through `player_open_file`, a Rust-side dialog.
 - [ ] Queue persistence in Rust (Idea #3); queue-state loss has caused the
       worst bug twice.
 - [ ] **P-1 (rest)** Progress in its own store; Transfers virtualized past

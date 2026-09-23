@@ -259,6 +259,7 @@ pub async fn convert_file(
     // anything and write its output alongside, which is not a power the page
     // is given anywhere else.
     let input = crate::validate_open_path(&input, false, &crate::picked_dirs(&app))?;
+    crate::ledger::require_recorded(&app, &input)?;
     let source = PathBuf::from(&input);
     if !source.is_file() {
         return Err("That file isn't there any more".into());
@@ -337,6 +338,9 @@ pub async fn convert_file(
         // A killed ffmpeg exits non-zero, which is not a failure worth
         // reporting as one — the user asked for it to stop.
         let ok = !was_cancelled && code == Some(0) && destination.is_file();
+        if ok {
+            crate::ledger::record(&app, &destination.to_string_lossy());
+        }
         let size = destination.metadata().ok().map(|m| m.len());
         let error = (!ok && !was_cancelled).then(|| {
             let detail = stderr_tail.trim().to_string();

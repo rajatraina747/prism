@@ -816,6 +816,9 @@ impl TorrentManager {
                     None => (file_path, output_dir),
                 }
             };
+            // Recorded as finished: the file, or the folder a multi-file
+            // torrent owns. Never a single file's folder, the shared destination.
+            record_finished(&app, single_file, file_path.as_deref(), &output_dir);
             log::info!("torrent {id}: completed ({total} bytes)");
             let _ = app.emit(
                 &format!("download-complete-{id}"),
@@ -990,6 +993,8 @@ impl TorrentManager {
                 if stats.finished && !delete_files {
                     let file_path = resolve_completion_path(&h, &output_dir);
                     mark_torrent_files_downloaded(&h, &output_dir);
+                    let single_file = h.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
+                    record_finished(app, single_file, file_path.as_deref(), &output_dir);
                     log::info!("torrent {id}: seeding stopped by user; completed");
                     let _ = app.emit(
                         &format!("download-complete-{id}"),
@@ -1303,6 +1308,18 @@ fn resolve_completion_path(handle: &ManagedTorrentHandle, output_dir: &str) -> O
         existing(base)
     } else {
         None
+    }
+}
+
+/// Tell the ledger what a finished torrent left: a single-file torrent's file,
+/// or the folder a multi-file torrent owns (see `ledger.rs`).
+fn record_finished(app: &AppHandle, single_file: bool, file_path: Option<&str>, output_dir: &str) {
+    if single_file {
+        if let Some(path) = file_path {
+            crate::ledger::record(app, path);
+        }
+    } else {
+        crate::ledger::record(app, output_dir);
     }
 }
 
