@@ -715,6 +715,21 @@ mod tests {
     }
 }
 
+/// Keep Prism's own Dock icon while the player runs.
+///
+/// mpv's macOS video output replaces the app's Dock icon with mpv's own when
+/// a video starts, and it stayed until Prism quit. mpv skips that when
+/// `MPVBUNDLE=true`, which mpv.app sets for itself. Measured with
+/// `examples/mpv_thread_repro` (icon fingerprint unchanged with it, replaced
+/// without; playback the same). Called with the Vulkan setup, before any
+/// thread exists, because it sets an environment variable.
+#[cfg(target_os = "macos")]
+pub fn keep_prism_dock_icon() {
+    if std::env::var_os("MPVBUNDLE").is_none() {
+        std::env::set_var("MPVBUNDLE", "true");
+    }
+}
+
 /// Point the Vulkan loader at the MoltenVK driver bundled beside libmpv.
 ///
 /// macOS provides no Vulkan driver, and mpv's video output (gpu-next) runs on
