@@ -111,6 +111,12 @@ pub(crate) async fn probe(client: &reqwest::Client, url: &str) -> Result<LinkPro
     })
 }
 
+/// `bytes 100-199/12345` → 100.
+fn content_range_start(value: &str) -> Option<u64> {
+    let range = value.trim().strip_prefix("bytes")?.trim_start();
+    range.split_once('-')?.0.trim().parse().ok()
+}
+
 /// `bytes 0-0/12345` → 12345 (`*` means unknown).
 fn content_range_total(value: &str) -> Option<u64> {
     value.rsplit_once('/')?.1.trim().parse().ok()
@@ -484,7 +490,24 @@ async fn fetch_range(
     }
     let mut resp = request.send().await.map_err(|e| Attempt::Retry(network_error(&e)))?;
     match resp.status() {
-        StatusCode::PARTIAL_CONTENT => {}
+        // A 206 must be the range asked for. A server (or a cache in front of
+        // one) that answers with some other part would otherwise be written at
+        // `from` and corrupt the file silently (REVIEW 2026-09-23 B-9).
+        StatusCode::PARTIAL_CONTENT => {
+            let start = resp
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(content_range_start);
+            // Fatal, not a retry: the same server will most likely answer
+            // the same way, and the saved state still lets a retry resume.
+            if start != Some(from) {
+                return Err(Attempt::Fatal(PrismError::new(
+                    ErrorCode::Network,
+                    format!("The server sent a different part of the file than was asked for (wanted byte {from})"),
+                )));
+            }
+        }
         // A full body instead of the range: If-Range failed, the file changed.
         StatusCode::OK => return Err(Attempt::Restart),
         status => {
@@ -975,6 +998,14 @@ mod tests {
     use tokio::io::AsyncReadExt;
 
     #[test]
+    fn reads_the_start_of_a_content_range() {
+        assert_eq!(content_range_start("bytes 100-199/1000"), Some(100));
+        assert_eq!(content_range_start("bytes 0-0/*"), Some(0));
+        assert_eq!(content_range_start("bytes */1000"), None);
+        assert_eq!(content_range_start("items 1-2/3"), None);
+    }
+
+    #[test]
     fn plans_segments_that_cover_the_file_exactly() {
         let size = 10 * 1024 * 1024 + 7;
         let plan = plan_segments(size, 4);
@@ -1011,6 +1042,9 @@ mod tests {
         etag: std::sync::Mutex<String>,
         /// Cut the first response after this many body bytes.
         drop_first_after: Option<usize>,
+        /// Answer every range with the file's first bytes instead, labelled
+        /// honestly: a server that ignores where a range starts.
+        wrong_ranges: bool,
         dropped: AtomicBool,
         bytes_sent: AtomicU64,
     }
@@ -1023,6 +1057,7 @@ mod tests {
                 ranges,
                 etag: std::sync::Mutex::new("\"v1\"".into()),
                 drop_first_after: None,
+                wrong_ranges: false,
                 dropped: AtomicBool::new(false),
                 bytes_sent: AtomicU64::new(0),
             })
@@ -1064,6 +1099,7 @@ mod tests {
                 Some((start, end))
             });
             let (status, start, end) = match range {
+                Some((s, e)) if server.wrong_ranges => ("206 Partial Content", 0, e - s),
                 Some((s, e)) => ("206 Partial Content", s, e),
                 None => ("200 OK", 0, len - 1),
             };
@@ -1150,6 +1186,25 @@ mod tests {
             assert!(std::fs::read(&path).unwrap() == server.body);
             assert!(!with_suffix(&path, PART_SUFFIX).exists());
             assert!(!with_suffix(&path, STATE_SUFFIX).exists());
+        });
+    }
+
+    // Regression (REVIEW 2026-09-23 B-9): a 206 for the wrong range was
+    // written where the asked-for range belonged.
+    #[test]
+    fn a_206_for_the_wrong_range_fails_instead_of_corrupting() {
+        tauri::async_runtime::block_on(async {
+            let mut server = Server::new(TEN_MIB, true);
+            Arc::get_mut(&mut server).unwrap().wrong_ranges = true;
+            let url = serve(server.clone()).await;
+            let tmp = TempDir::new("wrongrange");
+            let client = test_client();
+            let job = job_for(&client, &url, &tmp.0, None).await;
+            match transfer(&client, &job, &Transfer::new(0, Arc::new(RateLimiter::new(0)))).await {
+                Err(Halt::Failed(e)) => assert!(e.summary.contains("different part"), "{}", e.summary),
+                other => panic!("expected a failure, got {other:?}"),
+            }
+            assert!(!job.dest.exists());
         });
     }
 
