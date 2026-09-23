@@ -18,11 +18,11 @@ Small fixes to the built-in player and to updating.
   reinstalling when part of the player is actually missing.
 
 **Updating:** from 1.9.0 or later, use **Settings → Updates**. From 1.8.x or
-earlier, run `brew upgrade --cask prism` or download the files below.
+earlier, run `brew upgrade --cask rajatraina747/prism/prism-downloader` or download the files below.
 
 ## Install
 
-- **macOS:** `brew install --cask rajatraina747/prism/prism` (or `brew upgrade --cask prism`), or download the
+- **macOS:** `brew install --cask rajatraina747/prism/prism-downloader` (or `brew upgrade --cask rajatraina747/prism/prism-downloader`; never the bare name `prism`, which is GraphPad Prism), or download the
   `.dmg`. Not notarized: on macOS 15+ open the app once, then System Settings →
   Privacy & Security → **Open Anyway** (or `xattr -dr com.apple.quarantine /Applications/Prism.app`).
 - **Windows:** run the installer; click "More info → Run anyway" on the SmartScreen prompt.

@@ -71,9 +71,14 @@ yt-dlp, Deno and the player's libmpv are bundled too. **Nothing needs installing
 **macOS (Apple Silicon) — Homebrew:**
 
 ```sh
-brew tap rajatraina747/prism
-brew install --cask prism
+brew install --cask rajatraina747/prism/prism-downloader
 ```
+
+Use the full name. Homebrew's own catalogue has a different app called
+`prism` (GraphPad Prism), and a bare `brew install --cask prism` or
+`brew upgrade --cask prism` installs that instead. To update:
+`brew upgrade --cask rajatraina747/prism/prism-downloader`, or
+**Settings → Updates** inside Prism.
 
 Or get the latest release for your platform:
 
