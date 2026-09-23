@@ -111,27 +111,16 @@ fn trim(index: &mut Index) {
     }
 }
 
-/// Record a finished download, and say whether its content was already here.
-///
-/// Returns the entry that already held this content, if any — and only when it
-/// points somewhere else, so re-recording the same file is not a duplicate
-/// report.
-#[tauri::command]
-pub async fn index_download(
-    app: tauri::AppHandle,
-    path: String,
-    title: String,
-) -> Result<Option<IndexEntry>, String> {
-    let file = Path::new(&path);
-    if !file.is_file() {
-        return Ok(None);
-    }
-    let key = content_key(file).map_err(|e| format!("Couldn't read the finished file: {e}"))?;
-    let Some(index_file) = index_path(&app) else {
-        return Ok(None);
-    };
+/// Load, change and save the index as one step. Completions arrive together
+/// (a finished playlist fires every call at once), and two read-modify-writes
+/// through one shared `.json.tmp` could tear the file; a torn file then
+/// parses as empty and up to `MAX_ENTRIES` records were lost (REVIEW
+/// 2026-09-23 B-8).
+fn record(index_file: &Path, key: String, path: String, title: String) -> Option<IndexEntry> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    let mut index = load(&index_file);
+    let mut index = load(index_file);
     let existing = index.get(&key).filter(|e| e.path != path).cloned();
 
     // The newest copy wins the entry: it is the one most likely still there.
@@ -144,10 +133,37 @@ pub async fn index_download(
         },
     );
     trim(&mut index);
-    if let Err(e) = save(&index_file, &index) {
+    if let Err(e) = save(index_file, &index) {
         log::warn!("content index: not saved: {e}");
     }
-    Ok(existing)
+    existing
+}
+
+/// Record a finished download, and say whether its content was already here.
+///
+/// Returns the entry that already held this content, if any — and only when it
+/// points somewhere else, so re-recording the same file is not a duplicate
+/// report. Hashing and the file I/O run on the blocking pool, off the async
+/// workers.
+#[tauri::command]
+pub async fn index_download(
+    app: tauri::AppHandle,
+    path: String,
+    title: String,
+) -> Result<Option<IndexEntry>, String> {
+    let Some(index_file) = index_path(&app) else {
+        return Ok(None);
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let file = Path::new(&path);
+        if !file.is_file() {
+            return Ok(None);
+        }
+        let key = content_key(file).map_err(|e| format!("Couldn't read the finished file: {e}"))?;
+        Ok(record(&index_file, key, path, title))
+    })
+    .await
+    .map_err(|e| format!("Content index: {e}"))?
 }
 
 #[cfg(test)]
@@ -239,5 +255,27 @@ mod tests {
         }
         trim(&mut index);
         assert_eq!(index.len(), MAX_ENTRIES);
+    }
+
+    // Regression (REVIEW 2026-09-23 B-8): concurrent completions tore the
+    // index and lost it.
+    #[test]
+    fn concurrent_records_all_survive() {
+        let dir = temp_dir("concurrent");
+        let index_file = dir.join("content-index.json");
+        let _ = std::fs::remove_file(&index_file);
+        let threads: Vec<_> = (0..16)
+            .map(|i| {
+                let index_file = index_file.clone();
+                std::thread::spawn(move || {
+                    record(&index_file, format!("key-{i}"), format!("/dl/{i}.mp4"), format!("t{i}"));
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(load(&index_file).len(), 16);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
