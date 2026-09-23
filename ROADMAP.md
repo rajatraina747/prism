@@ -25,9 +25,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
 
 ### v2.0.1 — "Don't lose it, don't destroy it" (P0 patch)
 
-- [ ] **B-1** Queue saved while downloads run: throttle with a 2 s `maxWait`
-      instead of a debounce every progress tick re-arms, flush on quit, and the
-      reducer returns the same array for events it ignores.
+- [x] **B-1** Queue saved while downloads run. A change to which items exist
+      or their status saves at once; progress alone is throttled (2 s
+      `maxWait`); the reducer returns the same array for events it ignores. A
+      flush on quit was dropped: ⌘Q reaches Rust only as `RunEvent::Exit`,
+      too late to wait on the webview (`stores/queue-save.ts`).
 - [ ] **B-2** Finished torrents leave the librqbit session once seeding ends
       (`delete(id, false)` before the move). Torrents that already leaked — a
       restored handle no queue item adopts — are pruned at startup, never with
