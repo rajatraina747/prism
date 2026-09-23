@@ -15,6 +15,72 @@ what remains open is below. Completed items live in git history.
 - [x] **Per-site smart preset** that remembers last-used settings per domain
   (`perSitePresets`, keyed via `siteKey`).
 
+## Arcs from the 2026-09-23 review
+
+Full findings in [docs/REVIEW-2026-09-23.md](docs/REVIEW-2026-09-23.md), a
+whole-tree review of 2.0.0. IDs below are that document's. Each fix lands with a
+regression test at the seam the review names — no existing test would have
+caught B-1 to B-5. Order decided 2026-09-23: the P0s ship alone and fast, the
+rest of the hardening follows, and the 2.1 features wait for both.
+
+### v2.0.1 — "Don't lose it, don't destroy it" (P0 patch)
+
+- [ ] **B-1** Queue saved while downloads run: throttle with a 2 s `maxWait`
+      instead of a debounce every progress tick re-arms, flush on quit, and the
+      reducer returns the same array for events it ignores.
+- [ ] **B-2** Finished torrents leave the librqbit session once seeding ends
+      (`delete(id, false)` before the move). Torrents that already leaked — a
+      restored handle no queue item adopts — are pruned at startup, never with
+      their data.
+- [ ] **B-3 + S-3** `resolve_completion_path` never falls back to the shared
+      destination; `trashable_paths` refuses every root and every ancestor of
+      one, which also neutralises rows already recorded with a folder path.
+- [ ] **B-4** Direct downloads reserve their file name per id, as yt-dlp's
+      `reserved` map does.
+- [ ] **B-6** `convert::kill_all()` in the Exit handler.
+- [ ] **B-10** Escape `%` in the folder part of yt-dlp's `-o`.
+- [ ] The Trash dialog names any folder it is about to trash.
+
+### v2.0.2 — Correctness & security hardening
+
+- [ ] **B-5** One job registry across the four engines: a pending entry with a
+      cancel flag before the first await, and one `kill_all` on Exit.
+- [ ] **B-7** Take yt-dlp's real output path from
+      `--print after_move:...%(filepath)s` instead of guessing it (also fixes
+      split chapters).
+- [ ] **B-8** Lock the content index and write it off the async workers.
+- [ ] **B-9** Check a 206's `Content-Range` start.
+- [ ] **S-1** Text-list links from watch folders go through the confirmation
+      card; a watch folder may not be the destination; files that yield nothing
+      are left unrenamed.
+- [ ] **S-2** App-command ACL manifest with per-window allows; the player
+      window can't emit events. Capability test extended to commands.
+- [ ] **S-4** `storage_summary` validated and on `spawn_blocking`.
+- [ ] **S-5** RSS polls refuse to run under a SOCKS proxy they can't honour.
+- [ ] **S-6** Bound line length in `spawn.rs` `forward`.
+- [ ] **S-7** `protocol_whitelist=file` for local file loads only — never for
+      `player_load_stream`, which is `http://127.0.0.1`.
+- [ ] **P-1 (part one)** Memoized context values and `queueRef` in callbacks,
+      so `QueueRow`'s memo holds.
+- [ ] **P-2** Remaining blocking work onto `spawn_blocking`.
+- [ ] Completion reads the current settings, not the ones captured at start.
+
+### v2.1 — Export, import, dedupe, and the structural fixes
+
+- [ ] Settings/Library export and qBittorrent/Transmission import (the open
+      line under v2.0 → Library).
+- [ ] yt-dlp `id`/`extractor` dedupe extension.
+- [ ] A completion ledger owned by Rust: open, trash, convert and index accept
+      only paths an engine recorded (review Idea #1). The 2.0.1 root refusal
+      stays as a second layer.
+- [ ] Queue persistence in Rust (Idea #3); queue-state loss has caused the
+      worst bug twice.
+- [ ] **P-1 (rest)** Progress in its own store; Transfers virtualized past
+      ~100 rows.
+- [ ] **P-3** Torrent bytes as a raw IPC body.
+- [ ] Clear the 11 fast-refresh lint warnings; review the 8 unmaintained or
+      unsound `cargo audit` warnings.
+
 ## Arcs from the September 2026 follow-up review
 
 Full findings, verified against code and live data, in
@@ -112,7 +178,7 @@ fixed on the `v2.0` branch.
       loader pointed at a missing driver the video output fails to start; with
       the bundled manifest alone it plays.
 
-### v2.0 — "Download manager" (merged to `main`; release candidate)
+### v2.0 — "Download manager" (shipped 2.0.0)
 
 Decided 2026-09-15: the bundle id becomes `com.rainacorp.prism`; a basic
 HTTP(S) engine is in; the extension goes to Edge Add-ons and AMO, with Chrome
