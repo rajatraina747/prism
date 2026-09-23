@@ -11,6 +11,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { formatDuration } from '@/services/utils';
 import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
+import { playerFailureHint } from '@/lib/player-failure';
 
 // The in-app player. Runs in its own transparent "player" window: mpv embeds
 // into the window's native view and renders *beneath* the webview, so this
@@ -391,14 +392,10 @@ export default function Player() {
           <AlertTriangle className="w-8 h-8 mx-auto text-amber-400" />
           <h1 className="text-sm font-semibold">The player engine failed to start</h1>
           <p className="text-xs text-white/70 break-words">{initError}</p>
-          {/* libmpv ships inside the app on macOS and Windows, so "install it
-              yourself" is only actionable advice on Linux. */}
-          {/* Only the bundled libmpv is ever loaded (S-7), so on macOS and
-              Windows the fix is a reinstall, never a system mpv. */}
+          {/* A reinstall only helps when the library is missing; see
+              lib/player-failure.ts. */}
           <p className="text-xs text-white/50">
-            {IS_WINDOWS || IS_MAC
-              ? 'Prism ships its own copy of libmpv — reinstalling Prism should restore it.'
-              : <>Prism's player needs libmpv — install it from your package manager (e.g. <code className="bg-white/10 px-1 rounded">libmpv2</code>), then reopen the player.</>}
+            {playerFailureHint(initError, IS_MAC ? 'mac' : IS_WINDOWS ? 'windows' : 'linux')}
           </p>
         </div>
       </div>
