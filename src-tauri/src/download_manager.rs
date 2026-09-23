@@ -215,12 +215,19 @@ impl DownloadManager {
 
                 // Report the height actually delivered (stdout line
                 // "PRISM:HEIGHT=N" once the file lands) so completion can
-                // carry it. --print implies --quiet, which would silence the
-                // progress lines the UI parses — --no-quiet restores them.
+                // carry it.
                 args.push("--print".into());
                 args.push("after_move:PRISM:HEIGHT=%(height)s".into());
-                args.push("--no-quiet".into());
             }
+            // Where the file really landed. Guessing it from the template
+            // missed whenever yt-dlp rewrote the name, as it does for
+            // `: ? * | " < >` on Windows, and the item completed with no Play
+            // or Reveal (REVIEW 2026-09-23 B-7). --print implies --quiet,
+            // which would silence the progress lines the UI parses;
+            // --no-quiet restores them.
+            args.push("--print".into());
+            args.push(format!("after_move:{PATH_MARKER}%(filepath)s"));
+            args.push("--no-quiet".into());
 
             if download_subtitles {
                 args.push("--write-subs".into());
@@ -404,6 +411,7 @@ impl DownloadManager {
             let mut stderr_tail = String::new();
             let mut timed_out = false;
             let mut actual_height: Option<u32> = None;
+            let mut reported: Option<String> = None;
             let mut agg = PhaseAggregator::new();
             // yt-dlp prints a progress line per fragment/chunk — many per
             // second with -N. Each emit is an IPC hop plus a reducer pass and
@@ -425,6 +433,9 @@ impl DownloadManager {
                             let line = String::from_utf8_lossy(&data);
                             if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
                                 actual_height = h.parse().ok(); // "NA" → None
+                            }
+                            if let Some(path) = reported_path(&line) {
+                                reported = Some(path.to_string());
                             }
                             if agg.on_line(&line) {
                                 let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
@@ -510,7 +521,9 @@ impl DownloadManager {
             let final_path = if success {
                 // "Move completed to" runs before completion is reported, so
                 // the Library records where the file actually ended up.
-                find_output_file(&output_path)
+                reported
+                    .filter(|path| std::path::Path::new(path).is_file())
+                    .or_else(|| find_output_file(&output_path))
                     .map(|path| crate::postprocess::move_file(&app, &path).unwrap_or(path))
             } else {
                 None
@@ -753,6 +766,16 @@ fn parse_size(val: f64, unit: &str) -> u64 {
     (val * multiplier) as u64
 }
 
+/// Prefix of the stdout line yt-dlp prints with the finished file's path.
+const PATH_MARKER: &str = "PRISM:PATH=";
+
+/// The path in a `PRISM:PATH=…` line. Only the line ending is trimmed: a
+/// file name may start or end with spaces.
+fn reported_path(line: &str) -> Option<&str> {
+    let path = line.trim_end_matches(['\r', '\n']).strip_prefix(PATH_MARKER)?;
+    (!path.is_empty() && path != "NA").then_some(path)
+}
+
 /// The file yt-dlp writes for an `-o` template ending in `.%(ext)s`: that
 /// suffix becomes `.{ext}` and every escaped `%%` a literal `%`. Only the
 /// suffix is replaced, so an escaped `%%(ext)s` inside a name stays literal.
@@ -778,6 +801,14 @@ fn find_output_file(template: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_reported_path() {
+        assert_eq!(reported_path("PRISM:PATH=C:\\dl\\Q＆A： part.mp4\r\n"), Some("C:\\dl\\Q＆A： part.mp4"));
+        assert_eq!(reported_path("PRISM:PATH=/dl/ spaced .mp4\n"), Some("/dl/ spaced .mp4"));
+        assert_eq!(reported_path("PRISM:PATH=NA\n"), None);
+        assert_eq!(reported_path("[download] 50% of 10MiB"), None);
+    }
 
     #[test]
     fn template_file_unescapes_percent() {
