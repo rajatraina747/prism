@@ -52,7 +52,7 @@ rest of the hardening follows, and the 2.1 features wait for both.
       with a `%` in it.
 - [x] The Trash dialog names any folder it is about to trash.
 
-### v2.0.2 — Player fix, correctness & security hardening
+### v2.0.2 — Player fix, correctness & security hardening (shipped 2.0.2)
 
 - [x] **The macOS player never started in 2.0.0 or 2.0.1** (found while
       checking S-7). The LGPL libmpv shipped since 2.0 is built without Lua,
@@ -92,6 +92,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
 
 ### v2.1 — Export, import, dedupe, and the structural fixes
 
+- [ ] The player's startup-failure screen always says reinstalling Prism
+      restores libmpv (`src/pages/Player.tsx`, the `initError` branch). That is
+      wrong when the engine hung or refused its options, as in 2.0.0–2.0.1:
+      offer the reinstall hint only when the library is missing, and
+      otherwise point at updating and at `mpv.log`.
 - [ ] Settings/Library export and qBittorrent/Transmission import (the open
       line under v2.0 → Library).
 - [ ] yt-dlp `id`/`extractor` dedupe extension.
