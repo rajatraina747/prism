@@ -140,7 +140,8 @@ describe('entryToDownloadItem', () => {
     const cjk = entryToDownloadItem(entry('https://y/1', '日本語のタイトル'), makeSub(), prefs);
     expect(cjk.settings.filename).toBe('日本語のタイトル');
     const tricky = entryToDownloadItem(entry('https://y/2', 'a/b\\c %(ext)s'), makeSub(), prefs);
-    expect(tricky.settings.filename).toBe('a-b-c %%(ext)s');
+    // Stored as a plain name; `%` is escaped only where yt-dlp's -o is built.
+    expect(tricky.settings.filename).toBe('a-b-c %(ext)s');
   });
 
   it('falls back to a safe filename for empty titles', () => {
