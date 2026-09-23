@@ -234,3 +234,28 @@ describe('AppProvider - History', () => {
     }
   });
 });
+
+// Regression (REVIEW 2026-09-23 P-1): callbacks that closed over the queue
+// changed identity on every progress tick, breaking QueueRow's memo.
+describe('AppProvider - stable callbacks', () => {
+  it('keeps queue actions and settings the same across queue changes', async () => {
+    let q: ReturnType<typeof useQueue> | null = null;
+    let s: ReturnType<typeof useSettings> | null = null;
+    await renderAndWait(
+      <Wrapper>
+        <QueueHelper onReady={a => { q = a; }} />
+        <SettingsHelper onReady={a => { s = a; }} />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(q).not.toBeNull());
+    const before = q!;
+    const settingsBefore = s!;
+    act(() => { q!.addToQueue(makeItem('p1', 'paused')); });
+    expect(q!.items).toHaveLength(1);
+    for (const name of ['pauseDownload', 'resumeDownload', 'cancelDownload', 'startAll', 'pauseAll', 'removeWithData', 'moveToTop', 'moveToBottom'] as const) {
+      expect(q![name], name).toBe(before[name]);
+    }
+    expect(s, 'settings context untouched by a queue change').toBe(settingsBefore);
+  });
+});
+

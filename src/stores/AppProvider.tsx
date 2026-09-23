@@ -575,7 +575,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [stopDownload]);
 
   const pauseDownload = useCallback((id: string) => {
-    const item = queue.find(i => i.id === id);
+    const item = queueRef.current.find(i => i.id === id);
     // A torrent with a live listener pauses in place: the engine keeps the
     // handle, so resume needs no re-add and no hash re-check of the data on
     // disk. Falls back to kill-and-requeue if the native pause fails (e.g.
@@ -587,10 +587,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     stopDownload(id);
     dispatch({ type: 'pause', id });
-  }, [queue, service, stopDownload]);
+  }, [service, stopDownload]);
 
   const resumeDownload = useCallback((id: string) => {
-    const item = queue.find(i => i.id === id);
+    const item = queueRef.current.find(i => i.id === id);
     // Natively-paused torrent: unpause and go straight back to downloading —
     // the auto-start effect must not spawn a second add (startedRef still
     // holds the id, so it won't).
@@ -606,10 +606,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     dispatch({ type: 'resume', id });
-  }, [queue, service, stopDownload]);
+  }, [service, stopDownload]);
 
   const cancelDownload = useCallback((id: string) => {
-    const item = queue.find(i => i.id === id);
+    const item = queueRef.current.find(i => i.id === id);
     if (item?.status === 'seeding') {
       // Stopping a seed is a success, not a cancel: the download finished, the
       // user is just ending the upload. The backend emits a success completion
@@ -626,7 +626,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     stopDownload(id);
     dispatch({ type: 'cancel', id });
-  }, [queue, service, stopDownload]);
+  }, [service, stopDownload]);
 
   const retryDownload = useCallback((id: string) => {
     stopDownload(id);
@@ -642,14 +642,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Per-item rather than the bulk 'startAll' action: natively-paused
     // torrents are still in startedRef, so the auto-start effect would skip
     // them — resumeDownload routes each item down the right path.
-    queue.filter(i => i.status === 'paused').forEach(i => resumeDownload(i.id));
-  }, [queue, resumeDownload]);
+    queueRef.current.filter(i => i.status === 'paused').forEach(i => resumeDownload(i.id));
+  }, [resumeDownload]);
 
   const pauseAll = useCallback(() => {
     // Side effect stays outside the reducer: pause torrents natively (their
     // handles survive, so resume is instant) and kill yt-dlp processes, then
     // let the (pure) transition flip statuses.
-    queue
+    queueRef.current
       .filter(i => i.status === 'downloading' || i.status === 'seeding')
       .forEach(i => {
         if (i.kind === 'torrent' && cleanupRefs.current.has(i.id)) {
@@ -659,7 +659,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     dispatch({ type: 'pauseAll' });
-  }, [queue, service, stopDownload]);
+  }, [service, stopDownload]);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     dispatch({ type: 'reorder', from: fromIndex, to: toIndex });
@@ -715,7 +715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeWithData = useCallback((id: string) => {
     // Engine first (it owns the files), then drop the item. The listener is
     // torn down without a completion so nothing lands in history as "done".
-    const item = queue.find(i => i.id === id);
+    const item = queueRef.current.find(i => i.id === id);
     const cleanup = cleanupRefs.current.get(id);
     cleanup?.();
     cleanupRefs.current.delete(id);
@@ -724,17 +724,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     service.removeTorrentData(id)
       .then(() => toast.success(`Removed ${item?.metadata.title ?? 'torrent'} and deleted its files`))
       .catch((e) => toast.error(`Couldn't delete files: ${e instanceof Error ? e.message : e}`));
-  }, [queue, service]);
+  }, [service]);
 
   const moveToTop = useCallback((id: string) => {
-    const from = queue.findIndex(i => i.id === id);
+    const from = queueRef.current.findIndex(i => i.id === id);
     if (from > 0) dispatch({ type: 'reorder', from, to: 0 });
-  }, [queue]);
+  }, []);
 
   const moveToBottom = useCallback((id: string) => {
-    const from = queue.findIndex(i => i.id === id);
-    if (from >= 0 && from < queue.length - 1) dispatch({ type: 'reorder', from, to: queue.length - 1 });
-  }, [queue]);
+    const current = queueRef.current;
+    const from = current.findIndex(i => i.id === id);
+    if (from >= 0 && from < current.length - 1) dispatch({ type: 'reorder', from, to: current.length - 1 });
+  }, []);
 
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
@@ -758,11 +759,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resetToDefaults = useCallback(() => { setSettings(DEFAULT_PREFERENCES); }, []);
 
+  // Context values are memoized, and the callbacks above read the queue
+  // through queueRef, so they keep their identity across progress ticks:
+  // otherwise every tick handed every consumer a new object and broke
+  // QueueRow's memo (REVIEW 2026-09-23 P-1).
+  const settingsValue = useMemo(
+    () => ({ preferences: settings, updatePreference, resetToDefaults }),
+    [settings, updatePreference, resetToDefaults],
+  );
+  const queueValue = useMemo(
+    () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }),
+    [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom],
+  );
+  const historyValue = useMemo(
+    () => ({ items: history, removeFromHistory, restoreHistory, clearHistory }),
+    [history, removeFromHistory, restoreHistory, clearHistory],
+  );
+  const statsValue = useMemo(() => ({ stats }), [stats]);
+
   return (
-    <SettingsContext.Provider value={{ preferences: settings, updatePreference, resetToDefaults }}>
-      <QueueContext.Provider value={{ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }}>
-        <HistoryContext.Provider value={{ items: history, removeFromHistory, restoreHistory, clearHistory }}>
-          <StatsContext.Provider value={{ stats }}>
+    <SettingsContext.Provider value={settingsValue}>
+      <QueueContext.Provider value={queueValue}>
+        <HistoryContext.Provider value={historyValue}>
+          <StatsContext.Provider value={statsValue}>
             {children}
           </StatsContext.Provider>
         </HistoryContext.Provider>
