@@ -5,12 +5,17 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 -->
 ## What's New
 
-**The built-in player on Macs, fixed properly this time.** 2.0.2 still
-passed the player one setting its engine doesn't have, so Play in Prism kept
-failing with "The player engine failed to start". This release removes it.
+Small fixes to the built-in player and to updating.
 
-If the player window from an earlier attempt won't close, quit Prism (⌘Q)
-and open it again.
+- **Prism keeps its own Dock icon.** Playing a video used to swap it for the
+  player engine's icon until you quit Prism.
+- **Updates show their progress.** Settings now shows how much of the update
+  has downloaded instead of just "Installing…", and pressing Install again
+  no longer starts a second download of the whole app.
+- **The player window always closes.** If the player ever gets stuck
+  starting, its window can still be closed.
+- **Clearer advice when the player can't start.** Prism only suggests
+  reinstalling when part of the player is actually missing.
 
 **Updating:** from 1.9.0 or later, use **Settings → Updates**. From 1.8.x or
 earlier, run `brew upgrade --cask prism` or download the files below.
