@@ -42,8 +42,9 @@ rest of the hardening follows, and the 2.1 features wait for both.
       settings the default folder, move-completed folder, category
       destinations and watch folders. The Library sends only what
       `trashTarget` allows.
-- [ ] **B-4** Direct downloads reserve their file name per id, as yt-dlp's
-      `reserved` map does.
+- [x] **B-4** Direct downloads reserve their file name per id, as yt-dlp's
+      `reserved` map does, and resume only a partial file whose state names
+      the same source (`choose_destination`).
 - [ ] **B-6** `convert::kill_all()` in the Exit handler.
 - [ ] **B-10** Escape `%` in the folder part of yt-dlp's `-o`.
 - [x] The Trash dialog names any folder it is about to trash.

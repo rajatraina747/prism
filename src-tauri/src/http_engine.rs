@@ -631,20 +631,50 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// `wanted`, then `name (1).ext`, `name (2).ext`… up to a bound.
+fn numbered(wanted: &Path) -> impl Iterator<Item = PathBuf> + '_ {
+    let parent = wanted.parent().unwrap_or(Path::new(""));
+    let stem = wanted.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = wanted.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    std::iter::once(wanted.to_path_buf()).chain((1..10_000).map(move |n| parent.join(format!("{stem} ({n}){ext}"))))
+}
+
+/// Where a direct download writes.
+///
+/// Before 2.0.1 an unfinished download of the same *name* was resumed,
+/// whoever it belonged to: two links that both end in `/latest/download` took
+/// one path, the second failed the first's source check, and it truncated the
+/// first's `.prismpart` (REVIEW 2026-09-23 B-4). Now a path is taken only
+///
+/// - when this id held it last time (a pause or retry resumes its own file), or
+/// - when its saved state names this same source (a resume after relaunch), or
+/// - when nothing is there: no file, no `.prismpart`, no state.
+///
+/// Never a path another running download has reserved (`taken`).
+pub(crate) fn choose_destination(wanted: &Path, source: &str, previous: Option<&Path>, taken: &[PathBuf]) -> PathBuf {
+    let is_taken = |p: &Path| taken.iter().any(|t| t == p);
+    if let Some(prev) = previous {
+        if !is_taken(prev) && numbered(wanted).any(|c| c == prev) {
+            return prev.to_path_buf();
+        }
+    }
+    let ours = |p: &Path| {
+        std::fs::read_to_string(with_suffix(p, STATE_SUFFIX))
+            .ok()
+            .and_then(|t| serde_json::from_str::<PartState>(&t).ok())
+            .is_some_and(|state| state.source == source)
+    };
+    let free = |p: &Path| !p.exists() && !with_suffix(p, PART_SUFFIX).exists() && !with_suffix(p, STATE_SUFFIX).exists();
+    numbered(wanted)
+        .find(|c| !is_taken(c) && (ours(c) || free(c)))
+        .unwrap_or_else(|| wanted.to_path_buf())
+}
+
 /// `name.ext`, or `name (1).ext`, `name (2).ext`… — never an existing file.
 /// A path next to `wanted` that nothing occupies yet. Shared with the
 /// converter: "never overwrite someone's file" deserves one implementation.
 pub(crate) fn free_destination(wanted: &Path) -> PathBuf {
-    if !wanted.exists() {
-        return wanted.to_path_buf();
-    }
-    let parent = wanted.parent().unwrap_or(Path::new(""));
-    let stem = wanted.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let ext = wanted.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-    (1..10_000)
-        .map(|n| parent.join(format!("{stem} ({n}){ext}")))
-        .find(|candidate| !candidate.exists())
-        .unwrap_or_else(|| wanted.to_path_buf())
+    numbered(wanted).find(|candidate| !candidate.exists()).unwrap_or_else(|| wanted.to_path_buf())
 }
 
 fn network_error(e: &reqwest::Error) -> PrismError {
@@ -715,11 +745,20 @@ fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
 pub struct HttpEngine {
     active: tokio::sync::Mutex<HashMap<String, Arc<AtomicBool>>>,
     global: Arc<RateLimiter>,
+    /// The path each download writes to (id → path), claimed atomically with
+    /// choosing it so two downloads with one name can't share a file (B-4).
+    /// Kept while an item is paused, so it resumes into its own file; freed
+    /// when it finishes or fails.
+    reserved: tokio::sync::Mutex<HashMap<String, PathBuf>>,
 }
 
 impl HttpEngine {
     pub fn new() -> Self {
-        HttpEngine { active: tokio::sync::Mutex::new(HashMap::new()), global: Arc::new(RateLimiter::new(0)) }
+        HttpEngine {
+            active: tokio::sync::Mutex::new(HashMap::new()),
+            global: Arc::new(RateLimiter::new(0)),
+            reserved: tokio::sync::Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -781,9 +820,6 @@ pub async fn start_http_download(
                 .unwrap_or_else(|| link.filename.clone()),
         ),
     };
-    // An unfinished download of this name resumes; anything else never
-    // overwrites an existing file.
-    let dest = if with_suffix(&wanted, STATE_SUFFIX).exists() { wanted } else { free_destination(&wanted) };
     if let (Some(size), Ok(available)) = (link.size, fs2::available_space(&dir)) {
         if available < size {
             return Err(PrismError::new(
@@ -797,6 +833,16 @@ pub async fn start_http_download(
         PrismError::new(ErrorCode::Busy, format!("Too many direct downloads running at once (limit {MAX_CONCURRENT})"))
     })?;
     let engine = app.state::<HttpEngine>();
+    // Resume only this download's own unfinished file; never overwrite or
+    // share anyone else's (see `choose_destination`).
+    let dest = {
+        let mut reserved = engine.reserved.lock().await;
+        let previous = reserved.remove(&id);
+        let taken: Vec<PathBuf> = reserved.values().cloned().collect();
+        let dest = choose_destination(&wanted, source.as_str(), previous.as_deref(), &taken);
+        reserved.insert(id.clone(), dest.clone());
+        dest
+    };
     let transfer_state = Transfer::new(speed_limit.unwrap_or(0), engine.global.clone());
     if let Some(previous) = engine.active.lock().await.insert(id.clone(), transfer_state.cancel.clone()) {
         previous.store(true, Ordering::Relaxed);
@@ -841,6 +887,9 @@ pub async fn start_http_download(
                 _ => return,
             }
         }
+        // Finished or failed: the name is free again. (A failed download's
+        // state file still names its source, so a retry resumes it.)
+        engine.reserved.lock().await.remove(&id);
         let complete = match result {
             Err(Halt::Cancelled) => return,
             Ok(path) => {
@@ -1238,6 +1287,36 @@ mod tests {
         assert_eq!(free_destination(&wanted), tmp.0.join("disc (1).iso"));
         std::fs::write(tmp.0.join("disc (1).iso"), b"x").unwrap();
         assert_eq!(free_destination(&wanted), tmp.0.join("disc (2).iso"));
+    }
+
+    // Regression (REVIEW 2026-09-23 B-4): two links with one file name
+    // shared a path, and the second truncated the first's partial file.
+    #[test]
+    fn same_named_downloads_never_share_a_file() {
+        let tmp = TempDir::new("names");
+        let wanted = tmp.0.join("download");
+        let (a, b) = ("https://a.example/latest/download", "https://b.example/latest/download");
+
+        // A second download while the first is running.
+        let first = choose_destination(&wanted, a, None, &[]);
+        assert_eq!(first, wanted);
+        assert_eq!(choose_destination(&wanted, b, None, std::slice::from_ref(&first)), tmp.0.join("download (1)"));
+
+        // Another source's unfinished file on disk is left alone.
+        let state = PartState { source: a.into(), size: 1, validator: Some("\"v\"".into()), segments: vec![] };
+        std::fs::write(with_suffix(&wanted, STATE_SUFFIX), serde_json::to_string(&state).unwrap()).unwrap();
+        std::fs::write(with_suffix(&wanted, PART_SUFFIX), b"partial").unwrap();
+        assert_eq!(choose_destination(&wanted, b, None, &[]), tmp.0.join("download (1)"));
+        assert_eq!(std::fs::read(with_suffix(&wanted, PART_SUFFIX)).unwrap(), b"partial");
+
+        // …but its own source resumes it, after a relaunch as well.
+        assert_eq!(choose_destination(&wanted, a, None, &[]), wanted);
+
+        // A paused item resumes into the numbered path it was given.
+        let second = tmp.0.join("download (1)");
+        assert_eq!(choose_destination(&wanted, b, Some(&second), std::slice::from_ref(&wanted)), second);
+        // A previous path that doesn't belong to this name is ignored.
+        assert_eq!(choose_destination(&wanted, b, Some(&tmp.0.join("other")), std::slice::from_ref(&wanted)), second);
     }
 
     #[test]
