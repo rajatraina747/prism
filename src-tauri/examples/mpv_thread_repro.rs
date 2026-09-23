@@ -184,7 +184,8 @@ mod mac {
         eprintln!(
             "usage: mpv_thread_repro --wrapper <libmpv-wrapper.dylib> --clip <media> \
              --scenario <main-all|worker-all|main-init-worker-rest|worker-destroy-early|main-init-destroy-early> \
-             [--vo gpu-next] [--force-window yes] [--wid no] [--log <mpv.log>] [--iterations 1] [--timeout-secs 15]"
+             [--vo gpu-next] [--force-window yes] [--wid no] [--log <mpv.log>] [--iterations 1] [--timeout-secs 15] \
+             [--set <property=value, set before loadfile>]"
         );
         std::process::exit(64);
     }
@@ -215,6 +216,7 @@ mod mac {
         timeout: Duration,
         wid: bool,
         log: Option<String>,
+        set: Option<(String, String)>,
     }
 
     fn parse_args() -> Args {
@@ -229,6 +231,7 @@ mod mac {
             timeout: Duration::from_secs(15),
             wid: false,
             log: None,
+            set: None,
         };
         while let Some(flag) = raw.next() {
             let value = raw.next().unwrap_or_else(|| usage(&format!("{flag} needs a value")));
@@ -240,6 +243,10 @@ mod mac {
                 "--force-window" => args.force_window = value,
                 "--wid" => args.wid = value == "yes",
                 "--log" => args.log = Some(value),
+                "--set" => {
+                    let (k, v) = value.split_once('=').unwrap_or_else(|| usage("--set needs property=value"));
+                    args.set = Some((k.to_string(), v.to_string()));
+                }
                 "--iterations" => args.iterations = value.parse().unwrap_or_else(|_| usage("bad --iterations")),
                 "--timeout-secs" => {
                     args.timeout = Duration::from_secs(value.parse().unwrap_or_else(|_| usage("bad --timeout-secs")))
@@ -253,7 +260,7 @@ mod mac {
         args
     }
 
-    fn iteration(runner: &Runner, ffi: Ffi, plan: &Scenario, options: &str, clip: &str, i: usize) {
+    fn iteration(runner: &Runner, ffi: Ffi, plan: &Scenario, options: &str, clip: &str, set: Option<(String, String)>, i: usize) {
         let started = Instant::now();
         let opts = options.to_string();
         let handle = runner.run(plan.init, "create", move || {
@@ -267,6 +274,14 @@ mod mac {
         }
         let created = started.elapsed();
 
+        if let Some((name, value)) = set {
+            let value = serde_json::to_string(&value).unwrap();
+            let prop = name.clone();
+            if let Err(e) = runner.run(plan.rest, "set property", move || call(ffi.set_property, handle, &prop, &value)) {
+                println!("iteration {i}: setting {name} failed: {e}");
+                std::process::exit(6);
+            }
+        }
         let load_args = serde_json::to_string(&[clip]).unwrap();
         if let Err(e) = runner.run(plan.rest, "loadfile", move || call(ffi.command, handle, "loadfile", &load_args)) {
             println!("iteration {i}: loadfile failed: {e}");
@@ -353,12 +368,21 @@ mod mac {
             "auto-window-resize": "no",
             "target-colorspace-hint": "yes",
             "input-default-bindings": "no",
-            "osc": "no",
             "config": "no",
             "load-scripts": "no",
-            "ytdl": "no",
             "mute": "yes",
         });
+        // As player.rs does: `osc`/`ytdl` exist only in a libmpv built with
+        // Lua, and setting a missing option fails the whole create.
+        let libmpv = std::path::Path::new(&args.wrapper).with_file_name("libmpv.dylib");
+        let lua_disabled = std::fs::read(&libmpv)
+            .map(|b| b.windows(14).any(|w| w == b"-Dlua=disabled"))
+            .unwrap_or(false);
+        if !lua_disabled {
+            options["osc"] = serde_json::json!("no");
+            options["ytdl"] = serde_json::json!("no");
+        }
+        println!("libmpv {}: Lua {}", libmpv.display(), if lua_disabled { "disabled" } else { "present (or unknown)" });
 
         let mtm = MainThreadMarker::new().expect("must run on the main thread");
         let app: Retained<NSApplication> = NSApplication::sharedApplication(mtm);
@@ -376,11 +400,12 @@ mod mac {
         let options = options.to_string();
 
         let clip = args.clip.clone();
+        let set = args.set.clone();
         let (iterations, timeout, name) = (args.iterations, args.timeout, args.scenario.clone());
         std::thread::spawn(move || {
             let runner = Runner::new(timeout);
             for i in 1..=iterations {
-                iteration(&runner, ffi, &plan, &options, &clip, i);
+                iteration(&runner, ffi, &plan, &options, &clip, set.clone(), i);
             }
             println!("{name}: {iterations} iteration(s) passed");
             std::process::exit(0);
