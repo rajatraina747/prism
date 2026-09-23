@@ -20,7 +20,7 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 use tokio::sync::mpsc;
 
 /// What a run reports, in order: output lines as they arrive (each with its
@@ -121,8 +121,14 @@ impl CommandSpec {
     }
 }
 
-/// Forward a pipe line by line. Keeps reading after the receiver is gone, so
-/// the process never blocks on a full pipe.
+/// The longest piece `forward` sends. A longer line arrives in pieces this
+/// size, so a caller's byte cap trips on the first ones instead of after the
+/// whole line has been buffered. `--dump-json` prints one line, however big
+/// (REVIEW 2026-09-23 S-6).
+const MAX_LINE: u64 = 1024 * 1024;
+
+/// Forward a pipe line by line (or in `MAX_LINE` pieces). Keeps reading after
+/// the receiver is gone, so the process never blocks on a full pipe.
 fn forward<R>(
     stream: R,
     tx: mpsc::UnboundedSender<Event>,
@@ -135,7 +141,7 @@ where
         let mut reader = BufReader::new(stream);
         loop {
             let mut line = Vec::new();
-            match reader.read_until(b'\n', &mut line).await {
+            match (&mut reader).take(MAX_LINE).read_until(b'\n', &mut line).await {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
                     let _ = tx.send(wrap(line));
@@ -248,6 +254,25 @@ impl Child {
 
 #[cfg(all(unix, test))]
 mod tests {
+    // Regression (REVIEW 2026-09-23 S-6): one long line was buffered whole
+    // before any cap could see it.
+    #[test]
+    fn a_long_line_arrives_in_bounded_pieces() {
+        tauri::async_runtime::block_on(async {
+            let mut text = vec![b'x'; 3 * super::MAX_LINE as usize + 5];
+            text.extend(b"\nshort\n");
+            let (tx, mut rx) = super::mpsc::unbounded_channel();
+            super::forward(std::io::Cursor::new(text.clone()), tx, super::Event::Stdout).await.unwrap();
+            let mut pieces = Vec::new();
+            while let Ok(super::Event::Stdout(p)) = rx.try_recv() {
+                pieces.push(p);
+            }
+            assert!(pieces.iter().all(|p| p.len() as u64 <= super::MAX_LINE));
+            assert_eq!(pieces.concat(), text, "nothing lost or reordered");
+            assert_eq!(pieces.last().unwrap(), b"short\n");
+        });
+    }
+
     use super::*;
     use std::time::Duration;
 
