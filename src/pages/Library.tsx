@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
-import { sortHistory, gridColumns, LIBRARY_SORTS } from '@/stores/library';
+import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -207,17 +207,22 @@ export default function Library() {
     });
   }, [selectedItems, removeFromHistory, restoreHistory, clearSelection]);
 
-  // A real file, or a torrent's own folder. Deliberately *not* falling back to
-  // settings.destination the way revealSelected does: that is the whole
-  // download folder, and trashing it would take every other download with it.
-  const trashTargets = useMemo(
-    () => selectedItems.map(i => i.filePath ?? i.outputFolder).filter((p): p is string => !!p),
+  // A real file, or a torrent's own folder, never the folder a download was
+  // saved into (see trashTarget): that is the whole download folder, and
+  // trashing it would take every other download with it.
+  const trashable = useMemo(
+    () => selectedItems.flatMap(i => {
+      const target = trashTarget(i);
+      return target ? [{ item: i, ...target }] : [];
+    }),
     [selectedItems],
   );
+  const trashTargets = useMemo(() => trashable.map(t => t.path), [trashable]);
+  const trashFolders = useMemo(() => trashable.filter(t => t.folder).map(t => baseName(t.path)), [trashable]);
 
   const trashSelected = useCallback(async () => {
     setConfirmTrash(false);
-    const removed = selectedItems.filter(i => i.filePath ?? i.outputFolder);
+    const removed = trashable.map(t => t.item);
     try {
       const count = await service.moveToTrash(trashTargets);
       removed.forEach(i => removeFromHistory(i.id));
@@ -229,7 +234,7 @@ export default function Library() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not move those to the Trash');
     }
-  }, [selectedItems, trashTargets, service, removeFromHistory, clearSelection]);
+  }, [trashable, trashTargets, service, removeFromHistory, clearSelection]);
 
   return (
     <div className="page-container">
@@ -454,8 +459,11 @@ export default function Library() {
         title={`Move ${trashTargets.length} ${trashTargets.length === 1 ? 'download' : 'downloads'} to the Trash?`}
         description={[
           'The files go to your system Trash, where you can put them back. Their library entries are removed too.',
+          trashFolders.length > 0
+            ? `${trashFolders.length === 1 ? 'This folder goes' : 'These folders go'} with everything in ${trashFolders.length === 1 ? 'it' : 'them'}: ${trashFolders.map(n => `“${n}”`).join(', ')}.`
+            : '',
           selectedItems.length > trashTargets.length
-            ? `${selectedItems.length - trashTargets.length} selected ${selectedItems.length - trashTargets.length === 1 ? 'item has' : 'items have'} no file on disk and will be left alone.`
+            ? `${selectedItems.length - trashTargets.length} selected ${selectedItems.length - trashTargets.length === 1 ? 'item has' : 'items have'} no file of its own on disk and will be left alone.`
             : '',
         ].join(' ').trim()}
         confirmLabel="Move to Trash"

@@ -1244,6 +1244,12 @@ fn human_minutes(d: Duration) -> String {
 /// that path doesn't exist — fall back to the lone file, then to the files'
 /// shared top-level component, then to the output directory itself. A `None`
 /// here used to leave the Library row with no Play/reveal actions at all.
+///
+/// The output directory is a fallback only for a multi-file torrent, which
+/// owns it (`effective_output_dir` gives it its own folder). A single-file
+/// torrent's output directory is the shared destination: recorded as its
+/// path, "Move to Trash" on that row trashed every download (REVIEW
+/// 2026-09-23 B-3).
 fn resolve_completion_path(handle: &ManagedTorrentHandle, output_dir: &str) -> Option<String> {
     let base = PathBuf::from(output_dir);
     let existing = |p: PathBuf| p.exists().then(|| p.to_string_lossy().into_owned());
@@ -1279,7 +1285,11 @@ fn resolve_completion_path(handle: &ManagedTorrentHandle, output_dir: &str) -> O
         }
     }
 
-    existing(base)
+    if rels.len() > 1 {
+        existing(base)
+    } else {
+        None
+    }
 }
 
 /// Quarantine-flag each file the torrent wrote (file names are untrusted

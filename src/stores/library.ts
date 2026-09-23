@@ -62,3 +62,35 @@ export function gridColumns(width: number): number {
   if (!Number.isFinite(width) || width <= 0) return 1;
   return Math.max(1, Math.min(6, Math.floor(width / TARGET)));
 }
+
+/** Strip trailing separators so `/a/b/` and `/a/b` compare equal. */
+function trimSeparators(p: string): string {
+  return p.replace(/[\\/]+$/, '');
+}
+
+/** What "Move to Trash" may take for one Library row: its file, or the folder
+ * a multi-file torrent owns. `folder` says which, so the confirmation can name
+ * folders (their whole contents go with them).
+ *
+ * Never the folder the download was saved into. A single-file torrent's
+ * `outputFolder` is the shared destination, and before 2.0.1 it could also be
+ * recorded as its `filePath`; trashing that took every other download with it
+ * (REVIEW 2026-09-23 B-3). Rust refuses such paths too; this keeps them out
+ * of the request in the first place. */
+export function trashTarget(item: HistoryItem): { path: string; folder: boolean } | undefined {
+  const path = item.filePath ?? item.outputFolder;
+  if (!path) return undefined;
+  const candidate = trimSeparators(path);
+  if (candidate === trimSeparators(item.settings.destination)) return undefined;
+  const ownFolder = item.outputFolder !== undefined && candidate === trimSeparators(item.outputFolder);
+  if (!ownFolder) return { path, folder: false };
+  // An output folder is only this row's to trash when the torrent had many
+  // files, which is when it gets a folder of its own.
+  return (item.files?.length ?? 0) > 1 ? { path, folder: true } : undefined;
+}
+
+/** The last component of a path, for naming it in a dialog. */
+export function baseName(p: string): string {
+  const parts = trimSeparators(p).split(/[\\/]/);
+  return parts[parts.length - 1] || p;
+}

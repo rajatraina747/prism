@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortHistory, gridColumns } from '../library';
+import { sortHistory, gridColumns, trashTarget, baseName } from '../library';
 import type { HistoryItem } from '@/types/models';
 
 function item(partial: {
@@ -94,5 +94,47 @@ describe('gridColumns', () => {
     expect(gridColumns(720)).toBe(3);
     expect(gridColumns(1280)).toBe(5);
     expect(gridColumns(4000)).toBe(6);
+  });
+});
+
+describe('trashTarget', () => {
+  const dest = '/Users/r/Downloads/Prism';
+  const row = (extra: Partial<HistoryItem>): HistoryItem => {
+    const base = item({ id: 'x' });
+    return { ...base, settings: { ...base.settings, destination: dest }, ...extra };
+  };
+
+  it('takes a downloaded file', () => {
+    expect(trashTarget(row({ filePath: `${dest}/clip.mp4` }))).toEqual({ path: `${dest}/clip.mp4`, folder: false });
+  });
+
+  // Regression (REVIEW 2026-09-23 B-3): a single-file torrent recorded the
+  // shared destination as its path, and trashing the row trashed everything.
+  it('never takes the folder a download was saved into', () => {
+    expect(trashTarget(row({ filePath: dest, outputFolder: dest, files: [{ name: 'a.iso', size: 1 }] }))).toBeUndefined();
+    expect(trashTarget(row({ outputFolder: dest, files: [{ name: 'a.iso', size: 1 }] }))).toBeUndefined();
+    expect(trashTarget(row({ filePath: `${dest}/` }))).toBeUndefined();
+  });
+
+  it("takes a multi-file torrent's own folder, and says it is one", () => {
+    const own = `${dest}/Pack`;
+    const files = [{ name: 'a', size: 1 }, { name: 'b', size: 1 }];
+    expect(trashTarget(row({ outputFolder: own, files }))).toEqual({ path: own, folder: true });
+    expect(trashTarget(row({ filePath: own, outputFolder: own, files }))).toEqual({ path: own, folder: true });
+  });
+
+  it('leaves a single-file output folder alone even when it is not the destination', () => {
+    expect(trashTarget(row({ outputFolder: '/Volumes/Media', files: [{ name: 'a', size: 1 }] }))).toBeUndefined();
+  });
+
+  it('has nothing to take for a row with no path', () => {
+    expect(trashTarget(row({}))).toBeUndefined();
+  });
+});
+
+describe('baseName', () => {
+  it('names the last component', () => {
+    expect(baseName('/a/b/Pack/')).toBe('Pack');
+    expect(baseName('C:\\Media\\Pack')).toBe('Pack');
   });
 });
