@@ -265,7 +265,7 @@ mod mac {
         let opts = options.to_string();
         let handle = runner.run(plan.init, "create", move || {
             let o = CString::new(opts).unwrap();
-            let props = CString::new(r#"{"time-pos":"double"}"#).unwrap();
+            let props = CString::new(std::env::var("REPRO_PROPS").unwrap_or_else(|_| r#"{"time-pos":"double"}"#.into())).unwrap();
             unsafe { (ffi.create)(o.as_ptr(), props.as_ptr(), Some(on_event), std::ptr::null_mut()) as usize }
         });
         if handle == 0 {
