@@ -82,9 +82,14 @@ impl<R: Runtime> Mpv<R> {
 
         let mut initial_options = mpv_config.initial_options.clone();
 
-        let Some(mut instances_lock) = self.lock_and_check_existence(window_label)? else {
-            return Ok(window_label.to_string());
-        };
+        // PRISM VENDOR PATCH: check, then let go of the lock before creating.
+        // Upstream held it across `mpv_wrapper_create`; when create hung, the
+        // window's close handler found the lock busy, prevented the close and
+        // waited for it forever, so the player window could not be closed.
+        match self.lock_and_check_existence(window_label)? {
+            Some(guard) => drop(guard),
+            None => return Ok(window_label.to_string()),
+        }
 
         let audio_only = initial_options.iter().any(|(key, value)| {
             (key == "video" && (value == "no" || value == false))
@@ -161,6 +166,26 @@ impl<R: Runtime> Mpv<R> {
             event_userdata: event_userdata,
         };
 
+        // PRISM VENDOR PATCH: the lock was released during create, so another
+        // init may have won, or the window may have closed meanwhile. Either
+        // way this instance has no owner: destroy it rather than keep it.
+        let mut instances_lock = match self.instances.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let window_gone = self.app.get_webview_window(window_label).is_none();
+        if window_gone || instances_lock.contains_key(window_label) {
+            drop(instances_lock);
+            warn!(
+                "mpv instance for '{}' is no longer wanted (window closed or already initialized); destroying it.",
+                window_label
+            );
+            unsafe {
+                wrapper.mpv_wrapper_destroy(instance.handle);
+            }
+            let _ = unsafe { Box::from_raw(instance.event_userdata as *mut EventUserData<R>) };
+            return Ok(window_label.to_string());
+        }
         instances_lock.insert(window_label.to_string(), instance);
 
         info!("Wid mode initialized for window '{}'.", window_label);

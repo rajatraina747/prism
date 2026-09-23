@@ -23,6 +23,12 @@
 >   was reconstituted as `Box<(AppHandle<R>, String)>` although it was
 >   allocated as `Box<EventUserData<R>>` (a different layout) — undefined
 >   behaviour exactly when mpv fails to start. Now dropped as the right type.
+> - `src/desktop.rs`: `init` releases the instance lock while
+>   `mpv_wrapper_create` runs, then re-locks to insert. Holding it across
+>   create meant a hung create (Prism 2.0.0–2.0.2) kept the lock forever, and
+>   the close handler above found it busy, prevented the close and waited: the
+>   player window could not be closed. An instance whose window closed, or
+>   whose label another init claimed meanwhile, is destroyed, not kept.
 >
 > Prism does NOT grant the plugin's `command`/`set_property`/`init`
 > passthrough to any window (see `src-tauri/capabilities/player.json`); mpv
