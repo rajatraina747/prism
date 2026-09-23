@@ -9,7 +9,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
-import { sanitizeFilename, isTorrentUrl, parsePrismDeepLink } from './utils';
+import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory). The webview's fs
 // capability covers exactly `$APPDATA/*.json` (+ `.json.tmp`), top level only —
@@ -228,7 +228,8 @@ export class TauriPrismService implements IPrismService {
       // Use %(ext)s template so yt-dlp can download video+audio separately
       // then merge them. --merge-output-format mp4 ensures final output is .mp4
       const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
-      const outputPath = `${dest}/${filename}.%(ext)s`;
+      // The file name is already escaped by sanitizeFilename; the folder isn't.
+      const outputPath = `${ytdlpLiteral(dest)}/${filename}.%(ext)s`;
 
       await invoke('start_download', {
         id: item.id,

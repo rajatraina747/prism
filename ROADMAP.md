@@ -45,8 +45,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
 - [x] **B-4** Direct downloads reserve their file name per id, as yt-dlp's
       `reserved` map does, and resume only a partial file whose state names
       the same source (`choose_destination`).
-- [ ] **B-6** `convert::kill_all()` in the Exit handler.
-- [ ] **B-10** Escape `%` in the folder part of yt-dlp's `-o`.
+- [x] **B-6** `convert::kill_all()` in the Exit handler.
+- [x] **B-10** Escape `%` in the folder part of yt-dlp's `-o`, and unescape
+      it wherever Prism turns the template back into a path
+      (`template_file`). That also fixes finding the file for any title
+      with a `%` in it.
 - [x] The Trash dialog names any folder it is about to trash.
 
 ### v2.0.2 — Correctness & security hardening
@@ -72,6 +75,10 @@ rest of the hardening follows, and the 2.1 features wait for both.
       so `QueueRow`'s memo holds.
 - [ ] **P-2** Remaining blocking work onto `spawn_blocking`.
 - [ ] Completion reads the current settings, not the ones captured at start.
+- [ ] A title with `%` is escaped twice: `MediaDetailsModal` and
+      `subscription-check` store `sanitizeFilename(title)` (already `%%`), and
+      `tauri.ts` sanitizes it again, so yt-dlp writes `100%% Pure.mp4`. Store
+      the plain name; escape once, where `-o` is built.
 
 ### v2.1 — Export, import, dedupe, and the structural fixes
 

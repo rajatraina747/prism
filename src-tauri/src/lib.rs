@@ -532,7 +532,8 @@ async fn start_download(
 fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
     let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
     let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
-    Ok(format!("{}/{rel}.%(ext)s", dir.trim_end_matches(['/', '\\'])))
+    // The folder too: a `100% Music` destination broke every download (B-10).
+    Ok(format!("{}/{rel}.%(ext)s", dir.trim_end_matches(['/', '\\']).replace('%', "%%")))
 }
 
 #[tauri::command]
@@ -1766,7 +1767,7 @@ pub(crate) fn dedupe_output_path(template: &str, taken: &[String]) -> String {
         taken.iter().any(|t| t == tpl)
             || PROBE_EXTS
                 .iter()
-                .any(|ext| std::path::Path::new(&tpl.replace(".%(ext)s", &format!(".{}", ext))).exists())
+                .any(|ext| std::path::Path::new(&download_manager::template_file(tpl, ext)).exists())
     };
 
     if !conflicts(template) {
@@ -2225,6 +2226,11 @@ mod tests {
         assert_eq!(
             templated_output_path("/dl/", "{uploader}/{title}", &vars).unwrap(),
             "/dl/Chan-nel/100%% Pure.%(ext)s"
+        );
+        // Regression (REVIEW 2026-09-23 B-10): the folder is escaped as well.
+        assert_eq!(
+            templated_output_path("/dl/100% Music", "{title}", &vars).unwrap(),
+            "/dl/100%% Music/100%% Pure.%(ext)s"
         );
         assert!(templated_output_path("/dl", "{nope}", &vars).is_err());
     }

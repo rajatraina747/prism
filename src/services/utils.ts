@@ -37,6 +37,14 @@ export function sanitizeFilename(name: string): string {
   return cleaned || 'video';
 }
 
+// A folder path as yt-dlp's `-o` should see it: `%` starts a template field
+// there, so a literal one is written `%%`. A destination such as
+// `~/100% Music` otherwise broke every download into it (REVIEW 2026-09-23
+// B-10).
+export function ytdlpLiteral(path: string): string {
+  return path.replace(/%/g, '%%');
+}
+
 // Updater release notes arrive as GitHub-flavored markdown but are shown as
 // plain text in Settings. Strip the markup and drop the "## Install" section,
 // which is noise when you're updating from inside the app.

@@ -741,13 +741,21 @@ fn parse_size(val: f64, unit: &str) -> u64 {
     (val * multiplier) as u64
 }
 
+/// The file yt-dlp writes for an `-o` template ending in `.%(ext)s`: that
+/// suffix becomes `.{ext}` and every escaped `%%` a literal `%`. Only the
+/// suffix is replaced, so an escaped `%%(ext)s` inside a name stays literal.
+pub(crate) fn template_file(template: &str, ext: &str) -> String {
+    let base = template.strip_suffix(".%(ext)s").unwrap_or(template);
+    format!("{}.{ext}", base.replace("%%", "%"))
+}
+
 /// Given an output template like `/path/to/video.%(ext)s`, find the actual
 /// file on disk. Tries .mp4 first (most common due to --merge-output-format
 /// and --remux-video), then falls back to other common extensions.
 fn find_output_file(template: &str) -> Option<String> {
     let extensions = ["mp4", "mkv", "webm", "mov", "avi", "flv", "mp3", "m4a", "opus", "ogg", "wav"];
     for ext in extensions {
-        let candidate = template.replace("%(ext)s", ext);
+        let candidate = template_file(template, ext);
         if std::path::Path::new(&candidate).exists() {
             return Some(candidate);
         }
@@ -758,6 +766,12 @@ fn find_output_file(template: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn template_file_unescapes_percent() {
+        assert_eq!(template_file("/dl/100%% Music/a.%(ext)s", "mp4"), "/dl/100% Music/a.mp4");
+        assert_eq!(template_file("/dl/a%%(ext)s.%(ext)s", "mkv"), "/dl/a%(ext)s.mkv");
+    }
 
     #[test]
     fn parses_progress_template_line() {
