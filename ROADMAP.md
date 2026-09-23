@@ -90,8 +90,21 @@ rest of the hardening follows, and the 2.1 features wait for both.
 - [x] A title with `%` is no longer escaped twice: `sanitizeFilename` makes
       a name and `-o` is escaped once, with `ytdlpLiteral`.
 
+### v2.0.3 — The macOS player, fixed properly (shipped 2.0.3)
+
+- [x] 2.0.2 still set `osc` from the fixed option list, so a Lua-less libmpv
+      kept refusing init. Found with an lldb trace of the real app
+      (`mpv_set_option("osc")` → -5); `fixed_options(has_lua)` is now pure and
+      tested. Confirmed by Rajat: YouTube downloads play in Prism on 2.0.3.
+
 ### v2.1 — Export, import, dedupe, and the structural fixes
 
+- [ ] The player window can't be closed while mpv's init hangs: the vendored
+      libmpv plugin holds its `instances` lock across `mpv_wrapper_create`, and
+      the close handler's `try_lock` then refuses. Create outside the lock.
+- [ ] Updater UI: Settings shows only "Installing…" although
+      `app-update-progress` is emitted; show the percentage. A second click
+      starts a second download beside the first; refuse while one runs.
 - [ ] The player's startup-failure screen always says reinstalling Prism
       restores libmpv (`src/pages/Player.tsx`, the `initError` branch). That is
       wrong when the engine hung or refused its options, as in 2.0.0–2.0.1:
