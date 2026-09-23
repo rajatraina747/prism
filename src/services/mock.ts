@@ -345,6 +345,11 @@ export class MockPrismService implements IPrismService {
     return true;
   }
 
+  async importTorrentClient(): Promise<null> {
+    // Web demo: no other client's files to read.
+    return null;
+  }
+
   async openBackup(): Promise<string | null> {
     // Web demo: a file input stands in for the native dialog.
     return new Promise(resolve => {

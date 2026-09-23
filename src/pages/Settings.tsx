@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useSettings, useHistory } from '@/stores/AppProvider';
+import { useSettings, useHistory, useQueue } from '@/stores/AppProvider';
+import { importedTorrentItems } from '@/stores/torrent-item';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { buildBackup, parseBackup, describeImport, type PrismBackup } from '@/stores/backup';
 import { useService } from '@/services/ServiceProvider';
@@ -48,6 +49,51 @@ function HelpTip({ term, text }: { term: string; text: string }) {
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs text-[11px] leading-relaxed">{text}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Bring torrents over from qBittorrent or Transmission (client_import.rs). */
+function ClientImportRow() {
+  const service = useService();
+  const { preferences } = useSettings();
+  const { items: queue, addToQueue } = useQueue();
+  const [busy, setBusy] = React.useState(false);
+
+  const importFrom = async (client: 'qbittorrent' | 'transmission', label: string) => {
+    setBusy(true);
+    try {
+      const result = await service.importTorrentClient(client);
+      if (!result) return;
+      const items = importedTorrentItems(result.torrents, queue, preferences.defaultSaveFolder);
+      items.forEach(addToQueue);
+      const already = result.torrents.length - items.length;
+      if (result.torrents.length === 0) {
+        toast.error(`No torrents found there. Pick ${client === 'qbittorrent' ? "qBittorrent's BT_backup folder" : "Transmission's folder with torrents and resume in it"}.`);
+        return;
+      }
+      toast.success(`Added ${items.length} ${items.length === 1 ? 'torrent' : 'torrents'} from ${label}, paused`, {
+        description: [
+          'Start them in Transfers: each checks the files it already has before downloading anything.',
+          already > 0 ? `${already} ${already === 1 ? 'was' : 'were'} already in Prism.` : '',
+          result.skipped > 0 ? `${result.skipped} ${result.skipped === 1 ? "file wasn't a torrent" : "files weren't torrents"}.` : '',
+        ].filter(Boolean).join(' '),
+        duration: 10000,
+      });
+    } catch (e) {
+      toast.error(`Couldn't import from ${label}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const button = 'px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50';
+  return (
+    <SettingRow label="Import torrents" description="Add the torrents from qBittorrent or Transmission, pointed at the files they already downloaded. Quit the other app first">
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={busy} onClick={() => importFrom('qbittorrent', 'qBittorrent')} className={button}>qBittorrent…</button>
+        <button type="button" disabled={busy} onClick={() => importFrom('transmission', 'Transmission')} className={button}>Transmission…</button>
+      </div>
+    </SettingRow>
   );
 }
 
@@ -589,6 +635,9 @@ export default function Settings() {
                   </SettingRow>
                 </SettingGroup>
               </Advanced>
+              <SettingGroup title="Move from another client">
+                <ClientImportRow />
+              </SettingGroup>
             </TabsContent>
 
             <TabsContent value="speed" className="mt-0">
