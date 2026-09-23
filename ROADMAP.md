@@ -99,13 +99,13 @@ rest of the hardening follows, and the 2.1 features wait for both.
 
 ### v2.1 — Export, import, dedupe, and the structural fixes
 
-- [ ] The player window can't be closed while mpv's init hangs: the vendored
+- [x] The player window can't be closed while mpv's init hangs: the vendored
       libmpv plugin holds its `instances` lock across `mpv_wrapper_create`, and
       the close handler's `try_lock` then refuses. Create outside the lock.
-- [ ] Updater UI: Settings shows only "Installing…" although
+- [x] Updater UI: Settings shows only "Installing…" although
       `app-update-progress` is emitted; show the percentage. A second click
       starts a second download beside the first; refuse while one runs.
-- [ ] The player's startup-failure screen always says reinstalling Prism
+- [x] The player's startup-failure screen always says reinstalling Prism
       restores libmpv (`src/pages/Player.tsx`, the `initError` branch). That is
       wrong when the engine hung or refused its options, as in 2.0.0–2.0.1:
       offer the reinstall hint only when the library is missing, and
