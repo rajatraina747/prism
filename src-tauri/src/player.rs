@@ -268,6 +268,13 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         // binary can add behaviour to the player.
         ("config", "no"),
         ("load-scripts", "no"),
+        // Never follow references inside a file: a torrent's `movie.mkv`
+        // that is really an `#EXTM3U` playlist made mpv fetch its entries
+        // from anywhere (REVIEW 2026-09-23 S-7). mpv parses such playlists
+        // itself, so ffmpeg's protocol_whitelist doesn't reach them; this
+        // does. Play now is unaffected: its http://127.0.0.1 URL is the file
+        // itself, not a reference.
+        ("access-references", "no"),
     ];
     for (k, v) in fixed {
         initial.insert((*k).into(), serde_json::json!(v));

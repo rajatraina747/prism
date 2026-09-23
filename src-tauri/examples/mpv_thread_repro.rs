@@ -370,6 +370,7 @@ mod mac {
             "input-default-bindings": "no",
             "config": "no",
             "load-scripts": "no",
+            "access-references": "no",
             "mute": "yes",
         });
         // As player.rs does: `osc`/`ytdl` exist only in a libmpv built with
