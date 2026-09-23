@@ -99,6 +99,8 @@ rest of the hardening follows, and the 2.1 features wait for both.
 
 ### v2.1 — Export, import, dedupe, and the structural fixes
 
+- Shipped early as **2.0.4** (2026-09-24): the Dock icon, updater progress,
+  player close and player error hint fixes below.
 - [x] The player window can't be closed while mpv's init hangs: the vendored
       libmpv plugin holds its `instances` lock across `mpv_wrapper_create`, and
       the close handler's `try_lock` then refuses. Create outside the lock.
