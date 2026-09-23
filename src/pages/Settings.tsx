@@ -4,7 +4,7 @@ import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { diagnostics } from '@/services/diagnostics';
-import { formatReleaseNotes, generateId } from '@/services';
+import { formatReleaseNotes, generateId, isSameFolder } from '@/services';
 import type { DownloadCategory } from '@/types/models';
 import type { StorageSummary } from '@/services/types';
 import { Panel, ConfirmDialog } from '@/components/common';
@@ -829,7 +829,7 @@ export default function Settings() {
                     </button>
                   </div>
                 </SettingRow>
-                <SettingRow label="Watch folders" description="Drop a .torrent file or a text file of links into one of these and Prism adds it. Handled files are renamed, never deleted">
+                <SettingRow label="Watch folders" description="Drop a .torrent file or a text file of links into one of these and Prism adds it. Links from a text file ask you to confirm first. Handled files are renamed, never deleted">
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (
                       <div key={folder.path} className="flex items-center gap-1.5">
@@ -848,6 +848,13 @@ export default function Settings() {
                       type="button"
                       onClick={async () => {
                         const dir = await service.pickDirectory();
+                        // Prism's own downloads land there: watching it would
+                        // re-add every .torrent or link list it downloads.
+                        // Rust skips such a folder too; this says why.
+                        if (dir && isSameFolder(dir, p.defaultSaveFolder)) {
+                          toast.error('That’s where Prism saves downloads. Pick a different folder to watch.');
+                          return;
+                        }
                         if (dir && !p.watchFolders.some(f => f.path === dir)) {
                           updatePreference('watchFolders', [...p.watchFolders, { path: dir, enabled: true }]);
                         }

@@ -4,7 +4,7 @@ export { MockPrismService } from './mock';
 export { ServiceProvider, useService } from './ServiceProvider';
 
 // Utilities (pure functions — no service dependency)
-export { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from './utils';
+export { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from './utils';
 
 // Diagnostics singleton
 export { diagnostics } from './diagnostics';

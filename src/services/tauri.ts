@@ -457,13 +457,15 @@ export class TauriPrismService implements IPrismService {
       else fileUnlisten = fn;
     }).catch(() => {});
 
-    // Found in a watch folder the user configured: in-app intent, so it goes
-    // straight into the add flow like a drop, with no confirmation card.
-    listen<string[]>('watch-folder-links', (event) => {
+    // Found in a watch folder the user configured. A .torrent goes straight
+    // into the add flow like a drop. Links read from a text file get the
+    // confirmation card: anything can put a .txt in a watched Downloads
+    // folder, a web page included (REVIEW 2026-09-23 S-1).
+    listen<{ url: string; confirm: boolean }[]>('watch-folder-links', (event) => {
       if (cancelled) return;
       for (const link of event.payload ?? []) {
-        const trimmed = link.trim();
-        if (trimmed) handler(trimmed, 'app');
+        const trimmed = typeof link?.url === 'string' ? link.url.trim() : '';
+        if (trimmed) handler(trimmed, link.confirm === false ? 'app' : 'external');
       }
     }).then(fn => {
       if (cancelled) fn();
