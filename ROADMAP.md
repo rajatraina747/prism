@@ -137,7 +137,8 @@ rest of the hardening follows, and the 2.1 features wait for both.
       are stable and `QueueRow` is memoized, so a tick re-renders only the row
       that changed; a separate store is a large queue-state refactor for a
       gain nobody has measured. Profile a busy queue in the real app first.
-- [ ] **P-3** Torrent bytes as a raw IPC body.
+- [x] **P-3** Torrent bytes as a raw IPC body (name in a percent-encoded
+      header; `torrent_upload` tested with Tauri's own body and header types).
 - [ ] Clear the 11 fast-refresh lint warnings; review the 8 unmaintained or
       unsound `cargo audit` warnings.
 
@@ -494,7 +495,8 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       tracks conversions by id and `cancel_convert` is a no-op for an id it
       doesn't own, so the frontend can signal every engine without knowing
       which one holds the job.
-- [ ] Settings/Library export and qBittorrent/Transmission import. Both still
+- [x] Settings/Library export and qBittorrent/Transmission import (shipped in
+      2.1.0; the rest of this entry is how it looked before). Both still
       genuinely absent: no `prism-export`, and no `.fastresume` reader — the
       only `fastresume` in the tree is librqbit's own session persistence,
       which is a different thing.

@@ -776,8 +776,41 @@ const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// that info hash, which `with_cached_metadata` turns straight back into
 /// these bytes (trackers included) when the torrent is added.
 #[tauri::command]
-async fn import_torrent_file(app: AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
-    store_torrent_bytes(&app, &name, &bytes)
+async fn import_torrent_file(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    // The bytes come as the raw request body. They used to be a JSON array of
+    // numbers, about four times the file's size on the wire (a 16 MB
+    // .torrent became ~60 MB of JSON: REVIEW 2026-09-23 P-3). The name rides
+    // in a header, percent-encoded because headers must be ASCII.
+    let (name, bytes) = torrent_upload(request.body(), request.headers())?;
+    store_torrent_bytes(&app, &name, bytes)
+}
+
+/// The file name and bytes of a dropped .torrent, from the raw request.
+fn torrent_upload<'a>(
+    body: &'a tauri::ipc::InvokeBody,
+    headers: &tauri::http::HeaderMap,
+) -> Result<(String, &'a [u8]), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = body else {
+        return Err("Expected the .torrent file's bytes".into());
+    };
+    let name = headers
+        .get(TORRENT_NAME_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(decode_header_name)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "dropped.torrent".into());
+    Ok((name, bytes))
+}
+
+/// Header carrying a dropped .torrent's file name (see `import_torrent_file`).
+const TORRENT_NAME_HEADER: &str = "x-prism-torrent-name";
+
+/// Undo the page's `encodeURIComponent` of a file name.
+fn decode_header_name(encoded: &str) -> String {
+    url::form_urlencoded::parse(format!("n={encoded}").as_bytes())
+        .find(|(k, _)| k == "n")
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default()
 }
 
 /// Cache a `.torrent`'s bytes and return the magnet for its info hash — the
@@ -2670,6 +2703,32 @@ mod tests {
         // yt-dlp's JSON carries both fields.
         let info: YtDlpInfo = serde_json::from_str(r#"{"id":"abc","extractor_key":"Twitch","title":"t"}"#).unwrap();
         assert_eq!(media_key(info.extractor_key.as_deref(), info.id.as_deref()).as_deref(), Some("twitch:abc"));
+    }
+
+    /// P-3: the command takes a raw body and a name header, and refuses the
+    /// old JSON-array shape rather than misreading it.
+    #[test]
+    fn a_dropped_torrent_arrives_as_raw_bytes() {
+        use tauri::ipc::InvokeBody;
+        let mut headers = tauri::http::HeaderMap::new();
+        headers.insert(TORRENT_NAME_HEADER, "My%20Show%20%E6%97%A5.torrent".parse().unwrap());
+        let raw = InvokeBody::Raw(b"d4:infoe".to_vec());
+        let (name, bytes) = torrent_upload(&raw, &headers).unwrap();
+        assert_eq!(name, "My Show 日.torrent");
+        assert_eq!(bytes, b"d4:infoe");
+
+        let json = InvokeBody::Json(serde_json::json!({ "bytes": [1, 2, 3] }));
+        assert!(torrent_upload(&json, &headers).is_err());
+        let (unnamed, _) = torrent_upload(&raw, &tauri::http::HeaderMap::new()).unwrap();
+        assert_eq!(unnamed, "dropped.torrent");
+    }
+
+    #[test]
+    fn dropped_torrent_names_survive_the_header() {
+        // What encodeURIComponent makes of a name with spaces, a plus and
+        // non-ASCII characters.
+        assert_eq!(decode_header_name("Some%20Show%20%2B%20Extras%20%E6%97%A5%E6%9C%AC.torrent"), "Some Show + Extras 日本.torrent");
+        assert_eq!(decode_header_name("plain.torrent"), "plain.torrent");
     }
 
     #[test]
