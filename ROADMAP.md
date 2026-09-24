@@ -131,8 +131,12 @@ rest of the hardening follows, and the 2.1 features wait for both.
       every successful completion down as Rust emits it (in `app_data/ledger/`),
       and the queue applies it as it loads, before anything can start, so a
       finished download never starts again whatever the page's save reached.
-- [ ] **P-1 (rest)** Progress in its own store; Transfers virtualized past
-      ~100 rows.
+- [x] **P-1 (rest), part:** Transfers virtualized past 100 rows (`QueueTable`
+      through `VirtualList`, with a test).
+- [ ] **P-1 (rest), open:** progress in its own store. Since part one, callbacks
+      are stable and `QueueRow` is memoized, so a tick re-renders only the row
+      that changed; a separate store is a large queue-state refactor for a
+      gain nobody has measured. Profile a busy queue in the real app first.
 - [ ] **P-3** Torrent bytes as a raw IPC body.
 - [ ] Clear the 11 fast-refresh lint warnings; review the 8 unmaintained or
       unsound `cargo audit` warnings.
