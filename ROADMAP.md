@@ -139,8 +139,20 @@ rest of the hardening follows, and the 2.1 features wait for both.
       gain nobody has measured. Profile a busy queue in the real app first.
 - [x] **P-3** Torrent bytes as a raw IPC body (name in a percent-encoded
       header; `torrent_upload` tested with Tauri's own body and header types).
-- [ ] Clear the 11 fast-refresh lint warnings; review the 8 unmaintained or
-      unsound `cargo audit` warnings.
+- [x] Clear the 11 fast-refresh lint warnings (lint is now 0 warnings) and
+      review the 8 `cargo audit` warnings (2026-09-24). None fails CI or has a
+      known exploit on a path Prism uses; none is fixable from this repo alone:
+      - `glib` 0.18 (unsound `VariantStrIter`) and `proc-macro-error`: Tauri's
+        Linux-only GTK stack; Prism never calls that iterator. Goes when Tauri
+        moves off gtk-rs 0.18.
+      - `unic-char-property`, `unic-char-range`, `unic-common`, `unic-ucd-ident`,
+        `unic-ucd-version`: via `urlpattern` in tauri-utils. Unmaintained, not
+        vulnerable; goes with a Tauri upgrade.
+      - `crypto-hash`: librqbit's default SHA-1 backend. librqbit's `rust-tls`
+        feature would swap in `aws-lc-rs` (a large C/asm crypto build with its
+        own Windows/Linux toolchain needs) and change its HTTPS stack. Not worth
+        that risk for an "unmaintained" notice; revisit if it becomes a real
+        advisory or librqbit changes its default.
 
 ## Arcs from the September 2026 follow-up review
 
