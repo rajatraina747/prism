@@ -200,4 +200,18 @@ describe('QueueTable — torrents', () => {
     fireEvent.doubleClick(row);
     expect(onOpenDetails).toHaveBeenCalledWith('item-1');
   });
+
+  // Regression (REVIEW 2026-09-23 P-1): every row rendered, on every progress
+  // tick, however long the queue. Past 100 rows only a window renders.
+  it('renders a long queue windowed, a short one in full', () => {
+    const props = { onPause: vi.fn(), onResume: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn(), onRemove: vi.fn() };
+    const many = Array.from({ length: 300 }, (_, i) => makeItem({ id: `q${i}`, metadata: { ...makeItem().metadata, title: `Video ${i}` } }));
+    const { unmount } = render(<QueueTable items={many} {...props} />);
+    const rendered = screen.queryAllByText(/^Video \d+$/).length;
+    expect(rendered).toBeLessThan(300);
+    unmount();
+    render(<QueueTable items={many.slice(0, 50)} {...props} />);
+    expect(screen.getAllByText(/^Video \d+$/)).toHaveLength(50);
+  });
 });
+

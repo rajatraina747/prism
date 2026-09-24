@@ -8,6 +8,7 @@ import { INTERNAL_DRAG_TYPE } from '@/hooks/use-drop-to-add';
 import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { VirtualList } from '@/components/common/VirtualList';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
@@ -98,14 +99,23 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
     // Own provider so the table also works outside App's root provider
     // (tests, the web demo's isolated renders); nesting providers is fine.
     <TooltipProvider delayDuration={400}>
-    <div className="space-y-1.5" role="listbox" aria-label="Transfers" aria-multiselectable={onSelect ? true : undefined}>
-      {items.map((item, index) => {
+    {/* Windowed past 100 rows (REVIEW 2026-09-23 P-1): a queue of a few
+        hundred playlist items rendered every row on every progress tick. */}
+    <VirtualList
+      items={items}
+      getKey={item => item.id}
+      estimateSize={72}
+      gap={6}
+      threshold={100}
+      role="listbox"
+      aria-label="Transfers"
+      aria-multiselectable={onSelect ? true : undefined}
+      renderItem={(item, index) => {
         const isDropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
         const isBeingDragged = dragIndex === index;
 
         return (
           <div
-            key={item.id}
             role="presentation"
             draggable={!!onReorder}
             onDragStart={(e) => handleDragStart(e, index)}
@@ -134,8 +144,8 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
             />
           </div>
         );
-      })}
-    </div>
+      }}
+    />
     </TooltipProvider>
   );
 }
