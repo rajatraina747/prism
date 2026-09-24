@@ -67,7 +67,9 @@ function WindowedList<T>({
 
   // Where the list starts inside its scrolling ancestor. Re-measured after
   // every render so content appearing above it (a banner, a search box)
-  // doesn't leave rows offset.
+  // doesn't leave rows offset. No dependency list on purpose; both updates
+  // are guarded (a changed parent, a move of more than 1px), so it settles.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useLayoutEffect(() => {
     if (scroll === 'self' || !innerRef.current) return;
     const p = parent ?? scrollParentOf(innerRef.current);
