@@ -126,8 +126,11 @@ rest of the hardening follows, and the 2.1 features wait for both.
       stays as a second layer. `ledger.rs` (in `app_data/ledger/`, out of the
       page's fs scope), seeded once from the Library; the player takes
       unrecorded files only through `player_open_file`, a Rust-side dialog.
-- [ ] Queue persistence in Rust (Idea #3); queue-state loss has caused the
-      worst bug twice.
+- [x] Queue persistence in Rust (Idea #3); queue-state loss has caused the
+      worst bug twice. Done as the part that matters: `finished.rs` writes
+      every successful completion down as Rust emits it (in `app_data/ledger/`),
+      and the queue applies it as it loads, before anything can start, so a
+      finished download never starts again whatever the page's save reached.
 - [ ] **P-1 (rest)** Progress in its own store; Transfers virtualized past
       ~100 rows.
 - [ ] **P-3** Torrent bytes as a raw IPC body.

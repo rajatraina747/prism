@@ -820,8 +820,8 @@ impl TorrentManager {
             // torrent owns. Never a single file's folder, the shared destination.
             record_finished(&app, single_file, file_path.as_deref(), &output_dir);
             log::info!("torrent {id}: completed ({total} bytes)");
-            let _ = app.emit(
-                &format!("download-complete-{id}"),
+            crate::finished::emit(
+                &app,
                 DownloadComplete {
                     id: id.clone(),
                     success: true,
@@ -996,8 +996,8 @@ impl TorrentManager {
                     let single_file = h.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
                     record_finished(app, single_file, file_path.as_deref(), &output_dir);
                     log::info!("torrent {id}: seeding stopped by user; completed");
-                    let _ = app.emit(
-                        &format!("download-complete-{id}"),
+                    crate::finished::emit(
+                        app,
                         DownloadComplete {
                             id: id.to_string(),
                             success: true,
@@ -1445,8 +1445,8 @@ fn file_breakdown(handle: &ManagedTorrentHandle, file_progress: &[u64]) -> Vec<T
 
 fn emit_failure(app: &AppHandle, id: &str, message: String) {
     log::warn!("torrent {id}: failed: {message}");
-    let _ = app.emit(
-        &format!("download-complete-{id}"),
+    crate::finished::emit(
+        app,
         DownloadComplete {
             id: id.to_string(),
             success: false,

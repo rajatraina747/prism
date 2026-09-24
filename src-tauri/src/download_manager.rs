@@ -35,8 +35,8 @@ fn clip_line(s: &str) -> String {
 }
 
 fn emit_start_failure(app: &AppHandle, id: String, error: PrismError) {
-    let _ = app.emit(
-        &format!("download-complete-{}", id),
+    crate::finished::emit(
+        app,
         DownloadComplete {
             id,
             success: false,
@@ -539,8 +539,8 @@ impl DownloadManager {
                 std::fs::metadata(p).ok().map(|m| m.len())
             });
 
-            let _ = app.emit(
-                &format!("download-complete-{}", id),
+            crate::finished::emit(
+                &app,
                 DownloadComplete {
                     id,
                     success,

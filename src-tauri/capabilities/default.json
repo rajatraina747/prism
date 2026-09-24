@@ -92,6 +92,7 @@
     "allow-convert-file",
     "allow-cancel-convert",
     "allow-open-backup-file",
-    "allow-import-torrent-client"
+    "allow-import-torrent-client",
+    "allow-finished-downloads"
   ]
 }
