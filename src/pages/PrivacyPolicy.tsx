@@ -52,7 +52,7 @@ export default function PrivacyPolicy() {
             <p>Prism connects to the internet only for:</p>
             <ul className="list-disc pl-4 space-y-1 mt-2">
               <li>Fetching metadata and media for URLs you provide (or that a subscription you created has found)</li>
-              <li>BitTorrent transfers you start — a peer-to-peer protocol: other participants in a swarm can see your IP address, and by default Prism joins the DHT and asks your router to forward a port (both can be turned off in Settings → Downloads)</li>
+              <li>BitTorrent transfers you start — a peer-to-peer protocol: other participants in a swarm can see your IP address, and by default Prism joins the DHT and asks your router to forward a port (both can be turned off in Settings → BitTorrent)</li>
               <li>Checking for application updates and, when you ask, updating the yt-dlp engine (both from GitHub)</li>
               <li>Fetching a torrent IP blocklist, if you configured one</li>
               <li>Opt-in crash reporting (below)</li>
@@ -88,9 +88,20 @@ export default function PrivacyPolicy() {
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Browser cookies</h3>
             <p>
-              If you choose a browser under Settings → Downloads → Browser cookies, the yt-dlp engine reads
+              If you choose a browser under Settings → Video → Browser cookies, the yt-dlp engine reads
               that browser's cookie store locally so sign-in-required videos work. Cookies are sent only to the
               site the video is on, exactly as your browser would send them, and never to RainaCorp or anyone else.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Browser extension</h3>
+            <p>
+              The optional Prism Downloader extension for Firefox, Edge and Chrome adds a toolbar button and
+              a right-click menu. When you use one, it hands that page's or link's address to Prism on this
+              computer, and Prism asks you to confirm before fetching anything. It asks for one permission,
+              to add menu items, and collects nothing: it makes no network requests of its own, stores
+              nothing, and has no analytics.
             </p>
           </section>
 

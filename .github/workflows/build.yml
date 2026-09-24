@@ -203,3 +203,30 @@ jobs:
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # The browser extension zips, attached to the same draft release. After the
+  # app builds so the draft already exists (tauri-action creates it); the
+  # zips are what gets submitted to AMO and Edge Add-ons, and the Chromium one
+  # is Chrome's load-unpacked download.
+  extension:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Build and lint the extension
+        run: |
+          node scripts/build-extension.mjs
+          npx --yes web-ext@8.10.0 lint -s extension/dist/firefox --self-hosted=false
+
+      - name: Attach to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" extension/dist/*.zip --clobber
+

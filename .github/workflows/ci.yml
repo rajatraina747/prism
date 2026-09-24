@@ -48,6 +48,14 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # The browser extension: both builds, and Mozilla's linter over the
+      # Firefox one (what AMO runs on submission). The Chromium build is
+      # loaded for real by e2e/extension.spec.ts.
+      - name: Extension build + web-ext lint
+        run: |
+          npm run build:extension
+          npx --yes web-ext@8.10.0 lint -s extension/dist/firefox --self-hosted=false
+
   # End-to-end tests against the web demo (mock service) in real Chromium:
   # routing, Settings semantics, the Add sheet, the windowed Library.
   e2e:
