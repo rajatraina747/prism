@@ -497,7 +497,11 @@ export class TauriPrismService implements IPrismService {
   }
 
   async importTorrentFile(name: string, bytes: Uint8Array): Promise<string> {
-    return invoke<string>('import_torrent_file', { name, bytes: Array.from(bytes) });
+    // Raw bytes as the request body, not a JSON array of numbers (about 4×
+    // the size on the wire); the name is a percent-encoded header.
+    return invoke<string>('import_torrent_file', bytes, {
+      headers: { 'x-prism-torrent-name': encodeURIComponent(name) },
+    });
   }
 
   async pickTorrentFile(): Promise<string | null> {
