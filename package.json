@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:tauri": "tauri dev",
-    "build:tauri": "tauri build"
+    "build:tauri": "tauri build",
+    "build:extension": "node scripts/build-extension.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.14",

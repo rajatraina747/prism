@@ -514,8 +514,12 @@ as an unpacked zip; the privacy policy is hosted on rainacorp.co.uk.
       which is a different thing.
 
 **Distribution**
-- [ ] Chrome/Edge and Firefox extension builds; hosted privacy page; winget;
-      cask cleanup for both identifiers.
+- [x] Chrome/Edge and Firefox extension builds (`scripts/build-extension.mjs`,
+      one `src/background.js`, base + per-browser manifests; `web-ext lint` in
+      CI; a Playwright test loads the Chromium build; each release attaches
+      both zips) and the hosted privacy page (rainacorp.co.uk/prism/privacy).
+- [ ] Submitting to Firefox Add-ons and Edge Add-ons: needs Rajat's accounts;
+      steps in `extension/README.md`. winget waits for Windows users.
 - [ ] Upstream librqbit PRs (tracked here, never blocking a release).
 
 ## Candidate arc — Second engine: BitTorrent (needs a go/no-go)
