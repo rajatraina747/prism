@@ -5,15 +5,7 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 -->
 ## What's New
 
-- **A finished download never downloads again.** Prism now keeps its own
-  record of every download as it finishes, so even if Prism quits at just the
-  wrong moment, nothing that already finished starts over when you reopen it.
-- **Open, Move to Trash, Convert and Play act only on files Prism
-  downloaded.** Prism checks each against its own record rather than taking
-  a path on trust. Downloads from before this version are included
-  automatically. To play any other file, use **Open file…** in the player.
-- **Long queues stay quick.** With more than 100 items, Transfers draws only
-  the rows on screen.
+<!-- Next release draft: fill in as fixes land (ROADMAP). -->
 
 **Updating:** from 1.9.0 or later, use **Settings → Updates**. From 1.8.x or
 earlier, run `brew upgrade --cask rajatraina747/prism/prism-downloader` or download the files below.

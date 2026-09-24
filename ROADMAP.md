@@ -97,7 +97,7 @@ rest of the hardening follows, and the 2.1 features wait for both.
       (`mpv_set_option("osc")` → -5); `fixed_options(has_lua)` is now pure and
       tested. Confirmed by Rajat: YouTube downloads play in Prism on 2.0.3.
 
-### v2.1 — Export, import, dedupe, and the structural fixes
+### v2.1 / v2.2 — Export, import, dedupe (shipped 2.1.0), and the structural fixes (shipped 2.2.0)
 
 - Shipped early as **2.0.4** (2026-09-24): the Dock icon, updater progress,
   player close and player error hint fixes below.
