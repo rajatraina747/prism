@@ -957,7 +957,7 @@ pub async fn start_http_download(
                 }
             }
         };
-        let _ = app.emit(&format!("download-complete-{id}"), complete);
+        crate::finished::emit(&app, complete);
     });
     Ok(())
 }

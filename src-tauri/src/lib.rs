@@ -4,6 +4,7 @@ mod clip;
 mod content_index;
 mod convert;
 mod download_manager;
+mod finished;
 mod engine;
 mod errors;
 mod http_engine;
@@ -2265,6 +2266,7 @@ pub fn run() {
             import_torrent_file,
             pick_download_dir,
             open_backup_file,
+            finished::finished_downloads,
             client_import::import_torrent_client,
             get_app_version,
             ffmpeg_available,

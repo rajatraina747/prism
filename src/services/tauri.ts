@@ -9,6 +9,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
+import { applyFinished, type FinishedDownload } from '@/stores/finished';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
 
 // Persistence file names (stored in app data directory). The webview's fs
@@ -678,6 +679,10 @@ export class TauriPrismService implements IPrismService {
         eta: 0,
       }));
       this._historyCache = await readJson<HistoryItem[]>(FILES.history, []);
+      // What Rust saw finish, applied before anything can start: queue.json
+      // may predate the last completions (stores/finished.ts).
+      const finished = await invoke<FinishedDownload[]>('finished_downloads').catch(() => [] as FinishedDownload[]);
+      this._queueCache = applyFinished(this._queueCache, finished, new Set(this._historyCache.map(h => h.id)));
       this._settingsCache = await readJson<AppPreferences | null>(FILES.settings, null);
       this._subscriptionsCache = await readJson<Subscription[]>(FILES.subscriptions, []);
       this._statsCache = await readJson<unknown>(FILES.stats, null);

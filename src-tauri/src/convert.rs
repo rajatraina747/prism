@@ -357,8 +357,8 @@ pub async fn convert_file(
             let _ = std::fs::remove_file(&destination);
         }
 
-        let _ = app.emit(
-            &format!("download-complete-{id}"),
+        crate::finished::emit(
+            &app,
             DownloadComplete {
                 id: id.clone(),
                 success: ok,
