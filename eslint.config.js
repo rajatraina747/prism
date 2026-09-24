@@ -19,7 +19,17 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // Fast refresh is a dev-only nicety. These files deliberately export a
+      // hook, constant or helper beside their component (a context provider
+      // and its hook; shadcn's buttonVariants; sonner's toast), and splitting
+      // them would churn imports across the app for no user-facing gain.
+      "react-refresh/only-export-components": ["warn", {
+        allowConstantExport: true,
+        allowExportNames: [
+          "useQueue", "useHistory", "useSettings", "useStats", "useSubscriptions", "useService",
+          "useMinuteClock", "MOD_KEY", "buttonVariants", "toast",
+        ],
+      }],
       // `_`-prefixed names are deliberate discards (e.g. destructuring a
       // field out of an object before persisting the rest).
       "@typescript-eslint/no-unused-vars": ["error", {
