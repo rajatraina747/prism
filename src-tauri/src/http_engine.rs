@@ -42,6 +42,9 @@ const PROGRESS_TICK: Duration = Duration::from_millis(500);
 /// Direct downloads running at once (the same backstop yt-dlp runs have).
 const MAX_CONCURRENT: usize = 16;
 
+/// Free space a download of unknown size always leaves on the disk.
+const DISK_RESERVE: u64 = 512 * 1024 * 1024;
+
 const PART_SUFFIX: &str = ".prismpart";
 const STATE_SUFFIX: &str = ".prismpart.json";
 
@@ -577,12 +580,22 @@ async fn stream_whole(client: &reqwest::Client, job: &Job, t: &Transfer, part: &
         return Err(if retry { Attempt::Retry(error) } else { Attempt::Fatal(error) });
     }
     let mut file = tokio::fs::File::create(part).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
+    // A server that never says how big the file is could stream forever and
+    // fill the disk (REVIEW 2026-09-26 L6). Without a size, stop while some
+    // room is still left; with one, hyper already refuses a longer body.
+    let cap = stream_cap(job.size, part.parent().and_then(|dir| fs2::available_space(dir).ok()));
     let mut written = 0u64;
     while let Some(chunk) = resp.chunk().await.map_err(|e| Attempt::Retry(network_error(&e)))? {
         if t.cancel.load(Ordering::Relaxed) {
             return Err(Attempt::Cancelled);
         }
         let n = chunk.len() as u64;
+        if written.saturating_add(n) > cap {
+            return Err(Attempt::Fatal(PrismError::new(
+                ErrorCode::DiskFull,
+                "The server kept sending past the free disk space, with no size given — stopped",
+            )));
+        }
         t.limiter.acquire(n).await;
         t.global.acquire(n).await;
         file.write_all(&chunk).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
@@ -595,6 +608,15 @@ async fn stream_whole(client: &reqwest::Client, job: &Job, t: &Transfer, part: &
             Err(Attempt::Retry(PrismError::new(ErrorCode::Network, "The connection closed before the whole file arrived")))
         }
         _ => Ok(()),
+    }
+}
+
+/// Most bytes one connection may write: unbounded when the server gave a
+/// size (hyper refuses a longer body), else the free space minus a reserve.
+fn stream_cap(size: Option<u64>, free: Option<u64>) -> u64 {
+    match (size, free) {
+        (Some(_), _) | (None, None) => u64::MAX,
+        (None, Some(free)) => free.saturating_sub(DISK_RESERVE),
     }
 }
 
@@ -1066,6 +1088,14 @@ mod tests {
         assert_eq!(filename_from_disposition("inline"), None);
         assert_eq!(filename_from_url("https://x.org/pub/debian-13.5.0-amd64-netinst.iso?sig=1").as_deref(), Some("debian-13.5.0-amd64-netinst.iso"));
         assert_eq!(filename_from_url("https://x.org/a%20b.zip").as_deref(), Some("a b.zip"));
+        // Regression (REVIEW 2026-09-26 L6): no size means the disk's free
+        // space, less a reserve, is the limit.
+        assert_eq!(stream_cap(Some(10), Some(5)), u64::MAX);
+        assert_eq!(stream_cap(None, Some(DISK_RESERVE + 100)), 100);
+        assert_eq!(stream_cap(None, Some(10)), 0);
+        assert_eq!(stream_cap(None, None), u64::MAX);
+        // An escape at the very end decodes too.
+        assert_eq!(filename_from_url("https://x.org/a%20").as_deref(), Some("a "));
         assert_eq!(filename_from_url("https://x.org/"), None);
         assert_eq!(content_range_total("bytes 0-0/12345"), Some(12345));
         assert_eq!(content_range_total("bytes 0-0/*"), None);
