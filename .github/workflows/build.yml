@@ -53,6 +53,9 @@ jobs:
 
   build-macos:
     needs: notes
+    # Signs the updater artifacts. The `release` environment is where the
+    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    environment: release
     runs-on: macos-latest
     permissions:
       contents: write
@@ -102,6 +105,9 @@ jobs:
 
   build-windows:
     needs: notes
+    # Signs the updater artifacts. The `release` environment is where the
+    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    environment: release
     runs-on: windows-latest
     permissions:
       contents: write
@@ -149,6 +155,9 @@ jobs:
 
   build-linux:
     needs: notes
+    # Signs the updater artifacts. The `release` environment is where the
+    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write

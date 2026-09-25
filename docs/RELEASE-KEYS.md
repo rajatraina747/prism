@@ -62,3 +62,21 @@ If the old key is known to be **compromised**, an attacker can sign too.
 Publish N quickly, say so in the release notes, and remove older releases that
 an attacker could replay. The updater has no downgrade protection (S-15).
 Copies that never install N need a manual download.
+
+## 4. Release environment (REVIEW 2026-09-26 M2)
+
+The three `build-*` jobs run in a GitHub **environment** named `release`
+(`environment: release` in `build.yml`). On its own that changes nothing. It
+starts protecting the key once the environment is set up:
+
+1. Repo Settings → Environments → `release` (created by the first run, or add
+   it by hand).
+2. **Required reviewers**: yourself. Every tag build then waits for a click
+   before any job can read the key.
+3. **Deployment branches and tags**: selected tags only, pattern `v*`.
+4. Move `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+   from repository secrets into the environment's secrets. Then delete the
+   repository-level copies, so no other workflow can read them.
+5. Repo Settings → Rules → add a tag ruleset for `v*` that blocks creation,
+   update and deletion except by you. Without it, anyone with write access
+   can push a tag that starts a signed build.
