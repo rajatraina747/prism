@@ -11,6 +11,7 @@ import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, Diagnost
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { applyFinished, type FinishedDownload } from '@/stores/finished';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
+import { createWriteQueue } from '@/lib/write-queue';
 
 // Persistence file names (stored in app data directory). The webview's fs
 // capability covers exactly `$APPDATA/*.json` (+ `.json.tmp`), top level only —
@@ -33,15 +34,21 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJson(file: string, data: unknown): Promise<void> {
-  // Write-then-rename so a crash mid-write can't corrupt the real file (a
-  // corrupted queue/history file silently resets to [] on next launch).
+// Write-then-rename so a crash mid-write can't corrupt the real file (a
+// corrupted queue/history file silently resets to [] on next launch). Through
+// a per-file queue, so two saves of one file never share the `.tmp` at once.
+const writeJsonText = createWriteQueue(async (file, text) => {
   const tmp = `${file}.tmp`;
-  await writeTextFile(tmp, JSON.stringify(data), { baseDir: BaseDirectory.AppData });
+  await writeTextFile(tmp, text, { baseDir: BaseDirectory.AppData });
   await rename(tmp, file, {
     oldPathBaseDir: BaseDirectory.AppData,
     newPathBaseDir: BaseDirectory.AppData,
   });
+});
+
+async function writeJson(file: string, data: unknown): Promise<void> {
+  // Serialised now, so what is saved is the data as it was at this call.
+  await writeJsonText(file, JSON.stringify(data));
 }
 
 // The launch deep link belongs to the process, not to any one subscription:
