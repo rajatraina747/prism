@@ -14,9 +14,9 @@
 //! only reachable through `librqbit::api::Api`; there is no per-tracker status,
 //! no live tracker add, no sequential mode, no per-torrent limits after add.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -104,6 +104,9 @@ pub struct SessionConfig {
     /// Where librqbit persists session state + have-pieces bitfields so a
     /// restart resumes without a full re-hash. None = no persistence.
     pub persistence_dir: Option<PathBuf>,
+    /// The page's saved queue. Read once at engine start to drop persisted
+    /// torrents no queue item refers to any more (see `prune_persisted`).
+    pub queue_file: Option<PathBuf>,
     /// Where resolved `.torrent` metadata is cached (`<infohash>.torrent`) so a
     /// retry of a magnet knows its size and files without any peers.
     pub torrent_cache_dir: Option<PathBuf>,
@@ -342,6 +345,16 @@ async fn ensure_session(
             .collect(),
         ..defaults
     };
+    if let (Some(dir), Some(queue)) = (&cfg.persistence_dir, cfg.queue_file.as_deref().and_then(queue_torrents)) {
+        let dropped = prune_persisted(dir, &queue);
+        if !dropped.is_empty() {
+            log::info!(
+                "torrent session: dropped {} torrent(s) no queue item wants: {}",
+                dropped.len(),
+                dropped.join(", ")
+            );
+        }
+    }
     let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
     pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
@@ -352,12 +365,13 @@ async fn ensure_session(
 
 /// Pause every torrent librqbit restored from its persisted session.
 ///
-/// librqbit re-adds each persisted torrent at startup and starts it at once,
-/// whether or not any queue item still wants it. A torrent that finished
-/// before 2.0.1 was never removed from the session, so it seeded invisibly on
-/// every launch (REVIEW 2026-09-23 B-2). `add_or_adopt` unpauses the ones a
-/// queue item adopts, so a relaunch still resumes without re-hashing. The rest
-/// stay paused, with their files, and use no network.
+/// librqbit re-adds each persisted torrent at startup and starts it at once.
+/// A torrent that finished before 2.0.1 was never removed from the session, so
+/// it seeded invisibly on every launch (REVIEW 2026-09-23 B-2). Those no queue
+/// item refers to are dropped before the session loads (`prune_persisted`);
+/// what is left belongs to a queue item that may not start yet (queued behind
+/// others, or paused). `add_or_adopt` unpauses each one its item adopts, so a
+/// relaunch still resumes without re-hashing; until then it uses no network.
 async fn pause_restored(session: &Arc<Session>) {
     let restored: Vec<ManagedTorrentHandle> = session.with_torrents(|torrents| {
         torrents
@@ -373,6 +387,134 @@ async fn pause_restored(session: &Arc<Session>) {
     if !restored.is_empty() {
         log::info!("torrent session: paused {} restored torrent(s) until a queue item adopts them", restored.len());
     }
+}
+
+/// The torrents the page's saved queue still refers to, in any status.
+#[derive(Default)]
+struct QueueTorrents {
+    /// Lower-case hex info hashes of magnet and local `.torrent` sources.
+    hashes: HashSet<String>,
+    /// For a source whose hash can't be known offline (an http `.torrent`
+    /// link): the folder it wrote to, and the names that folder could have.
+    folders: Vec<PathBuf>,
+    names: HashSet<String>,
+}
+
+impl QueueTorrents {
+    fn wants(&self, info_hash: &str, output_folder: &Path) -> bool {
+        self.hashes.contains(info_hash)
+            || self.folders.iter().any(|f| same_dir(output_folder, &f.to_string_lossy()))
+            || output_folder
+                .file_name()
+                .is_some_and(|n| self.names.contains(n.to_string_lossy().as_ref()))
+    }
+}
+
+/// Read `queue.json`. None when it is missing or unreadable, so nothing is
+/// dropped on a guess.
+fn queue_torrents(queue_file: &Path) -> Option<QueueTorrents> {
+    let text = std::fs::read_to_string(queue_file).ok()?;
+    let items: Vec<serde_json::Value> = serde_json::from_str(&text).ok()?;
+    let mut queue = QueueTorrents::default();
+    for item in &items {
+        let url = item["metadata"]["source"]["url"].as_str().unwrap_or_default();
+        if item["kind"] != "torrent" && !url.to_ascii_lowercase().starts_with("magnet:") {
+            continue;
+        }
+        match source_info_hash(url) {
+            Some(hash) => {
+                queue.hashes.insert(hash);
+            }
+            None => {
+                if let Some(folder) = item["outputFolder"].as_str().filter(|f| !f.is_empty()) {
+                    queue.folders.push(PathBuf::from(folder));
+                }
+                for name in [&item["settings"]["filename"], &item["metadata"]["title"]] {
+                    if let Some(name) = name.as_str().filter(|n| !n.is_empty()) {
+                        queue.names.insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Some(queue)
+}
+
+/// Info hash of a magnet or a local `.torrent` file; None for an http link.
+fn source_info_hash(url: &str) -> Option<String> {
+    if url.to_ascii_lowercase().starts_with("magnet:") {
+        return crate::magnet_info_hash(url);
+    }
+    // A single-letter "scheme" is a Windows drive, so a path.
+    let path = match url::Url::parse(url) {
+        Ok(u) if u.scheme() == "file" => u.to_file_path().ok()?,
+        Ok(u) if u.scheme().len() > 1 => return None,
+        _ => PathBuf::from(url),
+    };
+    if std::fs::metadata(&path).ok()?.len() > crate::MAX_TORRENT_FILE_BYTES {
+        return None;
+    }
+    crate::torrent_identity(&std::fs::read(&path).ok()?).map(|(hash, _)| hash)
+}
+
+/// Drop the torrents no queue item wants from librqbit's persisted session
+/// before the session loads it, and return their info hashes.
+///
+/// Pausing them after the load wasn't enough: librqbit re-creates a
+/// restored torrent's files as it adds it, so a torrent removed from the
+/// Library brought back a folder of empty files on every launch. Only the
+/// session entry and librqbit's own `<hash>.torrent`/`<hash>.bitv` go; data
+/// on disk is never touched. An entry this can't read is left alone.
+fn prune_persisted(dir: &Path, queue: &QueueTorrents) -> Vec<String> {
+    let db = dir.join("session.json");
+    let Some(mut root) = std::fs::read_to_string(&db)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    else {
+        return Vec::new();
+    };
+    let Some(torrents) = root.get_mut("torrents").and_then(|t| t.as_object_mut()) else {
+        return Vec::new();
+    };
+    let mut dropped = Vec::new();
+    torrents.retain(|_, t| {
+        let hash = t["info_hash"].as_str().unwrap_or_default().to_ascii_lowercase();
+        let folder = t["output_folder"].as_str().unwrap_or_default();
+        if hash.len() != 40 || folder.is_empty() || queue.wants(&hash, Path::new(folder)) {
+            return true;
+        }
+        dropped.push(hash);
+        false
+    });
+    let kept: HashSet<String> = torrents
+        .values()
+        .filter_map(|t| t["info_hash"].as_str())
+        .map(|h| h.to_ascii_lowercase())
+        .collect();
+    if !dropped.is_empty() {
+        let tmp = dir.join("session.json.tmp");
+        let written = serde_json::to_vec(&root)
+            .ok()
+            .and_then(|bytes| std::fs::write(&tmp, bytes).ok())
+            .and_then(|_| std::fs::rename(&tmp, &db).ok());
+        if written.is_none() {
+            let _ = std::fs::remove_file(&tmp);
+            log::warn!("torrent session: could not rewrite {}", db.display());
+            return Vec::new();
+        }
+    }
+    // Metainfo and have-pieces files of anything no longer in the session:
+    // the entries just dropped, and any a librqbit delete left behind.
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(hash) = name.strip_suffix(".torrent").or_else(|| name.strip_suffix(".bitv")) else {
+            continue;
+        };
+        if hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit()) && !kept.contains(&hash.to_ascii_lowercase()) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    dropped
 }
 
 /// Emit `torrent-session-stats` once a second while torrents are active
@@ -1746,6 +1888,77 @@ mod tests {
         pause_restored(&second).await;
         assert!(restored[0].is_paused());
         second.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression: a torrent removed from the Library stayed in the persisted
+    // session, and librqbit re-created its folder, full of empty files, on
+    // every launch.
+    #[tokio::test]
+    async fn torrents_no_queue_item_wants_leave_the_session_before_it_loads() {
+        let dir = std::env::temp_dir().join(format!("prism-orphans-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("dl")).unwrap();
+
+        let wanted = single_file_torrent("wanted.bin");
+        let linked = single_file_torrent("linked.bin");
+        let orphan = single_file_torrent("orphan.bin");
+        let hash = |b: &[u8]| crate::torrent_identity(b).unwrap().0;
+        let first = offline_session(&dir).await;
+        for (bytes, folder) in [(&wanted, "wanted"), (&linked, "linked"), (&orphan, "orphan")] {
+            first
+                .add_torrent(
+                    AddTorrent::from_bytes(bytes.clone()),
+                    Some(AddTorrentOptions {
+                        output_folder: Some(dir.join("dl").join(folder).to_string_lossy().into_owned()),
+                        overwrite: true,
+                        ..Default::default()
+                    }),
+                )
+                .await
+                .expect("add");
+        }
+        first.stop().await;
+        drop(first);
+        // Removed from the Library, and its folder deleted by hand.
+        std::fs::remove_dir_all(dir.join("dl").join("orphan")).unwrap();
+
+        // One item by magnet; one by an http link, known only by its folder.
+        let queue = serde_json::json!([
+            { "kind": "torrent", "metadata": { "source": { "url": format!("magnet:?xt=urn:btih:{}", hash(&wanted)) } } },
+            {
+                "kind": "torrent",
+                "metadata": { "title": "Linked", "source": { "url": "https://example.com/linked.torrent" } },
+                "settings": { "filename": "Linked" },
+                "outputFolder": dir.join("dl").join("linked"),
+            },
+        ]);
+        std::fs::write(dir.join("queue.json"), queue.to_string()).unwrap();
+        let session_dir = dir.join("session");
+        let dropped = prune_persisted(&session_dir, &queue_torrents(&dir.join("queue.json")).unwrap());
+        assert_eq!(dropped, vec![hash(&orphan)]);
+        assert!(!session_dir.join(format!("{}.torrent", hash(&orphan))).exists());
+        assert!(session_dir.join(format!("{}.torrent", hash(&wanted))).exists());
+
+        let second = offline_session(&dir).await;
+        let mut restored = second.with_torrents(|t| t.map(|(_, h)| h.info_hash().as_string()).collect::<Vec<_>>());
+        restored.sort();
+        let mut expected = vec![hash(&wanted), hash(&linked)];
+        expected.sort();
+        assert_eq!(restored, expected);
+        assert!(!dir.join("dl").join("orphan").exists(), "the orphan's folder came back");
+        second.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_queue_drops_nothing() {
+        let dir = std::env::temp_dir().join(format!("prism-noqueue-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(queue_torrents(&dir.join("queue.json")).is_none());
+        std::fs::write(dir.join("queue.json"), "[{\"kind\":").unwrap();
+        assert!(queue_torrents(&dir.join("queue.json")).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

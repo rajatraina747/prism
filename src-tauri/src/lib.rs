@@ -666,6 +666,7 @@ fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
         },
         trackers: extra_trackers(app),
         persistence_dir: app_data.as_ref().map(|d| d.join("torrent-session")),
+        queue_file: app_data.as_ref().map(|d| d.join("queue.json")),
         torrent_cache_dir: app_data.as_ref().map(|d| d.join("torrents")),
         give_up_after: match setting_u64(app, "torrentGiveUpMinutes", 0, 0, 10_080) {
             0 => None,
@@ -767,7 +768,7 @@ fn base32_decode(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Largest `.torrent` file we'll read into memory (real ones are KBs).
-const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+pub(crate) const MAX_TORRENT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// A `.torrent` dropped onto the window or picked in the web demo. Drops are
 /// handled as HTML5 events (so links dragged from a browser work too), and

@@ -7,6 +7,15 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 <!-- Next release draft: fill in as fixes land (ROADMAP). -->
 
+### Fixed
+
+- **A removed torrent's folder no longer reappears.** A torrent that finished
+  before 2.0.1 and was later removed from the Library stayed in the torrent
+  engine's saved session, so every launch re-created its folder in your
+  download location, full of empty files. At launch Prism now drops any saved
+  torrent no queue item refers to. Nothing you downloaded is touched; you can
+  delete an empty folder that was already re-created.
+
 **Updating:** from 1.9.0 or later, use **Settings → Updates**. From 1.8.x or
 earlier, run `brew upgrade --cask rajatraina747/prism/prism-downloader` or download the files below.
 
