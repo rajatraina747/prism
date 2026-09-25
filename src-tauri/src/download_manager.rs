@@ -264,6 +264,13 @@ impl DownloadManager {
                 // Only without a clip: splitting the chapters of an excerpt
                 // would be asking for two different cuts of one file.
                 args.push("--split-chapters".into());
+                // Chapter files have their own output template. Left at
+                // yt-dlp's default it is relative to the working directory —
+                // `/` for an app opened from the Finder — not the download
+                // folder (REVIEW 2026-09-26 L5). Named after the main file, so
+                // they sit beside it and share its name.
+                args.push("-o".into());
+                args.push(format!("chapter:{}", chapter_template(&output_path)));
             }
 
             // Resume partial (.part) files from a previous paused/cancelled run.
@@ -388,6 +395,8 @@ impl DownloadManager {
             };
 
             let alive = Arc::new(AtomicBool::new(true));
+            // Files this run writes are the ones modified from here on.
+            let run_started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
             {
                 let mut map = downloads.lock().await;
                 // Stopped while it was being set up: nothing is tracking it,
@@ -536,10 +545,17 @@ impl DownloadManager {
                     None
                 };
                 // Flag the finished file as an internet download so the OS
-                // applies its usual checks if it's opened outside Prism.
+                // applies its usual checks if it's opened outside Prism —
+                // and its subtitles and chapter files, which share its name
+                // (L5).
                 if let Some(p) = &final_path {
                     crate::quarantine::mark_downloaded(p);
                     crate::ledger::record(&finish_app, p);
+                }
+                if success {
+                    for extra in companion_files(&output_path, run_started) {
+                        crate::quarantine::mark_downloaded(&extra.to_string_lossy());
+                    }
                 }
                 let file_size = final_path.as_ref().and_then(|p| std::fs::metadata(p).ok().map(|m| m.len()));
                 (final_path, file_size)
@@ -793,6 +809,38 @@ pub(crate) fn template_file(template: &str, ext: &str) -> String {
     format!("{}.{ext}", base.replace("%%", "%"))
 }
 
+/// yt-dlp's `chapter:` template for a download whose `-o` is `template`:
+/// beside the main file, named after it, `%` escaping kept as it is.
+fn chapter_template(template: &str) -> String {
+    let base = template.strip_suffix(".%(ext)s").unwrap_or(template);
+    format!("{base} - %(section_number)03d %(section_title)s.%(ext)s")
+}
+
+/// Files beside a finished download that share its name and were written
+/// since `since`: subtitles (`name.en.srt`), chapter files (`name - 001
+/// Intro.mp4`), the main file itself.
+fn companion_files(template: &str, since: std::time::SystemTime) -> Vec<std::path::PathBuf> {
+    let base = template_file(template, "");
+    let base = base.strip_suffix('.').unwrap_or(&base);
+    let base = std::path::Path::new(base);
+    let (Some(dir), Some(prefix)) = (base.parent(), base.file_name().map(|n| n.to_string_lossy().into_owned())) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+        .filter(|e| {
+            e.metadata()
+                .ok()
+                .filter(|m| m.is_file())
+                .and_then(|m| m.modified().ok())
+                .is_some_and(|t| t >= since)
+        })
+        .map(|e| e.path())
+        .collect()
+}
+
 /// Given an output template like `/path/to/video.%(ext)s`, find the actual
 /// file on disk. Tries .mp4 first (most common due to --merge-output-format
 /// and --remux-video), then falls back to other common extensions.
@@ -817,6 +865,38 @@ mod tests {
         assert_eq!(reported_path("PRISM:PATH=/dl/ spaced .mp4\n"), Some("/dl/ spaced .mp4"));
         assert_eq!(reported_path("PRISM:PATH=NA\n"), None);
         assert_eq!(reported_path("[download] 50% of 10MiB"), None);
+    }
+
+    // Regression (REVIEW 2026-09-26 L5): chapter files go beside the main
+    // file, not into the working directory.
+    #[test]
+    fn chapters_are_named_after_the_main_file() {
+        assert_eq!(
+            chapter_template("/dl/100%% Music/Talk.%(ext)s"),
+            "/dl/100%% Music/Talk - %(section_number)03d %(section_title)s.%(ext)s"
+        );
+    }
+
+    #[test]
+    fn companions_are_this_runs_files_that_share_the_name() {
+        let dir = std::env::temp_dir().join(format!("prism-companions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Other.mp4"), b"x").unwrap();
+        let since = std::time::SystemTime::now() - std::time::Duration::from_secs(1);
+        for name in ["Talk.mp4", "Talk.en.srt", "Talk - 001 Intro.mp4"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        let template = dir.join("Talk.%(ext)s").to_string_lossy().into_owned();
+        let mut found: Vec<String> = companion_files(&template, since)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        found.sort();
+        assert_eq!(found, ["Talk - 001 Intro.mp4", "Talk.en.srt", "Talk.mp4"]);
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        assert!(companion_files(&template, later).is_empty(), "files from before the run are not its own");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
