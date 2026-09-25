@@ -1698,7 +1698,7 @@ fn system_location(resolved: &std::path::Path, path_dirs: &[PathBuf], home: Opti
     system.extend(
         ["SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"]
             .iter()
-            .filter_map(|v| std::env::var_os(v))
+            .filter_map(std::env::var_os)
             .map(PathBuf::from),
     );
     if let Some(dir) = system.iter().find(|d| strip_prefix_fs(resolved, d).is_some()) {
