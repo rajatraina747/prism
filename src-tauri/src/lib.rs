@@ -2161,8 +2161,16 @@ pub fn find_ffmpeg(app: &AppHandle) -> Option<String> {
 
 static URL_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r#"(?i)\b(?:https?|magnet|file|ftp)://?[^\s'"<>]+"#).unwrap());
+/// Home folders, but also other drives and mounts (`/Volumes/Media/…`, `D:\\…`,
+/// a share), temp and `~/…` paths: a download's path names what it is
+/// wherever it lives (REVIEW 2026-09-26 L1). Runs on across single spaces,
+/// since file names have them; scrubbing a few words too many is the safe
+/// way to be wrong.
 static PATH_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r#"(?:/Users/|/home/|[A-Za-z]:\\Users\\)[^\s'":<>]*"#).unwrap()
+    regex::Regex::new(
+        r#"(?:/Users/|/home/|/Volumes/|/mnt/|/media/|/run/media/|/private/|/var/folders/|/tmp/|~/|[A-Za-z]:\\|\\\\[^\s\\'"]+\\)[^\s'":<>]*(?: [^\s'":<>]+)*"#,
+    )
+    .unwrap()
 });
 
 /// Replace anything that looks like a URL or a home-relative path with a
@@ -2187,6 +2195,11 @@ fn scrub_sentry_event(mut event: sentry::protocol::Event<'static>) -> Option<sen
     // No request/breadcrumb context for a desktop app; drop them outright.
     event.request = None;
     event.breadcrumbs.values.clear();
+    // The SDK fills this in with the machine's hostname, which is usually
+    // the owner's name ("Rajats-MacBook-Pro"): not ours to send (L1).
+    event.server_name = None;
+    event.user = None;
+    event.extra.clear();
     Some(event)
 }
 
@@ -3101,6 +3114,18 @@ mod tests {
         assert!(!s.contains("C:\\Users\\me"), "{s}");
         assert!(s.contains("[url]") && s.contains("[path]"), "{s}");
         assert_eq!(scrub_text("plain panic message"), "plain panic message");
+        // Regression (REVIEW 2026-09-26 L1): other drives, mounts and shares too.
+        for path in [
+            "/Volumes/Media/Films/Secret Title.mkv",
+            "D:\\Films\\Secret Title.mkv",
+            "\\\\nas\\share\\Secret Title.mkv",
+            "/mnt/nas/Secret Title.mkv",
+            "~/Downloads/Secret Title.mkv",
+            "/private/var/folders/x/Secret Title.mkv",
+        ] {
+            let s = scrub_text(&format!("could not open {path}"));
+            assert!(!s.contains("Secret") && !s.contains("Title"), "{path} → {s}");
+        }
     }
 
     #[test]

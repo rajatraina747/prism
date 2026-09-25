@@ -24,7 +24,10 @@ function loadSdk(): Promise<typeof SentryTypes> {
 }
 
 const URL_RE = /\b(?:https?|magnet|file|ftp):\/\/?[^\s'"<>]+/gi;
-const PATH_RE = /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^\s'":<>]*/g;
+// Home folders, other drives and mounts, shares, temp and `~/` paths, running
+// on across single spaces (file names have them): over-scrubbing is the safe
+// way to be wrong (REVIEW 2026-09-26 L1).
+const PATH_RE = /(?:\/Users\/|\/home\/|\/Volumes\/|\/mnt\/|\/media\/|\/run\/media\/|\/private\/|\/var\/folders\/|\/tmp\/|~\/|[A-Za-z]:\\|\\\\[^\s\\'"]+\\)[^\s'":<>]*(?: [^\s'":<>]+)*/g;
 
 /** Replace anything that looks like a URL or a home-relative path. */
 export function scrubText(s: string): string {
