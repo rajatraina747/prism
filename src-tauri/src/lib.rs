@@ -1441,25 +1441,26 @@ fn read_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
 }
 
 /// settings.json parsed once per change rather than once per key: starting a
-/// single download reads a dozen settings. Keyed on the file's size and
-/// modification time (the frontend replaces the file on every save).
+/// single download reads a dozen settings. The file is read every time (it is
+/// a few KB) and parsed only when its bytes differ from the cached copy. Size
+/// and modification time were not enough: a same-length edit (`safari` →
+/// `chrome`) within one mtime tick was read stale (REVIEW 2026-09-26 L7).
 fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json::Value>> {
-    type Snapshot = (PathBuf, u64, Option<std::time::SystemTime>, std::sync::Arc<serde_json::Value>);
+    type Snapshot = (PathBuf, Vec<u8>, std::sync::Arc<serde_json::Value>);
     static CACHE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
 
-    let meta = std::fs::metadata(path).ok()?;
-    let (len, mtime) = (meta.len(), meta.modified().ok());
+    let bytes = std::fs::read(path).ok()?;
     if let Ok(guard) = CACHE.lock() {
-        if let Some((p, l, m, value)) = guard.as_ref() {
-            if p == path && *l == len && *m == mtime {
+        if let Some((p, b, value)) = guard.as_ref() {
+            if p == path && *b == bytes {
                 return Some(value.clone());
             }
         }
     }
-    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     let value = std::sync::Arc::new(value);
     if let Ok(mut guard) = CACHE.lock() {
-        *guard = Some((path.to_path_buf(), len, mtime, value.clone()));
+        *guard = Some((path.to_path_buf(), bytes, value.clone()));
     }
     Some(value)
 }
@@ -3104,6 +3105,22 @@ mod tests {
         assert_eq!(magnet_info_hash("magnet:?dn=nohash"), None);
         assert_eq!(magnet_info_hash("https://example.com/x.torrent"), None);
         assert!(magnet_trackers("not a magnet").is_empty());
+    }
+
+    // Regression (REVIEW 2026-09-26 L7): an edit that keeps the file's size
+    // is seen at once, whatever the modification time says.
+    #[test]
+    fn a_same_length_settings_edit_is_not_read_stale() {
+        let dir = std::env::temp_dir().join(format!("prism-settings-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, r#"{"cookiesFromBrowser":"safari"}"#).unwrap();
+        let mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "safari");
+        std::fs::write(&path, r#"{"cookiesFromBrowser":"chrome"}"#).unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+        assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "chrome");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
