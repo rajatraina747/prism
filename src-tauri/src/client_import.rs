@@ -159,8 +159,17 @@ pub async fn import_torrent_client(app: AppHandle, client: Client) -> Result<Opt
         let mut skipped = 0;
         for f in found {
             let name = f.torrent.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let magnet = std::fs::read(&f.torrent)
+            // Size first: a stray multi-GB file named `.torrent` in the picked
+            // folder must not be read into memory to find out (L9).
+            let magnet = std::fs::metadata(&f.torrent)
                 .map_err(|e| e.to_string())
+                .and_then(|m| {
+                    if m.len() > crate::MAX_TORRENT_FILE_BYTES {
+                        Err(format!("{name} is too large to be a .torrent"))
+                    } else {
+                        std::fs::read(&f.torrent).map_err(|e| e.to_string())
+                    }
+                })
                 .and_then(|bytes| crate::store_torrent_bytes(&app2, &name, &bytes));
             match magnet {
                 Ok(magnet) => torrents.push(ImportedTorrent {

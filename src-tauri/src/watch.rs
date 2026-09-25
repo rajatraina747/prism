@@ -162,7 +162,12 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
         if extension == "torrent" {
-            match std::fs::read(&path).ok().and_then(|bytes| to_magnet(&name, &bytes)) {
+            // Size first: a page can drop a huge file named `.torrent` into a
+            // watched Downloads, and reading it whole to find out it isn't one
+            // would hold all of it in memory (L9).
+            let small = entry.metadata().is_ok_and(|m| m.len() <= crate::MAX_TORRENT_FILE_BYTES);
+            let bytes = if small { std::fs::read(&path).ok() } else { None };
+            match bytes.and_then(|bytes| to_magnet(&name, &bytes)) {
                 Some(magnet) => {
                     links.push(WatchLink { url: magnet, confirm: true });
                     mark(&path, "added");
