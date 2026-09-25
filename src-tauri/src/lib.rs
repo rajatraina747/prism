@@ -1633,12 +1633,75 @@ fn path_is_allowed(resolved: &std::path::Path, extra_roots: &[PathBuf]) -> Resul
                 .into(),
         );
     }
-    if let Some(home) = home {
-        if let Some(why) = denied_subtree(resolved, &home) {
+    if let Some(home) = home.as_deref() {
+        if let Some(why) = denied_subtree(resolved, home) {
             return Err(format!("Prism won't write or open files in {} (system/config location)", why));
         }
     }
+    if let Some(dir) = program_dir_containing(resolved, &search_path_dirs(), home.as_deref()) {
+        return Err(format!(
+            "Prism won't write or open files in {} — programs are run from there",
+            dir.display()
+        ));
+    }
     Ok(())
+}
+
+/// The directories on this process's PATH, canonical, minus any that is the
+/// home folder or contains it (a PATH with `~` or `/` in it would otherwise
+/// deny everything).
+fn search_path_dirs() -> Vec<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.is_absolute())
+        .map(|p| p.canonicalize().unwrap_or(p))
+        .collect()
+}
+
+/// The PATH directory `resolved` is in, if any. A file a torrent names, put
+/// in `~/go/bin` or `/opt/homebrew/bin`, would run in place of a real command
+/// the next time someone typed it (REVIEW 2026-09-26 L3). Directories that
+/// are the home folder or above it are ignored: those can't be meant.
+fn program_dir_containing(resolved: &std::path::Path, path_dirs: &[PathBuf], home: Option<&std::path::Path>) -> Option<PathBuf> {
+    path_dirs
+        .iter()
+        .filter(|d| d.parent().is_some())
+        .filter(|d| !home.is_some_and(|h| strip_prefix_fs(h, d).is_some()))
+        .find(|d| strip_prefix_fs(resolved, d).is_some())
+        .cloned()
+}
+
+/// Folders outside home that may never become a download root, however the
+/// user picked them: the top of a drive, the OS's own trees, and where
+/// programs are installed or run from (REVIEW 2026-09-26 L3). A picked root
+/// is otherwise trusted wholesale, and torrents name their own files.
+fn system_location(resolved: &std::path::Path, path_dirs: &[PathBuf], home: Option<&std::path::Path>) -> Option<String> {
+    if resolved.parent().is_none() {
+        return Some("the top level of a drive".into());
+    }
+    let mut system: Vec<PathBuf> = Vec::new();
+    #[cfg(unix)]
+    system.extend(
+        [
+            "/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/etc", "/opt", "/private/etc",
+            "/private/var/db", "/var/db", "/dev", "/boot", "/lib", "/lib64", "/snap",
+        ]
+        .iter()
+        .map(PathBuf::from),
+    );
+    #[cfg(windows)]
+    system.extend(
+        ["SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"]
+            .iter()
+            .filter_map(|v| std::env::var_os(v))
+            .map(PathBuf::from),
+    );
+    if let Some(dir) = system.iter().find(|d| strip_prefix_fs(resolved, d).is_some()) {
+        return Some(dir.display().to_string());
+    }
+    program_dir_containing(resolved, path_dirs, home).map(|d| d.display().to_string())
 }
 
 /// Whether paths compare case-insensitively here: the default filesystems on
@@ -1793,6 +1856,16 @@ fn load_picked_dirs() -> Vec<PathBuf> {
         .into_iter()
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
+        // Picked before 2.2.1 refused these (L3): no longer a root.
+        .filter(|p| {
+            let home = dirs::home_dir().and_then(|h| h.canonicalize().ok());
+            let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+            let refused = system_location(&canon, &search_path_dirs(), home.as_deref());
+            if let Some(what) = &refused {
+                log::warn!("download folder {} no longer allowed: {what}", p.display());
+            }
+            refused.is_none()
+        })
         .collect()
 }
 
@@ -1882,6 +1955,10 @@ async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
     }
     if is_home_itself(&resolved) {
         return Err(HOME_ITSELF.into());
+    }
+    let home = dirs::home_dir().and_then(|h| h.canonicalize().ok());
+    if let Some(what) = system_location(&resolved, &search_path_dirs(), home.as_deref()) {
+        return Err(format!("Prism can't save downloads in {what} — choose a folder of your own."));
     }
     if let Some(state) = app.try_state::<PickedDirs>() {
         let mut guard = state.0.lock().map_err(|_| "State lock poisoned".to_string())?;
@@ -2815,6 +2892,25 @@ mod tests {
             &[]
         )
         .is_err());
+    }
+
+    // Regression (REVIEW 2026-09-26 L3): system trees and PATH directories
+    // never become download roots, and PATH directories inside home are
+    // refused as destinations too.
+    #[cfg(unix)]
+    #[test]
+    fn system_and_program_folders_are_never_roots() {
+        use std::path::Path;
+        let path_dirs = vec![PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/Users/u/go/bin"), PathBuf::from("/"), PathBuf::from("/Users/u")];
+        let home = Some(Path::new("/Users/u"));
+        for bad in ["/", "/usr/local", "/usr/local/bin", "/Applications", "/System/Library", "/opt/homebrew"] {
+            assert!(system_location(Path::new(bad), &path_dirs, home).is_some(), "{bad} must be refused");
+        }
+        assert!(program_dir_containing(Path::new("/Users/u/go/bin/ls"), &path_dirs, home).is_some());
+        // `/` and home on PATH mean nothing: they'd refuse everything.
+        for ok in ["/Volumes/Media/Films", "/Users/u/Movies", "/mnt/nas/dl"] {
+            assert!(system_location(Path::new(ok), &path_dirs, home).is_none(), "{ok} must be allowed");
+        }
     }
 
     /// S-9: the deny-list is pure path logic, so pin each platform's rules
