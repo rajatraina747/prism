@@ -30,7 +30,9 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 /// How often each folder is looked at.
-const INTERVAL: Duration = Duration::from_secs(5);
+/// Ten seconds, not five: each pass lists the folder, and the natural one
+/// to watch is a large Downloads (REVIEW 2026-09-26 L4).
+const INTERVAL: Duration = Duration::from_secs(10);
 /// Largest list of links read into memory (real ones are a few KB).
 const MAX_LIST_BYTES: u64 = 1024 * 1024;
 /// Text files scanned for links.
@@ -137,6 +139,10 @@ fn sweep(app: &AppHandle, configured: &[WatchFolder], seen: &mut Seen) -> Vec<Wa
 /// returns its magnet (separated out so the sweep is testable on its own).
 fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> Option<String>) -> Vec<WatchLink> {
     let mut links = Vec::new();
+    // Text files still here this pass. `seen` keeps only these (for this
+    // folder), so it shrinks as files go instead of growing for as long as
+    // Prism runs (REVIEW 2026-09-26 L4).
+    let mut present: Seen = Seen::new();
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -155,9 +161,6 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
-        let metadata = entry.metadata().ok();
-        let size = metadata.as_ref().map(|m| m.len()).unwrap_or(u64::MAX);
-
         if extension == "torrent" {
             match std::fs::read(&path).ok().and_then(|bytes| to_magnet(&name, &bytes)) {
                 Some(magnet) => {
@@ -167,8 +170,15 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
                 // A .torrent is Prism's kind of file: mark it so it isn't retried forever.
                 None => mark(&path, "failed"),
             }
-        } else if LIST_EXTENSIONS.contains(&extension.as_str()) && size <= MAX_LIST_BYTES {
-            let key = (path.clone(), size, metadata.and_then(|m| m.modified().ok()));
+        } else if LIST_EXTENSIONS.contains(&extension.as_str()) {
+            // Only text files are stat'ed: a watched Downloads folder can hold
+            // thousands of entries that are none of Prism's business (L4).
+            let Ok(metadata) = entry.metadata() else { continue };
+            if metadata.len() > MAX_LIST_BYTES {
+                continue;
+            }
+            let key = (path.clone(), metadata.len(), metadata.modified().ok());
+            present.insert(key.clone());
             if seen.contains(&key) {
                 continue;
             }
@@ -183,6 +193,7 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
         }
         // Anything else is not ours: left alone.
     }
+    seen.retain(|key| key.0.parent() != Some(dir) || present.contains(key));
     links
 }
 
@@ -294,6 +305,23 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::write(tmp.0.join("empty.txt"), "now https://example.com/v.mp4 is in here").unwrap();
         assert_eq!(scan(&tmp.0, &mut seen, &mut stub_magnet).len(), 1);
+    }
+
+    // Regression (REVIEW 2026-09-26 L4): the remembered set follows the
+    // folder, instead of growing for as long as Prism runs.
+    #[test]
+    fn remembered_files_are_forgotten_once_they_go() {
+        let tmp = TempDir::new("forget");
+        let other = TempDir::new("forget-other");
+        std::fs::write(tmp.0.join("notes.txt"), "no links").unwrap();
+        std::fs::write(other.0.join("notes.txt"), "no links").unwrap();
+        let mut seen = Seen::new();
+        scan(&tmp.0, &mut seen, &mut stub_magnet);
+        scan(&other.0, &mut seen, &mut stub_magnet);
+        assert_eq!(seen.len(), 2);
+        std::fs::remove_file(tmp.0.join("notes.txt")).unwrap();
+        scan(&tmp.0, &mut seen, &mut stub_magnet);
+        assert_eq!(seen.len(), 1, "the removed file is forgotten; the other folder's is kept");
     }
 
     #[test]
