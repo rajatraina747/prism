@@ -497,6 +497,9 @@ async fn start_download(
     clip_start: Option<String>,
     clip_end: Option<String>,
     split_chapters: Option<bool>,
+    // False for a subscription entry on another site (REVIEW 2026-09-26 M1).
+    // Absent (older items) = the cookies setting decides, as before.
+    use_cookies: Option<bool>,
 ) -> Result<(), String> {
     // Validated here rather than deeper in: a bad range should be refused
     // before anything is spawned, with a message the user can act on.
@@ -549,6 +552,7 @@ async fn start_download(
         speed_limit,
         clip_section,
         split_chapters.unwrap_or(false),
+        use_cookies.unwrap_or(true),
     ).await;
     Ok(())
 }
@@ -668,6 +672,8 @@ fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
         persistence_dir: app_data.as_ref().map(|d| d.join("torrent-session")),
         queue_file: app_data.as_ref().map(|d| d.join("queue.json")),
         torrent_cache_dir: app_data.as_ref().map(|d| d.join("torrents")),
+        // Beside the ledger: a folder the page can't write (see ledger.rs).
+        claims_file: app_data.as_ref().map(|d| d.join("ledger").join("torrent-claims.json")),
         give_up_after: match setting_u64(app, "torrentGiveUpMinutes", 0, 0, 10_080) {
             0 => None,
             m => Some(std::time::Duration::from_secs(m * 60)),
@@ -1737,8 +1743,25 @@ pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Res
         log::warn!("refused download path {expanded}: {e}");
         format!("Invalid download path: {} ({})", e, expanded)
     })?;
+    if is_home_itself(&resolved) {
+        log::warn!("refused download path {expanded}: the home folder itself");
+        return Err(HOME_ITSELF.into());
+    }
 
     Ok(expanded)
+}
+
+const HOME_ITSELF: &str =
+    "Prism won't save loose files straight into your home folder — choose or create a folder inside it";
+
+/// Whether `resolved` is the home folder itself. Loose files there sit beside
+/// the shell's startup files, and a torrent names its own file (REVIEW
+/// 2026-09-26 H1), so home is never a destination — only folders inside it.
+fn is_home_itself(resolved: &std::path::Path) -> bool {
+    dirs::home_dir()
+        .map(|h| h.canonicalize().unwrap_or(h))
+        .and_then(|home| strip_prefix_fs(resolved, &home))
+        .is_some_and(|rest| rest.as_os_str().is_empty())
 }
 
 // ── User-picked download roots ───────────────────────────────────────
@@ -1856,6 +1879,9 @@ async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
                 why
             ));
         }
+    }
+    if is_home_itself(&resolved) {
+        return Err(HOME_ITSELF.into());
     }
     if let Some(state) = app.try_state::<PickedDirs>() {
         let mut guard = state.0.lock().map_err(|_| "State lock poisoned".to_string())?;
@@ -2769,8 +2795,12 @@ mod tests {
         assert!(validate_download_path("~/.ssh/authorized_keys", &[]).is_err());
         assert!(validate_download_path("~/.config/autostart/evil.desktop", &[]).is_err());
         assert!(validate_download_path("~/.zshrc", &[]).is_err());
-        // Bare home as a directory is fine; a dotfile inside it is not.
+        // A folder inside home is fine; a dotfile directly in it is not.
         assert!(validate_download_path("~/Movies/clip.%(ext)s", &[]).is_ok());
+        // Regression (REVIEW 2026-09-26 H1): nor is home itself, where a
+        // torrent's own file name would sit beside the shell's startup files.
+        assert!(validate_download_path("~", &[]).is_err());
+        assert!(validate_download_path("~/", &[]).is_err());
         assert!(validate_download_path("~/Downloads/.hidden-but-nested/x.mp4", &[]).is_ok());
         #[cfg(target_os = "macos")]
         {

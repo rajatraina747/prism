@@ -255,6 +255,7 @@ export class TauriPrismService implements IPrismService {
         clipStart: item.settings.clipStart ?? null,
         clipEnd: item.settings.clipEnd ?? null,
         splitChapters: item.settings.splitChapters ?? false,
+        useCookies: !item.settings.noCookies,
         // With a template, Rust builds the output path itself from these.
         outputDir: dest,
         filenameTemplate: item.settings.filenameTemplate ?? null,
@@ -468,15 +469,15 @@ export class TauriPrismService implements IPrismService {
       else fileUnlisten = fn;
     }).catch(() => {});
 
-    // Found in a watch folder the user configured. A .torrent goes straight
-    // into the add flow like a drop. Links read from a text file get the
-    // confirmation card: anything can put a .txt in a watched Downloads
-    // folder, a web page included (REVIEW 2026-09-23 S-1).
+    // Found in a watch folder the user configured. Always the confirmation
+    // card: anything can put a .txt or a .torrent in a watched Downloads
+    // folder, a web page included (REVIEW 2026-09-23 S-1, 2026-09-26 H2).
+    // Rust marks every link `confirm: true`; the flag is not trusted here.
     listen<{ url: string; confirm: boolean }[]>('watch-folder-links', (event) => {
       if (cancelled) return;
       for (const link of event.payload ?? []) {
         const trimmed = typeof link?.url === 'string' ? link.url.trim() : '';
-        if (trimmed) handler(trimmed, link.confirm === false ? 'app' : 'external');
+        if (trimmed) handler(trimmed, 'external');
       }
     }).then(fn => {
       if (cancelled) fn();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffFeed, entryToDownloadItem, entryMatches, likelyFeedType } from '../subscription-check';
+import { diffFeed, entryToDownloadItem, entryMatches, likelyFeedType, feedEntryAllowed, sameSiteAsSubscription } from '../subscription-check';
 import type { Subscription, PlaylistEntry, AppPreferences } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 
@@ -183,5 +183,57 @@ describe('likelyFeedType', () => {
 
   it('ignores the query string when guessing', () => {
     expect(likelyFeedType('https://example.com/feed?after=2020')).toBe('rss');
+  });
+});
+
+// Regression (REVIEW 2026-09-26 M1): a feed polls unattended, so its links
+// must not become logged-in requests to other sites, or requests into the
+// user's own network.
+describe('feed entry safety', () => {
+  const prefs: AppPreferences = { ...DEFAULT_PREFERENCES, defaultSaveFolder: '/dl' };
+
+  it("gives the browser's cookies only to entries on the subscription's own site", () => {
+    const sub = makeSub({ url: 'https://www.youtube.com/@channel' });
+    const own = entryToDownloadItem(entry('https://www.youtube.com/watch?v=abc'), sub, prefs);
+    expect(own.settings.noCookies).toBeUndefined();
+    const mobile = entryToDownloadItem(entry('https://m.youtube.com/watch?v=abc'), sub, prefs);
+    expect(mobile.settings.noCookies).toBeUndefined();
+    const elsewhere = entryToDownloadItem(entry('https://bank.example.com/transfer?to=x'), sub, prefs);
+    expect(elsewhere.settings.noCookies).toBe(true);
+  });
+
+  it('treats a subdomain of the subscribed site as the same site, and not the reverse', () => {
+    expect(sameSiteAsSubscription('https://media.example.com/ep1.mp3', 'https://example.com/feed.xml')).toBe(true);
+    expect(sameSiteAsSubscription('https://example.com/ep1.mp3', 'https://feeds.example.com/rss')).toBe(false);
+    expect(sameSiteAsSubscription('https://notexample.com/x', 'https://example.com/rss')).toBe(false);
+  });
+
+  it('accepts ordinary internet links and magnets', () => {
+    expect(feedEntryAllowed('https://www.youtube.com/watch?v=abc')).toBe(true);
+    expect(feedEntryAllowed('http://example.org/ep1.mp3')).toBe(true);
+    expect(feedEntryAllowed('https://93.184.216.34/file.mp4')).toBe(true);
+    expect(feedEntryAllowed('magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567')).toBe(true);
+  });
+
+  it('refuses local files, other schemes and addresses inside the network', () => {
+    for (const url of [
+      'file:///Users/me/secret.torrent',
+      '/Users/me/show.torrent',
+      'ftp://example.com/x',
+      'http://localhost:8080/admin',
+      'http://router/reboot',
+      'http://printer.local/config',
+      'http://127.0.0.1/',
+      'http://2130706433/',
+      'http://10.0.0.1/',
+      'http://172.20.1.1/',
+      'http://192.168.1.1/reboot',
+      'http://169.254.169.254/latest/meta-data/',
+      'http://[::1]/',
+      'http://[fd00::1]/',
+      'not a url',
+    ]) {
+      expect(feedEntryAllowed(url), url).toBe(false);
+    }
   });
 });

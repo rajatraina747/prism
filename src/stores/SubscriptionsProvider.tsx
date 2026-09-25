@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import type { Subscription, PlaylistInfo } from '@/types/models';
-import { diffFeed, entryToDownloadItem, likelyFeedType } from '@/stores/subscription-check';
+import { diffFeed, entryToDownloadItem, feedEntryAllowed, likelyFeedType } from '@/stores/subscription-check';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { mergeSubscriptions } from '@/stores/backup';
@@ -76,7 +76,15 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
         const checkedAt = new Date().toISOString();
         try {
           const feed = await fetchFeed(sub.type ?? 'channel', sub.url);
-          const { newEntries, seenUrls } = diffFeed(sub, feed.entries);
+          const diff = diffFeed(sub, feed.entries);
+          const { seenUrls } = diff;
+          // Refused entries still count as seen, so they aren't reconsidered
+          // on every poll.
+          const refused = diff.newEntries.filter(e => !feedEntryAllowed(e.url));
+          if (refused.length > 0) {
+            diagnostics.log('warn', `Subscription "${sub.title}": skipped ${refused.length} link(s) to a local or private address`);
+          }
+          const newEntries = diff.newEntries.filter(e => feedEntryAllowed(e.url));
           for (const entry of newEntries) {
             addToQueue(entryToDownloadItem(entry, sub, prefsRef.current));
           }

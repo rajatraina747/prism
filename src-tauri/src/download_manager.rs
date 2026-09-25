@@ -138,6 +138,9 @@ impl DownloadManager {
         // Already validated into `*start-end` by `clip::section_arg`.
         clip_section: Option<String>,
         split_chapters: bool,
+        // Whether the browser's cookies may go with this run at all; the
+        // setting still has to be on too.
+        use_cookies: bool,
     ) {
         // Taken before the first await, so a stop that arrives meanwhile is seen.
         let ticket = crate::jobs::begin(&id);
@@ -288,7 +291,7 @@ impl DownloadManager {
             args.push("-N".into());
             args.push("4".into());
 
-            if let Some(browser) = crate::cookies_browser(&app) {
+            if let Some(browser) = crate::cookies_browser(&app).filter(|_| use_cookies) {
                 args.push("--cookies-from-browser".into());
                 args.push(browser);
             }

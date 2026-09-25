@@ -102,6 +102,11 @@ export interface DownloadSettings {
   // Labels put on this item by hand. Ids only: the names live in settings, so
   // renaming a label renames it everywhere at once. Absent = none.
   labelIds?: string[];
+  // yt-dlp only: don't hand this item the browser's cookies even when the
+  // setting is on. Set for a subscription entry on a different site than the
+  // subscription itself — a feed's links must not become logged-in requests
+  // to arbitrary sites (REVIEW 2026-09-26 M1). Absent = the setting decides.
+  noCookies?: boolean;
   // Direct downloads only: a SHA-256 the finished file has to match, as 64
   // lower-case hex digits. Absent = downloaded without being checked.
   sha256?: string;

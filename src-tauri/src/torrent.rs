@@ -110,6 +110,10 @@ pub struct SessionConfig {
     /// Where resolved `.torrent` metadata is cached (`<infohash>.torrent`) so a
     /// retry of a magnet knows its size and files without any peers.
     pub torrent_cache_dir: Option<PathBuf>,
+    /// Which single-file torrent wrote which file into a shared destination
+    /// (see `single_file_dir`). None = no record, so no file is ever treated
+    /// as a torrent's own.
+    pub claims_file: Option<PathBuf>,
     /// Fail a torrent that has been peerless this long (None = never — the
     /// uTorrent/Vuze behaviour; it just keeps announcing).
     pub give_up_after: Option<Duration>,
@@ -714,6 +718,7 @@ impl TorrentManager {
                 peer_limit: cfg.peer_limit,
                 cache_dir: cfg.torrent_cache_dir.clone(),
                 fallback_name: fallback_folder_name(&source),
+                claims_file: cfg.claims_file.clone(),
             };
 
             // `output_dir` from here on is the folder the files actually go
@@ -1182,6 +1187,8 @@ struct AddParams {
     cache_dir: Option<PathBuf>,
     /// Folder name to use when the metainfo can't be resolved before adding.
     fallback_name: String,
+    /// See `SessionConfig::claims_file`.
+    claims_file: Option<PathBuf>,
 }
 
 /// Metainfo bytes for the add, resolving them from the swarm if needed.
@@ -1237,7 +1244,33 @@ async fn add_or_adopt(
     p: &AddParams,
 ) -> Result<(ManagedTorrentHandle, String), String> {
     let bytes = metainfo_for_add(session, resolved, p).await;
-    let effective = effective_output_dir(&p.output_dir, bytes.as_deref(), &p.fallback_name);
+    let effective = match bytes.as_deref().and_then(parse_layout) {
+        // A single file goes straight into the shared destination — unless
+        // that would put it on top of a file it didn't write, or give it a
+        // hidden name there (REVIEW 2026-09-26 H1).
+        Some(TorrentLayout::SingleFile { file: Some(file), info_hash }) => {
+            let dest = Path::new(&p.output_dir);
+            let target = dest.join(&file);
+            let managed_here = session.with_torrents(|mut torrents| {
+                // Through the reference: the iterator is a trait object.
+                Iterator::any(&mut torrents, |(_, h)| {
+                    h.info_hash().as_string() == info_hash && same_dir(h.output_folder(), &p.output_dir)
+                })
+            });
+            let ours = managed_here
+                || p.claims_file.as_deref().is_some_and(|f| claimed_by(f, &target).as_deref() == Some(info_hash.as_str()));
+            let dir = single_file_dir(&p.output_dir, &file, &info_hash, ours);
+            if same_dir(Path::new(&dir), &p.output_dir) {
+                if let Some(f) = p.claims_file.as_deref() {
+                    record_claim(f, &target, &info_hash);
+                }
+            } else {
+                log::info!("torrent {info_hash}: its file would clash in the destination; using its own folder");
+            }
+            dir
+        }
+        _ => effective_output_dir(&p.output_dir, bytes.as_deref(), &p.fallback_name),
+    };
 
     // Two *different* torrents must never share a folder — that is the
     // 1.8.0 bug (two flat packs with identical inner file names writing into
@@ -1605,7 +1638,8 @@ fn emit_failure(app: &AppHandle, id: &str, message: String) {
 
 /// How a torrent lays its files out, read from its metainfo.
 enum TorrentLayout {
-    SingleFile,
+    /// `file` is where librqbit writes it, relative to the output folder.
+    SingleFile { file: Option<PathBuf>, info_hash: String },
     MultiFile { name: Option<String>, info_hash: String },
 }
 
@@ -1615,7 +1649,8 @@ fn parse_layout(bytes: &[u8]) -> Option<TorrentLayout> {
     let info = t.info.data.validate().ok()?;
     // librqbit's own rule: fewer than two files = no subfolder.
     if info.iter_file_details().count() < 2 {
-        return Some(TorrentLayout::SingleFile);
+        let file = info.iter_file_details().next().map(|d| d.filename.to_pathbuf());
+        return Some(TorrentLayout::SingleFile { file, info_hash });
     }
     Some(TorrentLayout::MultiFile {
         name: info.name().map(|n| n.into_owned()),
@@ -1637,7 +1672,7 @@ fn parse_layout(bytes: &[u8]) -> Option<TorrentLayout> {
 /// single safe path component before use.
 pub(crate) fn effective_output_dir(dest: &str, bytes: Option<&[u8]>, fallback_name: &str) -> String {
     let sub = match bytes.and_then(parse_layout) {
-        Some(TorrentLayout::SingleFile) => return dest.to_string(),
+        Some(TorrentLayout::SingleFile { .. }) => return dest.to_string(),
         Some(TorrentLayout::MultiFile { name, info_hash }) => name
             .map(|n| safe_folder_name(&n))
             .filter(|n| !n.is_empty())
@@ -1660,6 +1695,85 @@ pub(crate) fn safe_folder_name(raw: &str) -> String {
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').trim();
     trimmed.chars().take(200).collect()
+}
+
+/// Where a single-file torrent's file goes: the destination itself, as every
+/// client does — or, when that is unsafe, a folder of its own inside it.
+///
+/// librqbit adds with `overwrite: true` (a resume must reopen its own partial
+/// file), so a torrent whose file name matched something already in the
+/// destination rewrote that file piece by piece. And the name is the
+/// torrent's to choose: `.zshenv` straight into a folder a shell reads is
+/// the worst of it (REVIEW 2026-09-26 H1). So the destination is used only
+/// when nothing is at that path yet, or what is there is this torrent's own
+/// (`ours`: the session already has it there, or the claims record says this
+/// info hash wrote it); a hidden or `.desktop` name never goes there at all.
+///
+/// The fallback folder is named after the file plus a short info hash, so it
+/// is the same on every retry (a resume finds its partial file) and never
+/// shared with another torrent.
+pub(crate) fn single_file_dir(dest: &str, file: &Path, info_hash: &str, ours: bool) -> String {
+    let first = file.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned()).unwrap_or_default();
+    let unsafe_name = first.starts_with('.')
+        || file.extension().is_some_and(|e| e.eq_ignore_ascii_case("desktop"));
+    let occupied = std::fs::symlink_metadata(Path::new(dest).join(file)).is_ok();
+    if !unsafe_name && (!occupied || ours) {
+        return dest.to_string();
+    }
+    let stem = file.file_name().map(|n| safe_folder_name(&n.to_string_lossy())).unwrap_or_default();
+    let stem = if stem.is_empty() { "torrent".to_string() } else { stem };
+    let short = &info_hash[..info_hash.len().min(8)];
+    PathBuf::from(dest).join(format!("{stem} [{short}]")).to_string_lossy().into_owned()
+}
+
+/// Claims kept. Oldest go first; a claim only matters while its torrent can
+/// still be resumed.
+const MAX_CLAIMS: usize = 5000;
+
+fn claims_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    &LOCK
+}
+
+/// `[path, info hash]` pairs, oldest first. Unreadable = none.
+fn read_claims(file: &Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(file)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// The info hash that wrote `target`, if a single-file torrent did.
+fn claimed_by(file: &Path, target: &Path) -> Option<String> {
+    let _guard = claims_lock().lock().unwrap_or_else(|p| p.into_inner());
+    let key = target.to_string_lossy();
+    read_claims(file).into_iter().rev().find(|(p, _)| *p == key).map(|(_, h)| h)
+}
+
+/// Record that `info_hash` writes `target`. Best-effort: without the record a
+/// later resume just gets its own folder instead of reusing the file.
+fn record_claim(file: &Path, target: &Path, info_hash: &str) {
+    let _guard = claims_lock().lock().unwrap_or_else(|p| p.into_inner());
+    let key = target.to_string_lossy().into_owned();
+    let mut claims = read_claims(file);
+    if claims.last().is_some_and(|(p, h)| *p == key && h == info_hash) {
+        return;
+    }
+    claims.retain(|(p, _)| *p != key);
+    claims.push((key, info_hash.to_string()));
+    if claims.len() > MAX_CLAIMS {
+        let excess = claims.len() - MAX_CLAIMS;
+        claims.drain(..excess);
+    }
+    let Some(dir) = file.parent() else { return };
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let Ok(text) = serde_json::to_string(&claims) else { return };
+    let tmp = file.with_extension("json.tmp");
+    if std::fs::write(&tmp, text).is_ok() {
+        let _ = std::fs::rename(&tmp, file);
+    }
 }
 
 /// Folder name for a torrent whose metainfo isn't known at add time: the
@@ -1810,6 +1924,49 @@ mod tests {
         // A `files` list with one entry counts as single-file too (librqbit's rule).
         let one = multi_file_torrent("Pack", &["only.mkv"]);
         assert_eq!(effective_output_dir("/tmp/dl", Some(&one), "fallback"), "/tmp/dl");
+    }
+
+    // Regression (REVIEW 2026-09-26 H1): a single-file torrent never lands on
+    // top of a file it didn't write, and never under a hidden name.
+    #[test]
+    fn a_single_file_goes_elsewhere_when_the_destination_is_taken_or_unsafe() {
+        let dest = std::env::temp_dir().join(format!("prism-single-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(&dest).unwrap();
+        let d = dest.to_string_lossy().into_owned();
+        let hash = "0123456789abcdef0123456789abcdef01234567";
+        let own = |name: &str| dest.join(format!("{name} [01234567]")).to_string_lossy().into_owned();
+
+        // Nothing there: the destination itself, as before.
+        assert_eq!(single_file_dir(&d, Path::new("film.mkv"), hash, false), d);
+
+        // Someone else's file of that name: its own folder, and the file is left alone.
+        std::fs::write(dest.join("film.mkv"), b"precious").unwrap();
+        assert_eq!(single_file_dir(&d, Path::new("film.mkv"), hash, false), own("film.mkv"));
+        assert_eq!(std::fs::read(dest.join("film.mkv")).unwrap(), b"precious");
+        // Its own partial file (a resume): the destination.
+        assert_eq!(single_file_dir(&d, Path::new("film.mkv"), hash, true), d);
+
+        // Hidden or launcher names never go into the destination, even its own.
+        assert_eq!(single_file_dir(&d, Path::new(".zshenv"), hash, true), own("zshenv"));
+        assert_eq!(single_file_dir(&d, Path::new("run.DESKTOP"), hash, false), own("run.DESKTOP"));
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    #[test]
+    fn claims_record_which_torrent_wrote_a_file() {
+        let dir = std::env::temp_dir().join(format!("prism-claims-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("ledger").join("torrent-claims.json");
+        let target = Path::new("/dl/film.mkv");
+        assert_eq!(claimed_by(&file, target), None, "no record, no claim");
+        record_claim(&file, target, "aaaa");
+        assert_eq!(claimed_by(&file, target).as_deref(), Some("aaaa"));
+        // A later torrent writing the same path takes the claim over.
+        record_claim(&file, target, "bbbb");
+        assert_eq!(claimed_by(&file, target).as_deref(), Some("bbbb"));
+        assert_eq!(read_claims(&file).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

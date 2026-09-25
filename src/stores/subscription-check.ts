@@ -1,5 +1,5 @@
 import type { Subscription, PlaylistEntry, DownloadItem, AppPreferences } from '@/types/models';
-import { generateId, sanitizeFilename, classifyLink } from '@/services/utils';
+import { generateId, sanitizeFilename, classifyLink, siteKey } from '@/services/utils';
 
 // Pure logic for a subscription check: diff the feed against what we've seen
 // and build queue items for the new entries. IO (parsePlaylist, addToQueue,
@@ -51,6 +51,54 @@ export function diffFeed(sub: Subscription, feed: PlaylistEntry[]): Subscription
   return { newEntries, seenUrls: merged.slice(0, SEEN_URLS_CAP) };
 }
 
+/** Whether a feed entry's link may be queued without anyone confirming it.
+ *
+ * A subscription polls on its own, and what a feed lists can change after
+ * someone subscribed to it. So only links that go out to the internet: http(s)
+ * to a public host name or address, or a magnet. Not a local file, not
+ * `localhost`, a private or link-local address or a `.local` name — a feed
+ * must not be able to make Prism send requests into the user's own network
+ * (a router's admin page) on a schedule (REVIEW 2026-09-26 M1). */
+export function feedEntryAllowed(url: string): boolean {
+  const trimmed = url.trim();
+  if (/^magnet:\?/i.test(trimmed)) return true;
+  let u: URL;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host.includes('.') && !host.includes(':')) return false; // single label: localhost, intranet names
+  if (host.endsWith('.local') || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.lan')) return false;
+  const v4 = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+    if (a === 169 && b === 254) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+    if (a === 100 && b >= 64 && b <= 127) return false; // carrier-grade NAT
+  }
+  if (host.includes(':')) {
+    // IPv6 literal: loopback, unspecified, unique-local, link-local, v4-mapped.
+    if (host === '::1' || host === '::' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host) || host.startsWith('::ffff:')) return false;
+  }
+  return true;
+}
+
+/** Whether a feed entry lives on the subscription's own site, so it may use
+ * the browser's cookies the way a link pasted from that site would. Compared
+ * by site (`www.`/`m.` ignored), a subdomain of the subscription's site
+ * counts as the same site. */
+export function sameSiteAsSubscription(entryUrl: string, subUrl: string): boolean {
+  const a = siteKey(entryUrl);
+  const b = siteKey(subUrl);
+  if (!a || !b) return false;
+  return a === b || a.endsWith(`.${b}`);
+}
+
 /** Build a queue item for a feed entry. Format is left null so the backend
  * picks its default best-quality H.264/AAC chain — flat playlist entries
  * don't carry format lists. */
@@ -87,6 +135,8 @@ export function entryToDownloadItem(
       // A feed's own category wins over the site/engine rules, the same way a
       // category chosen by hand does: addToQueue leaves a pre-set id alone.
       categoryId: sub.categoryId || undefined,
+      // Links to another site don't get the browser's cookies (M1).
+      noCookies: !sameSiteAsSubscription(entry.url, sub.url) || undefined,
     },
     status: 'queued',
     progress: 0,

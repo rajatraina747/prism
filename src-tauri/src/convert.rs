@@ -99,6 +99,13 @@ pub fn preset_args(preset: Preset, input: &str, output: &str) -> Vec<String> {
         "-progress".into(),
         "pipe:1".into(),
         "-nostats".into(),
+        // The input is a download, so its contents are a stranger's: a
+        // torrent's `movie.mkv` can really be an HLS or concat playlist, and
+        // ffmpeg would follow its entries to any URL or local file. Local
+        // files only, and nothing they reference elsewhere (REVIEW
+        // 2026-09-26 M4). Must precede `-i` to apply to it.
+        "-protocol_whitelist".into(),
+        "file,pipe".into(),
         "-i".into(),
         input.into(),
     ];
@@ -144,6 +151,9 @@ pub fn preset_args(preset: Preset, input: &str, output: &str) -> Vec<String> {
         ]),
     }
 
+    // The output is a file `reserve_output` just created, empty, for this run
+    // alone — so overwriting it is the point, not a risk.
+    args.push("-y".into());
     args.push(output.into());
     args
 }
@@ -235,6 +245,26 @@ pub fn output_path(input: &Path, preset: Preset) -> PathBuf {
     crate::http_engine::free_destination(&wanted)
 }
 
+/// Claim the output file for one conversion by creating it, empty, before
+/// ffmpeg runs.
+///
+/// Choosing a free name isn't enough on its own: two conversions of the same
+/// file (a double-click) chose the same name, the second ffmpeg refused to
+/// overwrite, and its failure cleanup deleted the first one's output (REVIEW
+/// 2026-09-26 M5). Creating the file with `create_new` makes the name this
+/// run's alone; a name taken meanwhile just moves on to the next free one.
+pub fn reserve_output(input: &Path, preset: Preset) -> std::io::Result<PathBuf> {
+    for _ in 0..32 {
+        let candidate = output_path(input, preset);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            Ok(_) => return Ok(candidate),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::other("no free name for the converted file"))
+}
+
 /// Convert a finished file, reporting through the same events a download uses.
 ///
 /// The UI already understands `download-progress-{id}` and
@@ -268,17 +298,22 @@ pub async fn convert_file(
         .await
         .ok_or_else(|| "Converting needs ffmpeg, which isn't installed".to_string())?;
 
-    let destination = output_path(&source, preset);
-    let args = preset_args(preset, &input, &destination.to_string_lossy());
     if ticket.cancelled() {
         log::info!("convert {id}: stopped before it started");
         return Ok(());
     }
+    // From here the destination is this run's own file, so removing it on
+    // failure can only ever remove what this run made.
+    let destination = reserve_output(&source, preset).map_err(|e| format!("Couldn't create the converted file: {e}"))?;
+    let args = preset_args(preset, &input, &destination.to_string_lossy());
 
-    let (mut events, child) = CommandSpec::new(&ffmpeg)
-        .args(&args)
-        .spawn()
-        .map_err(|e| format!("Couldn't start ffmpeg: {e}"))?;
+    let (mut events, child) = match CommandSpec::new(&ffmpeg).args(&args).spawn() {
+        Ok(pair) => pair,
+        Err(e) => {
+            let _ = std::fs::remove_file(&destination);
+            return Err(format!("Couldn't start ffmpeg: {e}"));
+        }
+    };
 
     if let Ok(mut map) = running().lock() {
         map.insert(id.clone(), child);
@@ -390,13 +425,47 @@ mod tests {
     }
 
     #[test]
-    fn the_output_is_the_last_argument_and_nothing_overwrites() {
+    fn the_output_is_the_last_argument() {
         let args = preset_args(Preset::Mp4H264, "/in.mkv", "/out.mp4");
         assert_eq!(args.last().unwrap(), "/out.mp4");
-        assert!(!args.iter().any(|a| a == "-y"), "ffmpeg must refuse, not overwrite");
+        // It overwrites only the empty file `reserve_output` created for it.
+        assert_eq!(args[args.len() - 2], "-y");
         // The input is named, not concatenated into anything.
         let i = args.iter().position(|a| a == "-i").unwrap();
         assert_eq!(args[i + 1], "/in.mkv");
+    }
+
+    // Regression (REVIEW 2026-09-26 M5): two conversions of one file each get
+    // their own output, and something already there is never taken.
+    #[test]
+    fn each_conversion_reserves_its_own_output() {
+        let dir = std::env::temp_dir().join(format!("prism-convert-reserve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("clip.mkv");
+        std::fs::write(&input, b"source").unwrap();
+        std::fs::write(dir.join("clip.mp3"), b"someone else's").unwrap();
+
+        let first = reserve_output(&input, Preset::Mp3).unwrap();
+        let second = reserve_output(&input, Preset::Mp3).unwrap();
+        assert_ne!(first, second, "a second conversion must not share the first one's file");
+        assert_ne!(first, dir.join("clip.mp3"), "an existing file is never the output");
+        assert!(first.exists() && second.exists(), "both names are claimed on disk");
+        assert_eq!(std::fs::read(dir.join("clip.mp3")).unwrap(), b"someone else's");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression (REVIEW 2026-09-26 M4): a download disguised as a playlist
+    // must not send ffmpeg to the network or to other local files.
+    #[test]
+    fn the_input_is_read_with_local_protocols_only() {
+        for preset in [Preset::Mp4H264, Preset::Mp4Hevc, Preset::Mp4Remux, Preset::Mp3, Preset::M4a, Preset::Opus] {
+            let args = preset_args(preset, "/in.mkv", "/out.mp4");
+            let whitelist = args.iter().position(|a| a == "-protocol_whitelist").expect("whitelist set");
+            assert_eq!(args[whitelist + 1], "file,pipe", "{preset:?}");
+            let input = args.iter().position(|a| a == "-i").unwrap();
+            assert!(whitelist < input, "{preset:?}: the whitelist must come before -i to apply to it");
+        }
     }
 
     #[test]

@@ -89,10 +89,12 @@ describe('startDownload stopped while setting up', () => {
   });
 });
 
-// Regression (REVIEW 2026-09-23 S-1): links read from a watch folder's text
-// file need the confirmation card; a .torrent dropped there does not.
+// Regression (REVIEW 2026-09-23 S-1, 2026-09-26 H2): everything a watch
+// folder finds needs the confirmation card — a browser can drop a .txt or a
+// .torrent into a watched Downloads folder unasked. Even a payload claiming
+// otherwise is treated as external.
 describe('watch-folder links', () => {
-  it('asks before adding links from a text file', async () => {
+  it('asks before adding anything a watch folder found', async () => {
     const service = await freshService();
     const handler = vi.fn();
     service.onDeepLink(handler);
@@ -105,7 +107,7 @@ describe('watch-folder links', () => {
       ],
     });
     expect(handler).toHaveBeenCalledWith('https://example.com/v', 'external');
-    expect(handler).toHaveBeenCalledWith('magnet:?xt=urn:btih:abc', 'app');
+    expect(handler).toHaveBeenCalledWith('magnet:?xt=urn:btih:abc', 'external');
     expect(handler).toHaveBeenCalledWith('https://example.com/w', 'external');
   });
 });

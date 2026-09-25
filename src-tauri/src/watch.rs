@@ -6,12 +6,12 @@
 //! for http(s) and magnet links. Whatever is found is emitted as
 //! `watch-folder-links`, which the frontend feeds into the ordinary add flow.
 //!
-//! A `.torrent` is added directly: the user configured this folder for them.
-//! Links from a text file go through the same confirmation card as a link
-//! from a browser. The natural folder to watch is Downloads, and a web page
-//! can put a `.txt` there without asking; its links would otherwise join a
-//! swarm or run yt-dlp with the browser's cookies, unconfirmed (REVIEW
-//! 2026-09-23 S-1).
+//! Everything found goes through the same confirmation card as a link from a
+//! browser. The natural folder to watch is Downloads, and a web page can put
+//! a `.txt` or a `.torrent` there without asking: a link list would otherwise
+//! run yt-dlp with the browser's cookies (REVIEW 2026-09-23 S-1), and a
+//! `.torrent` would join a swarm with the user's address, unconfirmed
+//! (REVIEW 2026-09-26 H2).
 //!
 //! Polling rather than filesystem events: network shares and external drives
 //! report changes unreliably (or not at all), and a few seconds' delay costs
@@ -43,7 +43,7 @@ const EVENT: &str = "watch-folder-links";
 #[serde(rename_all = "camelCase")]
 pub struct WatchLink {
     pub url: String,
-    /// From a text file, which anything can put in the folder.
+    /// Anything can put a file in the folder, a web page included.
     pub confirm: bool,
 }
 
@@ -161,7 +161,7 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
         if extension == "torrent" {
             match std::fs::read(&path).ok().and_then(|bytes| to_magnet(&name, &bytes)) {
                 Some(magnet) => {
-                    links.push(WatchLink { url: magnet, confirm: false });
+                    links.push(WatchLink { url: magnet, confirm: true });
                     mark(&path, "added");
                 }
                 // A .torrent is Prism's kind of file: mark it so it isn't retried forever.
@@ -256,13 +256,14 @@ mod tests {
         let mut seen = Seen::new();
         let mut found = scan(&tmp.0, &mut seen, &mut stub_magnet);
         found.sort_by(|a, b| a.url.cmp(&b.url));
-        // Regression (REVIEW 2026-09-23 S-1): a text file's links need the
-        // confirmation card; a .torrent the user dropped in does not.
+        // Regression (REVIEW 2026-09-23 S-1, 2026-09-26 H2): a text file's
+        // links and a .torrent both need the confirmation card — a browser
+        // can drop either into a watched Downloads folder unasked.
         assert_eq!(
             found,
             vec![
                 WatchLink { url: "https://example.com/clip.mp4".into(), confirm: true },
-                WatchLink { url: "magnet:?xt=urn:btih:abc&dn=x".into(), confirm: false },
+                WatchLink { url: "magnet:?xt=urn:btih:abc&dn=x".into(), confirm: true },
             ]
         );
         assert!(tmp.0.join("show.torrent.added").exists());
