@@ -2372,6 +2372,8 @@ pub fn run() {
                 tauri::async_runtime::block_on(manager.kill_all());
                 // Conversions too: ffmpeg has its own process group.
                 convert::kill_all();
+                // Ledger saves are batched; write what's waiting (M3).
+                ledger::flush(app);
             }
         });
 }

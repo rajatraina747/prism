@@ -521,26 +521,31 @@ impl DownloadManager {
                 log::warn!("download {id}: failed: {last_error}");
             }
 
-            let final_path = if success {
-                // "Move completed to" runs before completion is reported, so
-                // the Library records where the file actually ended up.
-                reported
-                    .filter(|path| std::path::Path::new(path).is_file())
-                    .or_else(|| find_output_file(&output_path))
-                    .map(|path| crate::postprocess::move_file(&app, &path).unwrap_or(path))
-            } else {
-                None
-            };
-            // Flag the finished file as an internet download so the OS
-            // applies its usual checks if it's opened outside Prism.
-            if let Some(p) = &final_path {
-                crate::quarantine::mark_downloaded(p);
-                crate::ledger::record(&app, p);
-            }
-
-            let file_size = final_path.as_ref().and_then(|p| {
-                std::fs::metadata(p).ok().map(|m| m.len())
-            });
+            // The move (a copy across volumes), quarantine and ledger are disk
+            // work: off the async workers (REVIEW 2026-09-26 M3).
+            let finish_app = app.clone();
+            let (final_path, file_size) = tauri::async_runtime::spawn_blocking(move || {
+                let final_path = if success {
+                    // "Move completed to" runs before completion is reported, so
+                    // the Library records where the file actually ended up.
+                    reported
+                        .filter(|path| std::path::Path::new(path).is_file())
+                        .or_else(|| find_output_file(&output_path))
+                        .map(|path| crate::postprocess::move_file(&finish_app, &path).unwrap_or(path))
+                } else {
+                    None
+                };
+                // Flag the finished file as an internet download so the OS
+                // applies its usual checks if it's opened outside Prism.
+                if let Some(p) = &final_path {
+                    crate::quarantine::mark_downloaded(p);
+                    crate::ledger::record(&finish_app, p);
+                }
+                let file_size = final_path.as_ref().and_then(|p| std::fs::metadata(p).ok().map(|m| m.len()));
+                (final_path, file_size)
+            })
+            .await
+            .unwrap_or((None, None));
 
             crate::finished::emit(
                 &app,

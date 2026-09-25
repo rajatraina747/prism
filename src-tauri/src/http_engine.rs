@@ -929,10 +929,33 @@ pub async fn start_http_download(
             Err(Halt::Cancelled) => return,
             Ok(path) => {
                 let path = path.to_string_lossy().into_owned();
-                let path = crate::postprocess::move_file(&app, &path).unwrap_or(path);
-                crate::quarantine::mark_downloaded(&path);
-                crate::ledger::record(&app, &path);
-                let file_size = std::fs::metadata(&path).ok().map(|m| m.len());
+                // Disk work (a move can be a copy across volumes): off the
+                // async workers (REVIEW 2026-09-26 M3).
+                let finish_app = app.clone();
+                let finished = tauri::async_runtime::spawn_blocking(move || {
+                    let path = crate::postprocess::move_file(&finish_app, &path).unwrap_or(path);
+                    crate::quarantine::mark_downloaded(&path);
+                    crate::ledger::record(&finish_app, &path);
+                    let file_size = std::fs::metadata(&path).ok().map(|m| m.len());
+                    (path, file_size)
+                })
+                .await;
+                let Ok((path, file_size)) = finished else {
+                    log::warn!("direct download {id}: finishing the file failed");
+                    crate::finished::emit(
+                        &app,
+                        DownloadComplete {
+                            id: id.clone(),
+                            success: false,
+                            error: Some(PrismError::new(ErrorCode::Unknown, "Finishing the downloaded file failed")),
+                            file_path: None,
+                            file_size: None,
+                            actual_height: None,
+                            output_folder: None,
+                        },
+                    );
+                    return;
+                };
                 log::info!("direct download {id}: finished");
                 DownloadComplete {
                     id: id.clone(),

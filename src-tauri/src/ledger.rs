@@ -15,7 +15,9 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -152,17 +154,53 @@ fn with_ledger<T>(app: &AppHandle, f: impl FnOnce(&mut Ledger) -> T) -> Option<T
     guard.as_mut().map(f)
 }
 
+/// A save is waiting to run (see `schedule_save`).
+static SAVE_PENDING: AtomicBool = AtomicBool::new(false);
+/// How long records gather before the file is rewritten.
+const SAVE_DELAY: Duration = Duration::from_millis(750);
+
+/// Rewrite the ledger soon rather than now. It holds up to 20,000 paths, and
+/// saving on every record rewrote all of them per finished item — a 500-video
+/// playlist rewrote it 500 times (REVIEW 2026-09-26 M3). Records arriving
+/// within `SAVE_DELAY` share one save; `flush` writes anything pending at exit.
+fn schedule_save(file: PathBuf) {
+    if SAVE_PENDING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(SAVE_DELAY);
+        save_pending(&file);
+    });
+}
+
+/// Save now if a save is waiting. Pending is cleared under the lock, before
+/// serialising, so a record made during the write schedules another save.
+fn save_pending(file: &Path) {
+    let guard = store().lock().unwrap_or_else(|p| p.into_inner());
+    if !SAVE_PENDING.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(ledger) = guard.as_ref() {
+        save(file, ledger);
+    }
+}
+
+/// Write any recorded-but-unsaved entries. Called on app exit.
+pub fn flush(app: &AppHandle) {
+    if let Some(file) = ledger_file(app) {
+        save_pending(&file);
+    }
+}
+
 /// Record what an engine finished. Call with the final path, after any move.
 pub fn record(app: &AppHandle, path: &str) {
     let path = PathBuf::from(crate::expand_tilde(path));
-    let file = ledger_file(app);
-    with_ledger(app, |ledger| {
-        if ledger.record(&path) {
-            if let Some(file) = &file {
-                save(file, ledger);
-            }
+    let changed = with_ledger(app, |ledger| ledger.record(&path)).unwrap_or(false);
+    if changed {
+        if let Some(file) = ledger_file(app) {
+            schedule_save(file);
         }
-    });
+    }
 }
 
 /// Refuse a path no engine recorded. `validated` is `validate_open_path`'s

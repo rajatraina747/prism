@@ -930,7 +930,6 @@ impl TorrentManager {
             active.lock().await.remove(&id);
             let total = handle.stats().total_bytes;
             let file_path = resolve_completion_path(&handle, &output_dir);
-            mark_torrent_files_downloaded(&handle, &output_dir);
             let single_file = handle.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
             // Seeding is over, so take the torrent out of the session, keeping
             // its files. Leaving it in kept it uploading after "Completed", and
@@ -940,32 +939,45 @@ impl TorrentManager {
             if let Err(e) = session.delete(TorrentIdOrHash::from(handle.id()), false).await {
                 log::warn!("torrent {id}: could not leave the session after seeding: {e}");
             }
-            // A multi-file torrent owns its folder and moves as one; a
-            // single-file torrent sits in the shared destination, so only its
-            // own file moves.
-            let (file_path, output_dir) = if single_file {
-                let moved = file_path
-                    .as_deref()
-                    .and_then(|path| crate::postprocess::move_file(&app, path));
-                (moved.or(file_path), output_dir)
-            } else {
-                match crate::postprocess::move_folder(&app, &output_dir) {
-                    Some(moved) => {
-                        let rebased = match file_path.as_deref() {
-                            Some(path) if path == output_dir => Some(moved.clone()),
-                            Some(path) => std::path::Path::new(path)
-                                .file_name()
-                                .map(|name| std::path::Path::new(&moved).join(name).to_string_lossy().into_owned()),
-                            None => None,
-                        };
-                        (rebased, moved)
+            // Quarantine, the move (a copy, across volumes: possibly many GB)
+            // and the ledger are all disk work, kept off the async workers
+            // that every other command and progress event runs on (REVIEW
+            // 2026-09-26 M3).
+            let finish_app = app.clone();
+            let finished = tauri::async_runtime::spawn_blocking(move || {
+                quarantine_torrent(single_file, file_path.as_deref(), &output_dir);
+                // A multi-file torrent owns its folder and moves as one; a
+                // single-file torrent sits in the shared destination, so only its
+                // own file moves.
+                let (file_path, output_dir) = if single_file {
+                    let moved = file_path
+                        .as_deref()
+                        .and_then(|path| crate::postprocess::move_file(&finish_app, path));
+                    (moved.or(file_path), output_dir)
+                } else {
+                    match crate::postprocess::move_folder(&finish_app, &output_dir) {
+                        Some(moved) => {
+                            let rebased = match file_path.as_deref() {
+                                Some(path) if path == output_dir => Some(moved.clone()),
+                                Some(path) => std::path::Path::new(path)
+                                    .file_name()
+                                    .map(|name| std::path::Path::new(&moved).join(name).to_string_lossy().into_owned()),
+                                None => None,
+                            };
+                            (rebased, moved)
+                        }
+                        None => (file_path, output_dir),
                     }
-                    None => (file_path, output_dir),
-                }
+                };
+                // Recorded as finished: the file, or the folder a multi-file
+                // torrent owns. Never a single file's folder, the shared destination.
+                record_finished(&finish_app, single_file, file_path.as_deref(), &output_dir);
+                (file_path, output_dir)
+            })
+            .await;
+            let Ok((file_path, output_dir)) = finished else {
+                return emit_failure(&app, &id, "Finishing the torrent's files failed".into());
             };
-            // Recorded as finished: the file, or the folder a multi-file
-            // torrent owns. Never a single file's folder, the shared destination.
-            record_finished(&app, single_file, file_path.as_deref(), &output_dir);
             log::info!("torrent {id}: completed ({total} bytes)");
             crate::finished::emit(
                 &app,
@@ -1139,9 +1151,14 @@ impl TorrentManager {
                 let stats = h.stats();
                 if stats.finished && !delete_files {
                     let file_path = resolve_completion_path(&h, &output_dir);
-                    mark_torrent_files_downloaded(&h, &output_dir);
                     let single_file = h.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
-                    record_finished(app, single_file, file_path.as_deref(), &output_dir);
+                    // Disk work, off the async workers (M3).
+                    let (finish_app, path, dir) = (app.clone(), file_path.clone(), output_dir.clone());
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        quarantine_torrent(single_file, path.as_deref(), &dir);
+                        record_finished(&finish_app, single_file, path.as_deref(), &dir);
+                    })
+                    .await;
                     log::info!("torrent {id}: seeding stopped by user; completed");
                     crate::finished::emit(
                         app,
@@ -1498,20 +1515,17 @@ fn record_finished(app: &AppHandle, single_file: bool, file_path: Option<&str>, 
     }
 }
 
-/// Quarantine-flag each file the torrent wrote (file names are untrusted
+/// Quarantine-flag what a finished torrent wrote (file names are untrusted
 /// metadata, so an executable payload gets the OS download checks when
-/// opened outside Prism). Per file rather than the whole output dir, which
-/// may be a folder the user shares with other things.
-fn mark_torrent_files_downloaded(handle: &ManagedTorrentHandle, output_dir: &str) {
-    let base = PathBuf::from(output_dir);
-    let rels: Vec<PathBuf> = handle
-        .with_metadata(|m| m.file_infos.iter().map(|fi| fi.relative_filename.clone()).collect())
-        .unwrap_or_default();
-    for rel in rels {
-        let p = base.join(rel);
-        if p.is_file() {
-            crate::quarantine::mark_downloaded(&p.to_string_lossy());
-        }
+/// opened outside Prism): a single file's own file — its folder may be the
+/// shared destination — or the whole folder a multi-file torrent owns, in
+/// one recursive call rather than a process per file (REVIEW 2026-09-26 M3:
+/// 5,000 files was 5,000 `xattr` runs).
+fn quarantine_torrent(single_file: bool, file_path: Option<&str>, output_dir: &str) {
+    match (single_file, file_path) {
+        (true, Some(path)) => crate::quarantine::mark_downloaded(path),
+        (true, None) => {}
+        (false, _) => crate::quarantine::mark_downloaded(output_dir),
     }
 }
 
@@ -1951,6 +1965,28 @@ mod tests {
         assert_eq!(single_file_dir(&d, Path::new(".zshenv"), hash, true), own("zshenv"));
         assert_eq!(single_file_dir(&d, Path::new("run.DESKTOP"), hash, false), own("run.DESKTOP"));
         let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    // REVIEW 2026-09-26 M3: one recursive call flags every file a multi-file
+    // torrent owns; a single file's shared folder is left alone.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn quarantine_covers_a_torrents_own_files_only() {
+        let root = std::env::temp_dir().join(format!("prism-qt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Pack/sub")).unwrap();
+        std::fs::write(root.join("Pack/sub/ep1.mkv"), b"x").unwrap();
+        std::fs::write(root.join("single.mkv"), b"x").unwrap();
+        std::fs::write(root.join("neighbour.txt"), b"x").unwrap();
+        let flagged = |p: &Path| {
+            std::process::Command::new("xattr").args(["-p", "com.apple.quarantine"]).arg(p).output().unwrap().status.success()
+        };
+        quarantine_torrent(false, None, &root.join("Pack").to_string_lossy());
+        assert!(flagged(&root.join("Pack/sub/ep1.mkv")), "nested file of the torrent's folder");
+        quarantine_torrent(true, Some(&root.join("single.mkv").to_string_lossy()), &root.to_string_lossy());
+        assert!(flagged(&root.join("single.mkv")));
+        assert!(!flagged(&root.join("neighbour.txt")), "the shared destination's other files are not the torrent's");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
