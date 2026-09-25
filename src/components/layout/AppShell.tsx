@@ -7,6 +7,7 @@ import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useDropToAdd } from '@/hooks/use-drop-to-add';
 import { pushDeepLink } from '@/lib/deep-link-bus';
+import { setRemoteImagesAllowed } from '@/lib/remote-images';
 import { onNavigateRequest } from '@/lib/nav-bus';
 import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
 import { toast } from 'sonner';
@@ -186,6 +187,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // GitHub is asked at most daily. Offline or rate-limited just means no nudge.
   const { preferences } = useSettings();
   const { engineAutoCheck, engineAutoUpdate } = preferences;
+
+  // No thumbnails straight from the sites while a proxy is set (M6).
+  React.useEffect(() => {
+    setRemoteImagesAllowed(!preferences.proxyUrl?.trim());
+  }, [preferences.proxyUrl]);
   React.useEffect(() => {
     if (service.isDemo || !engineAutoCheck) return;
     let cancelled = false;

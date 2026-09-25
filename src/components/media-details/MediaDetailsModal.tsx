@@ -6,6 +6,7 @@ import { DEFAULT_PREFERENCES } from '@/types/models';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { cn } from '@/lib/utils';
+import { Thumb } from '@/components/common';
 import {
   Clock, Film, User, ChevronDown, ChevronUp,
   FolderOpen, FileText, Music, Subtitles,
@@ -109,11 +110,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
         <div className="p-5 min-w-0 space-y-4">
           {/* Thumbnail + Info */}
           <div className="flex gap-4">
-            <img
-              src={metadata.thumbnail}
-              alt=""
-              className="w-36 h-20 rounded-lg object-cover bg-secondary"
-            />
+            <Thumb src={metadata.thumbnail} className="w-36 h-20 rounded-lg" />
             <div className="flex-1 space-y-1.5 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> {formatDuration(metadata.duration)}</div>
               {metadata.uploader && <div className="flex items-center gap-1.5"><User className="w-3 h-3" /> {metadata.uploader}</div>}

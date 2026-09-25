@@ -659,7 +659,9 @@ fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
     torrent::SessionConfig {
         socks_proxy: proxy_url(app),
         blocklist_url: blocklist_url(app),
-        upnp: torrent_upnp_enabled(app),
+        // UPnP opens a port on the router for inbound peers, which reach the
+        // machine directly: with a proxy set it would undo the proxy (M6).
+        upnp: torrent_upnp_enabled(app) && proxy_url(app).is_none(),
         dht: torrent_dht_enabled(app),
         utp: setting_bool(app, "torrentUtp", false),
         lsd: setting_bool(app, "torrentLsd", true),

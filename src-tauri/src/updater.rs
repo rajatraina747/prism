@@ -68,11 +68,16 @@ pub async fn check_app_update(
     pending: State<'_, PendingUpdate>,
 ) -> Result<UpdateInfo, String> {
     let checked = async {
-        let updater = app
+        let mut builder = app
             .updater_builder()
-            .configure_client(|c| c.connect_timeout(CONNECT_TIMEOUT).read_timeout(READ_TIMEOUT))
-            .build()
-            .map_err(|e| error_chain(&e))?;
+            .configure_client(|c| c.connect_timeout(CONNECT_TIMEOUT).read_timeout(READ_TIMEOUT));
+        // The same proxy the downloads use: a daily check straight to GitHub
+        // would otherwise report the address the proxy hides (REVIEW
+        // 2026-09-26 M6).
+        if let Some(proxy) = crate::proxy_url(&app).and_then(|p| url::Url::parse(&p).ok()) {
+            builder = builder.proxy(proxy);
+        }
+        let updater = builder.build().map_err(|e| error_chain(&e))?;
         tokio::time::timeout(CHECK_TIMEOUT, updater.check())
             .await
             .map_err(|_| format!("Update check timed out after {} seconds", CHECK_TIMEOUT.as_secs()))?

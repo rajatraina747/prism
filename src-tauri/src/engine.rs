@@ -302,14 +302,27 @@ fn tag_from_location(location: &str) -> Option<String> {
     version_key(tag).map(|_| tag.to_string())
 }
 
-async fn latest_release_tag() -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(CHECK_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+/// The proxy the downloads use, for GitHub requests too: the daily engine
+/// check would otherwise report the address the proxy hides (REVIEW
+/// 2026-09-26 M6).
+fn with_proxy(builder: reqwest::ClientBuilder, app: &AppHandle) -> Result<reqwest::ClientBuilder, String> {
+    match crate::proxy_url(app) {
+        Some(proxy) => Ok(builder.proxy(reqwest::Proxy::all(&proxy).map_err(|e| format!("Invalid proxy: {e}"))?)),
+        None => Ok(builder),
+    }
+}
+
+async fn latest_release_tag(app: &AppHandle) -> Result<String, String> {
+    let client = with_proxy(
+        reqwest::Client::builder()
+            .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(CHECK_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none()),
+        app,
+    )?
+    .build()
+    .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let resp = client
         .get(LATEST_URL)
         .send()
@@ -335,7 +348,7 @@ pub async fn check_engine_update(app: AppHandle, force: bool) -> Result<EngineIn
     let freshness = match read_freshness(&app) {
         Some(cached) if !force && cached.age() < FRESHNESS_TTL => cached,
         _ => {
-            let fresh = Freshness::now(latest_release_tag().await?);
+            let fresh = Freshness::now(latest_release_tag(&app).await?);
             write_freshness(&app, &fresh);
             fresh
         }
@@ -348,13 +361,11 @@ pub async fn check_engine_update(app: AppHandle, force: bool) -> Result<EngineIn
 /// HTTP client for release downloads: bounded connect + total time so a
 /// stalled GitHub fetch fails with a message instead of hanging the Settings
 /// action forever, and a UA so the request is attributable.
-fn http_client() -> Result<reqwest::Client, String> {
+fn client_builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))
 }
 
 /// GET `url` into memory, refusing bodies larger than `cap` (checked against
@@ -416,7 +427,7 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
             .map_err(|e| format!("Failed to create engine directory: {}", e))?;
     }
 
-    let tag = latest_release_tag().await?;
+    let tag = latest_release_tag(&app).await?;
     write_freshness(&app, &Freshness::now(tag.clone()));
     if let Some(active) = engine_info(&app, None).active_version {
         if !is_newer(&tag, &active) {
@@ -428,7 +439,9 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     // Both files from the same tag: fetching "latest" twice could straddle a
     // release and pair a binary with the wrong manifest.
     let base = format!("https://github.com/yt-dlp/yt-dlp/releases/download/{tag}");
-    let client = http_client()?;
+    let client = with_proxy(client_builder(), &app)?
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let bytes = fetch_capped(&client, &format!("{base}/{RELEASE_ASSET}"), MAX_BINARY_BYTES, "yt-dlp").await?;
     let sums_bytes =
         fetch_capped(&client, &format!("{base}/SHA2-256SUMS"), MAX_SUMS_BYTES, "yt-dlp checksums").await?;
@@ -543,7 +556,7 @@ cccc3333  yt-dlp.exe";
 
     #[test]
     fn http_client_builds_with_timeouts() {
-        assert!(http_client().is_ok());
+        assert!(client_builder().build().is_ok());
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRemoteImagesAllowed } from '@/lib/remote-images';
 import type { DownloadStatus } from '@/types/models';
 import { cn } from '@/lib/utils';
 import { useService } from '@/services/ServiceProvider';
@@ -207,7 +208,10 @@ interface ThumbProps {
 
 export function Thumb({ src, className, fallbackIcon }: ThumbProps) {
   const [failed, setFailed] = React.useState(false);
-  if (!src || failed) {
+  // Remote pictures bypass the proxy; with one set they aren't loaded (M6).
+  const remoteAllowed = useRemoteImagesAllowed();
+  const remote = !!src && /^https?:/i.test(src);
+  if (!src || failed || (remote && !remoteAllowed)) {
     return (
       <div className={cn('rounded-md bg-secondary flex items-center justify-center shrink-0', className)}>
         {fallbackIcon}

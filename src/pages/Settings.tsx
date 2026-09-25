@@ -621,7 +621,7 @@ export default function Settings() {
                   <SettingRow label="uTP transport" help={HELP.utp} description="Accept and make uTP connections alongside TCP (still maturing in the engine)">
                     <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
                   </SettingRow>
-                  <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections — turn off when using a proxy for privacy">
+                  <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections. Always off while a proxy is set">
                     <Toggle checked={p.torrentUpnp} onChange={v => updatePreference('torrentUpnp', v)} />
                   </SettingRow>
                   <SettingRow label="Listen port" description="Incoming peer connections (and the UPnP mapping) use this port">
@@ -797,7 +797,7 @@ export default function Settings() {
 
             <TabsContent value="network" className="mt-0">
               <SettingGroup title="Connection">
-                <SettingRow label="Proxy" help={HELP.proxy} description="Video downloads go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT, trackers and UPnP stay direct). Empty = direct">
+                <SettingRow label="Proxy" help={HELP.proxy} description="Video downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails aren't shown while a proxy is set, since the app would fetch them directly. Empty = direct">
                   <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
                 </SettingRow>
                 <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">
