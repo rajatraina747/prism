@@ -103,6 +103,15 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
 
+      # The engine is a folder of resources now (yt-dlp's onedir build): it
+      # must be inside the signed bundle, pass a strict signature check with
+      # it, and run from there.
+      - name: Check the bundled engine
+        run: |
+          APP=$(ls -d src-tauri/target/release/bundle/macos/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          "$APP/Contents/Resources/ytdlp/yt-dlp" --ignore-config --version
+
   build-windows:
     needs: notes
     # Signs the updater artifacts. The `release` environment is where the
@@ -152,6 +161,11 @@ jobs:
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+      # The onedir engine as the installer ships it (resources beside the exe).
+      - name: Check the bundled engine
+        shell: bash
+        run: src-tauri/target/release/ytdlp/yt-dlp.exe --ignore-config --version
 
   build-linux:
     needs: notes
@@ -212,6 +226,9 @@ jobs:
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Check the bundled engine
+        run: src-tauri/target/release/ytdlp/yt-dlp --ignore-config --version
 
   # The browser extension zips, attached to the same draft release. After the
   # app builds so the draft already exists (tauri-action creates it); the

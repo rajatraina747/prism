@@ -6,7 +6,8 @@
 # Reads scripts/sidecars.lock, downloads the exact release assets it names,
 # verifies every file's SHA-256 against the lock, and places them where
 # tauri.conf.json expects them (src-tauri/binaries for sidecars,
-# src-tauri/lib for the embedded player's libraries). A mismatch aborts.
+# src-tauri/ytdlp for yt-dlp's onedir build, src-tauri/lib for the embedded
+# player's libraries). A mismatch aborts.
 #
 # --player also assembles the embedded-player libraries (macOS: via
 # scripts/bundle-libmpv-macos.sh; Windows: wrapper DLL + LGPL libmpv).
@@ -154,6 +155,29 @@ stage_ffmpeg() {
   fi
   rm -rf "$tmp"
 }
+# stage_ytdlp <asset> <sha> <executable-in-zip> — yt-dlp's onedir build,
+# unpacked into src-tauri/ytdlp with its executable renamed yt-dlp[.exe]; the
+# bundle ships that folder as a resource (engine.rs finds it there).
+YTDLP_DIR="$ROOT/src-tauri/ytdlp"
+stage_ytdlp() {
+  local asset=$1 sha=$2 exe=$3 ext=""
+  case "$exe" in *.exe) ext=".exe" ;; esac
+  fetch "$YTDLP_BASE/$asset" "$TMP/$asset" "$sha"
+  rm -rf "$YTDLP_DIR"
+  mkdir -p "$YTDLP_DIR"
+  if command -v unzip >/dev/null 2>&1; then unzip -q -o "$TMP/$asset" -d "$YTDLP_DIR"
+  else 7z x -y -o"$YTDLP_DIR" "$TMP/$asset" >/dev/null; fi
+  if [ ! -f "$YTDLP_DIR/$exe" ] || [ ! -d "$YTDLP_DIR/_internal" ]; then
+    echo "✗ $asset isn't laid out as $exe + _internal/ — has the archive changed?" >&2
+    exit 1
+  fi
+  mv "$YTDLP_DIR/$exe" "$YTDLP_DIR/yt-dlp$ext"
+  chmod +x "$YTDLP_DIR/yt-dlp$ext"
+  # The one-file sidecars earlier builds used; nothing bundles them now.
+  rm -f "$BIN"/yt-dlp-*
+  echo "✓ yt-dlp $YTDLP_VERSION staged in src-tauri/ytdlp"
+}
+
 WRAPPER_BASE="https://github.com/nini22P/libmpv-wrapper/releases/download/$LIBMPV_WRAPPER_VERSION"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -169,20 +193,21 @@ fetch_deno() { # <triple> <sha>
 echo "== Sidecars for $PLATFORM (yt-dlp $YTDLP_VERSION, Deno $DENO_VERSION) =="
 case "$PLATFORM" in
   macos)
-    # yt-dlp_macos is a universal2 binary — the same file serves both triples.
-    fetch "$YTDLP_BASE/yt-dlp_macos" "$BIN/yt-dlp-aarch64-apple-darwin" "$YTDLP_SHA256_MACOS"
-    cp "$BIN/yt-dlp-aarch64-apple-darwin" "$BIN/yt-dlp-x86_64-apple-darwin"
-    chmod +x "$BIN"/yt-dlp-*-apple-darwin
+    # yt-dlp_macos is universal2 — the same folder serves both architectures.
+    stage_ytdlp yt-dlp_macos.zip "$YTDLP_ZIP_SHA256_MACOS" yt-dlp_macos
     fetch_deno aarch64-apple-darwin "$DENO_SHA256_AARCH64_APPLE_DARWIN"
     fetch_deno x86_64-apple-darwin "$DENO_SHA256_X86_64_APPLE_DARWIN"
     ;;
   windows)
-    fetch "$YTDLP_BASE/yt-dlp.exe" "$BIN/yt-dlp-x86_64-pc-windows-msvc.exe" "$YTDLP_SHA256_WINDOWS"
+    stage_ytdlp yt-dlp_win.zip "$YTDLP_ZIP_SHA256_WINDOWS" yt-dlp.exe
     fetch_deno x86_64-pc-windows-msvc "$DENO_SHA256_X86_64_PC_WINDOWS_MSVC"
     ;;
   linux)
-    fetch "$YTDLP_BASE/yt-dlp_linux" "$BIN/yt-dlp-x86_64-unknown-linux-gnu" "$YTDLP_SHA256_LINUX"
-    chmod +x "$BIN/yt-dlp-x86_64-unknown-linux-gnu"
+    # One-file on Linux (see sidecars.lock), in the same place.
+    rm -rf "$YTDLP_DIR" && mkdir -p "$YTDLP_DIR"
+    fetch "$YTDLP_BASE/yt-dlp_linux" "$YTDLP_DIR/yt-dlp" "$YTDLP_SHA256_LINUX"
+    chmod +x "$YTDLP_DIR/yt-dlp"
+    rm -f "$BIN"/yt-dlp-*
     fetch_deno x86_64-unknown-linux-gnu "$DENO_SHA256_X86_64_UNKNOWN_LINUX_GNU"
     ;;
 esac

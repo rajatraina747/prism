@@ -9,9 +9,15 @@
 
 # yt-dlp — https://github.com/yt-dlp/yt-dlp/releases (hashes from SHA2-256SUMS)
 YTDLP_VERSION=2026.08.19
-YTDLP_SHA256_MACOS=0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202
+# The "onedir" builds (a folder, unpacked once when Prism is installed), not
+# the one-file ones: those unpack ~70 MB into a temp folder on every single
+# run, which cost ~5 s per lookup and per download on macOS (REVIEW 2026-09-26).
+YTDLP_ZIP_SHA256_MACOS=07e54b0865303c864006925913bce2604f8ee8cc6f18699bac9c309f9328a6d8
+# Linux keeps the one-file build: linuxdeploy (AppImage) resolves every
+# library it finds, and the onedir's Python modules only find libpython at
+# run time, the trap the bundled ffmpeg libraries once fell into.
 YTDLP_SHA256_LINUX=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
-YTDLP_SHA256_WINDOWS=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
+YTDLP_ZIP_SHA256_WINDOWS=30b4c14aafab6082becff7881e41b76df46dc43ea7633479410a91e29da492bf
 
 # Deno — https://github.com/denoland/deno/releases (hashes from <asset>.zip.sha256sum)
 DENO_VERSION=v2.9.6
