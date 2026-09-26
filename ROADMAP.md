@@ -61,7 +61,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 ### Phase 5 — Direct downloads and the extension
 - [x] **R5.1** Per-item Referer and a browser-style User-Agent option.
 - [x] **R5.2** Slow segments are re-split across free connections.
-- [ ] **R5.3** Extension: "Download link with Prism" on links.
+- [x] **R5.3** Extension: "Download link with Prism" on links.
 
 ### Phase 6 — Queue owned by Rust, stored in SQLite
 - [ ] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).
