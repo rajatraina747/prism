@@ -379,6 +379,14 @@ fn still_needed(size: u64, dest: &Path, source: &str) -> u64 {
 }
 
 async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment]) {
+    // No part file, nothing to resume: a Cancel deleted both while the
+    // workers were still stopping, and the final save put the state file back
+    // (Windows test run 2026-09-26). The part is the state file's name less
+    // `.json`.
+    let part = state_path.with_extension("");
+    if !tokio::fs::try_exists(&part).await.unwrap_or(false) {
+        return;
+    }
     // In file order: splits append, and a resume checks the ranges are contiguous.
     let mut segments = segments.to_vec();
     segments.sort_by_key(|s| s.start);

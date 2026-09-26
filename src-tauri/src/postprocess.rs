@@ -100,7 +100,10 @@ pub fn remove_files(paths: &[PathBuf]) {
 }
 
 /// Remove `dir` and every folder inside it that is empty, deepest first.
-/// Files are never touched: a folder that still holds anything stays.
+/// Files are never touched: a folder that still holds anything stays. An
+/// empty folder the stopped engine still has open (librqbit, for a moment
+/// after an abandoned add) is retried for up to ~5 s, as `remove_files` does.
+/// Blocking: call off the async workers.
 pub fn remove_empty_tree(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
@@ -108,7 +111,19 @@ pub fn remove_empty_tree(dir: &Path) {
             remove_empty_tree(&entry.path());
         }
     }
-    let _ = std::fs::remove_dir(dir);
+    for _ in 0..RELEASE_ATTEMPTS {
+        match std::fs::remove_dir(dir) {
+            Ok(()) => return,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+            Err(_) => {
+                let still_empty = std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_none());
+                if !still_empty {
+                    return;
+                }
+                std::thread::sleep(RELEASE_PAUSE);
+            }
+        }
+    }
 }
 
 /// Walk up from `dir`, removing each folder while it is empty, and stop at

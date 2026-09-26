@@ -406,9 +406,12 @@ fn video_template(item: &Item) -> Option<String> {
 /// wrote (Windows test run 2026-09-26: cancelled downloads left `.part`
 /// files, a preallocated 1 GB `.prismpart`, and empty torrent folders).
 async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
+    // Torrent first: it marks the discard before anything cancels the id's
+    // job ticket. A start still fetching metadata reads the mark when it sees
+    // the cancel; the other engines cancelling first made it keep its folder.
+    app.state::<crate::torrent::TorrentManager>().cancel_torrent(app, id, true).await;
     app.state::<crate::DownloadManager>().discard_download(id).await;
     crate::http_engine::discard_http_download(app, id).await;
-    app.state::<crate::torrent::TorrentManager>().cancel_torrent(app, id, true).await;
     let _ = crate::convert::cancel_convert(id.to_string()).await;
     // A paused video isn't running, so its files are found from the item.
     // (yt-dlp items are kind "http", the default; direct links are "direct".)
