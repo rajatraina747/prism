@@ -13,6 +13,7 @@ import {
   WHEN_DONE_COUNTDOWN_SECONDS, type WhenDoneState,
 } from '@/stores/completion';
 import { scheduleGate, itemStartBlocked } from '@/stores/schedule';
+import { autoRetryDelayMs } from '@/stores/retry';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { overallProgress } from '@/stores/progress';
@@ -507,13 +508,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const { message, detail, engineCode } = errorText(errorMsg);
             const { category, suggestion, action } = classifyError(message, engineCode);
 
-            // Transient (network) failures: retry automatically with backoff
-            // before surfacing a failure. Keeps status 'downloading' during the
-            // wait so the concurrency slot stays held; the reducer guard means
-            // a user cancel/pause during the wait wins.
-            if (category === 'network' && item.retryAttempt < 2) {
-              const delay = 5000 * Math.pow(2, item.retryAttempt);
-              diagnostics.log('warn', `Download failed, retrying in ${delay / 1000}s (attempt ${item.retryAttempt + 1}/2): ${item.metadata.title}`, { error: message });
+            // Transient failures (connection, rate limit, Prism busy): retry
+            // automatically, up to the "Retries on failure" setting, before
+            // surfacing a failure. Keeps status 'downloading' during the wait
+            // so the concurrency slot stays held; the reducer guard means a
+            // user cancel/pause during the wait wins.
+            const budget = current.defaultRetryCount;
+            const delay = autoRetryDelayMs(item.retryAttempt, budget, category, engineCode, message);
+            if (delay !== null) {
+              diagnostics.log('warn', `Download failed, retrying in ${Math.round(delay / 1000)}s (attempt ${item.retryAttempt + 1}/${budget}): ${item.metadata.title}`, { error: message });
               setTimeout(() => dispatch({ type: 'requeueForRetry', id: item.id }), delay);
               return;
             }

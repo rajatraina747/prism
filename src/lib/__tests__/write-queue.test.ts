@@ -52,3 +52,12 @@ describe('createWriteQueue', () => {
     expect(written).toEqual(['y']);
   });
 });
+
+describe('createWriteQueue errors', () => {
+  it('reports a failed write instead of swallowing it', async () => {
+    const failures: string[] = [];
+    const save = createWriteQueue(async () => { throw new Error('disk full'); }, file => failures.push(file));
+    await save('history.json', '[]');
+    expect(failures).toEqual(['history.json']);
+  });
+});

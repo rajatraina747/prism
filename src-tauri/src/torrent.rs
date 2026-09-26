@@ -311,44 +311,6 @@ async fn ensure_session(
     if let Some((s, _)) = guard.as_ref() {
         return Ok(s.clone());
     }
-    let defaults = SessionOptions::default();
-    let opts = SessionOptions {
-        listen: Some(ListenerOptions {
-            listen_addr: (std::net::Ipv6Addr::UNSPECIFIED, cfg.listen_port).into(),
-            enable_upnp_port_forwarding: cfg.upnp,
-            mode: if cfg.utp { ListenerMode::TcpAndUtp } else { ListenerMode::TcpOnly },
-            ..Default::default()
-        }),
-        connect: Some(ConnectionOptions {
-            // librqbit only supports socks5; http proxies are ignored for torrents.
-            proxy_url: cfg
-                .socks_proxy
-                .clone()
-                .filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
-            ..Default::default()
-        }),
-        // Keep librqbit's default DHT config (with persistence) when enabled.
-        dht: if cfg.dht { defaults.dht } else { None },
-        disable_local_service_discovery: !cfg.lsd,
-        peer_limit: cfg.peer_limit,
-        // Session state + have-pieces bitfields on disk: a relaunch spot-checks
-        // a few pieces instead of re-hashing gigabytes.
-        persistence: cfg
-            .persistence_dir
-            .clone()
-            .map(|folder| SessionPersistenceConfig::Json { folder: Some(folder) }),
-        fastresume: cfg.persistence_dir.is_some(),
-        ratelimits: limits,
-        // Standard p2p-format IP blocklist, fetched once per session.
-        blocklist_url: cfg.blocklist_url.clone(),
-        // Already scheme-checked and bounded in lib::parse_extra_trackers.
-        trackers: cfg
-            .trackers
-            .iter()
-            .filter_map(|t| url::Url::parse(t).ok())
-            .collect(),
-        ..defaults
-    };
     if let (Some(dir), Some(queue)) = (&cfg.persistence_dir, cfg.queue_file.as_deref().and_then(queue_torrents)) {
         let dropped = prune_persisted(dir, &queue);
         if !dropped.is_empty() {
@@ -359,12 +321,94 @@ async fn ensure_session(
             );
         }
     }
-    let session = Session::new_with_opts(PathBuf::from(default_dir), opts).await?;
+    let session = start_session(default_dir, limits, &cfg).await?;
     pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
     *guard = Some((session.clone(), api));
     spawn_session_stats(app.clone(), session.clone(), active.clone(), cfg);
     Ok(session)
+}
+
+/// Create the librqbit session, falling back to other listen addresses when
+/// the configured one can't be bound.
+async fn start_session(default_dir: &str, limits: LimitsConfig, cfg: &SessionConfig) -> anyhow::Result<Arc<Session>> {
+    let build = |listen_addr: std::net::SocketAddr, ipv4_only: bool| {
+        let defaults = SessionOptions::default();
+        SessionOptions {
+            listen: Some(ListenerOptions {
+                listen_addr,
+                enable_upnp_port_forwarding: cfg.upnp,
+                mode: if cfg.utp { ListenerMode::TcpAndUtp } else { ListenerMode::TcpOnly },
+                ..Default::default()
+            }),
+            ipv4_only,
+            connect: Some(ConnectionOptions {
+                // librqbit only supports socks5; http proxies are ignored for torrents.
+                proxy_url: cfg
+                    .socks_proxy
+                    .clone()
+                    .filter(|p| p.to_ascii_lowercase().starts_with("socks5")),
+                ..Default::default()
+            }),
+            // Keep librqbit's default DHT config (with persistence) when enabled.
+            dht: if cfg.dht { defaults.dht } else { None },
+            disable_local_service_discovery: !cfg.lsd,
+            peer_limit: cfg.peer_limit,
+            // Session state + have-pieces bitfields on disk: a relaunch spot-checks
+            // a few pieces instead of re-hashing gigabytes.
+            persistence: cfg
+                .persistence_dir
+                .clone()
+                .map(|folder| SessionPersistenceConfig::Json { folder: Some(folder) }),
+            fastresume: cfg.persistence_dir.is_some(),
+            ratelimits: limits,
+            // Standard p2p-format IP blocklist, fetched once per session.
+            blocklist_url: cfg.blocklist_url.clone(),
+            // Already scheme-checked and bounded in lib::parse_extra_trackers.
+            trackers: cfg
+                .trackers
+                .iter()
+                .filter_map(|t| url::Url::parse(t).ok())
+                .collect(),
+            ..defaults
+        }
+    };
+    // The configured port on every address first, then IPv4 alone (a
+    // machine with IPv6 switched off can't bind `[::]`), then any free port
+    // (another client already holds this one). Before, a taken port meant no
+    // torrent could start at all (REVIEW 2026-09-26).
+    let mut session = None;
+    let mut last_error = None;
+    for (addr, ipv4_only) in listen_attempts(cfg.listen_port) {
+        match Session::new_with_opts(PathBuf::from(default_dir), build(addr, ipv4_only)).await {
+            Ok(s) => {
+                if addr.port() != cfg.listen_port || ipv4_only {
+                    log::warn!("torrent session: listening on {addr} instead of port {} on all addresses", cfg.listen_port);
+                }
+                session = Some(s);
+                break;
+            }
+            Err(e) => {
+                log::warn!("torrent session: couldn't start on {addr}: {e:#}");
+                last_error = Some(e);
+            }
+        }
+    }
+    let Some(session) = session else {
+        return Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no listen address to try")));
+    };
+    Ok(session)
+}
+
+/// Listen addresses to try, in order, with whether to stay on IPv4.
+fn listen_attempts(port: u16) -> [(std::net::SocketAddr, bool); 4] {
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    [
+        (SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)), false),
+        (SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)), true),
+        (SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)), false),
+        (SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), true),
+    ]
 }
 
 /// Pause every torrent librqbit restored from its persisted session.
@@ -570,6 +614,11 @@ impl TorrentManager {
             resolved: Arc::new(Mutex::new(HashMap::new())),
             cfg: Arc::new(Mutex::new(SessionConfig::default())),
         }
+    }
+
+    /// Torrents downloading or seeding (for the quit confirmation).
+    pub async fn active_count(&self) -> usize {
+        self.active.lock().await.len()
     }
 
     async fn session(&self) -> Option<Arc<Session>> {
@@ -2050,6 +2099,28 @@ mod tests {
         )
         .await
         .expect("session")
+    }
+
+    // Regression (REVIEW 2026-09-26): a listen port already in use meant no
+    // torrent could start.
+    #[tokio::test]
+    async fn a_taken_listen_port_falls_back_to_a_free_one() {
+        let dir = std::env::temp_dir().join(format!("prism-listen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let taken = std::net::TcpListener::bind(("::", 0))
+            .or_else(|_| std::net::TcpListener::bind(("0.0.0.0", 0)))
+            .unwrap();
+        let port = taken.local_addr().unwrap().port();
+        let cfg = SessionConfig { listen_port: port, ..Default::default() };
+        let session = start_session(&dir.join("dl").to_string_lossy(), LimitsConfig::default(), &cfg)
+            .await
+            .expect("a session despite the taken port");
+        let bound = session.listen_addr().expect("listening").port();
+        assert_ne!(bound, port, "can't share the taken port");
+        session.stop().await;
+        drop(taken);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // Regression (REVIEW 2026-09-23 B-2): librqbit restarts every persisted

@@ -335,6 +335,19 @@ async fn saved_segments(state_path: &Path, part: &Path, job: &Job, size: u64) ->
         .then_some(state.segments)
 }
 
+/// Bytes of a `size`-byte download from `source` still to be written to
+/// `dest`: all of it, less what a saved partial download of that same file
+/// already holds.
+fn still_needed(size: u64, dest: &Path, source: &str) -> u64 {
+    let have = std::fs::read_to_string(with_suffix(dest, STATE_SUFFIX))
+        .ok()
+        .and_then(|text| serde_json::from_str::<PartState>(&text).ok())
+        .filter(|state| state.source == source && state.size == size)
+        .map(|state| state.segments.iter().map(|s| s.done.min(s.len())).sum::<u64>())
+        .unwrap_or(0);
+    size.saturating_sub(have)
+}
+
 async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment]) {
     let state = PartState {
         source: job.source.clone(),
@@ -760,6 +773,14 @@ fn checked_url(url: &str) -> Result<url::Url, PrismError> {
         .ok_or_else(|| PrismError::new(ErrorCode::InvalidInput, "Direct downloads need an http(s) link"))
 }
 
+/// The proxy setting as reqwest's proxy. HTTP(S) and SOCKS alike: SOCKS
+/// used to be refused here, so anyone who set one found every direct
+/// download failing (REVIEW 2026-09-26). `socks5h` resolves names at the
+/// proxy, as a privacy proxy should.
+fn proxy_for(url: &str) -> Result<reqwest::Proxy, PrismError> {
+    reqwest::Proxy::all(url).map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))
+}
+
 fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
@@ -770,15 +791,7 @@ fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
         builder = builder.local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     }
     if let Some(proxy) = crate::proxy_url(app) {
-        if !(proxy.starts_with("http://") || proxy.starts_with("https://")) {
-            return Err(PrismError::new(
-                ErrorCode::InvalidInput,
-                "Direct downloads can use HTTP(S) proxies only — the SOCKS proxy applies to video downloads",
-            ));
-        }
-        let proxy = reqwest::Proxy::all(&proxy)
-            .map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))?;
-        builder = builder.proxy(proxy);
+        builder = builder.proxy(proxy_for(&proxy)?);
     }
     builder
         .build()
@@ -798,6 +811,11 @@ pub struct HttpEngine {
 }
 
 impl HttpEngine {
+    /// Direct downloads in progress (for the quit confirmation).
+    pub async fn active_count(&self) -> usize {
+        self.active.lock().await.len()
+    }
+
     pub fn new() -> Self {
         HttpEngine {
             active: tokio::sync::Mutex::new(HashMap::new()),
@@ -868,15 +886,6 @@ pub async fn start_http_download(
                 .unwrap_or_else(|| link.filename.clone()),
         ),
     };
-    if let (Some(size), Ok(available)) = (link.size, fs2::available_space(&dir)) {
-        if available < size {
-            return Err(PrismError::new(
-                ErrorCode::DiskFull,
-                format!("Not enough disk space: need {} MB free, have {} MB", size / 1_048_576, available / 1_048_576),
-            ));
-        }
-    }
-
     let slot = SLOTS.clone().try_acquire_owned().map_err(|_| {
         PrismError::new(ErrorCode::Busy, format!("Too many direct downloads running at once (limit {MAX_CONCURRENT})"))
     })?;
@@ -891,6 +900,19 @@ pub async fn start_http_download(
         reserved.insert(id.clone(), dest.clone());
         dest
     };
+    // Space for what is still to come: a resumed download already holds the
+    // bytes it has, and a 90%-done file used to be refused for want of room
+    // for all of it (REVIEW 2026-09-26).
+    if let (Some(size), Ok(available)) = (link.size, fs2::available_space(&dir)) {
+        let needed = still_needed(size, &dest, source.as_str());
+        if available < needed {
+            // The path stays reserved: freeing space and retrying resumes it.
+            return Err(PrismError::new(
+                ErrorCode::DiskFull,
+                format!("Not enough disk space: need {} MB free, have {} MB", needed / 1_048_576, available / 1_048_576),
+            ));
+        }
+    }
     let transfer_state = Transfer::new(speed_limit.unwrap_or(0), engine.global.clone());
     {
         let mut active = engine.active.lock().await;
@@ -1055,6 +1077,35 @@ pub async fn set_http_rate_limit(app: AppHandle, bytes_per_second: u64) -> Resul
 mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
+
+    // Regression (REVIEW 2026-09-26): a resume needs room for the rest only.
+    #[test]
+    fn a_resume_needs_space_only_for_what_is_left() {
+        let dir = std::env::temp_dir().join(format!("prism-still-needed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("big.iso");
+        assert_eq!(still_needed(1000, &dest, "https://a/big.iso"), 1000, "nothing saved yet");
+        let state = PartState {
+            source: "https://a/big.iso".into(),
+            size: 1000,
+            validator: Some("\"v1\"".into()),
+            segments: vec![Segment { start: 0, end: 499, done: 500 }, Segment { start: 500, end: 999, done: 400 }],
+        };
+        std::fs::write(with_suffix(&dest, STATE_SUFFIX), serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(still_needed(1000, &dest, "https://a/big.iso"), 100);
+        assert_eq!(still_needed(1000, &dest, "https://b/other.iso"), 1000, "another file's state");
+        assert_eq!(still_needed(2000, &dest, "https://a/big.iso"), 2000, "the file changed size");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_proxy_scheme_prism_accepts_works_for_direct_downloads() {
+        for url in ["http://127.0.0.1:8080", "https://proxy.example:443", "socks5://127.0.0.1:1080", "socks5h://u:p@127.0.0.1:1080", "socks4://127.0.0.1:1080"] {
+            assert!(crate::parse_proxy_url(url).is_some(), "{url} is not a proxy the setting accepts");
+            let proxy = proxy_for(url).unwrap_or_else(|e| panic!("{url}: {}", e.summary));
+            reqwest::Client::builder().proxy(proxy).build().unwrap_or_else(|e| panic!("{url}: {e}"));
+        }
+    }
 
     #[test]
     fn reads_the_start_of_a_content_range() {

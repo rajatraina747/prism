@@ -151,10 +151,11 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
       );
 
     case 'retry':
+      // A retry by hand starts a fresh automatic-retry budget.
       return update(queue, action.id, i => ({
         ...i,
         status: 'queued',
-        retryAttempt: i.retryAttempt + 1,
+        retryAttempt: 0,
         ...IDLE_COUNTERS,
         error: undefined,
       }));

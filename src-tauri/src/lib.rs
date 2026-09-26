@@ -9,6 +9,7 @@ mod engine;
 mod errors;
 mod http_engine;
 mod jobs;
+mod lifecycle;
 mod ledger;
 mod migrate;
 mod mpv_worker;
@@ -528,7 +529,9 @@ async fn start_download(
         // need ~2x the final size. Failing here beats failing at 99%.
         if let Some(size) = expected_size.filter(|s| *s > 0) {
             if let Ok(available) = fs2::available_space(parent) {
-                let needed = size.saturating_mul(2);
+                // Less what a paused run's partial files already hold: a
+                // resume only needs room for the rest (REVIEW 2026-09-26).
+                let needed = size.saturating_mul(2).saturating_sub(partial_bytes(&output_path));
                 if available < needed {
                     return Err(format!(
                         "Not enough disk space: need ~{} MB free, have {} MB",
@@ -555,6 +558,28 @@ async fn start_download(
         use_cookies.unwrap_or(true),
     ).await;
     Ok(())
+}
+
+/// Bytes already downloaded for the yt-dlp template `template`: the `.part`
+/// files (and HLS/DASH `.part-Frag` pieces) beside it that share its name.
+fn partial_bytes(template: &str) -> u64 {
+    let base = download_manager::template_file(template, "");
+    let base = base.strip_suffix('.').unwrap_or(&base);
+    let base = std::path::Path::new(base);
+    let (Some(dir), Some(prefix)) = (base.parent(), base.file_name().map(|n| n.to_string_lossy().into_owned())) else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.starts_with(&prefix) && (name.ends_with(".part") || name.contains(".part-Frag"))
+        })
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
 }
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
@@ -2250,7 +2275,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 }
                 show_main_window(app);
             }
-            "quit" => app.exit(0),
+            "quit" => lifecycle::request_quit(app),
             _ => {}
         });
     if let Some(icon) = app.default_window_icon() {
@@ -2318,6 +2343,13 @@ pub fn run() {
         // Keep mpv's adopted video window glued to the player window on
         // resize (see player.rs module docs).
         .on_window_event(|window, event| {
+            // Closing the main window hides it (or asks before quitting):
+            // downloads live in this process (see lifecycle.rs).
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    lifecycle::on_main_close_requested(window, api);
+                }
+            }
             #[cfg(target_os = "macos")]
             if window.label() == "player"
                 && matches!(event, tauri::WindowEvent::Resized(_))
@@ -2362,7 +2394,21 @@ pub fn run() {
             #[cfg(debug_assertions)]
             player::verify_player_from_env(app.handle())?;
 
-            setup_tray(app)?;
+            // Like the menu: without a tray Prism still works — but a hidden
+            // window would then have no way back on Windows/Linux, so closing
+            // it quits instead (lifecycle::close_to_tray).
+            match setup_tray(app) {
+                Ok(()) => lifecycle::set_tray_available(true),
+                Err(e) => log::warn!("tray: not available: {e}"),
+            }
+
+            // yt-dlp temp folders earlier runs couldn't clean up (R1.4).
+            tauri::async_runtime::spawn_blocking(|| {
+                let removed = spawn::sweep_stale_unpack_dirs(&std::env::temp_dir());
+                if removed > 0 {
+                    log::info!("removed {removed} stale yt-dlp temp folder(s)");
+                }
+            });
 
             // Watch folders (none configured = a cached settings read every
             // few seconds).
@@ -2457,6 +2503,21 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app, event| {
+            // Every window gone without anyone choosing Quit (e.g. the player
+            // closing while the main window is somehow destroyed): ask rather
+            // than end whatever is running. `app.exit` carries a code and
+            // passes straight through.
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+                api.prevent_exit();
+                lifecycle::request_quit(app);
+                return;
+            }
+            // The Dock icon brings a hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                show_main_window(app);
+                return;
+            }
             // Downloads must not outlive the app: yt-dlp's forked worker is
             // reparented to init and keeps downloading otherwise, racing the
             // next launch for the same files (see `proc`).
@@ -2473,6 +2534,21 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn partial_bytes_counts_this_downloads_parts_only() {
+        let dir = std::env::temp_dir().join(format!("prism-partial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Talk.f137.mp4.part"), vec![0u8; 300]).unwrap();
+        std::fs::write(dir.join("Talk.f140.m4a.part"), vec![0u8; 50]).unwrap();
+        std::fs::write(dir.join("Talk.mp4.part-Frag7"), vec![0u8; 5]).unwrap();
+        std::fs::write(dir.join("Other.mp4.part"), vec![0u8; 999]).unwrap();
+        std::fs::write(dir.join("Talk.en.srt"), vec![0u8; 999]).unwrap();
+        let template = dir.join("Talk.%(ext)s").to_string_lossy().into_owned();
+        assert_eq!(super::partial_bytes(&template), 355);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     #[test]
@@ -2727,6 +2803,41 @@ mod tests {
         ] {
             assert!(write(&refused).is_err(), "the webview could write {refused}");
         }
+
+        // Saves keep the previous copy as `<name>.bak.json` and a damaged file
+        // is set aside as `<name>.corrupt-<time>.json` (src/lib/json-store.ts):
+        // renames between top-level JSON names must work, and nothing else.
+        let rename = |from: &str, to: &str| {
+            std::fs::write(data_dir.join(from), b"{}").unwrap();
+            let response = tauri::test::get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: "plugin:fs|rename".into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: InvokeBody::Json(serde_json::json!({
+                        "oldPath": from,
+                        "newPath": to,
+                        "options": { "oldPathBaseDir": 14, "newPathBaseDir": 14 },
+                    })),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            );
+            for f in [from, to] {
+                let _ = std::fs::remove_file(data_dir.join(f));
+            }
+            response
+        };
+        let r = rename(&format!("{tag}.json"), &format!("{tag}.bak.json"));
+        assert!(r.is_ok(), "keeping a backup copy was refused: {r:?}");
+        let r = rename(&format!("{tag}.json"), &format!("{tag}.corrupt-2026-09-26T10-00-00-000Z.json"));
+        assert!(r.is_ok(), "setting a damaged file aside was refused: {r:?}");
+        assert!(
+            rename(&format!("{tag}.json"), &format!("engine/{tag}")).is_err(),
+            "the webview could move a file into engine/"
+        );
     }
 
     /// The commands `generate_handler!` registers, read from this file.

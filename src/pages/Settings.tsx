@@ -645,7 +645,10 @@ export default function Settings() {
                 <SettingRow label="Max concurrent downloads" description="Transfers running at the same time">
                   <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
                 </SettingRow>
-                <SettingRow label="Retries on failure" description="Attempts before a download is marked failed">
+                <SettingRow label="Keep running when the window is closed" description="Downloads carry on in the background; open Prism again from the tray or Dock. Quitting asks first while anything is running">
+                  <Toggle checked={p.closeToTray} onChange={v => updatePreference('closeToTray', v)} />
+                </SettingRow>
+                <SettingRow label="Retries on failure" description="Automatic retries after a dropped connection or a site's rate limit (rate limits wait minutes, not seconds)">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>
                 <SettingRow label="Subscription check interval" description="How often subscribed channels and playlists are checked for new videos">
@@ -797,7 +800,7 @@ export default function Settings() {
 
             <TabsContent value="network" className="mt-0">
               <SettingGroup title="Connection">
-                <SettingRow label="Proxy" help={HELP.proxy} description="Video downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails aren't shown while a proxy is set, since the app would fetch them directly. Empty = direct">
+                <SettingRow label="Proxy" help={HELP.proxy} description="Video and direct downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails aren't shown while a proxy is set, since the app would fetch them directly. Empty = direct">
                   <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
                 </SettingRow>
                 <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">

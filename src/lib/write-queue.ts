@@ -10,7 +10,8 @@
 
 export type WriteFn = (file: string, text: string) => Promise<void>;
 
-export function createWriteQueue(write: WriteFn): WriteFn {
+/** `onError` hears about a write that failed (the next save retries it). */
+export function createWriteQueue(write: WriteFn, onError?: (file: string, error: unknown) => void): WriteFn {
   const running = new Map<string, Promise<void>>();
   const waiting = new Map<string, string>();
 
@@ -20,8 +21,9 @@ export function createWriteQueue(write: WriteFn): WriteFn {
       waiting.delete(file);
       try {
         await write(file, text);
-      } catch {
-        // A failed save is retried by the next one; the caller has moved on.
+      } catch (e) {
+        // Retried by the next save; the caller has moved on, so say so here.
+        onError?.(file, e);
       }
       text = waiting.get(file);
     }

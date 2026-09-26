@@ -82,6 +82,9 @@ export interface DownloadSettings {
   format: FormatOption | null;
   destination: string;
   filename: string;
+  /** Copied from the setting when queued, and no longer read: the budget is
+   * the current "Retries on failure" setting (stores/retry.ts). Kept because
+   * saved queues carry it. */
   retryCount: number;
   startImmediately: boolean;
   audioOnly?: boolean;
@@ -309,7 +312,8 @@ export interface AppPreferences {
   // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
   // Read by the Rust side from settings.json (whitelisted), like audioFormat.
   seedingPolicy: 'stop' | 'ratio' | 'seed';
-  // Optional proxy. yt-dlp routes everything through http(s)/socks proxies;
+  // Optional proxy. yt-dlp and direct downloads route everything through
+  // http(s)/socks proxies;
   // the torrent engine routes only *peer connections* through a socks5://
   // proxy (DHT, trackers and the .torrent/blocklist fetches go direct, and
   // http proxies are ignored for torrents). Empty = direct. Validated Rust-side.
@@ -393,6 +397,10 @@ export interface AppPreferences {
   // Seeding counts as work by default, so a machine doesn't sleep in the
   // middle of uploading. This waives that.
   whenDoneIgnoresSeeding: boolean;
+  // Closing the main window hides it and downloads carry on; Quit (tray, menu,
+  // ⌘Q) asks first while anything runs. Off = closing the window quits (still
+  // asking first). Read Rust-side (src-tauri/src/lifecycle.rs).
+  closeToTray: boolean;
   // Optional global hotkeys — off unless the user assigns one, because a
   // shortcut registered system-wide takes that key away from every other app.
   // Registered Rust-side; see src-tauri/src/shortcuts.rs.
@@ -560,6 +568,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultWhenComplete: 'nothing',
   whenDoneAction: 'nothing',
   whenDoneIgnoresSeeding: false,
+  closeToTray: true,
   librarySort: 'newest',
   libraryView: 'list',
   listDensity: 'comfortable',
