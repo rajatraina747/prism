@@ -32,7 +32,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R1.5** Direct downloads honour a SOCKS proxy.
 - [x] **R1.6** Resume disk-space checks count only the bytes still to download.
 - [x] **R1.7** A tray that can't be created no longer stops Prism starting.
-- [ ] **R1.8** Torrent engine falls back to IPv4 / another port when its listen address is taken.
+- [x] **R1.8** Torrent engine falls back to IPv4 / another port when its listen address is taken.
 
 ### Phase 2 — Link intake and honest formats
 - [ ] **R2.1** One lookup (`-J --flat-playlist`) decides video vs playlist for single and batch adds; downloads pass `--no-playlist`.
