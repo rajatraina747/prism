@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   'settings.json': 'your settings',
   'subscriptions.json': 'your subscriptions',
   'stats.json': 'your statistics',
+  'prism.db': 'your queue and Library',
 };
 
 /** What to tell the user, as a toast title and description. */

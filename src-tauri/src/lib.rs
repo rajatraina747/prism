@@ -23,6 +23,7 @@ mod quarantine;
 mod rss;
 mod shortcuts;
 mod spawn;
+mod store;
 mod stream_server;
 mod template;
 mod thumbnails;
@@ -701,7 +702,6 @@ fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
         },
         trackers: extra_trackers(app),
         persistence_dir: app_data.as_ref().map(|d| d.join("torrent-session")),
-        queue_file: app_data.as_ref().map(|d| d.join("queue.json")),
         torrent_cache_dir: app_data.as_ref().map(|d| d.join("torrents")),
         // Beside the ledger: a folder the page can't write (see ledger.rs).
         claims_file: app_data.as_ref().map(|d| d.join("ledger").join("torrent-claims.json")),
@@ -2368,6 +2368,7 @@ pub fn run() {
         .manage(torrent::TorrentManager::new())
         .manage(stream_server::StreamServer::new())
         .manage(player_state::PlayerState::new())
+        .manage(store::Store::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .manage(updater::PendingUpdate::default())
         // Embedded player (separate "player" window). The plugin cleans up its
@@ -2487,6 +2488,10 @@ pub fn run() {
             thumbnails::cache_thumbnail,
             missing_files,
             restart_torrent_engine,
+            store::store_load,
+            store::store_save_queue,
+            store::store_update_history,
+            store::store_save_doc,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,

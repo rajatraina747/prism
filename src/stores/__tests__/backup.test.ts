@@ -84,9 +84,13 @@ describe('merging', () => {
     expect(merged.map(h => `${h.id}@${h.completedAt.slice(8, 10)}`)).toEqual(['a@05', 'c@03', 'b@02']);
   });
 
-  it('caps the Library like the app does', () => {
+  // The Library lives in the database now and has no cap: an import keeps
+  // everything, newest first.
+  it('keeps the whole Library, newest first', () => {
     const many = Array.from({ length: 2500 }, (_, i) => item(`i${i}`, new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString()));
-    expect(mergeHistory([], many)).toHaveLength(2000);
+    const merged = mergeHistory([], many);
+    expect(merged).toHaveLength(2500);
+    expect(merged[0].id).toBe('i2499');
   });
 
   it("adds new feeds and keeps this machine's copy of ones it already has", () => {

@@ -104,9 +104,6 @@ pub struct SessionConfig {
     /// Where librqbit persists session state + have-pieces bitfields so a
     /// restart resumes without a full re-hash. None = no persistence.
     pub persistence_dir: Option<PathBuf>,
-    /// The page's saved queue. Read once at engine start to drop persisted
-    /// torrents no queue item refers to any more (see `prune_persisted`).
-    pub queue_file: Option<PathBuf>,
     /// Where resolved `.torrent` metadata is cached (`<infohash>.torrent`) so a
     /// retry of a magnet knows its size and files without any peers.
     pub torrent_cache_dir: Option<PathBuf>,
@@ -311,7 +308,11 @@ async fn ensure_session(
     if let Some((s, _)) = guard.as_ref() {
         return Ok(s.clone());
     }
-    if let (Some(dir), Some(queue)) = (&cfg.persistence_dir, cfg.queue_file.as_deref().and_then(queue_torrents)) {
+    // The saved queue (store.rs), read once at engine start to drop persisted
+    // torrents no queue item refers to any more. None (the database couldn't
+    // be read) drops nothing.
+    let saved_queue = crate::store::queue_items(app);
+    if let (Some(dir), Some(queue)) = (&cfg.persistence_dir, saved_queue.as_deref().map(queue_torrents)) {
         let dropped = prune_persisted(dir, &queue);
         if !dropped.is_empty() {
             log::info!(
@@ -458,13 +459,10 @@ impl QueueTorrents {
     }
 }
 
-/// Read `queue.json`. None when it is missing or unreadable, so nothing is
-/// dropped on a guess.
-fn queue_torrents(queue_file: &Path) -> Option<QueueTorrents> {
-    let text = std::fs::read_to_string(queue_file).ok()?;
-    let items: Vec<serde_json::Value> = serde_json::from_str(&text).ok()?;
+/// The torrents a saved queue refers to.
+fn queue_torrents(items: &[serde_json::Value]) -> QueueTorrents {
     let mut queue = QueueTorrents::default();
-    for item in &items {
+    for item in items {
         let url = item["metadata"]["source"]["url"].as_str().unwrap_or_default();
         if item["kind"] != "torrent" && !url.to_ascii_lowercase().starts_with("magnet:") {
             continue;
@@ -485,7 +483,7 @@ fn queue_torrents(queue_file: &Path) -> Option<QueueTorrents> {
             }
         }
     }
-    Some(queue)
+    queue
 }
 
 /// Info hash of a magnet or a local `.torrent` file; None for an http link.
@@ -2245,9 +2243,8 @@ mod tests {
                 "outputFolder": dir.join("dl").join("linked"),
             },
         ]);
-        std::fs::write(dir.join("queue.json"), queue.to_string()).unwrap();
         let session_dir = dir.join("session");
-        let dropped = prune_persisted(&session_dir, &queue_torrents(&dir.join("queue.json")).unwrap());
+        let dropped = prune_persisted(&session_dir, &queue_torrents(queue.as_array().unwrap()));
         assert_eq!(dropped, vec![hash(&orphan)]);
         assert!(!session_dir.join(format!("{}.torrent", hash(&orphan))).exists());
         assert!(session_dir.join(format!("{}.torrent", hash(&wanted))).exists());
@@ -2263,14 +2260,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn an_unreadable_queue_drops_nothing() {
-        let dir = std::env::temp_dir().join(format!("prism-noqueue-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(queue_torrents(&dir.join("queue.json")).is_none());
-        std::fs::write(dir.join("queue.json"), "[{\"kind\":").unwrap();
-        assert!(queue_torrents(&dir.join("queue.json")).is_none());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }

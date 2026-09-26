@@ -17,7 +17,6 @@ import { migrateSettings } from '@/stores/settings-migrations';
 
 export const BACKUP_FORMAT = 'prism-export';
 export const BACKUP_VERSION = 1;
-const HISTORY_CAP = 2000;
 
 /** Settings that name folders on this machine; import keeps the current ones. */
 const LOCAL_FOLDER_SETTINGS = ['defaultSaveFolder', 'moveCompletedTo', 'watchFolders'] as const;
@@ -102,7 +101,8 @@ export function mergeSettings(current: AppPreferences, incoming: Partial<AppPref
 }
 
 /** The Library after an import: both sets, one entry per id (the newer
- * record wins), newest first, capped like the Library itself. */
+ * record wins), newest first. (The Library has no cap since it moved into
+ * the database.) */
 export function mergeHistory(current: HistoryItem[], incoming: HistoryItem[]): HistoryItem[] {
   const byId = new Map<string, HistoryItem>();
   for (const item of [...current, ...incoming]) {
@@ -110,8 +110,7 @@ export function mergeHistory(current: HistoryItem[], incoming: HistoryItem[]): H
     if (!existing || item.completedAt > existing.completedAt) byId.set(item.id, item);
   }
   return [...byId.values()]
-    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
-    .slice(0, HISTORY_CAP);
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
 }
 
 /** Subscriptions after an import: one per feed URL, keeping this machine's

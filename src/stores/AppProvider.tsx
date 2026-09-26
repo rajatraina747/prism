@@ -322,8 +322,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (acc, i) => recordCompletion(acc, i, i.status as 'completed' | 'failed' | 'canceled'),
         s,
       ));
-      // Cap history so history.json can't grow (and load/render) unboundedly
-      setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
+      // No cap: the Library lives in the database now (store.rs), where a
+      // finished download is one row, not a rewrite of the whole list.
+      setHistory(prev => [...historyItems, ...prev]);
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
 
       // Content-level duplicates. Only answerable once a file exists, so it
@@ -792,7 +793,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a restored entry lands back where it was rather than at the top.
       prev.some(i => i.id === item.id)
         ? prev
-        : [...prev, item].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 2000)
+        : [...prev, item].sort((a, b) => b.completedAt.localeCompare(a.completedAt))
     ));
   }, []);
 

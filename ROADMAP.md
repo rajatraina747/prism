@@ -64,7 +64,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R5.3** Extension: "Download link with Prism" on links.
 
 ### Phase 6 — Queue owned by Rust, stored in SQLite
-- [ ] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).
+- [x] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).
 - [ ] **R6.2** Rust `QueueManager`: transitions, scheduling, retries, quiet hours, when-done.
 - [ ] **R6.3** The UI becomes a view of Rust's queue.
 - [ ] **R6.4** Retire `finished.rs`, `jobs.rs` tickets and Rust's reading of `queue.json`.
