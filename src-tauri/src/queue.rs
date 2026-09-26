@@ -425,10 +425,16 @@ pub fn emit_progress<T: Serialize>(app: &AppHandle, id: &str, payload: &T) {
     let was = rules::status(item).to_string();
     if rules::apply_progress(item, &data, seeding) {
         let now_seeding = rules::status(item) != was;
+        let listed = now_seeding.then(|| {
+            let item = item.clone();
+            Archived { history: rules::seeding_entry(&item, &now()), item: Value::Object(item), stage: "seeding" }
+        });
         inner.touched(id, now_seeding);
-        if now_seeding {
+        if let Some(entry) = listed {
             drop(inner);
-            // A torrent that starts seeding frees its download slot.
+            // Listed in the Library now, not when seeding ends (which can
+            // take days); and its download slot is free.
+            list_in_library(app, vec![entry]);
             tick(app);
         }
     }
@@ -630,6 +636,25 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
 struct Archived {
     history: Value,
     item: Value,
+    /// "final" when the item left the queue (count it); "seeding" for a
+    /// torrent listed while it seeds, "update" for that entry changing.
+    stage: &'static str,
+}
+
+/// Write Library entries without taking anything out of the queue: a
+/// torrent listed when it starts seeding, or that entry updated.
+fn list_in_library(app: &AppHandle, entries: Vec<Archived>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let rows: Vec<Value> = entries.iter().map(|e| e.history.clone()).collect();
+        let handle = app.clone();
+        let saved = tauri::async_runtime::spawn_blocking(move || crate::store::add_history(&handle, &rows)).await;
+        if matches!(saved, Ok(Ok(()))) {
+            let _ = app.emit("queue-archived", entries);
+        } else {
+            log::warn!("queue: couldn't list a seeding torrent in the Library");
+        }
+    });
 }
 
 async fn archive_due(app: &AppHandle) {
@@ -648,8 +673,10 @@ async fn archive_due(app: &AppHandle) {
         return;
     }
     let stamp = now();
-    let entries: Vec<Archived> =
-        due.iter().map(|i| Archived { history: rules::history_entry(i, &stamp), item: Value::Object(i.clone()) }).collect();
+    let entries: Vec<Archived> = due
+        .iter()
+        .map(|i| Archived { history: rules::history_entry(i, &stamp), item: Value::Object(i.clone()), stage: "final" })
+        .collect();
     let rows: Vec<Value> = entries.iter().map(|e| e.history.clone()).collect();
     let saved = {
         let app = app.clone();
@@ -804,8 +831,17 @@ pub fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn queue_remove(app: AppHandle, id: String) -> Result<(), String> {
+    // Asked before stopping it: a seeding torrent reports itself completed
+    // the moment its engine lets go.
+    let was_seeding = require(&app)?.lock().find(&id).is_some_and(|i| rules::status(i) == "seeding");
     stop_engine(&app, &id).await;
-    require(&app)?.lock().remove(&id);
+    let removed = require(&app)?.lock().remove(&id);
+    // A torrent removed while seeding stays in the Library, no longer seeding.
+    if let Some(item) = removed.filter(|_| was_seeding) {
+        let mut history = rules::seeding_entry(&item, &now());
+        history["seeding"] = json!(false);
+        list_in_library(&app, vec![Archived { history, item: Value::Object(item), stage: "update" }]);
+    }
     tick(&app);
     Ok(())
 }
@@ -983,7 +1019,12 @@ pub async fn queue_remove_with_data(app: AppHandle, id: String) -> Result<(), St
         inner.paused_native.remove(&id);
         inner.remove(&id);
     }
-    crate::cancel_torrent(app.clone(), id, Some(true)).await?;
+    crate::cancel_torrent(app.clone(), id.clone(), Some(true)).await?;
+    // Its files are gone: so is the entry listed while it seeded.
+    let handle = app.clone();
+    let gone = id.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || crate::store::remove_history(&handle, &gone)).await;
+    let _ = app.emit("library-removed", vec![id]);
     tick(&app);
     Ok(())
 }

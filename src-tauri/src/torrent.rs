@@ -201,6 +201,12 @@ pub struct TorrentProgress {
     /// fraction of that bucket's pieces we have). Same cadence as `files`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pieces: Vec<u8>,
+    /// Once the download has finished: where its files are (seeding keeps
+    /// them there until it ends), so the Library can list it while it seeds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
 }
 
 /// One connected (or recently seen) peer, for the Peers tab.
@@ -830,6 +836,8 @@ impl TorrentManager {
             let mut peerless = PeerlessWatch::new();
             let mut seed_started: Option<Instant> = None;
             let mut cached_bytes = false;
+            // Where the finished files are, worked out once when it finishes.
+            let mut finished_at: Option<Option<String>> = None;
 
             loop {
                 // Removal from the map is the cancel signal — exit without emitting
@@ -968,6 +976,9 @@ impl TorrentManager {
                     Vec::new()
                 };
 
+                if stats.finished && finished_at.is_none() {
+                    finished_at = Some(resolve_completion_path(&handle, &output_dir));
+                }
                 crate::queue::emit_progress(
                     &app,
                     &id,
@@ -986,6 +997,8 @@ impl TorrentManager {
                         uploaded_bytes: uploaded,
                         peerless_secs,
                         seeding: stats.finished,
+                        output_folder: finished_at.as_ref().map(|_| output_dir.clone()),
+                        file_path: finished_at.clone().flatten(),
                         files,
                         pieces,
                     },

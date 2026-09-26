@@ -569,6 +569,9 @@ const LibraryRow = React.memo(function LibraryRow({
             {item.settings.labelIds?.map(id => labelNames?.[id]).filter(Boolean).map(name => (
               <span key={name} className="px-1.5 rounded bg-primary/10 text-primary/90">{name}</span>
             ))}
+            {item.seeding && (
+              <span className="px-1.5 rounded bg-primary/10 text-primary/90" title="Finished downloading and still uploading to others; see Transfers">Seeding</span>
+            )}
             {missing && (
               <span className="px-1.5 rounded bg-destructive/10 text-destructive" title="The file has been moved or deleted outside Prism">Missing</span>
             )}

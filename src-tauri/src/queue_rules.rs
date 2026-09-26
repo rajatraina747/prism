@@ -568,6 +568,18 @@ pub fn history_entry(item: &Item, now: &str) -> Value {
     entry
 }
 
+/// The Library entry for a torrent that has finished downloading and is
+/// seeding: listed now (its files are there to play), marked so, and
+/// replaced by the final entry when seeding ends.
+pub fn seeding_entry(item: &Item, now: &str) -> Value {
+    let mut copy = item.clone();
+    copy.insert("status".into(), json!("completed"));
+    copy.entry("completedAt").or_insert_with(|| json!(now));
+    let mut entry = history_entry(&copy, now);
+    entry["seeding"] = json!(true);
+    entry
+}
+
 /// A torrent's file list and pieces map are runtime detail; they come back
 /// with the next progress tick and aren't saved.
 pub fn slim_for_saving(item: &Item) -> Value {
@@ -596,6 +608,8 @@ pub fn progress_fields(payload: &Value) -> (Item, bool) {
         ("peerless_secs", "peerlessSecs"),
         ("files", "files"),
         ("pieces", "pieces"),
+        ("output_folder", "outputFolder"),
+        ("file_path", "filePath"),
     ] {
         if let Some(v) = p.get(from) {
             out.insert(to.into(), v.clone());
@@ -834,6 +848,14 @@ mod tests {
         assert_eq!(h["completedAt"], "now");
         let failed = item("f", "failed", json!({"downloadedBytes": 4, "error": {"message": "x"}}));
         assert_eq!(history_entry(&failed, "t")["fileSize"], 4.0);
+    }
+
+    #[test]
+    fn a_seeding_torrent_is_listed_as_seeding() {
+        let t = item("t", "seeding", json!({"kind": "torrent", "totalBytes": 10, "filePath": "/d/a.mkv", "files": [{"name": "a.mkv", "size": 10}]}));
+        let e = seeding_entry(&t, "now");
+        assert_eq!((e["status"].as_str(), e["seeding"].as_bool(), e["filePath"].as_str()), (Some("completed"), Some(true), Some("/d/a.mkv")));
+        assert_eq!(e["files"], json!([{"name": "a.mkv", "size": 10}]));
     }
 
     #[test]

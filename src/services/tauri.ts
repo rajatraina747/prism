@@ -149,6 +149,11 @@ export class TauriPrismService implements IPrismService {
   private _initDone = false;
   readonly queue = rustQueue;
 
+  onLibraryRemoved(handler: (ids: string[]) => void): () => void {
+    const stop = listen<string[]>('library-removed', e => handler(e.payload));
+    return () => { stop.then(f => f()).catch(() => {}); };
+  }
+
   async init(): Promise<void> {
     // Thumbnails from a local copy, fetched once through the proxy.
     setThumbResolver(async url => convertFileSrc(await invoke<string>('cache_thumbnail', { url })));

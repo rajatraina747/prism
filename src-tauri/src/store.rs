@@ -215,6 +215,11 @@ pub(crate) fn add_history(app: &AppHandle, entries: &[Value]) -> Result<(), Stri
     })
 }
 
+/// Remove one Library entry.
+pub(crate) fn remove_history(app: &AppHandle, id: &str) -> Result<(), String> {
+    with_db(app, |conn| conn.execute("DELETE FROM history WHERE id = ?1", params![id]).map(|_| ()).map_err(sql_err))
+}
+
 /// The ids the Library holds.
 pub(crate) fn history_ids(app: &AppHandle) -> std::collections::HashSet<String> {
     with_db(app, |conn| {

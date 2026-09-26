@@ -130,6 +130,8 @@ export interface IPrismService {
   /** The desktop app's queue, owned by Rust (src-tauri/src/queue.rs). Absent
    * in the browser demo, which runs its queue in the page. */
   readonly queue?: RemoteQueue;
+  /** Library entries Rust removed (a torrent deleted with its files). */
+  onLibraryRemoved?(handler: (ids: string[]) => void): () => void;
 
   // Download lifecycle — returns a cancel/cleanup function
   startDownload(

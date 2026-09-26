@@ -16,6 +16,9 @@ export interface QueuePatch {
 export interface ArchivedEntry {
   history: HistoryItem;
   item: DownloadItem;
+  /** 'final': the item left the queue (counted in statistics). 'seeding': a
+   * torrent listed while it seeds; 'update': that entry changed. */
+  stage?: 'final' | 'seeding' | 'update';
 }
 
 /** What `queue-notice` carries (queue.rs `Notice`). */

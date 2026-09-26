@@ -564,6 +564,9 @@ export interface HistoryItem {
   /** Video height actually delivered, when it differs from what the format
    * label promised (see DownloadItem.actualHeight). */
   actualHeight?: number;
+  /** A torrent listed as soon as it finished downloading, still seeding
+   * (Transfers has the live item). Cleared when seeding ends. */
+  seeding?: boolean;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {

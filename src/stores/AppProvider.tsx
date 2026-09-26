@@ -448,16 +448,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stop = remote.subscribe({
       changed: patch => dispatchRemote({ type: 'patch', patch }),
       archived: entries => {
+        // A torrent is listed when it starts seeding and its entry replaced
+        // when seeding ends: the same id, the newer entry.
         setHistory(prev => {
+          const incoming = new Map(entries.map(e => [e.history.id, e.history]));
+          const kept = prev.map(h => incoming.get(h.id) ?? h);
           const known = new Set(prev.map(h => h.id));
-          return [...entries.map(e => e.history).filter(h => !known.has(h.id)), ...prev];
+          return [...entries.map(e => e.history).filter(h => !known.has(h.id)), ...kept];
         });
-        setStats(s => entries.reduce(
+        // Counted once, when the item leaves the queue.
+        const final = entries.filter(e => (e.stage ?? 'final') === 'final');
+        setStats(s => final.reduce(
           (acc, e) => recordCompletion(acc, e.item, e.item.status as 'completed' | 'failed' | 'canceled'),
           s,
         ));
         // Content-level duplicates: only answerable once a file exists.
-        for (const { item } of entries) {
+        for (const { item } of final) {
           if (item.status !== 'completed' || !item.filePath) continue;
           void serviceRef.current
             .indexDownload(item.filePath, item.metadata.title)
@@ -500,12 +506,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       },
     });
+    // A torrent removed along with its files leaves the Library too.
+    const stopRemoved = service.onLibraryRemoved?.(ids => setHistory(prev => prev.filter(h => !ids.includes(h.id))));
     // After listening, so nothing between the two is missed.
     remote.snapshot()
       .then(items => dispatchRemote({ type: 'snapshot', items }))
       .catch(reportQueueError);
-    return stop;
-  }, [remote]);
+    return () => { stop(); stopRemoved?.(); };
+  }, [remote, service]);
 
   // Auto-start queued items
   useEffect(() => {
