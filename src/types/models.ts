@@ -144,6 +144,12 @@ export interface PlaylistInfo {
   entries: PlaylistEntry[];
 }
 
+/** What a link turned out to be (Rust `lookup::inspect_url`): one video with
+ * its formats, or a list of entries. */
+export type InspectResult =
+  | { kind: 'video'; metadata: MediaMetadata }
+  | { kind: 'playlist'; playlist: PlaylistInfo };
+
 export interface DownloadItem {
   id: string;
   metadata: MediaMetadata;

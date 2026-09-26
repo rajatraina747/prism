@@ -13,7 +13,7 @@ import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
@@ -126,18 +126,41 @@ function describeExternalLink(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-/** Detect if a URL looks like a playlist (heuristic). */
-function looksLikePlaylist(url: string): boolean {
-  try {
-    const u = new URL(url);
-    // YouTube playlist
-    if (u.hostname.includes('youtube') || u.hostname.includes('youtu.be')) {
-      if (u.pathname === '/playlist' || u.searchParams.has('list')) return true;
-    }
-    // Other common patterns
-    if (u.pathname.includes('/playlist') || u.pathname.includes('/sets/')) return true;
-  } catch { /* not a valid URL, continue */ }
-  return false;
+/** A queue item for one entry of a list, straight from the flat lookup
+ * (title, duration and thumbnail are already known): no per-video lookup, and
+ * `format` is the preset's synthesized filter, resolved when it starts. */
+function playlistEntryItem(
+  entry: PlaylistEntry,
+  format: FormatOption | null,
+  destination: string,
+  retryCount: number,
+  speedLimit: number | undefined,
+): DownloadItem {
+  return {
+    id: generateId(),
+    metadata: {
+      title: entry.title,
+      duration: entry.duration,
+      thumbnail: entry.thumbnail,
+      source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
+      formats: [],
+    },
+    settings: {
+      format,
+      destination,
+      filename: sanitizeFilename(entry.title),
+      retryCount,
+      startImmediately: true,
+      speedLimit,
+    },
+    status: 'queued',
+    progress: 0,
+    speed: 0,
+    eta: 0,
+    downloadedBytes: 0,
+    totalBytes: 500_000_000,
+    retryAttempt: 0,
+  };
 }
 
 export default function Dashboard() {
@@ -282,24 +305,30 @@ export default function Dashboard() {
     }
     setIsParsing(true);
     try {
-      // Check if it looks like a playlist
-      if (looksLikePlaylist(url)) {
-        try {
-          const playlist = await service.parsePlaylist(url);
-          if (playlist.entries.length > 1) {
-            setParsedPlaylist(playlist);
-            setShowPlaylistModal(true);
-            setIsParsing(false);
-            return;
-          }
-          // Single-entry "playlist" — fall through to single parse
-        } catch {
-          // Not a playlist or failed — fall through to single parse
+      lastParsedUrlRef.current = url;
+      // One lookup says whether this is a video or a list (a playlist, a
+      // channel, an album…) — no guessing from the URL.
+      const target = mixVideoUrl(url) ?? url;
+      let found = await service.inspectUrl(target);
+      if (found.kind === 'playlist') {
+        const { entries } = found.playlist;
+        if (entries.length > 1) {
+          setParsedPlaylist(found.playlist);
+          setShowPlaylistModal(true);
+          return;
+        }
+        if (entries.length === 0) {
+          setParseError({ message: 'That list has no videos Prism can download' });
+          return;
+        }
+        // A list of one is that one video.
+        found = await service.inspectUrl(entries[0].url);
+        if (found.kind !== 'video') {
+          setParseError({ message: 'Couldn’t read that link' });
+          return;
         }
       }
-
-      lastParsedUrlRef.current = url;
-      const metadata = await service.parseUrl(url);
+      const { metadata } = found;
       // The same video under a URL the check above didn't recognise: now the
       // lookup has named it (extractor + the site's own id), ask again.
       if (dup === null) {
@@ -377,7 +406,23 @@ export default function Dashboard() {
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
-        const metadata = await service.parseUrl(urls[i]);
+        const found = await service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]);
+        if (found.kind === 'playlist') {
+          // A list in a batch: every entry, as if chosen in the list dialog.
+          const listFormat = presetToFormat(selectedPreset);
+          for (const entry of found.playlist.entries) {
+            if (findDuplicate(entry.url, [...queueItems, ...added], []) === 'queue') {
+              skipped++;
+              continue;
+            }
+            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined);
+            added.push(item);
+            addToQueue(item);
+          }
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
+        const { metadata } = found;
         // Two URLs for the same video, one of them already queued (or earlier
         // in this batch): the lookup's mediaKey says so where the URLs don't.
         if (findMediaDuplicate(metadata.mediaKey, [...queueItems, ...added], []) === 'queue') {
@@ -459,31 +504,7 @@ export default function Dashboard() {
     const format = presetToFormat(selectedPreset);
 
     for (const entry of entries) {
-      addToQueue({
-        id: generateId(),
-        metadata: {
-          title: entry.title,
-          duration: entry.duration,
-          thumbnail: entry.thumbnail,
-          source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
-          formats: [],
-        },
-        settings: {
-          format,
-          destination: preferences.defaultSaveFolder,
-          filename: sanitizeFilename(entry.title),
-          retryCount: preferences.defaultRetryCount,
-          startImmediately: true,
-          speedLimit: speedLimitBytes || undefined,
-        },
-        status: 'queued',
-        progress: 0,
-        speed: 0,
-        eta: 0,
-        downloadedBytes: 0,
-        totalBytes: 500_000_000,
-        retryAttempt: 0,
-      });
+      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined));
     }
 
     setShowPlaylistModal(false);

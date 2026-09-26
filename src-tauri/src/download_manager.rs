@@ -273,6 +273,11 @@ impl DownloadManager {
                 args.push(format!("chapter:{}", chapter_template(&output_path)));
             }
 
+            // Every item is one video. A watch URL that also names a list
+            // (`&list=`) would otherwise download the whole list into this
+            // one item's name.
+            args.push("--no-playlist".into());
+
             // Resume partial (.part) files from a previous paused/cancelled run.
             // The frontend reuses the same output template per queue item, so a
             // killed download picks up where it left off instead of restarting.

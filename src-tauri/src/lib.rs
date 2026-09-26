@@ -10,6 +10,7 @@ mod errors;
 mod http_engine;
 mod jobs;
 mod lifecycle;
+mod lookup;
 mod ledger;
 mod migrate;
 mod mpv_worker;
@@ -106,7 +107,7 @@ struct YtDlpFormat {
 }
 
 #[derive(Debug, Deserialize)]
-struct YtDlpInfo {
+pub(crate) struct YtDlpInfo {
     title: Option<String>,
     duration: Option<f64>,
     thumbnail: Option<String>,
@@ -135,16 +136,24 @@ pub(crate) fn media_key(extractor_key: Option<&str>, id: Option<&str>) -> Option
 }
 
 #[derive(Debug, Deserialize)]
-struct YtDlpPlaylistEntry {
-    url: Option<String>,
-    title: Option<String>,
-    duration: Option<f64>,
-    thumbnails: Option<Vec<YtDlpThumbnail>>,
+pub(crate) struct YtDlpPlaylistEntry {
+    pub(crate) url: Option<String>,
+    pub(crate) title: Option<String>,
+    pub(crate) duration: Option<f64>,
+    pub(crate) thumbnails: Option<Vec<YtDlpThumbnail>>,
+    /// yt-dlp's extractor for the entry (`Youtube`) and the site's own id:
+    /// together they rebuild a URL when a flat entry carries only the id.
+    #[serde(default)]
+    pub(crate) ie_key: Option<String>,
+    #[serde(default)]
+    pub(crate) id: Option<String>,
+    #[serde(default)]
+    pub(crate) webpage_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct YtDlpThumbnail {
-    url: Option<String>,
+pub(crate) struct YtDlpThumbnail {
+    pub(crate) url: Option<String>,
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -232,6 +241,24 @@ pub(crate) async fn run_ytdlp_capture(
     }
 }
 
+/// The network flags every lookup shares: address family, browser cookies
+/// and proxy, each already whitelisted by its accessor.
+pub(crate) fn lookup_network_args(app: &AppHandle) -> Vec<String> {
+    let mut args = Vec::new();
+    if force_ipv4(app) {
+        args.push("--force-ipv4".into());
+    }
+    if let Some(browser) = cookies_browser(app) {
+        args.push("--cookies-from-browser".into());
+        args.push(browser);
+    }
+    if let Some(proxy) = proxy_url(app) {
+        args.push("--proxy".into());
+        args.push(proxy);
+    }
+    args
+}
+
 /// The yt-dlp command for a lookup; a missing engine is its own error code.
 fn lookup_command(app: &AppHandle) -> Result<spawn::CommandSpec, errors::PrismError> {
     engine::ytdlp_command(app).map_err(|e| errors::PrismError::new(errors::ErrorCode::EngineMissing, e))
@@ -244,17 +271,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         "--no-download".into(),
         "--no-warnings".into(),
     ];
-    if force_ipv4(&app) {
-        parse_args.push("--force-ipv4".into());
-    }
-    if let Some(browser) = cookies_browser(&app) {
-        parse_args.push("--cookies-from-browser".into());
-        parse_args.push(browser);
-    }
-    if let Some(proxy) = proxy_url(&app) {
-        parse_args.push("--proxy".into());
-        parse_args.push(proxy);
-    }
+    parse_args.extend(lookup_network_args(&app));
     // `--` terminates options so a URL starting with `-` can't be parsed as a
     // yt-dlp flag (e.g. `--exec`). Defense-in-depth against arg injection.
     parse_args.push("--".into());
@@ -275,11 +292,16 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
 
     let info: YtDlpInfo = serde_json::from_slice(&stdout)
         .map_err(|e| format!("Failed to parse yt-dlp output: {}", e))?;
+    Ok(metadata_from_info(info, &url))
+}
 
+/// The details dialog's view of one video from yt-dlp's JSON: title, source
+/// and the resolutions on offer.
+pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str) -> MediaMetadata {
     let domain = info
         .webpage_url_domain
         .clone()
-        .unwrap_or_else(|| extract_domain(&url));
+        .unwrap_or_else(|| extract_domain(url));
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -370,12 +392,12 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         b_h.cmp(&a_h)
     });
 
-    Ok(MediaMetadata {
+    MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),
         duration: info.duration.unwrap_or(0.0),
         thumbnail: info.thumbnail.unwrap_or_default(),
         source: MediaSource {
-            url: info.webpage_url.unwrap_or_else(|| url.clone()),
+            url: info.webpage_url.unwrap_or_else(|| url.to_string()),
             domain,
             added_at: now,
         },
@@ -383,7 +405,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         description: info.description,
         uploader: info.uploader,
         media_key: media_key(info.extractor_key.as_deref(), info.id.as_deref()),
-    })
+    }
 }
 
 #[tauri::command]
@@ -394,23 +416,13 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         "--no-download".into(),
         "--no-warnings".into(),
     ];
-    if force_ipv4(&app) {
-        playlist_args.push("--force-ipv4".into());
-    }
     // Subscription polls only need the newest entries, not a channel's whole
     // catalog — feeds are newest-first, so a window off the top is enough.
     if let Some(n) = limit.filter(|n| *n > 0) {
         playlist_args.push("--playlist-items".into());
         playlist_args.push(format!("1:{}", n));
     }
-    if let Some(browser) = cookies_browser(&app) {
-        playlist_args.push("--cookies-from-browser".into());
-        playlist_args.push(browser);
-    }
-    if let Some(proxy) = proxy_url(&app) {
-        playlist_args.push("--proxy".into());
-        playlist_args.push(proxy);
-    }
+    playlist_args.extend(lookup_network_args(&app));
     playlist_args.push("--".into()); // options terminator — see parse_url
     playlist_args.push(url.clone());
 
@@ -2439,6 +2451,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_url,
             parse_playlist,
+            lookup::inspect_url,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,
