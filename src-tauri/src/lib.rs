@@ -2105,9 +2105,26 @@ pub async fn find_ffmpeg_blocking(app: &AppHandle) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || find_ffmpeg(&app)).await.ok().flatten()
 }
 
-/// Find ffmpeg on the system. Desktop apps may not have it in PATH,
-/// so we check common locations per platform.
+/// Find ffmpeg, remembering where it was: every download asks, and the last
+/// resort spawns `which`. Only a find is remembered (ffmpeg may be installed
+/// while Prism runs), and only while that file is still there.
 pub fn find_ffmpeg(app: &AppHandle) -> Option<String> {
+    static FOUND: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    if let Some(path) = FOUND.lock().ok().and_then(|g| g.clone()) {
+        if std::path::Path::new(&path).exists() {
+            return Some(path);
+        }
+    }
+    let found = locate_ffmpeg(app);
+    if let Ok(mut guard) = FOUND.lock() {
+        guard.clone_from(&found);
+    }
+    found
+}
+
+/// Look for ffmpeg. Desktop apps may not have it in PATH, so common
+/// locations per platform are checked first.
+fn locate_ffmpeg(app: &AppHandle) -> Option<String> {
     // The LGPL ffmpeg shipped beside the player's libraries wins over whatever
     // is on the machine: it is the build Prism was tested against, and a
     // Finder-launched app often has no useful PATH at all.
@@ -3360,5 +3377,17 @@ mod tests {
             "unexpected version output: {}",
             version
         );
+
+        // The point of the onedir build (REVIEW 2026-09-26): once its files
+        // have been seen, a start takes a fraction of a second, where the
+        // one-file build unpacked itself and took ~5 s on every run. Timed on
+        // the run after the one above, which pays macOS's one-time scan.
+        if bin.parent().is_some_and(|d| d.join("_internal").is_dir()) && cfg!(target_os = "macos") {
+            let started = std::time::Instant::now();
+            let out = std::process::Command::new(&bin).args(["--ignore-config", "--version"]).output().unwrap();
+            assert!(out.status.success());
+            let took = started.elapsed();
+            assert!(took < std::time::Duration::from_secs(2), "yt-dlp took {took:?} to start");
+        }
     }
 }
