@@ -41,7 +41,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R2.4** Audio language (dubs) and multi-language / embedded subtitles.
 - [x] **R2.5** Batch lookups run in parallel.
 - [x] **R2.6** The lookup's info JSON is reused by the download (`--load-info-json`, with fallback).
-- [ ] **R2.7** Progress read from yt-dlp's raw byte counts, not its formatted strings.
+- [x] **R2.7** Progress read from yt-dlp's raw byte counts, not its formatted strings.
 - [ ] **R2.8** Download archive for subscriptions.
 
 ### Phase 3 — Engine speed

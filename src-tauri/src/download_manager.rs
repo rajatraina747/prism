@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 
-use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
@@ -10,10 +9,14 @@ use tokio::sync::Mutex;
 use crate::errors::{classify_output, ErrorCode, PrismError};
 use crate::spawn::{Child, Event};
 
-static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
-static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
-static SPEED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap());
-static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(?:(\d+):)?(\d+):(\d+)").unwrap());
+/// Prefix of the progress lines yt-dlp prints for Prism (`PROGRESS_TEMPLATE`).
+const PROGRESS_MARKER: &str = "PRISM:P=";
+/// yt-dlp's own numbers, not its display strings: those were rounded
+/// ("~ 120.50MiB") and turned back into bytes by Prism, losing precision and
+/// any unit the pattern didn't know (REVIEW 2026-09-26). Missing fields print
+/// `NA`. Fields: downloaded, total, estimated total, speed (B/s), ETA (s),
+/// percent.
+const PROGRESS_TEMPLATE: &str = "PRISM:P=%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s";
 
 /// yt-dlp download processes allowed at once (S-8). The UI caps concurrency
 /// at 10; this is the backstop against a flood of `start_download` calls, so
@@ -189,7 +192,7 @@ impl DownloadManager {
                 "--newline".into(),
                 "--progress".into(),
                 "--progress-template".into(),
-                "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
+                PROGRESS_TEMPLATE.into(),
             ];
 
             if audio_only {
@@ -500,7 +503,7 @@ impl DownloadManager {
                                 if agg.on_line(&line) {
                                     let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
                                 }
-                                if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                if let Some(mut p) = parse_progress(&line, &id) {
                                     agg.apply(&mut p);
                                     if throttle.allow(p.progress) {
                                         let _ = app.emit(&format!("download-progress-{}", id), p);
@@ -528,7 +531,7 @@ impl DownloadManager {
                                 if agg.on_line(&line) {
                                     let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
                                 }
-                                if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
+                                if let Some(mut p) = parse_progress(&line, &id) {
                                     agg.apply(&mut p);
                                     if throttle.allow(p.progress) {
                                         let _ = app.emit(&format!("download-progress-{}", id), p);
@@ -799,68 +802,27 @@ impl PhaseAggregator {
     }
 }
 
-fn parse_progress(
-    line: &str,
-    pct_re: &Regex,
-    size_re: &Regex,
-    speed_re: &Regex,
-    eta_re: &Regex,
-    id: &str,
-) -> Option<DownloadProgress> {
-    let pct = pct_re
-        .captures(line)
-        .and_then(|c| c.get(1))
-        .and_then(|m| m.as_str().parse::<f64>().ok())?;
-
-    let total_bytes = size_re
-        .captures(line)
-        .and_then(|c| {
-            let val: f64 = c.get(1)?.as_str().parse().ok()?;
-            let unit = c.get(2)?.as_str();
-            Some(parse_size(val, unit))
-        })
-        .unwrap_or(0);
-
-    let speed = speed_re
-        .captures(line)
-        .and_then(|c| {
-            let val: f64 = c.get(1)?.as_str().parse().ok()?;
-            let unit = c.get(2)?.as_str();
-            Some(parse_size(val, unit) as f64)
-        })
-        .unwrap_or(0.0);
-
-    let eta = eta_re
-        .captures(line)
-        .and_then(|c| {
-            let hours: f64 = c.get(1).map_or("0", |m| m.as_str()).parse().ok()?;
-            let mins: f64 = c.get(2)?.as_str().parse().ok()?;
-            let secs: f64 = c.get(3)?.as_str().parse().ok()?;
-            Some(hours * 3600.0 + mins * 60.0 + secs)
-        })
-        .unwrap_or(0.0);
-
-    let downloaded = (pct / 100.0 * total_bytes as f64) as u64;
-
+fn parse_progress(line: &str, id: &str) -> Option<DownloadProgress> {
+    let fields: Vec<&str> = line.trim().strip_prefix(PROGRESS_MARKER)?.split('|').collect();
+    if fields.len() < 6 {
+        return None;
+    }
+    let num = |i: usize| fields[i].trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0);
+    let downloaded = num(0).unwrap_or(0.0) as u64;
+    let total = num(1).or_else(|| num(2)).unwrap_or(0.0) as u64;
+    let progress = num(5)
+        .or_else(|| (total > 0).then(|| downloaded as f64 / total as f64 * 100.0))
+        .unwrap_or(0.0)
+        .min(100.0);
     Some(DownloadProgress {
         id: id.to_string(),
         downloaded_bytes: downloaded,
-        total_bytes,
-        progress: pct,
-        speed,
-        eta,
+        total_bytes: total,
+        progress,
+        speed: num(3).unwrap_or(0.0),
+        eta: num(4).unwrap_or(0.0),
         stage: None,
     })
-}
-
-fn parse_size(val: f64, unit: &str) -> u64 {
-    let multiplier = match unit {
-        "KiB" | "KB" => 1024.0,
-        "MiB" | "MB" => 1024.0 * 1024.0,
-        "GiB" | "GB" => 1024.0 * 1024.0 * 1024.0,
-        _ => 1.0,
-    };
-    (val * multiplier) as u64
 }
 
 /// Prefix of the stdout line yt-dlp prints with the finished file's path.
@@ -977,40 +939,38 @@ mod tests {
         assert_eq!(template_file("/dl/a%%(ext)s.%(ext)s", "mkv"), "/dl/a%(ext)s.mkv");
     }
 
+    // As yt-dlp 2026.08.19 prints PROGRESS_TEMPLATE.
     #[test]
-    fn parses_progress_template_line() {
-        let line = " 45.2% of ~ 120.50MiB at 2.5MiB/s ETA 01:23";
-        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "test-id").unwrap();
+    fn parses_yt_dlps_own_numbers() {
+        let p = parse_progress("PRISM:P=3072|1915378|NA|1323021.0378889004|1|0.1603860961126211", "test-id").unwrap();
         assert_eq!(p.id, "test-id");
-        assert!((p.progress - 45.2).abs() < f64::EPSILON);
-        assert_eq!(p.total_bytes, (120.5 * 1024.0 * 1024.0) as u64);
-        assert_eq!(p.speed, 2.5 * 1024.0 * 1024.0);
-        assert_eq!(p.eta, 83.0);
-        assert_eq!(p.downloaded_bytes, (0.452 * 120.5 * 1024.0 * 1024.0) as u64);
+        assert_eq!(p.downloaded_bytes, 3072);
+        assert_eq!(p.total_bytes, 1_915_378);
+        assert!((p.speed - 1_323_021.04).abs() < 0.01);
+        assert_eq!(p.eta, 1.0);
+        assert!((p.progress - 0.16).abs() < 0.001);
     }
 
     #[test]
-    fn parses_eta_with_hours() {
-        let line = " 12.0% of ~ 4.20GiB at 1.0MiB/s ETA 1:02:33";
-        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap();
-        assert_eq!(p.eta, 3600.0 + 2.0 * 60.0 + 33.0);
+    fn an_estimated_total_stands_in_and_missing_numbers_are_zero() {
+        // Fragmented streams (HLS/DASH) often only have an estimate.
+        let p = parse_progress("PRISM:P=500|NA|1000.0|NA|NA|NA", "x").unwrap();
+        assert_eq!(p.total_bytes, 1000);
+        assert_eq!(p.progress, 50.0);
+        assert_eq!((p.speed, p.eta), (0.0, 0.0));
+        let p = parse_progress("PRISM:P=500|NA|NA|NA|NA|NA", "x").unwrap();
+        assert_eq!((p.total_bytes, p.progress), (0, 0.0));
     }
 
     #[test]
-    fn ignores_lines_without_percent() {
-        assert!(parse_progress("[download] Destination: video.mp4", &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").is_none());
-    }
-
-    #[test]
-    fn parses_sizes_by_unit() {
-        assert_eq!(parse_size(1.0, "KiB"), 1024);
-        assert_eq!(parse_size(1.0, "MiB"), 1024 * 1024);
-        assert_eq!(parse_size(2.0, "GiB"), 2 * 1024 * 1024 * 1024);
-        assert_eq!(parse_size(5.0, "??"), 5);
+    fn ignores_everything_else() {
+        assert!(parse_progress("[download] Destination: video.mp4", "x").is_none());
+        assert!(parse_progress("PRISM:PATH=/dl/a.mp4", "x").is_none());
+        assert!(parse_progress("PRISM:P=1|2", "x").is_none());
     }
 
     fn parsed(line: &str) -> DownloadProgress {
-        parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap()
+        parse_progress(line, "x").unwrap()
     }
 
     #[test]
@@ -1019,23 +979,23 @@ mod tests {
         let mut agg = PhaseAggregator::new();
 
         assert!(!agg.on_line("[download] Destination: clip.f616.mp4"));
-        let mut p = parsed(" 50.0% of 100.00MiB at 2.0MiB/s ETA 00:25");
+        let mut p = parsed("PRISM:P=52428800|104857600|NA|0|0|50.0");
         agg.apply(&mut p);
         assert_eq!(p.total_bytes, 100 * MIB);
         assert!((p.progress - 50.0).abs() < 0.1);
 
-        let mut p = parsed("100.0% of 100.00MiB at 2.0MiB/s ETA 00:00");
+        let mut p = parsed("PRISM:P=104857600|104857600|NA|0|0|100.0");
         agg.apply(&mut p);
 
         // Audio file starts: bar must NOT reset — bytes and total accumulate.
         assert!(!agg.on_line("[download] Destination: clip.f140.m4a"));
-        let mut p = parsed(" 10.0% of 10.00MiB at 1.0MiB/s ETA 00:09");
+        let mut p = parsed("PRISM:P=1048576|10485760|NA|0|0|10.0");
         agg.apply(&mut p);
         assert_eq!(p.downloaded_bytes, 101 * MIB);
         assert_eq!(p.total_bytes, 110 * MIB);
         assert!(p.progress > 90.0 && p.progress < 93.0);
 
-        let mut p = parsed("100.0% of 10.00MiB at 1.0MiB/s ETA 00:00");
+        let mut p = parsed("PRISM:P=10485760|10485760|NA|0|0|100.0");
         agg.apply(&mut p);
         assert!((p.progress - 100.0).abs() < 0.01);
 
@@ -1053,7 +1013,7 @@ mod tests {
         let mut agg = PhaseAggregator::new();
         agg.on_line("[download] Destination: live.mp4");
         // No "of <size>" → total 0; percent passes through untouched.
-        let mut p = parsed(" 37.5% at 1.0MiB/s ETA 00:09");
+        let mut p = parsed("PRISM:P=0|NA|NA|0|0|37.5");
         agg.apply(&mut p);
         assert_eq!(p.total_bytes, 0);
         assert!((p.progress - 37.5).abs() < 0.01);
