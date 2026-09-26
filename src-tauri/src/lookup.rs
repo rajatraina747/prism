@@ -172,9 +172,14 @@ pub(crate) fn forget_info(app: &AppHandle, url: &str) {
 }
 
 #[tauri::command]
-pub async fn inspect_url(app: AppHandle, url: String) -> Result<Inspected, PrismError> {
+pub async fn inspect_url(app: AppHandle, url: String, referer: Option<String>) -> Result<Inspected, PrismError> {
     let mut args: Vec<String> = vec!["-J".into(), "--flat-playlist".into(), "--no-warnings".into()];
     args.extend(crate::lookup_network_args(&app));
+    // Embedded players (Vimeo's, among others) only answer the page they're on.
+    if let Some(referer) = referer.as_deref().and_then(crate::http_engine::valid_referer) {
+        args.push("--referer".into());
+        args.push(referer);
+    }
     // Options terminator + URL last (arg-injection defense; see parse_url).
     args.push("--".into());
     args.push(url.clone());

@@ -111,6 +111,9 @@ export interface DownloadSettings {
   embedSubtitles?: boolean;
   /** A dub to download instead of the original track (see audioTracks). */
   audioLanguage?: string;
+  /** The page the link was found on, sent as the Referer (from the browser
+   * extension; some hosts and embedded players require it). */
+  referer?: string;
   speedLimit?: number; // bytes per second, 0 = unlimited
   // Torrent-only: indices of files to download. Undefined = all files.
   selectedFiles?: number[];
@@ -404,6 +407,9 @@ export interface AppPreferences {
   // IPv6 downloads; on by default, which was the hardcoded behaviour before
   // 1.9. Read Rust-side.
   forceIpv4: boolean;
+  // Direct downloads identify as a current browser (many file hosts refuse
+  // anything else); off = as Prism. Read Rust-side (http_engine.rs).
+  browserUserAgent: boolean;
   // Compare the yt-dlp engine with its newest release once a day (cached in
   // Rust) and nudge in the sidebar when it's behind.
   engineAutoCheck: boolean;
@@ -604,6 +610,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   blocklistUrl: '',
   perSitePresets: {},
   forceIpv4: true,
+  browserUserAgent: true,
   engineAutoCheck: true,
   engineAutoUpdate: false,
   filenameTemplate: '{title}',

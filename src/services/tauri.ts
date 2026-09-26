@@ -116,8 +116,8 @@ export class TauriPrismService implements IPrismService {
     return invoke<boolean[]>('missing_files', { paths });
   }
 
-  async inspectUrl(url: string): Promise<InspectResult> {
-    return invoke<InspectResult>('inspect_url', { url });
+  async inspectUrl(url: string, referer?: string): Promise<InspectResult> {
+    return invoke<InspectResult>('inspect_url', { url, referer: referer ?? null });
   }
 
   async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
@@ -257,6 +257,7 @@ export class TauriPrismService implements IPrismService {
           speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
           filenameTemplate: item.settings.filenameTemplate ?? null,
           templateVars: templateVarsFor(item),
+          referer: item.settings.referer ?? null,
         });
         return;
       }
@@ -279,6 +280,7 @@ export class TauriPrismService implements IPrismService {
         audioLanguage: item.settings.audioLanguage ?? null,
         embedSubtitles: item.settings.embedSubtitles ?? false,
         useArchive: item.settings.useArchive ?? false,
+        referer: item.settings.referer ?? null,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         expectedSize: item.settings.format?.fileSize || null,
         clipStart: item.settings.clipStart ?? null,
@@ -683,8 +685,8 @@ export class TauriPrismService implements IPrismService {
     return invoke<EngineInfo>('check_engine_update', { force });
   }
 
-  async probeDirectLink(url: string): Promise<LinkProbe> {
-    return invoke<LinkProbe>('probe_direct_link', { url });
+  async probeDirectLink(url: string, referer?: string): Promise<LinkProbe> {
+    return invoke<LinkProbe>('probe_direct_link', { url, referer: referer ?? null });
   }
 
   async previewFilenameTemplate(template: string, vars: TemplateVars): Promise<string> {

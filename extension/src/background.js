@@ -20,11 +20,16 @@ api.runtime.onInstalled.addListener(() => {
   }
 });
 
-function sendToPrism(tabId, target) {
+// `referrer` is the page a link was on: some file hosts and embedded players
+// only serve requests that come from it. Prism checks it is a plain web page.
+function sendToPrism(tabId, target, referrer) {
   if (!/^https?:\/\//i.test(target || '')) {
     return;
   }
-  const deepLink = 'prism://add?url=' + encodeURIComponent(target);
+  let deepLink = 'prism://add?url=' + encodeURIComponent(target);
+  if (referrer && referrer !== target && /^https?:\/\//i.test(referrer)) {
+    deepLink += '&referrer=' + encodeURIComponent(referrer);
+  }
   // Navigating to an external protocol hands off to the OS handler and leaves
   // the page in place; Firefox may show a "launch application" prompt with a
   // remember-my-choice option.
@@ -35,9 +40,10 @@ api.contextMenus.onClicked.addListener((info, tab) => {
   // For links use the link target; for pages and embedded media use the page
   // URL — media srcUrl is often a blob: or expiring CDN URL that yt-dlp can't
   // extract from anyway.
-  const target = info.menuItemId === 'prism-link' ? info.linkUrl : info.pageUrl;
+  const isLink = info.menuItemId === 'prism-link';
+  const target = isLink ? info.linkUrl : info.pageUrl;
   if (tab && tab.id !== undefined) {
-    sendToPrism(tab.id, target);
+    sendToPrism(tab.id, target, isLink ? info.pageUrl : undefined);
   }
 });
 

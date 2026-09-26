@@ -485,7 +485,10 @@ async fn start_download(
     embed_subtitles: Option<bool>,
     // Subscription items: consult and update yt-dlp's download archive.
     use_archive: Option<bool>,
+    // The page the link came from (embedded players often require it).
+    referer: Option<String>,
 ) -> Result<(), String> {
+    let referer = referer.as_deref().and_then(http_engine::valid_referer);
     // Both end up inside yt-dlp arguments: codes only, nothing else.
     let audio_language = audio_language.filter(|l| !l.is_empty());
     if audio_language.as_deref().is_some_and(|l| !formats::valid_language(l)) {
@@ -551,6 +554,7 @@ async fn start_download(
         download_manager::Extras {
             audio_language,
             embed_subtitles: embed_subtitles.unwrap_or(false),
+            referer,
             archive: use_archive
                 .unwrap_or(false)
                 .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))

@@ -839,6 +839,9 @@ export default function Settings() {
                 <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">
                   <Toggle checked={p.forceIpv4} onChange={v => updatePreference('forceIpv4', v)} />
                 </SettingRow>
+                <SettingRow label="Identify as a browser" description="Direct downloads introduce themselves as a web browser, which many file hosts require. Off = as Prism">
+                  <Toggle checked={p.browserUserAgent} onChange={v => updatePreference('browserUserAgent', v)} />
+                </SettingRow>
               </SettingGroup>
             </TabsContent>
 

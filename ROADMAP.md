@@ -59,9 +59,9 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R4.6** Restart the torrent engine from Settings to apply engine settings.
 
 ### Phase 5 — Direct downloads and the extension
-- [ ] **R5.1** Per-item Referer and a browser-style User-Agent option.
-- [ ] **R5.2** Slow segments are re-split across free connections.
-- [ ] **R5.3** Extension: "Download link with Prism" on links.
+- [x] **R5.1** Per-item Referer and a browser-style User-Agent option.
+- [x] **R5.2** Slow segments are re-split across free connections.
+- [x] **R5.3** Extension: "Download link with Prism" on links.
 
 ### Phase 6 — Queue owned by Rust, stored in SQLite
 - [ ] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).

@@ -5,7 +5,9 @@ Sends the current page (toolbar button) or a right-clicked page or link
 link. Prism must be installed. The first time, the browser asks whether to
 open the link with Prism (tick "remember my choice"). Prism then shows its
 confirmation card before fetching anything, as for any link from outside the
-app.
+app. A right-clicked link also carries the page it was on
+(`&referrer=…`), which Prism sends as the Referer: some file hosts and
+embedded players only answer requests from that page.
 
 It asks for one permission, `contextMenus`, and collects nothing: no network
 requests of its own, no storage, no analytics.

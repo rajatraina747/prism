@@ -114,7 +114,7 @@ export interface IPrismService {
   parseUrl(url: string): Promise<MediaMetadata>;
   /** One lookup that says whether a link is a video (with its formats) or a
    * list (flat entries) — for anything a person adds. */
-  inspectUrl(url: string): Promise<InspectResult>;
+  inspectUrl(url: string, referer?: string): Promise<InspectResult>;
   /** For each path, whether it is a recorded download no longer on disk. */
   missingFiles(paths: string[]): Promise<boolean[]>;
   /** Stop the torrent engine so the next torrent starts it with the current
@@ -257,7 +257,7 @@ export interface IPrismService {
   /** Ask GitHub for the newest yt-dlp; reuses a lookup under a day old unless `force`. */
   checkEngineUpdate(force?: boolean): Promise<EngineInfo>;
   /** What an http(s) link points at — a file (name, size) or a web page. */
-  probeDirectLink(url: string): Promise<LinkProbe>;
+  probeDirectLink(url: string, referer?: string): Promise<LinkProbe>;
   /** The relative path a file name template produces for `vars`; rejects with
    * the template's mistake (unknown placeholder, unclosed brace). */
   previewFilenameTemplate(template: string, vars: TemplateVars): Promise<string>;
