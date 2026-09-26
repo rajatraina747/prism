@@ -105,6 +105,71 @@ pub(crate) fn inspected_from_json(doc: serde_json::Value, url: &str, keep_contai
     Ok(Inspected::Playlist { playlist: PlaylistInfo { title, entries } })
 }
 
+/// How long a lookup's JSON stands in for a fresh extraction. The media URLs
+/// inside it expire (YouTube's after about six hours); well inside that, and
+/// a download that fails on it is retried from the page anyway.
+const INFO_FRESH_FOR: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// Older than this, a cached lookup is swept away.
+const INFO_KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Where the lookup of `url` is kept: a folder the page can't write to (its
+/// file access is top-level JSON only), named by a hash of the URL.
+fn info_path(app: &AppHandle, url: &str) -> Option<std::path::PathBuf> {
+    use sha2::{Digest, Sha256};
+    use tauri::Manager;
+    let digest = Sha256::digest(url.trim().as_bytes());
+    let name: String = digest.iter().take(16).map(|b| format!("{b:02x}")).collect();
+    Some(app.path().app_data_dir().ok()?.join("infojson").join(format!("{name}.json")))
+}
+
+/// Keep a video's lookup so its download can start from it (`--load-info-json`)
+/// instead of extracting the page a second time — which on YouTube means
+/// another yt-dlp start-up and another round of its JavaScript challenges.
+fn remember_info(app: &AppHandle, urls: &[&str], json: &[u8]) {
+    let Some(dir) = info_path(app, "").and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    prune_older_than(&dir, INFO_KEEP_FOR);
+    for url in urls {
+        if let Some(path) = info_path(app, url) {
+            let tmp = path.with_extension("tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
+        }
+    }
+}
+
+fn prune_older_than(dir: &std::path::Path, age: std::time::Duration) {
+    let now = std::time::SystemTime::now();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|a| a > age);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// A fresh lookup of `url`, if one was kept.
+pub(crate) fn fresh_info(app: &AppHandle, url: &str) -> Option<std::path::PathBuf> {
+    let path = info_path(app, url)?;
+    let age = std::fs::metadata(&path).ok()?.modified().ok()?.elapsed().ok()?;
+    (age < INFO_FRESH_FOR).then_some(path)
+}
+
+/// Forget a kept lookup (the download it fed failed).
+pub(crate) fn forget_info(app: &AppHandle, url: &str) {
+    if let Some(path) = info_path(app, url) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 #[tauri::command]
 pub async fn inspect_url(app: AppHandle, url: String) -> Result<Inspected, PrismError> {
     let mut args: Vec<String> = vec!["-J".into(), "--flat-playlist".into(), "--no-warnings".into()];
@@ -122,7 +187,15 @@ pub async fn inspect_url(app: AppHandle, url: String) -> Result<Inspected, Prism
     }
     let doc: serde_json::Value = serde_json::from_slice(&stdout)
         .map_err(|e| PrismError::new(ErrorCode::Unknown, format!("Failed to parse yt-dlp output: {e}")))?;
-    inspected_from_json(doc, &url, crate::keep_original_container(&app)).map_err(|e| PrismError::new(ErrorCode::Unknown, e))
+    let inspected = inspected_from_json(doc, &url, crate::keep_original_container(&app))
+        .map_err(|e| PrismError::new(ErrorCode::Unknown, e))?;
+    if let Inspected::Video { metadata } = &inspected {
+        let page = metadata.source.url.clone();
+        let app = app.clone();
+        let original = url.clone();
+        tauri::async_runtime::spawn_blocking(move || remember_info(&app, &[&original, &page], &stdout));
+    }
+    Ok(inspected)
 }
 
 #[cfg(test)]
