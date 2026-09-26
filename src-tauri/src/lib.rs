@@ -449,46 +449,34 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         return Err("No playlist entries found".into());
     }
 
+    Ok(playlist_from_lines(&lines))
+}
+
+/// A flat `--dump-json` list (one entry per line) as the subscription code
+/// reads it. Entries keep their own site's URLs (`lookup::entry_url`), and the
+/// title is the list's own, which yt-dlp repeats on every line.
+fn playlist_from_lines(lines: &[&str]) -> PlaylistInfo {
+    let mut title: Option<String> = None;
     let mut entries = Vec::new();
-    let mut playlist_title = String::from("Playlist");
-
-    for line in &lines {
-        if let Ok(entry) = serde_json::from_str::<YtDlpPlaylistEntry>(line) {
-            let thumb = entry.thumbnails
-                .and_then(|ts| ts.into_iter().rev().find_map(|t| t.url))
-                .unwrap_or_default();
-
-            let raw_url = entry.url.unwrap_or_default();
-            if raw_url.is_empty() {
-                continue;
-            }
-            // --flat-playlist may return bare video IDs; expand to full URLs
-            let entry_url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
-                raw_url
-            } else {
-                format!("https://www.youtube.com/watch?v={}", raw_url)
-            };
-
-            entries.push(PlaylistEntry {
-                url: entry_url,
-                title: entry.title.unwrap_or_else(|| "Unknown".into()),
-                duration: entry.duration.unwrap_or(0.0),
-                thumbnail: thumb,
-            });
+    for line in lines {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if title.is_none() {
+            title = ["playlist_title", "playlist"]
+                .iter()
+                .find_map(|k| value.get(*k).and_then(|t| t.as_str()))
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(str::to_string);
+        }
+        if let Some(entry) = serde_json::from_value::<YtDlpPlaylistEntry>(value).ok().and_then(lookup::playlist_entry) {
+            entries.push(entry);
         }
     }
-
-    // Try to extract playlist title from the URL
-    if entries.len() > 1 {
-        playlist_title = format!("Playlist ({} videos)", entries.len());
-    } else if entries.len() == 1 {
-        playlist_title = entries[0].title.clone();
-    }
-
-    Ok(PlaylistInfo {
-        title: playlist_title,
-        entries,
-    })
+    let title = title.unwrap_or_else(|| match entries.as_slice() {
+        [only] => only.title.clone(),
+        _ => format!("Playlist ({} videos)", entries.len()),
+    });
+    PlaylistInfo { title, entries }
 }
 
 #[tauri::command]
@@ -2547,6 +2535,19 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn flat_list_lines_keep_their_title_and_their_sites() {
+        let lines = [
+            r#"{"_type":"url","ie_key":"Youtube","url":"https://www.youtube.com/watch?v=a1","title":"One","playlist_title":"Talks 2026"}"#,
+            r#"{"_type":"url","ie_key":"Vimeo","url":"https://vimeo.com/22","title":"Two","playlist_title":"Talks 2026"}"#,
+            r#"{"_type":"url","ie_key":"Dailymotion","url":"x9","title":"No URL"}"#,
+            "not json",
+        ];
+        let list = super::playlist_from_lines(&lines);
+        assert_eq!(list.title, "Talks 2026");
+        let urls: Vec<&str> = list.entries.iter().map(|e| e.url.as_str()).collect();
+        assert_eq!(urls, ["https://www.youtube.com/watch?v=a1", "https://vimeo.com/22"]);
+    }
     #[test]
     fn partial_bytes_counts_this_downloads_parts_only() {
         let dir = std::env::temp_dir().join(format!("prism-partial-{}", std::process::id()));

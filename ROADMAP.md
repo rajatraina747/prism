@@ -36,7 +36,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 
 ### Phase 2 — Link intake and honest formats
 - [x] **R2.1** One lookup (`-J --flat-playlist`) decides video vs playlist for single and batch adds; downloads pass `--no-playlist`.
-- [ ] **R2.2** Playlist entries keep their own URLs (not forced to YouTube) and the real playlist title.
+- [x] **R2.2** Playlist entries keep their own URLs (not forced to YouTube) and the real playlist title.
 - [ ] **R2.3** Format list shows real codec, fps and HDR; no more "MP4 h264/aac" on VP9/AV1.
 - [ ] **R2.4** Audio language (dubs) and multi-language / embedded subtitles.
 - [ ] **R2.5** Batch lookups run in parallel.
