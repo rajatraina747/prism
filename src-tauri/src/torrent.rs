@@ -265,6 +265,9 @@ pub struct SessionStats {
 struct ActiveTorrent {
     handle: ManagedTorrentHandle,
     output_dir: String,
+    /// `output_dir` when it is this torrent's own folder, not the shared
+    /// destination: the one folder a Cancel or a move may tidy away.
+    own_dir: Option<String>,
     /// Uploaded bytes from earlier live phases of this item (folded in on
     /// every pause/reannounce/recheck, since librqbit's counter restarts).
     uploaded_offset: u64,
@@ -858,16 +861,53 @@ impl TorrentManager {
 
             // `output_dir` from here on is the folder the files actually go
             // in (a subfolder of the destination for multi-file torrents).
-            let (handle, output_dir) = match add_or_adopt(&session, &active, &resolved, &add_params).await {
-                Ok(pair) => pair,
-                Err(e) => return emit_failure(&app, &id, e),
+            //
+            // A magnet with no peers can wait for its metadata forever, and a
+            // stop has to reach it (Windows test run 2026-09-26, D8: cancelled
+            // magnets lingered). Dropping the add ends it.
+            let mut adding = std::pin::pin!(add_or_adopt(&session, &active, &resolved, &add_params));
+            let added = loop {
+                match tokio::time::timeout(Duration::from_millis(500), adding.as_mut()).await {
+                    Ok(result) => break Some(result),
+                    Err(_) if ticket.cancelled() => break None,
+                    Err(_) => {}
+                }
             };
+            let (handle, output_dir) = match added {
+                Some(Ok(pair)) => pair,
+                Some(Err(e)) => return emit_failure(&app, &id, e),
+                None => {
+                    // Nothing was added; a Cancel also takes the (empty) folder
+                    // made for it.
+                    if take_discard(&id) {
+                        let own = effective_output_dir(&add_params.output_dir, None, &add_params.fallback_name);
+                        if !same_dir(Path::new(&own), &add_params.output_dir) {
+                            let _ = tauri::async_runtime::spawn_blocking(move || {
+                                crate::postprocess::remove_empty_tree(Path::new(&own))
+                            })
+                            .await;
+                        }
+                    }
+                    log::info!("torrent {id}: stopped before it started");
+                    return;
+                }
+            };
+            // Its own folder (a multi-file torrent's, or a single file's that
+            // would have clashed) — never the shared destination.
+            let own_dir = (!same_dir(Path::new(&output_dir), &add_params.output_dir)).then(|| output_dir.clone());
 
-            // Removed while its metadata was being fetched: take it back out
-            // of the session (files kept), or it would download and seed with
-            // no queue item to show it.
+            // Removed while it was being added: take it back out of the
+            // session, or it would download and seed with no queue item to
+            // show it. Files are kept for a pause, deleted for a Cancel.
             if ticket.cancelled() {
-                let _ = session.delete(TorrentIdOrHash::from(handle.id()), false).await;
+                let discard = take_discard(&id);
+                let _ = session.delete(TorrentIdOrHash::from(handle.id()), discard).await;
+                if let (true, Some(dir)) = (discard, own_dir) {
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        crate::postprocess::remove_empty_tree(Path::new(&dir))
+                    })
+                    .await;
+                }
                 log::info!("torrent {id}: stopped before it started");
                 return;
             }
@@ -878,6 +918,7 @@ impl TorrentManager {
                 ActiveTorrent {
                     handle: handle.clone(),
                     output_dir: output_dir.clone(),
+                    own_dir: own_dir.clone(),
                     uploaded_offset: 0,
                     peer_prev: HashMap::new(),
                     reannounce_requested: false,
@@ -1060,8 +1101,15 @@ impl TorrentManager {
                 );
 
                 if stats.finished {
-                    let started = *seed_started.get_or_insert_with(Instant::now);
+                    let started = *seed_started.get_or_insert_with(|| {
+                        log::info!("torrent {id}: downloaded; seeding");
+                        Instant::now()
+                    });
                     if seeding_complete(policy, ratio, cfg.seed_time_limit, started.elapsed()) {
+                        log::info!(
+                            "torrent {id}: seeding done (ratio {ratio:.2} after {} min)",
+                            started.elapsed().as_secs() / 60
+                        );
                         break;
                     }
                 }
@@ -1087,6 +1135,7 @@ impl TorrentManager {
             // that every other command and progress event runs on (REVIEW
             // 2026-09-26 M3).
             let finish_app = app.clone();
+            let own_dir = own_dir.clone();
             let finished = tauri::async_runtime::spawn_blocking(move || {
                 quarantine_torrent(single_file, file_path.as_deref(), &output_dir);
                 // A multi-file torrent owns its folder and moves as one; a
@@ -1096,6 +1145,11 @@ impl TorrentManager {
                     let moved = file_path
                         .as_deref()
                         .and_then(|path| crate::postprocess::move_file(&finish_app, path));
+                    // A single file in a folder of its own (`name [hash]`, when
+                    // the name clashed) leaves that folder empty (D9).
+                    if let (Some(_), Some(dir)) = (&moved, &own_dir) {
+                        crate::postprocess::remove_empty_tree(Path::new(dir));
+                    }
                     (moved.or(file_path), output_dir)
                 } else {
                     match crate::postprocess::move_folder(&finish_app, &output_dir) {
@@ -1287,10 +1341,15 @@ impl TorrentManager {
     /// emit the same success completion the poll loop would, letting the
     /// frontend record it as completed with an openable path.
     pub async fn cancel_torrent(&self, app: &AppHandle, id: &str, delete_files: bool) -> bool {
+        // Seen by a start still fetching metadata, which tidies up itself.
+        if delete_files {
+            mark_discard(id);
+        }
         crate::jobs::cancel(id);
         let entry = self.active.lock().await.remove(id);
         match entry {
-            Some(ActiveTorrent { handle: h, output_dir, .. }) => {
+            Some(ActiveTorrent { handle: h, output_dir, own_dir, .. }) => {
+                take_discard(id);
                 let stats = h.stats();
                 if stats.finished && !delete_files {
                     let file_path = resolve_completion_path(&h, &output_dir);
@@ -1319,11 +1378,39 @@ impl TorrentManager {
                 if let Some(session) = self.session().await {
                     let _ = session.delete(TorrentIdOrHash::from(h.id()), delete_files).await;
                 }
+                // librqbit deletes the torrent's files, not the folders it made.
+                if let (true, Some(dir)) = (delete_files, own_dir) {
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        crate::postprocess::remove_empty_tree(Path::new(&dir))
+                    })
+                    .await;
+                }
                 true
             }
             None => false,
         }
     }
+}
+
+// ── Cancel = discard ────────────────────────────────────────────────────
+
+/// Torrents whose stop should delete what they wrote (Cancel, "Remove and
+/// delete files") rather than keep it (Pause). A start still fetching
+/// metadata has no handle yet to delete, so it checks here when it stops.
+fn discards() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static DISCARDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    DISCARDS.get_or_init(Default::default)
+}
+
+fn mark_discard(id: &str) {
+    if let Ok(mut set) = discards().lock() {
+        set.insert(id.to_string());
+    }
+}
+
+/// Whether a discard was asked for `id`, clearing the request.
+fn take_discard(id: &str) -> bool {
+    discards().lock().map(|mut set| set.remove(id)).unwrap_or(false)
 }
 
 impl Default for TorrentManager {

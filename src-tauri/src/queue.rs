@@ -388,6 +388,50 @@ fn start_engine(app: &AppHandle, item: Item, quiet_hours_limit: Option<u64>) {
     });
 }
 
+/// The yt-dlp `-o` template a video item downloads under, built the way
+/// `start_engine` and `start_download` build it: the file name template if
+/// the item has one, else its title.
+fn video_template(item: &Item) -> Option<String> {
+    let settings = rules::settings(item)?;
+    let st = |k: &str| settings.get(k).and_then(Value::as_str).filter(|s| !s.is_empty());
+    let dest = crate::expand_tilde(st("destination").unwrap_or("~/Downloads/Prism"));
+    if let (Some(tpl), Some(vars)) = (st("filenameTemplate"), template_vars(item)) {
+        return crate::templated_output_path(&dest, tpl, &vars).ok();
+    }
+    let name = sanitize_filename(st("filename").or(rules::metadata_str(item, "title")).unwrap_or("video"));
+    Some(format!("{}/{}.%(ext)s", ytdlp_literal(&dest), ytdlp_literal(&name)))
+}
+
+/// Cancel, not pause: stop whatever engine runs `id` and delete what it
+/// wrote (Windows test run 2026-09-26: cancelled downloads left `.part`
+/// files, a preallocated 1 GB `.prismpart`, and empty torrent folders).
+async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
+    app.state::<crate::DownloadManager>().discard_download(id).await;
+    crate::http_engine::discard_http_download(app, id).await;
+    app.state::<crate::torrent::TorrentManager>().cancel_torrent(app, id, true).await;
+    let _ = crate::convert::cancel_convert(id.to_string()).await;
+    // A paused video isn't running, so its files are found from the item.
+    // (yt-dlp items are kind "http", the default; direct links are "direct".)
+    if let Some(item) = item.filter(|i| rules::kind(i) == "http") {
+        if let Some(template) = video_template(&item) {
+            let since = item
+                .get("metadata")
+                .and_then(|m| m.get("source"))
+                .and_then(|s| s.get("addedAt"))
+                .and_then(Value::as_str)
+                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                .map(std::time::SystemTime::from)
+                .unwrap_or(std::time::UNIX_EPOCH);
+            let _ = tauri::async_runtime::spawn_blocking(move || crate::download_manager::discard_stopped(&template, since)).await;
+        }
+    }
+    if let Some(state) = manager(app) {
+        let mut inner = state.lock();
+        inner.running.remove(id);
+        inner.paused_native.remove(id);
+    }
+}
+
 /// Stop whatever engine runs `id` (each is a no-op for an id it doesn't own).
 async fn stop_engine(app: &AppHandle, id: &str) {
     let _ = crate::cancel_download(app.clone(), id.to_string()).await;
@@ -570,8 +614,13 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
             }
             let attempt = rules::num(item, "retryAttempt") as u32;
             retry_in = rules::retry_delay_ms(attempt, prefs.retry_budget, category, code, message);
-            if retry_in.is_some() {
+            if let Some(delay) = retry_in {
                 // Holds its slot while it waits: a pause or cancel meanwhile wins.
+                let at = chrono::Utc::now() + chrono::Duration::milliseconds(delay as i64);
+                let reason = rules::classify(code, message).suggestion;
+                if rules::mark_retry_wait(item, &at.to_rfc3339(), reason) {
+                    inner.touched(id, true);
+                }
                 None
             } else {
                 rules::fail(item, rules::error_record(message, code, detail, &now()));
@@ -896,7 +945,9 @@ pub async fn queue_cancel(app: AppHandle, id: String) -> Result<(), String> {
         let _ = crate::cancel_torrent(app.clone(), id, Some(false)).await;
         return Ok(());
     }
-    stop_engine(&app, &id).await;
+    let item = require(&app)?.lock().find(&id).cloned();
+    discard_engine(&app, &id, item).await;
+    log::info!("queue: {id} cancelled");
     update(&app, &id, rules::cancel)?;
     tick(&app);
     Ok(())

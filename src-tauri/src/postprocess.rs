@@ -44,6 +44,85 @@ pub fn move_file(app: &AppHandle, path: &str) -> Option<String> {
     move_entry(app, Path::new(path))
 }
 
+/// Move a finished file that lives somewhere under `root` (its download
+/// folder), keeping the subfolders a file name template made (`a/b/{title}`
+/// moves to `<target>/a/b/`), then remove the folders it left empty — never
+/// `root` itself. A file directly in `root`, or outside it, moves like
+/// `move_file`.
+pub fn move_file_from(app: &AppHandle, path: &str, root: &Path) -> Option<String> {
+    let from = Path::new(path);
+    let dir = target(app)?;
+    let rel_dir = from.parent().and_then(|p| p.strip_prefix(root).ok()).filter(|r| !r.as_os_str().is_empty());
+    let Some(rel_dir) = rel_dir else { return move_entry(app, from) };
+    let dest_dir = dir.join(rel_dir);
+    if let Err(e) = std::fs::create_dir_all(&dest_dir) {
+        log::warn!("move completed: could not create {}: {e}", dest_dir.display());
+        return None;
+    }
+    let to = unique(&dest_dir.join(from.file_name()?));
+    match relocate(from, &to) {
+        Ok(()) => {
+            log::info!("moved {} to {}", from.display(), to.display());
+            if let Some(old) = from.parent() {
+                remove_empty_parents(old, root);
+            }
+            Some(to.to_string_lossy().into_owned())
+        }
+        Err(e) => {
+            log::warn!("could not move {} to {}: {e}", from.display(), to.display());
+            None
+        }
+    }
+}
+
+// ── Cleaning up what a download leaves behind ────────────────────────────
+
+/// Attempts at removing a file the stopping transfer may still hold open.
+const RELEASE_ATTEMPTS: u32 = 20;
+const RELEASE_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Delete what a cancelled download wrote. On Windows the transfer being
+/// stopped can hold its files for a moment after the stop, so each removal
+/// is retried for up to ~5 s. Blocking: call off the async workers.
+pub fn remove_files(paths: &[PathBuf]) {
+    for path in paths {
+        for attempt in 0..RELEASE_ATTEMPTS {
+            match std::fs::remove_file(path) {
+                Ok(()) => break,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => break,
+                Err(e) if attempt + 1 == RELEASE_ATTEMPTS => {
+                    log::warn!("could not remove {}: {e}", path.display());
+                }
+                Err(_) => std::thread::sleep(RELEASE_PAUSE),
+            }
+        }
+    }
+}
+
+/// Remove `dir` and every folder inside it that is empty, deepest first.
+/// Files are never touched: a folder that still holds anything stays.
+pub fn remove_empty_tree(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            remove_empty_tree(&entry.path());
+        }
+    }
+    let _ = std::fs::remove_dir(dir);
+}
+
+/// Walk up from `dir`, removing each folder while it is empty, and stop at
+/// `root` (never removed) or at anything outside it.
+pub fn remove_empty_parents(dir: &Path, root: &Path) {
+    let mut current = dir.to_path_buf();
+    while current != root && current.starts_with(root) && std::fs::remove_dir(&current).is_ok() {
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+}
+
 /// Move a finished torrent's own folder. Only call this once seeding has
 /// ended: librqbit holds the files open until then.
 pub fn move_folder(app: &AppHandle, dir: &str) -> Option<String> {
@@ -179,6 +258,46 @@ mod tests {
         assert_eq!(unique(&wanted), tmp.0.join("movie (1).mkv"));
         std::fs::write(tmp.0.join("movie (1).mkv"), b"second").unwrap();
         assert_eq!(unique(&wanted), tmp.0.join("movie (2).mkv"));
+    }
+
+    // Windows test run 2026-09-26 (E2 with Move on): template folders were
+    // flattened away at the target and left behind, empty, at the source.
+    #[test]
+    fn empty_folders_go_up_to_the_root_and_no_further() {
+        let tmp = TempDir::new("parents");
+        let root = tmp.0.join("Downloads");
+        let deep = root.join("a/b/c");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(root.join("a/keep.txt"), b"x").unwrap();
+        remove_empty_parents(&deep, &root);
+        assert!(!root.join("a/b").exists(), "c and b were empty");
+        assert!(root.join("a").exists(), "a still holds a file");
+        remove_empty_parents(&root, &root);
+        assert!(root.exists(), "the download folder itself is never removed");
+    }
+
+    #[test]
+    fn an_empty_tree_goes_but_anything_holding_a_file_stays() {
+        let tmp = TempDir::new("tree");
+        let own = tmp.0.join("Pack [01234567]");
+        std::fs::create_dir_all(own.join("sub/deeper")).unwrap();
+        std::fs::create_dir_all(own.join("kept")).unwrap();
+        std::fs::write(own.join("kept/file.bin"), b"x").unwrap();
+        remove_empty_tree(&own);
+        assert!(!own.join("sub").exists());
+        assert!(own.join("kept/file.bin").exists(), "files are never removed");
+        std::fs::remove_file(own.join("kept/file.bin")).unwrap();
+        remove_empty_tree(&own);
+        assert!(!own.exists());
+    }
+
+    #[test]
+    fn removing_files_tolerates_ones_already_gone() {
+        let tmp = TempDir::new("remove");
+        let there = tmp.0.join("clip.f137.mp4.part");
+        std::fs::write(&there, b"x").unwrap();
+        remove_files(&[there.clone(), tmp.0.join("never-existed.part")]);
+        assert!(!there.exists());
     }
 
     #[test]

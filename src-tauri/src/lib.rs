@@ -508,6 +508,8 @@ async fn start_download(
     };
     // Items queued with a file name template are named here, by the same code
     // Settings previews; older items arrive with a finished output path.
+    // Where the template's subfolders hang from, for "Move completed".
+    let move_root = output_dir.as_deref().map(|d| PathBuf::from(expand_tilde(d)));
     let output_path = match (output_dir, filename_template) {
         (Some(dir), Some(tpl)) if !tpl.trim().is_empty() => {
             templated_output_path(&dir, &tpl, &template_vars.unwrap_or_default())?
@@ -562,6 +564,7 @@ async fn start_download(
                 .unwrap_or(false)
                 .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))
                 .flatten(),
+            move_root,
         },
     ).await;
     Ok(())
@@ -591,7 +594,7 @@ fn partial_bytes(template: &str) -> u64 {
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
 /// subfolders kept, `%` escaped (yt-dlp would expand it), `.%(ext)s` appended.
-fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
+pub(crate) fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
     let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
     let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
     // The folder too: a `100% Music` destination broke every download (B-10).

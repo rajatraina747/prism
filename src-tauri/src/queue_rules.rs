@@ -186,6 +186,26 @@ pub fn requeue_for_retry(item: &mut Item) -> bool {
     set(item, "retryAttempt", json!(attempt));
     reset_counters(item);
     item.remove("error");
+    clear_retry_wait(item);
+    true
+}
+
+fn clear_retry_wait(item: &mut Item) {
+    item.remove("retryAt");
+    item.remove("retryReason");
+}
+
+/// A failure the queue will retry by itself after a wait: say so on the row
+/// (when, and why) and stop showing the last speed and ETA. During a 5-minute
+/// rate-limit wait the row used to sit on "downloading · 141 KB/s · ETA 3m"
+/// (Windows test run 2026-09-26).
+pub fn mark_retry_wait(item: &mut Item, retry_at: &str, reason: &str) -> bool {
+    if status(item) != "downloading" {
+        return false;
+    }
+    stop_counters(item);
+    set(item, "retryAt", json!(retry_at));
+    set(item, "retryReason", json!(reason));
     true
 }
 
@@ -196,6 +216,7 @@ pub fn pause(item: &mut Item) -> bool {
     set(item, "status", json!("paused"));
     stop_counters(item);
     set(item, "uploadSpeed", json!(0));
+    clear_retry_wait(item);
     true
 }
 
@@ -213,6 +234,7 @@ pub fn cancel(item: &mut Item) -> bool {
     }
     set(item, "status", json!("canceled"));
     stop_counters(item);
+    clear_retry_wait(item);
     true
 }
 
@@ -808,6 +830,20 @@ mod tests {
         assert_eq!(classify(None, "ERROR: Sign in to confirm you're not a bot").category, "auth");
         assert_eq!(classify(Some("unknown"), "HTTP Error 429: Too Many Requests").category, "network");
         assert_eq!(classify(None, "something odd").category, "unknown");
+    }
+
+    #[test]
+    fn a_retry_wait_shows_on_the_row_until_it_ends() {
+        let mut it = item("w", "downloading", json!({"kind": "direct", "speed": 144_000, "eta": 180}));
+        assert!(mark_retry_wait(&mut it, "2026-09-26T16:12:24Z", "Rate limited by the site"));
+        assert_eq!((num(&it, "speed"), num(&it, "eta")), (0.0, 0.0), "no stale speed or ETA");
+        assert_eq!(it.get("retryAt"), Some(&json!("2026-09-26T16:12:24Z")));
+        assert!(requeue_for_retry(&mut it));
+        assert!(it.get("retryAt").is_none() && it.get("retryReason").is_none(), "gone once it runs again");
+        let mut paused = item("p", "downloading", json!({}));
+        mark_retry_wait(&mut paused, "2026-09-26T16:12:24Z", "x");
+        pause(&mut paused);
+        assert!(paused.get("retryAt").is_none(), "a paused row isn't waiting to retry");
     }
 
     #[test]
