@@ -108,6 +108,10 @@ export class TauriPrismService implements IPrismService {
     return invoke<MediaMetadata>('parse_url', { url });
   }
 
+  async missingFiles(paths: string[]): Promise<boolean[]> {
+    return invoke<boolean[]>('missing_files', { paths });
+  }
+
   async inspectUrl(url: string): Promise<InspectResult> {
     return invoke<InspectResult>('inspect_url', { url });
   }

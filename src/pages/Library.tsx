@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
@@ -134,6 +134,18 @@ export default function Library() {
     () => Object.fromEntries(preferences.labels.map(l => [l.id, l.name])),
     [preferences.labels],
   );
+  // Rows whose file has been moved or deleted outside Prism, checked when
+  // the Library opens and whenever it changes.
+  const [missing, setMissing] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const withFiles = items.filter(i => i.status === 'completed' && i.filePath).slice(0, 5000);
+    if (withFiles.length === 0) { setMissing(new Set()); return; }
+    let live = true;
+    service.missingFiles(withFiles.map(i => i.filePath!))
+      .then(flags => { if (live) setMissing(new Set(withFiles.filter((_, n) => flags[n]).map(i => i.id))); })
+      .catch(() => { /* a convenience: rows just don't say */ });
+    return () => { live = false; };
+  }, [items, service]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return inTab.filter(i =>
@@ -427,6 +439,7 @@ export default function Library() {
                   expanded={expandedId === item.id}
                   playerAvailable={playerAvailable}
                   labelNames={labelNames}
+                  missing={missing.has(item.id)}
                   selected={selected.has(item.id)}
                   onSelect={onSelect}
                   onToggleExpanded={toggleExpanded}
@@ -476,9 +489,11 @@ export default function Library() {
 
 const LibraryRow = React.memo(function LibraryRow({
   item, expanded, playerAvailable, labelNames, selected, density = 'comfortable', grid = false,
-  onSelect, onToggleExpanded, onRequeue, onRemove,
+  onSelect, onToggleExpanded, onRequeue, onRemove, missing = false,
 }: {
   item: HistoryItem;
+  /** Its file has been moved or deleted outside Prism. */
+  missing?: boolean;
   expanded: boolean;
   playerAvailable: boolean;
   labelNames?: Record<string, string>;
@@ -554,6 +569,9 @@ const LibraryRow = React.memo(function LibraryRow({
             {item.settings.labelIds?.map(id => labelNames?.[id]).filter(Boolean).map(name => (
               <span key={name} className="px-1.5 rounded bg-primary/10 text-primary/90">{name}</span>
             ))}
+            {missing && (
+              <span className="px-1.5 rounded bg-destructive/10 text-destructive" title="The file has been moved or deleted outside Prism">Missing</span>
+            )}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
             <span>{formatWhen(item.completedAt)}</span>
           </div>

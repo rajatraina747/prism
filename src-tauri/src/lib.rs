@@ -1394,6 +1394,22 @@ async fn move_to_trash(app: AppHandle, paths: Vec<String>) -> Result<usize, Stri
     Ok(count)
 }
 
+/// Most paths one missing-files check may ask about (a Library's worth).
+const MAX_MISSING_CHECK: usize = 5000;
+
+/// Which Library files have gone (moved or deleted outside Prism), so rows
+/// can say so instead of failing when clicked. Recorded downloads only
+/// (`ledger::missing`).
+#[tauri::command]
+async fn missing_files(app: AppHandle, paths: Vec<String>) -> Result<Vec<bool>, String> {
+    if paths.len() > MAX_MISSING_CHECK {
+        return Err(format!("Too many paths at once (limit {MAX_MISSING_CHECK})"));
+    }
+    tauri::async_runtime::spawn_blocking(move || ledger::missing(&app, &paths))
+        .await
+        .map_err(|e| format!("Checking files: {e}"))
+}
+
 /// The OS progress bar's state for a given overall progress.
 ///
 /// Pure so the mapping is testable without a window: `None` hides the bar
@@ -2458,6 +2474,7 @@ pub fn run() {
             parse_playlist,
             lookup::inspect_url,
             thumbnails::cache_thumbnail,
+            missing_files,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,

@@ -59,6 +59,11 @@ impl Ledger {
         true
     }
 
+    /// For each path, whether it was recorded and is no longer on disk.
+    pub(crate) fn missing(&self, paths: &[PathBuf]) -> Vec<bool> {
+        paths.iter().map(|p| !p.exists() && self.index.contains(p)).collect()
+    }
+
     /// Whether `canonical` is a recorded file, or inside a recorded folder.
     pub(crate) fn contains(&self, canonical: &Path) -> bool {
         canonical.ancestors().any(|p| self.index.contains(p))
@@ -203,6 +208,14 @@ pub fn record(app: &AppHandle, path: &str) {
     }
 }
 
+/// Of `paths`, which are recorded downloads that are no longer on disk.
+/// Only recorded paths are ever reported missing, so the page can't use this
+/// to ask whether some other file exists.
+pub fn missing(app: &AppHandle, paths: &[String]) -> Vec<bool> {
+    let expanded: Vec<PathBuf> = paths.iter().map(|p| PathBuf::from(crate::expand_tilde(p))).collect();
+    with_ledger(app, |ledger| ledger.missing(&expanded)).unwrap_or_else(|| vec![false; paths.len()])
+}
+
 /// Refuse a path no engine recorded. `validated` is `validate_open_path`'s
 /// canonical result.
 pub fn require_recorded(app: &AppHandle, validated: &str) -> Result<(), String> {
@@ -223,6 +236,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn only_recorded_paths_can_be_reported_missing() {
+        let dir = tmp("missing");
+        let kept = dir.join("kept.mp4");
+        let gone = dir.join("gone.mp4");
+        std::fs::write(&kept, b"x").unwrap();
+        std::fs::write(&gone, b"x").unwrap();
+        let mut ledger = Ledger::default();
+        ledger.record(&kept);
+        ledger.record(&gone);
+        std::fs::remove_file(&gone).unwrap();
+        let never = dir.join("never-downloaded.mp4");
+        assert_eq!(ledger.missing(&[kept, gone, never]), [false, true, false], "an unrecorded path is never reported, present or not");
     }
 
     #[test]

@@ -49,6 +49,7 @@
     "allow-parse-playlist",
     "allow-inspect-url",
     "allow-cache-thumbnail",
+    "allow-missing-files",
     "allow-start-download",
     "allow-cancel-download",
     "allow-probe-direct-link",
