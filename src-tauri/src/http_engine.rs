@@ -278,9 +278,13 @@ enum Stop {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 struct Segment {
     start: u64,
-    /// Inclusive.
+    /// Inclusive. Can move down while running: a free connection may take
+    /// over the second half (`next_segment`).
     end: u64,
     done: u64,
+    /// A connection is working on it (not saved: nothing is, after a restart).
+    #[serde(skip, default)]
+    busy: bool,
 }
 
 impl Segment {
@@ -308,9 +312,35 @@ fn plan_segments(size: u64, connections: usize) -> Vec<Segment> {
         .map(|i| {
             let start = i * share;
             let end = if i + 1 == count { size - 1 } else { start + share - 1 };
-            Segment { start, end, done: 0 }
+            Segment { start, end, done: 0, busy: false }
         })
         .collect()
+}
+
+/// The segment a free connection should fetch next, marked busy: one nobody
+/// is on, else the second half of the one with most left to do — so a slow
+/// connection's tail is shared out instead of the download waiting on it
+/// alone (REVIEW 2026-09-26). None when nothing is worth splitting.
+fn next_segment(segments: &mut Vec<Segment>) -> Option<usize> {
+    if let Some(i) = segments.iter().position(|s| !s.finished() && !s.busy) {
+        segments[i].busy = true;
+        return Some(i);
+    }
+    let (victim, remaining) = segments
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !s.finished())
+        .map(|(i, s)| (i, s.len() - s.done))
+        .max_by_key(|&(_, left)| left)?;
+    if remaining < 2 * MIN_SEGMENT {
+        return None;
+    }
+    let from = segments[victim].start + segments[victim].done;
+    let split = from + remaining / 2;
+    let end = segments[victim].end;
+    segments[victim].end = split - 1;
+    segments.push(Segment { start: split, end, done: 0, busy: true });
+    Some(segments.len() - 1)
 }
 
 /// Segments to resume from, if the saved state matches this exact file.
@@ -349,11 +379,14 @@ fn still_needed(size: u64, dest: &Path, source: &str) -> u64 {
 }
 
 async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment]) {
+    // In file order: splits append, and a resume checks the ranges are contiguous.
+    let mut segments = segments.to_vec();
+    segments.sort_by_key(|s| s.start);
     let state = PartState {
         source: job.source.clone(),
         size,
         validator: job.validator.clone(),
-        segments: segments.to_vec(),
+        segments,
     };
     let Ok(text) = serde_json::to_string(&state) else { return };
     let tmp = with_suffix(state_path, ".tmp");
@@ -388,14 +421,17 @@ async fn ranged(
     };
     t.downloaded.store(plan.iter().map(|s| s.done).sum(), Ordering::Relaxed);
 
-    let count = plan.len();
+    // One worker per connection; each takes segments until none is left
+    // (`next_segment`), so a resumed plan with more pieces than connections
+    // still uses only as many.
+    let count = job.connections.max(1);
     let segments = Arc::new(std::sync::Mutex::new(plan));
     let halt = Arc::new(AtomicBool::new(false));
     let workers: Vec<_> = (0..count)
-        .map(|index| {
+        .map(|_| {
             let (client, job, part, segments, t, halt) =
                 (client.clone(), job.clone(), part.to_path_buf(), segments.clone(), t.clone(), halt.clone());
-            tauri::async_runtime::spawn(async move { fetch_segment(&client, &job, &part, index, &segments, &t, &halt).await })
+            tauri::async_runtime::spawn(async move { fetch_segments(&client, &job, &part, &segments, &t, &halt).await })
         })
         .collect();
 
@@ -441,6 +477,25 @@ enum Attempt {
     Fatal(PrismError),
     Restart,
     Cancelled,
+}
+
+/// One connection: fetch segments one after another until none is left.
+async fn fetch_segments(
+    client: &reqwest::Client,
+    job: &Job,
+    part: &Path,
+    segments: &std::sync::Mutex<Vec<Segment>>,
+    t: &Transfer,
+    halt: &AtomicBool,
+) -> Result<(), Stop> {
+    loop {
+        let next = segments.lock().ok().and_then(|mut s| next_segment(&mut s));
+        let Some(index) = next else { return Ok(()) };
+        fetch_segment(client, job, part, index, segments, t, halt).await?;
+        if halt.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+    }
 }
 
 async fn fetch_segment(
@@ -540,7 +595,10 @@ async fn fetch_range(
     file.seek(SeekFrom::Start(from)).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
 
     let mut position = from;
-    while position <= seg.end {
+    // The end is read afresh for every chunk: another connection may have
+    // taken over the second half of this segment (`next_segment`).
+    let current_end = || segments.lock().map(|s| s[index].end).unwrap_or(seg.end);
+    while position <= current_end() {
         if t.cancel.load(Ordering::Relaxed) {
             let _ = file.flush().await;
             return Err(Attempt::Cancelled);
@@ -549,7 +607,11 @@ async fn fetch_range(
             let _ = file.flush().await;
             return Err(Attempt::Retry(PrismError::new(ErrorCode::Network, "The connection closed early")));
         };
-        let room = (seg.end + 1 - position) as usize;
+        let end = current_end();
+        if position > end {
+            break;
+        }
+        let room = (end + 1 - position) as usize;
         let chunk = if chunk.len() > room { chunk.slice(..room) } else { chunk };
         let n = chunk.len() as u64;
         t.limiter.acquire(n).await;
@@ -1132,13 +1194,44 @@ mod tests {
             source: "https://a/big.iso".into(),
             size: 1000,
             validator: Some("\"v1\"".into()),
-            segments: vec![Segment { start: 0, end: 499, done: 500 }, Segment { start: 500, end: 999, done: 400 }],
+            segments: vec![Segment { start: 0, end: 499, done: 500, busy: false }, Segment { start: 500, end: 999, done: 400, busy: false }],
         };
         std::fs::write(with_suffix(&dest, STATE_SUFFIX), serde_json::to_string(&state).unwrap()).unwrap();
         assert_eq!(still_needed(1000, &dest, "https://a/big.iso"), 100);
         assert_eq!(still_needed(1000, &dest, "https://b/other.iso"), 1000, "another file's state");
         assert_eq!(still_needed(2000, &dest, "https://a/big.iso"), 2000, "the file changed size");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const MIB: u64 = 1024 * 1024;
+
+    fn seg(start: u64, end: u64, done: u64, busy: bool) -> Segment {
+        Segment { start, end, done, busy }
+    }
+
+    // R5.2: a free connection takes the second half of the biggest remainder.
+    #[test]
+    fn a_free_connection_splits_the_largest_remainder() {
+        let mut plan = vec![seg(0, 16 * MIB - 1, 16 * MIB, false), seg(16 * MIB, 64 * MIB - 1, 8 * MIB, true)];
+        let taken = next_segment(&mut plan).unwrap();
+        assert_eq!(taken, 2);
+        // The busy one had 40 MiB left from 24 MiB: it keeps 24–44, the new one 44–64.
+        assert_eq!(plan[1].end, 44 * MIB - 1);
+        assert_eq!(plan[2], seg(44 * MIB, 64 * MIB - 1, 0, true));
+        // Every byte is still covered exactly once.
+        let mut sorted = plan.clone();
+        sorted.sort_by_key(|s| s.start);
+        assert!(sorted.windows(2).all(|w| w[0].end + 1 == w[1].start));
+        assert_eq!(sorted.last().unwrap().end, 64 * MIB - 1);
+    }
+
+    #[test]
+    fn unclaimed_segments_go_first_and_small_tails_are_left_alone() {
+        let mut plan = vec![seg(0, 9, 0, true), seg(10, 19, 0, false)];
+        assert_eq!(next_segment(&mut plan), Some(1));
+        assert!(plan[1].busy);
+        // Both busy and too small to split: nothing to do.
+        assert_eq!(next_segment(&mut plan), None);
     }
 
     #[test]
@@ -1176,7 +1269,7 @@ mod tests {
         for pair in plan.windows(2) {
             assert_eq!(pair[0].end + 1, pair[1].start);
         }
-        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0 }]);
+        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0, busy: false }]);
         assert_eq!(plan_segments(64 * 1024 * 1024, 4).len(), 4);
     }
 
@@ -1355,6 +1448,27 @@ mod tests {
             assert!(std::fs::read(&path).unwrap() == server.body);
             assert!(!with_suffix(&path, PART_SUFFIX).exists());
             assert!(!with_suffix(&path, STATE_SUFFIX).exists());
+        });
+    }
+
+    // R5.2: with connections taking over each other's remainders, the file
+    // still arrives byte for byte, and nothing is fetched twice over.
+    #[test]
+    fn shared_out_segments_still_make_the_exact_file() {
+        tauri::async_runtime::block_on(async {
+            const FORTY_MIB: usize = 40 * 1024 * 1024 + 7;
+            let server = Server::new(FORTY_MIB, true);
+            let url = serve(server.clone()).await;
+            let tmp = TempDir::new("stealing");
+            let client = test_client();
+            let mut job = job_for(&client, &url, &tmp.0, None).await;
+            job.connections = 3;
+            let path = transfer(&client, &job, &Transfer::new(0, Arc::new(RateLimiter::new(0)))).await.unwrap();
+            assert!(std::fs::read(&path).unwrap() == server.body);
+            let sent = server.bytes_sent.load(Ordering::Relaxed);
+            // A split connection may finish the chunk it's reading: a little
+            // overlap, never whole segments.
+            assert!(sent < FORTY_MIB as u64 + 8 * 1024 * 1024, "{sent} bytes sent for a {FORTY_MIB}-byte file");
         });
     }
 
