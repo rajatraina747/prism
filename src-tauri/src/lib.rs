@@ -2431,6 +2431,10 @@ pub fn run() {
             // settings.json, so it belongs after the directory above exists.
             shortcuts::apply_saved(app.handle());
 
+            // The queue: loaded from the database and scheduled from Rust,
+            // whatever the window is doing (queue.rs).
+            queue::start(app.handle());
+
             // A menu that fails to build is worth a log line, not a refusal to
             // start: the app is entirely usable without it.
             if let Err(e) = app_menu::install(app.handle()) {

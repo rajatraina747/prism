@@ -12,7 +12,8 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset, RemoteQueue } from './types';
+import type { QueuePatch, ArchivedEntry, QueueNotice } from '@/stores/remote-queue';
 import { applyFinished, type FinishedDownload } from '@/stores/finished';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
 import { createWriteQueue } from '@/lib/write-queue';
@@ -116,8 +117,38 @@ function templateVarsFor(item: DownloadItem): TemplateVars {
   };
 }
 
+/** Rust's queue (src-tauri/src/queue.rs), as the page sees it. */
+const rustQueue: RemoteQueue = {
+  snapshot: () => invoke<DownloadItem[]>('queue_snapshot'),
+  add: item => invoke('queue_add', { item }),
+  remove: id => invoke('queue_remove', { id }),
+  pause: id => invoke('queue_pause', { id }),
+  resume: id => invoke('queue_resume', { id }),
+  cancel: id => invoke('queue_cancel', { id }),
+  retry: id => invoke('queue_retry', { id }),
+  pauseAll: () => invoke('queue_pause_all'),
+  resumeAll: () => invoke('queue_resume_all'),
+  clearCompleted: () => invoke('queue_clear_completed'),
+  reorder: (from, to) => invoke('queue_reorder', { from, to }),
+  setSettings: (id, settings, onlyIf) => invoke<boolean>('queue_set_settings', { id, settings, onlyIf: onlyIf ?? null }),
+  updateTorrentFiles: (id, files) => invoke('queue_update_torrent_files', { id, files }),
+  removeWithData: id => invoke('queue_remove_with_data', { id }),
+  restartTorrentEngine: () => invoke<number>('queue_restart_torrent_engine'),
+  cancelWhenDone: () => invoke('when_done_cancel'),
+  subscribe(handlers) {
+    const stops: Promise<UnlistenFn>[] = [
+      listen<QueuePatch>('queue-changed', e => handlers.changed(e.payload)),
+      listen<ArchivedEntry[]>('queue-archived', e => handlers.archived(e.payload)),
+      listen<QueueNotice>('queue-notice', e => handlers.notice(e.payload)),
+      listen<{ action: WhenDoneAction; seconds: number }>('when-done-countdown', e => handlers.whenDone(e.payload)),
+    ];
+    return () => { stops.forEach(p => p.then(stop => stop()).catch(() => {})); };
+  },
+};
+
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
+  readonly queue = rustQueue;
 
   async init(): Promise<void> {
     // Thumbnails from a local copy, fetched once through the proxy.

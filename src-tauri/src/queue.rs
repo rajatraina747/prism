@@ -163,7 +163,6 @@ impl Prefs {
 // ── Starting up ──────────────────────────────────────────────────────────
 
 /// Load the saved queue and start scheduling. Runs once, at launch.
-#[allow(dead_code)] // called from setup once the page is a view of this queue (R6.3)
 pub fn start(app: &AppHandle) {
     let Some(state) = app.try_state::<QueueManager>() else { return };
     let mut items: Vec<Item> = crate::store::queue_items(app)
