@@ -170,17 +170,7 @@ pub fn start(app: &AppHandle) {
         .into_iter()
         .filter_map(|v| v.as_object().cloned())
         .collect();
-    for item in items.iter_mut() {
-        // Nothing runs across a restart. A torrent that was seeding goes back
-        // in line too: re-added, it adopts its data without re-checking and
-        // seeds on by its policy (it used to sit inert, still saying
-        // "seeding").
-        if matches!(rules::status(item), "downloading" | "seeding") {
-            item.insert("status".into(), json!("queued"));
-        }
-        item.insert("speed".into(), json!(0));
-        item.insert("eta".into(), json!(0));
-    }
+    rules::after_restart(&mut items);
     // Completions 2.2.x's journal saw that its page never saved (finished.rs).
     rules::apply_finished(&mut items, &crate::finished::take_legacy_entries(app), &crate::store::history_ids(app));
     {

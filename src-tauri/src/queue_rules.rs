@@ -621,6 +621,19 @@ pub fn progress_fields(payload: &Value) -> (Item, bool) {
     (out, seeding)
 }
 
+/// The saved queue as it comes back after a restart, when nothing is running.
+/// A torrent that was seeding goes back in line too: re-added, it adopts its
+/// data without re-checking and seeds on by its policy (it used to sit inert,
+/// still saying "seeding").
+pub fn after_restart(items: &mut [Item]) {
+    for item in items.iter_mut() {
+        if is(item, &["downloading", "seeding"]) {
+            set(item, "status", json!("queued"));
+        }
+        stop_counters(item);
+    }
+}
+
 // ── Engines' finished journal (finished.ts) ──────────────────────────────
 
 /// Mark queued items the engines saw finish (a save that didn't land before
@@ -848,6 +861,20 @@ mod tests {
         assert_eq!(h["completedAt"], "now");
         let failed = item("f", "failed", json!({"downloadedBytes": 4, "error": {"message": "x"}}));
         assert_eq!(history_entry(&failed, "t")["fileSize"], 4.0);
+    }
+
+    #[test]
+    fn after_a_restart_running_work_goes_back_in_line() {
+        let mut items = vec![
+            item("a", "downloading", json!({"speed": 9, "progress": 40})),
+            item("t", "seeding", json!({"kind": "torrent"})),
+            item("p", "paused", json!({})),
+            item("c", "completed", json!({})),
+        ];
+        after_restart(&mut items);
+        let states: Vec<(&str, &str)> = items.iter().map(|i| (id(i), status(i))).collect();
+        assert_eq!(states, [("a", "queued"), ("t", "queued"), ("p", "paused"), ("c", "completed")]);
+        assert_eq!((items[0]["speed"].as_u64(), items[0]["progress"].as_u64()), (Some(0), Some(40)), "progress kept for the resume");
     }
 
     #[test]

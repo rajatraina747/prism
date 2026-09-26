@@ -348,6 +348,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn the_queue_comes_back_in_the_order_it_was_saved() {
+        let dir = tmp("order");
+        let mut conn = open_at(&dir.join("prism.db")).unwrap();
+        for order in [["x", "y", "z"], ["z", "x", "y"]] {
+            let items: Vec<Value> = order.iter().map(|id| json!({"id": id})).collect();
+            let tx = conn.transaction().unwrap();
+            write_queue(&tx, &items).unwrap();
+            tx.commit().unwrap();
+            let ids: Vec<String> = load_queue(&conn).unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect();
+            assert_eq!(ids, order);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // Regression (REVIEW 2026-09-26): the Library was capped at 2,000.
     #[test]
     fn the_library_has_no_cap() {

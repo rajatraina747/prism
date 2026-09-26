@@ -70,7 +70,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R6.4** Retire the finished journal (Rust saves completions at once) and Rust's reading of `queue.json` (R6.1); `jobs.rs` tickets stay — they still guard a stop that lands while an engine starts.
 - [x] **R6.5** No 2,000-entry cap (since R6.1). Paging deliberately not built: 20,000 rows load and serialise in 37 ms (13 MB; `store::tests::library_load_time`), and the list is virtualized.
 - [x] **R6.6** Torrents reach the Library when downloaded, marked Seeding.
-- [ ] **R6.7** Reducer tests ported; migration test.
+- [x] **R6.7** Reducer tests ported; migration test.
 
 ### Phase 7 — Windows hand-off
 - [ ] **R7.1** `docs/WINDOWS-TEST-PLAN.md`; tag `roadmap-complete`.
