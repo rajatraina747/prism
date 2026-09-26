@@ -45,6 +45,12 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
 /** Pick the format that best matches a preset's target resolution. */
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
   if (preset.resolution === 'Best') return formats[0]; // formats are sorted descending
+  if (preset.id === 'compatible') {
+    // The best option that plays everywhere, else the strict H.264 filter.
+    const cap = parseInt(preset.resolution, 10);
+    return formats.find(f => f.playsEverywhere !== false && !f.hdr && parseInt(f.resolution, 10) <= cap)
+      ?? presetToFormat(preset) ?? undefined;
+  }
   return formats.find(f => f.resolution === preset.resolution) || formats[0];
 }
 
@@ -55,12 +61,24 @@ function presetToFormat(preset: DownloadPreset): FormatOption | null {
   if (preset.resolution === 'Best') return null;
   const h = parseInt(preset.resolution, 10);
   if (!h) return null;
+  if (preset.id === 'compatible') {
+    return {
+      id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/best[height<=${h}]`,
+      label: `${preset.resolution} · H.264`,
+      resolution: preset.resolution,
+      container: 'mp4',
+      codec: 'H.264',
+      fileSize: 0,
+      quality: 'high',
+      playsEverywhere: true,
+    };
+  }
   return {
     id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`,
-    label: `${preset.resolution} MP4`,
+    label: `${preset.resolution} · H.264 when available`,
     resolution: preset.resolution,
     container: 'mp4',
-    codec: 'h264/aac',
+    codec: 'H.264',
     fileSize: 0,
     quality: (preset.quality as FormatOption['quality']) || 'high',
   };

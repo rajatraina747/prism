@@ -63,6 +63,12 @@ export interface FormatOption {
   codec: string;
   fileSize: number;
   quality: 'best' | 'high' | 'medium' | 'low';
+  /** 30 or 60 (frame-rate class). Absent on formats saved before 2.3. */
+  fps?: number;
+  hdr?: boolean;
+  /** False for VP9/AV1: plays in VLC, IINA and browsers but not QuickTime or
+   * Photos. Absent (older items) means it was H.264. */
+  playsEverywhere?: boolean;
 }
 
 export interface MediaMetadata {
@@ -589,4 +595,7 @@ export const DEFAULT_PRESETS: DownloadPreset[] = [
   { id: '1080p', name: 'Full HD', resolution: '1080p', container: 'mp4', quality: 'high' },
   { id: '720p', name: 'HD Ready', resolution: '720p', container: 'mp4', quality: 'medium' },
   { id: 'compact', name: 'Compact', resolution: '480p', container: 'mp4', quality: 'low' },
+  // H.264 only (up to 1080p on YouTube): plays in QuickTime, Photos and on
+  // iPhones, where VP9/AV1 at higher resolutions don't.
+  { id: 'compatible', name: 'Compatible (H.264)', resolution: '1080p', container: 'mp4', quality: 'high' },
 ];

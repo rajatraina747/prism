@@ -64,11 +64,11 @@ pub(crate) fn playlist_entry(entry: YtDlpPlaylistEntry) -> Option<PlaylistEntry>
 }
 
 /// Read yt-dlp's `-J --flat-playlist` document.
-pub(crate) fn inspected_from_json(doc: serde_json::Value, url: &str) -> Result<Inspected, String> {
+pub(crate) fn inspected_from_json(doc: serde_json::Value, url: &str, keep_container: bool) -> Result<Inspected, String> {
     let is_list = doc.get("_type").and_then(|t| t.as_str()) == Some("playlist") || doc.get("entries").is_some();
     if !is_list {
         let info: YtDlpInfo = serde_json::from_value(doc).map_err(|e| format!("Failed to parse yt-dlp output: {e}"))?;
-        return Ok(Inspected::Video { metadata: crate::metadata_from_info(info, url) });
+        return Ok(Inspected::Video { metadata: crate::metadata_from_info(info, url, keep_container) });
     }
     let title = doc.get("title").and_then(|t| t.as_str()).map(str::to_string);
     let raw: Vec<serde_json::Value> = doc
@@ -122,7 +122,7 @@ pub async fn inspect_url(app: AppHandle, url: String) -> Result<Inspected, Prism
     }
     let doc: serde_json::Value = serde_json::from_slice(&stdout)
         .map_err(|e| PrismError::new(ErrorCode::Unknown, format!("Failed to parse yt-dlp output: {e}")))?;
-    inspected_from_json(doc, &url).map_err(|e| PrismError::new(ErrorCode::Unknown, e))
+    inspected_from_json(doc, &url, crate::keep_original_container(&app)).map_err(|e| PrismError::new(ErrorCode::Unknown, e))
 }
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn a_video_document_is_a_video() {
         let doc = json!({"title": "Clip", "id": "abc", "extractor_key": "Vimeo", "formats": [], "webpage_url": "https://vimeo.com/1"});
-        match inspected_from_json(doc, "https://vimeo.com/1").unwrap() {
+        match inspected_from_json(doc, "https://vimeo.com/1", false).unwrap() {
             Inspected::Video { metadata } => assert_eq!(metadata.title, "Clip"),
             other => panic!("expected a video, got {other:?}"),
         }
@@ -167,7 +167,7 @@ mod tests {
             {"_type": "url", "ie_key": "Youtube", "url": "https://www.youtube.com/watch?v=a1", "title": "One", "duration": 60},
             {"_type": "url", "ie_key": "Youtube", "url": "https://www.youtube.com/watch?v=b2", "title": "Two"}
         ]});
-        match inspected_from_json(doc, "u").unwrap() {
+        match inspected_from_json(doc, "u", false).unwrap() {
             Inspected::Playlist { playlist } => {
                 assert_eq!(playlist.title, "Road trip songs");
                 assert_eq!(playlist.entries.len(), 2);
@@ -189,7 +189,7 @@ mod tests {
                 {"_type": "url", "ie_key": "Youtube", "url": "https://www.youtube.com/watch?v=v2", "title": "V2"}
             ]}
         ]});
-        match inspected_from_json(doc, "u").unwrap() {
+        match inspected_from_json(doc, "u", false).unwrap() {
             Inspected::Playlist { playlist } => {
                 assert_eq!(playlist.title, "YouTube");
                 assert_eq!(playlist.entries.iter().map(|e| e.title.as_str()).collect::<Vec<_>>(), ["V1", "V2"]);

@@ -179,6 +179,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             </div>
           )}
 
+          {!audioOnly && selectedFormat?.playsEverywhere === false && (
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              {selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.
+            </p>
+          )}
+
           {/* Audio format info */}
           {audioOnly && (
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">

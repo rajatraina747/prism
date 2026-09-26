@@ -5,6 +5,7 @@ mod content_index;
 mod convert;
 mod download_manager;
 mod finished;
+mod formats;
 mod engine;
 mod errors;
 mod http_engine;
@@ -56,6 +57,18 @@ pub struct FormatOption {
     pub codec: String,
     pub file_size: u64,
     pub quality: String,
+    /// 30 or 60 (frame-rate class); None for formats saved before 2.3.
+    #[serde(default)]
+    pub fps: Option<u32>,
+    #[serde(default)]
+    pub hdr: bool,
+    /// H.264/HEVC: plays in QuickTime and Photos too, not only VLC/IINA.
+    #[serde(default = "plays_everywhere_default")]
+    pub plays_everywhere: bool,
+}
+
+fn plays_everywhere_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,19 +105,6 @@ pub struct PlaylistInfo {
 
 // ── yt-dlp JSON subset ───────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct YtDlpFormat {
-    format_id: Option<String>,
-    format_note: Option<String>,
-    ext: Option<String>,
-    vcodec: Option<String>,
-    acodec: Option<String>,
-    height: Option<u32>,
-    width: Option<u32>,
-    filesize: Option<u64>,
-    filesize_approx: Option<u64>,
-}
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct YtDlpInfo {
@@ -115,7 +115,7 @@ pub(crate) struct YtDlpInfo {
     webpage_url_domain: Option<String>,
     description: Option<String>,
     uploader: Option<String>,
-    formats: Option<Vec<YtDlpFormat>>,
+    formats: Option<Vec<formats::YtDlpFormat>>,
     id: Option<String>,
     extractor_key: Option<String>,
 }
@@ -292,12 +292,12 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
 
     let info: YtDlpInfo = serde_json::from_slice(&stdout)
         .map_err(|e| format!("Failed to parse yt-dlp output: {}", e))?;
-    Ok(metadata_from_info(info, &url))
+    Ok(metadata_from_info(info, &url, keep_original_container(&app)))
 }
 
 /// The details dialog's view of one video from yt-dlp's JSON: title, source
 /// and the resolutions on offer.
-pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str) -> MediaMetadata {
+pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: bool) -> MediaMetadata {
     let domain = info
         .webpage_url_domain
         .clone()
@@ -305,92 +305,7 @@ pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str) -> MediaMetadata {
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Collect unique resolutions from real video formats (not storyboards, not audio-only)
-    // Use format_note (e.g. "720p", "1080p") for labels, height for yt-dlp filters
-    let raw_formats = info.formats.unwrap_or_default();
-
-    struct ResInfo {
-        label: String,  // e.g. "1080p"
-        height: u32,    // actual pixel height (for yt-dlp filter)
-        size: u64,
-    }
-
-    let mut resolutions: std::collections::HashMap<String, ResInfo> = std::collections::HashMap::new();
-
-    for f in &raw_formats {
-        let height = f.height.unwrap_or(0);
-        if height < 144 {
-            continue;
-        }
-        let vcodec = f.vcodec.as_deref().unwrap_or("none");
-        if vcodec == "none" {
-            continue;
-        }
-        let ext = f.ext.as_deref().unwrap_or("");
-        if ext == "mhtml" {
-            continue;
-        }
-
-        // Use format_note (e.g. "1080p") if available, otherwise fall back to height
-        let note = f.format_note.as_deref().unwrap_or("");
-        let label = if note.ends_with('p') && note.len() <= 6 {
-            note.to_string()
-        } else {
-            format!("{}p", height)
-        };
-
-        let size = f.filesize.or(f.filesize_approx).unwrap_or(0);
-        let entry = resolutions.entry(label.clone()).or_insert(ResInfo {
-            label: label.clone(),
-            height,
-            size: 0,
-        });
-        if size > entry.size {
-            entry.size = size;
-        }
-        // Keep the largest height for this label (in case of aspect ratio differences)
-        if height > entry.height {
-            entry.height = height;
-        }
-    }
-
-    // Sort by resolution height descending
-    let mut unique_formats: Vec<FormatOption> = resolutions
-        .into_values()
-        .map(|r| {
-            let label_height: u32 = r.label.trim_end_matches('p').parse().unwrap_or(r.height);
-            let quality = match label_height {
-                h if h >= 2160 => "best",
-                h if h >= 1080 => "high",
-                h if h >= 720 => "medium",
-                _ => "low",
-            };
-            FormatOption {
-                // The chosen resolution must win over codec compatibility:
-                // yt-dlp takes the FIRST satisfiable alternative, and a
-                // "<=H avc1" branch is satisfiable at 1080p even when the user
-                // picked 2160p (YouTube's H.264 stops at 1080p; 4K/HDR only
-                // exists as VP9/AV1) — silently degrading the download. Order:
-                // exact height with avc1 → exact height any codec → then the
-                // <=H fallbacks for when the exact height has vanished.
-                id: format!(
-                    "bestvideo[height={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height={h}]+bestaudio/bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]/best",
-                    h = r.height
-                ),
-                label: format!("{} MP4", r.label),
-                resolution: r.label.clone(),
-                container: "mp4".into(),
-                codec: "h264/aac".into(),
-                file_size: r.size,
-                quality: quality.into(),
-            }
-        })
-        .collect();
-    unique_formats.sort_by(|a, b| {
-        let a_h: u32 = a.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        let b_h: u32 = b.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        b_h.cmp(&a_h)
-    });
+    let unique_formats = formats::options(&info.formats.unwrap_or_default(), keep_container);
 
     MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),
