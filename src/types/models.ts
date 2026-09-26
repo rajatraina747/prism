@@ -312,7 +312,8 @@ export interface AppPreferences {
   // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
   // Read by the Rust side from settings.json (whitelisted), like audioFormat.
   seedingPolicy: 'stop' | 'ratio' | 'seed';
-  // Optional proxy. yt-dlp routes everything through http(s)/socks proxies;
+  // Optional proxy. yt-dlp and direct downloads route everything through
+  // http(s)/socks proxies;
   // the torrent engine routes only *peer connections* through a socks5://
   // proxy (DHT, trackers and the .torrent/blocklist fetches go direct, and
   // http proxies are ignored for torrents). Empty = direct. Validated Rust-side.

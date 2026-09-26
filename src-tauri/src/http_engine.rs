@@ -760,6 +760,14 @@ fn checked_url(url: &str) -> Result<url::Url, PrismError> {
         .ok_or_else(|| PrismError::new(ErrorCode::InvalidInput, "Direct downloads need an http(s) link"))
 }
 
+/// The proxy setting as reqwest's proxy. HTTP(S) and SOCKS alike: SOCKS
+/// used to be refused here, so anyone who set one found every direct
+/// download failing (REVIEW 2026-09-26). `socks5h` resolves names at the
+/// proxy, as a privacy proxy should.
+fn proxy_for(url: &str) -> Result<reqwest::Proxy, PrismError> {
+    reqwest::Proxy::all(url).map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))
+}
+
 fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
@@ -770,15 +778,7 @@ fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
         builder = builder.local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     }
     if let Some(proxy) = crate::proxy_url(app) {
-        if !(proxy.starts_with("http://") || proxy.starts_with("https://")) {
-            return Err(PrismError::new(
-                ErrorCode::InvalidInput,
-                "Direct downloads can use HTTP(S) proxies only — the SOCKS proxy applies to video downloads",
-            ));
-        }
-        let proxy = reqwest::Proxy::all(&proxy)
-            .map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))?;
-        builder = builder.proxy(proxy);
+        builder = builder.proxy(proxy_for(&proxy)?);
     }
     builder
         .build()
@@ -1060,6 +1060,15 @@ pub async fn set_http_rate_limit(app: AppHandle, bytes_per_second: u64) -> Resul
 mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
+
+    #[test]
+    fn every_proxy_scheme_prism_accepts_works_for_direct_downloads() {
+        for url in ["http://127.0.0.1:8080", "https://proxy.example:443", "socks5://127.0.0.1:1080", "socks5h://u:p@127.0.0.1:1080", "socks4://127.0.0.1:1080"] {
+            assert!(crate::parse_proxy_url(url).is_some(), "{url} is not a proxy the setting accepts");
+            let proxy = proxy_for(url).unwrap_or_else(|e| panic!("{url}: {}", e.summary));
+            reqwest::Client::builder().proxy(proxy).build().unwrap_or_else(|e| panic!("{url}: {e}"));
+        }
+    }
 
     #[test]
     fn reads_the_start_of_a_content_range() {
