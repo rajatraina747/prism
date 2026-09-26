@@ -85,6 +85,19 @@ pub struct MediaMetadata {
     /// site yt-dlp supports (see `media_key`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_key: Option<String>,
+    /// Several audio tracks (dubs), original first; empty when there's one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_tracks: Vec<formats::AudioTrack>,
+    /// Subtitles the uploader provided (not machine translations), by code.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_languages: Vec<SubtitleLanguage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleLanguage {
+    pub code: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,8 +129,15 @@ pub(crate) struct YtDlpInfo {
     description: Option<String>,
     uploader: Option<String>,
     formats: Option<Vec<formats::YtDlpFormat>>,
+    #[serde(default)]
+    subtitles: Option<std::collections::BTreeMap<String, Vec<YtDlpSubtitle>>>,
     id: Option<String>,
     extractor_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YtDlpSubtitle {
+    name: Option<String>,
 }
 
 /// A key for "the same video" that doesn't depend on how its URL was written:
@@ -305,7 +325,19 @@ pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: boo
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    let unique_formats = formats::options(&info.formats.unwrap_or_default(), keep_container);
+    let raw_formats = info.formats.unwrap_or_default();
+    let unique_formats = formats::options(&raw_formats, keep_container);
+    let audio_tracks = formats::audio_tracks(&raw_formats);
+    let subtitle_languages = info
+        .subtitles
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(code, _)| formats::valid_language(code) && code != "live_chat")
+        .map(|(code, subs)| {
+            let name = subs.into_iter().find_map(|s| s.name).unwrap_or_else(|| code.clone());
+            SubtitleLanguage { code, name }
+        })
+        .collect();
 
     MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),
@@ -320,6 +352,8 @@ pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: boo
         description: info.description,
         uploader: info.uploader,
         media_key: media_key(info.extractor_key.as_deref(), info.id.as_deref()),
+        audio_tracks,
+        subtitle_languages,
     }
 }
 
@@ -416,7 +450,19 @@ async fn start_download(
     // False for a subscription entry on another site (REVIEW 2026-09-26 M1).
     // Absent (older items) = the cookies setting decides, as before.
     use_cookies: Option<bool>,
+    // A dub other than the original (YouTube's audio tracks); None = original.
+    audio_language: Option<String>,
+    // Put the subtitles inside the video file rather than beside it.
+    embed_subtitles: Option<bool>,
 ) -> Result<(), String> {
+    // Both end up inside yt-dlp arguments: codes only, nothing else.
+    let audio_language = audio_language.filter(|l| !l.is_empty());
+    if audio_language.as_deref().is_some_and(|l| !formats::valid_language(l)) {
+        return Err("Unknown audio language".into());
+    }
+    if subtitle_language.as_deref().is_some_and(|l| !l.split(',').all(formats::valid_language)) {
+        return Err("Unknown subtitle language".into());
+    }
     // Validated here rather than deeper in: a bad range should be refused
     // before anything is spawned, with a message the user can act on.
     let clip_section = match (clip_start.as_deref(), clip_end.as_deref()) {
@@ -471,6 +517,7 @@ async fn start_download(
         clip_section,
         split_chapters.unwrap_or(false),
         use_cookies.unwrap_or(true),
+        download_manager::Extras { audio_language, embed_subtitles: embed_subtitles.unwrap_or(false) },
     ).await;
     Ok(())
 }

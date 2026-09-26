@@ -24,7 +24,7 @@ const INSPECT_TIMEOUT_SECS: u64 = 300;
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Inspected {
-    Video { metadata: MediaMetadata },
+    Video { metadata: Box<MediaMetadata> },
     Playlist { playlist: PlaylistInfo },
 }
 
@@ -68,7 +68,7 @@ pub(crate) fn inspected_from_json(doc: serde_json::Value, url: &str, keep_contai
     let is_list = doc.get("_type").and_then(|t| t.as_str()) == Some("playlist") || doc.get("entries").is_some();
     if !is_list {
         let info: YtDlpInfo = serde_json::from_value(doc).map_err(|e| format!("Failed to parse yt-dlp output: {e}"))?;
-        return Ok(Inspected::Video { metadata: crate::metadata_from_info(info, url, keep_container) });
+        return Ok(Inspected::Video { metadata: Box::new(crate::metadata_from_info(info, url, keep_container)) });
     }
     let title = doc.get("title").and_then(|t| t.as_str()).map(str::to_string);
     let raw: Vec<serde_json::Value> = doc

@@ -71,6 +71,12 @@ export interface FormatOption {
   playsEverywhere?: boolean;
 }
 
+export interface AudioTrack {
+  code: string;
+  name: string;
+  original: boolean;
+}
+
 export interface MediaMetadata {
   title: string;
   duration: number;
@@ -82,6 +88,10 @@ export interface MediaMetadata {
   /** `<extractor>:<id>` from yt-dlp: the same video however its URL is
    * written. Absent for torrents, direct files and older records. */
   mediaKey?: string;
+  /** Several audio tracks (YouTube's dubs), original first. Absent: one. */
+  audioTracks?: AudioTrack[];
+  /** Subtitles the uploader provided (not machine translations). */
+  subtitleLanguages?: { code: string; name: string }[];
 }
 
 export interface DownloadSettings {
@@ -95,7 +105,12 @@ export interface DownloadSettings {
   startImmediately: boolean;
   audioOnly?: boolean;
   downloadSubtitles?: boolean;
+  /** One code, or several comma-separated (`en,es`). */
   subtitleLanguage?: string;
+  /** Put the subtitles inside the video file (needs ffmpeg). */
+  embedSubtitles?: boolean;
+  /** A dub to download instead of the original track (see audioTracks). */
+  audioLanguage?: string;
   speedLimit?: number; // bytes per second, 0 = unlimited
   // Torrent-only: indices of files to download. Undefined = all files.
   selectedFiles?: number[];

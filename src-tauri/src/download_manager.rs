@@ -105,6 +105,14 @@ impl ActiveDownload {
     }
 }
 
+/// Per-download choices beyond the format: the dub and where subtitles go.
+/// Already validated by `start_download`.
+#[derive(Debug, Default, Clone)]
+pub struct Extras {
+    pub audio_language: Option<String>,
+    pub embed_subtitles: bool,
+}
+
 pub struct DownloadManager {
     downloads: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     /// Output templates claimed by in-flight downloads (id → template).
@@ -141,6 +149,7 @@ impl DownloadManager {
         // Whether the browser's cookies may go with this run at all; the
         // setting still has to be on too.
         use_cookies: bool,
+        extras: Extras,
     ) {
         // Taken before the first await, so a stop that arrives meanwhile is seen.
         let ticket = crate::jobs::begin(&id);
@@ -184,7 +193,12 @@ impl DownloadManager {
             ];
 
             if audio_only {
-                // Audio-only: extract to the user's configured format
+                // Audio-only: extract to the user's configured format, from
+                // the chosen dub when there is one.
+                if let Some(lang) = &extras.audio_language {
+                    args.push("-f".into());
+                    args.push(crate::formats::with_audio_language("bestaudio", lang));
+                }
                 args.push("--extract-audio".into());
                 args.push("--audio-format".into());
                 args.push(crate::audio_format(&app));
@@ -203,13 +217,14 @@ impl DownloadManager {
                     args.push("mp4".into());
                 }
 
-                if let Some(ref fmt) = format_id {
-                    args.push("-f".into());
-                    args.push(fmt.clone());
-                } else {
-                    args.push("-f".into());
-                    args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into());
-                }
+                let chain = format_id.clone().unwrap_or_else(|| {
+                    "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into()
+                });
+                args.push("-f".into());
+                args.push(match &extras.audio_language {
+                    Some(lang) => crate::formats::with_audio_language(&chain, lang),
+                    None => chain,
+                });
                 if !keep_container {
                     // Prefer H.264/AAC for QuickTime compatibility
                     args.push("-S".into());
@@ -232,6 +247,7 @@ impl DownloadManager {
             args.push(format!("after_move:{PATH_MARKER}%(filepath)s"));
             args.push("--no-quiet".into());
 
+            let mut embed_subs = false;
             if download_subtitles {
                 args.push("--write-subs".into());
                 args.push("--write-auto-subs".into());
@@ -240,6 +256,11 @@ impl DownloadManager {
                 args.push(lang.into());
                 args.push("--sub-format".into());
                 args.push("srt/vtt/best".into());
+                // Inside the file (ffmpeg, checked below) rather than beside
+                // it: one file that carries its subtitles to any player.
+                if extras.embed_subtitles && !audio_only {
+                    embed_subs = true;
+                }
             }
 
             if let Some(limit) = speed_limit {
@@ -332,6 +353,9 @@ impl DownloadManager {
             // Finder and media players. Gated on ffmpeg: these postprocessors
             // fail the whole download when it's missing.
             if ffmpeg.is_some() {
+                if embed_subs {
+                    args.push("--embed-subs".into());
+                }
                 args.push("--embed-thumbnail".into());
                 args.push("--embed-metadata".into());
                 if !audio_only {

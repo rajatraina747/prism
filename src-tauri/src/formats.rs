@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::FormatOption;
 
@@ -29,6 +29,58 @@ pub(crate) struct YtDlpFormat {
     pub fps: Option<f64>,
     /// `SDR`, `HDR10`, `HLG`, … (absent on many sites: treated as SDR).
     pub dynamic_range: Option<String>,
+    /// Audio: the track's language (`es`, `en-US`) and yt-dlp's preference
+    /// for it (the original track ranks highest).
+    pub language: Option<String>,
+    pub language_preference: Option<i64>,
+}
+
+/// One audio track of a video with several (YouTube's dubs).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioTrack {
+    pub code: String,
+    pub name: String,
+    pub original: bool,
+}
+
+/// The audio tracks on offer, the original first. Empty when there's only
+/// one: nothing to choose.
+pub(crate) fn audio_tracks(formats: &[YtDlpFormat]) -> Vec<AudioTrack> {
+    let mut tracks: Vec<AudioTrack> = Vec::new();
+    for f in formats {
+        let audio_only = f.vcodec.as_deref() == Some("none") && f.acodec.as_deref().is_some_and(|a| a != "none");
+        let Some(code) = f.language.as_deref().map(str::trim).filter(|c| !c.is_empty()) else { continue };
+        if !audio_only || tracks.iter().any(|t| t.code == code) {
+            continue;
+        }
+        // "English (US) original (default), low" → "English (US)"
+        let note = f.format_note.as_deref().unwrap_or("");
+        let name = note.split(',').next().unwrap_or("").replace("original", "").replace("(default)", "");
+        let name = name.trim();
+        tracks.push(AudioTrack {
+            code: code.to_string(),
+            name: if name.is_empty() { code.to_string() } else { name.to_string() },
+            original: f.language_preference.is_some_and(|p| p > 0) || note.contains("original"),
+        });
+    }
+    if tracks.len() < 2 {
+        return Vec::new();
+    }
+    tracks.sort_by(|a, b| b.original.cmp(&a.original).then_with(|| a.name.cmp(&b.name)));
+    tracks
+}
+
+/// A language code safe to put in a yt-dlp format filter or `--sub-langs`.
+pub(crate) fn valid_language(code: &str) -> bool {
+    !code.is_empty() && code.len() <= 20 && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// `chain` asking for the `lang` audio track first, then as it was: a video
+/// that turns out not to have that dub still downloads.
+pub(crate) fn with_audio_language(chain: &str, lang: &str) -> String {
+    let preferred = chain.replace("bestaudio", &format!("bestaudio[language={lang}]"));
+    format!("{preferred}/{chain}")
 }
 
 /// A codec as people know it, from yt-dlp's codec string.
@@ -241,6 +293,50 @@ mod tests {
         let opts = options(&youtube_4k(), true);
         assert_eq!(opts[0].container, "webm");
         assert_eq!(opts[2].container, "mp4");
+    }
+
+    fn audio(code: &str, note: &str, pref: i64) -> YtDlpFormat {
+        YtDlpFormat {
+            vcodec: Some("none".into()),
+            acodec: Some("mp4a.40.2".into()),
+            language: Some(code.into()),
+            format_note: Some(note.into()),
+            language_preference: Some(pref),
+            ..Default::default()
+        }
+    }
+
+    // As YouTube lists a dubbed upload (yt-dlp 2026.08.19).
+    #[test]
+    fn dubbed_tracks_are_listed_original_first() {
+        let formats = vec![
+            audio("es", "Spanish, low", -1),
+            audio("en-US", "English (US) original (default), low", 10),
+            audio("es", "Spanish, medium", -1),
+            audio("de", "German, medium", -1),
+            f(1080, "avc1", 30.0, "SDR"),
+        ];
+        let tracks = audio_tracks(&formats);
+        assert_eq!(
+            tracks,
+            [
+                AudioTrack { code: "en-US".into(), name: "English (US)".into(), original: true },
+                AudioTrack { code: "de".into(), name: "German".into(), original: false },
+                AudioTrack { code: "es".into(), name: "Spanish".into(), original: false },
+            ]
+        );
+        assert!(audio_tracks(&[audio("en", "English", 10)]).is_empty(), "one track is no choice");
+    }
+
+    #[test]
+    fn a_chosen_dub_is_asked_for_first_then_anything() {
+        assert_eq!(
+            with_audio_language("bestvideo+bestaudio[acodec^=mp4a]/best", "es"),
+            "bestvideo+bestaudio[language=es][acodec^=mp4a]/best/bestvideo+bestaudio[acodec^=mp4a]/best"
+        );
+        assert!(valid_language("zh-Hans"));
+        assert!(!valid_language("es]+bestvideo"));
+        assert!(!valid_language(""));
     }
 
     #[test]
