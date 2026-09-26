@@ -60,6 +60,14 @@ const STORAGE_KEYS = {
 
 export class MockPrismService implements IPrismService {
   readonly isDemo = true;
+  async restartTorrentEngine(): Promise<number> {
+    return 0;
+  }
+
+  async missingFiles(paths: string[]): Promise<boolean[]> {
+    return paths.map(() => false);
+  }
+
   async inspectUrl(url: string): Promise<InspectResult> {
     // The demo has no yt-dlp to ask: the URL decides.
     if (/[?&]list=|\/playlist|\/@|\/sets\//.test(url)) {

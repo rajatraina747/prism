@@ -325,7 +325,7 @@ async fn ensure_session(
     pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
     *guard = Some((session.clone(), api));
-    spawn_session_stats(app.clone(), session.clone(), active.clone(), cfg);
+    spawn_session_stats(app.clone(), session.clone(), slot.clone(), active.clone(), cfg);
     Ok(session)
 }
 
@@ -570,11 +570,17 @@ fn prune_persisted(dir: &Path, queue: &QueueTorrents) -> Vec<String> {
 fn spawn_session_stats(
     app: AppHandle,
     session: Arc<Session>,
+    slot: SessionSlot,
     active: Arc<Mutex<HashMap<String, ActiveTorrent>>>,
     cfg: SessionConfig,
 ) {
     tauri::async_runtime::spawn(async move {
         loop {
+            // A restart replaced this session: its successor reports now.
+            let current = slot.lock().await.as_ref().is_some_and(|(s, _)| Arc::ptr_eq(s, &session));
+            if !current {
+                return;
+            }
             let active_count = active.lock().await.len();
             let snap = session.stats_snapshot();
             let dht_nodes = session
@@ -614,6 +620,27 @@ impl TorrentManager {
             resolved: Arc::new(Mutex::new(HashMap::new())),
             cfg: Arc::new(Mutex::new(SessionConfig::default())),
         }
+    }
+
+    /// Stop the engine so the next torrent starts a new one with the settings
+    /// as they are now — DHT, uTP, listen port, blocklist… — without
+    /// relaunching Prism. Every torrent leaves the engine's watch (their poll
+    /// loops end quietly: removal is their stop signal), is paused, and the
+    /// session stops. Its persisted state stays, so the new session restores
+    /// them paused and each resumed item adopts its own torrent without
+    /// hashing its data again. The page resumes whatever was running.
+    /// Returns how many torrents were running.
+    pub async fn restart(&self) -> usize {
+        let running: Vec<ActiveTorrent> = self.active.lock().await.drain().map(|(_, t)| t).collect();
+        let old = self.session.lock().await.take();
+        if let Some((session, _)) = old {
+            for torrent in &running {
+                let _ = session.pause(&torrent.handle).await;
+            }
+            session.stop().await;
+        }
+        log::info!("torrent engine restarted ({} torrent(s) were running)", running.len());
+        running.len()
     }
 
     /// Torrents downloading or seeding (for the quit confirmation).
@@ -2120,6 +2147,27 @@ mod tests {
         assert_ne!(bound, port, "can't share the taken port");
         session.stop().await;
         drop(taken);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // R4.6: a restart stops the session and the next one takes the same
+    // port — the old listener must really have let go of it.
+    #[tokio::test]
+    async fn a_stopped_session_frees_its_port_for_the_next() {
+        let dir = std::env::temp_dir().join(format!("prism-restart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let port = std::net::TcpListener::bind(("0.0.0.0", 0)).unwrap().local_addr().unwrap().port();
+        let cfg = SessionConfig { listen_port: port, ..Default::default() };
+        let dl = dir.join("dl").to_string_lossy().into_owned();
+        let first = start_session(&dl, LimitsConfig::default(), &cfg).await.expect("first session");
+        assert_eq!(first.listen_addr().unwrap().port(), port);
+        first.stop().await;
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let second = start_session(&dl, LimitsConfig::default(), &cfg).await.expect("second session");
+        assert_eq!(second.listen_addr().unwrap().port(), port, "the restarted engine lost its port");
+        second.stop().await;
         let _ = std::fs::remove_dir_all(&dir);
     }
 

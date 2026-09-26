@@ -14,6 +14,7 @@ import {
 } from '@/stores/completion';
 import { scheduleGate, itemStartBlocked } from '@/stores/schedule';
 import { autoRetryDelayMs } from '@/stores/retry';
+import { itemsToStart } from '@/stores/slots';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { overallProgress } from '@/stores/progress';
@@ -76,6 +77,9 @@ interface QueueActions {
   removeWithData: (id: string) => void;
   moveToTop: (id: string) => void;
   moveToBottom: (id: string) => void;
+  /** Restart the torrent engine so its settings apply now: running torrents
+   * pause, the engine restarts, they carry on (no re-check of their data). */
+  restartTorrentEngine: () => Promise<void>;
 }
 
 interface HistoryActions {
@@ -425,22 +429,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const gate = scheduleGate(settings, new Date());
     if (gate.blockStarts) return;
 
-    const activeCount = queue.filter(i => i.status === 'downloading').length;
-    const available = settings.maxConcurrentDownloads - activeCount;
-    if (available <= 0) return;
-
-    const toStart = queue
+    // Torrents have their own pool, and a stalled one doesn't hold its slot
+    // (stores/slots.ts).
+    const now = new Date();
+    const toStart = itemsToStart(
+      queue,
+      { transfers: settings.maxConcurrentDownloads, torrents: settings.maxConcurrentTorrents },
+      now,
       // An item whose kill is still in flight has to wait for it: starting
       // now means the backend kills the *new* process when the cancel lands,
       // leaving the item 'downloading' with nothing behind it. stoppedTick
-      // re-runs this effect as each kill settles.
-      .filter(i => i.status === 'queued' && !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id))
-      // An item waiting for its own start time holds back only itself — the
-      // rest of the queue carries on, which is the whole point of scheduling
-      // one download for later. The minute tick above re-runs this, so it
-      // starts on its own when the time comes.
-      .filter(i => !itemStartBlocked(i, new Date()))
-      .slice(0, available);
+      // re-runs this effect as each kill settles. An item waiting for its own
+      // start time holds back only itself; the minute tick starts it later.
+      i => !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id) && !itemStartBlocked(i, now),
+    );
 
     if (toStart.length === 0) return;
 
@@ -761,6 +763,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (from >= 0 && from < current.length - 1) dispatch({ type: 'reorder', from, to: current.length - 1 });
   }, []);
 
+  const restartTorrentEngine = useCallback(async () => {
+    // Every torrent the engine is watching loses its handle in the restart:
+    // detach them, pause the running ones, and queue those again after, when
+    // each re-adds and adopts its own restored torrent.
+    const watched = queueRef.current.filter(i => i.kind === 'torrent' && cleanupRefs.current.has(i.id));
+    const running = watched.filter(i => i.status === 'downloading' || i.status === 'seeding').map(i => i.id);
+    for (const item of watched) {
+      cleanupRefs.current.get(item.id)?.();
+      cleanupRefs.current.delete(item.id);
+      startedRef.current.delete(item.id);
+    }
+    running.forEach(id => dispatch({ type: 'pause', id }));
+    try {
+      await service.restartTorrentEngine();
+    } finally {
+      running.forEach(id => dispatch({ type: 'resume', id }));
+    }
+  }, [service]);
+
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
@@ -798,8 +819,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [settings, updatePreference, resetToDefaults, importSettings],
   );
   const queueValue = useMemo(
-    () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }),
-    [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom],
+    () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
+    [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
   );
   const historyValue = useMemo(
     () => ({ items: history, removeFromHistory, restoreHistory, importHistory, clearHistory }),

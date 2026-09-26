@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { setThumbResolver } from '@/lib/thumb-cache';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
@@ -97,12 +98,22 @@ export class TauriPrismService implements IPrismService {
   private _initDone = false;
 
   async init(): Promise<void> {
+    // Thumbnails from a local copy, fetched once through the proxy.
+    setThumbResolver(async url => convertFileSrc(await invoke<string>('cache_thumbnail', { url })));
     await this.persistence._ensureLoaded();
     this._initDone = true;
   }
 
   async parseUrl(url: string): Promise<MediaMetadata> {
     return invoke<MediaMetadata>('parse_url', { url });
+  }
+
+  async restartTorrentEngine(): Promise<number> {
+    return invoke<number>('restart_torrent_engine');
+  }
+
+  async missingFiles(paths: string[]): Promise<boolean[]> {
+    return invoke<boolean[]>('missing_files', { paths });
   }
 
   async inspectUrl(url: string): Promise<InspectResult> {

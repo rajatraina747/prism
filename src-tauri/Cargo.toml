@@ -15,7 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -95,7 +95,7 @@ objc2-core-foundation = "0.3"
 # Tests drive the real capability files through Tauri's mock runtime (IPC +
 # ACL) — see `webview_fs_access_*` in src/lib.rs.
 [dev-dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "test"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "protocol-asset", "test"] }
 # Local HTTP server for the direct-download engine tests.
 tokio = { version = "1", features = ["net"] }
 

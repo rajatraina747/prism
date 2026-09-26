@@ -13,6 +13,47 @@ const SEEN_URLS_CAP = 1000;
 export interface SubscriptionCheckResult {
   newEntries: PlaylistEntry[];
   seenUrls: string[];
+  /** Premieres and live streams, left unseen until they can be downloaded. */
+  pendingUrls: string[];
+}
+
+/** A premiere or scheduled stream that hasn't aired, or a stream that is
+ * live now: neither is a finished video yet. Queued, they failed, and being
+ * marked seen they were never taken once they had aired (REVIEW 2026-09-26). */
+export function notYetDownloadable(entry: PlaylistEntry): boolean {
+  return entry.liveStatus === 'is_upcoming' || entry.liveStatus === 'is_live';
+}
+
+/** Run the full (yt-dlp) check at least this often even when the RSS feed
+ * shows nothing new. */
+export const FULL_CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+
+/** The video id in a YouTube URL: watch, shorts, live, embed, youtu.be, and
+ * the `/v/ID` that YouTube's own RSS feed carries as each entry's media. */
+export function youtubeVideoId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^(www|m)\./, '');
+    if (host === 'youtu.be') return u.pathname.slice(1) || null;
+    if (host !== 'youtube.com') return null;
+    const v = u.searchParams.get('v');
+    if (v) return v;
+    const m = u.pathname.match(/^\/(?:shorts|live|embed|v)\/([\w-]+)/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the RSS feed shows nothing the last full check didn't already
+ * see, so the yt-dlp check can be skipped. Never while a premiere is
+ * waiting, and never past FULL_CHECK_EVERY_MS. */
+export function feedShowsNothingNew(sub: Subscription, feed: PlaylistEntry[], now: Date): boolean {
+  if (!sub.feedIds?.length || sub.pendingUrls?.length || !sub.lastFullCheckAt) return false;
+  if (now.getTime() - Date.parse(sub.lastFullCheckAt) >= FULL_CHECK_EVERY_MS) return false;
+  const known = new Set(sub.feedIds);
+  const ids = feed.map(e => youtubeVideoId(e.url)).filter((id): id is string => id !== null);
+  return ids.length > 0 && ids.every(id => known.has(id));
 }
 
 /** Whether a feed entry is one this subscription wants.
@@ -45,10 +86,15 @@ export function entryMatches(sub: Subscription, entry: PlaylistEntry): boolean {
  * whole back catalogue. */
 export function diffFeed(sub: Subscription, feed: PlaylistEntry[]): SubscriptionCheckResult {
   const seen = new Set(sub.seenUrls);
-  const newEntries = feed.filter(e => !seen.has(e.url) && entryMatches(sub, e));
-  // Feed order first (newest first), then previously-seen URLs, capped.
-  const merged = [...feed.map(e => e.url), ...sub.seenUrls.filter(u => !feed.some(e => e.url === u))];
-  return { newEntries, seenUrls: merged.slice(0, SEEN_URLS_CAP) };
+  const pending = new Set(feed.filter(notYetDownloadable).map(e => e.url));
+  const newEntries = feed.filter(e => !seen.has(e.url) && !pending.has(e.url) && entryMatches(sub, e));
+  // Feed order first (newest first), then previously-seen URLs, capped. A
+  // premiere or live stream stays out, so it is new again once it has aired.
+  const merged = [
+    ...feed.map(e => e.url).filter(u => !pending.has(u)),
+    ...sub.seenUrls.filter(u => !feed.some(e => e.url === u)),
+  ];
+  return { newEntries, seenUrls: merged.slice(0, SEEN_URLS_CAP), pendingUrls: [...pending].filter(u => !seen.has(u)) };
 }
 
 /** Whether a feed entry's link may be queued without anyone confirming it.

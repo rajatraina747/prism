@@ -161,11 +161,15 @@ export interface PlaylistEntry {
   title: string;
   duration: number;
   thumbnail: string;
+  /** yt-dlp's live_status: 'is_upcoming' (premiere/scheduled), 'is_live', … */
+  liveStatus?: string;
 }
 
 export interface PlaylistInfo {
   title: string;
   entries: PlaylistEntry[];
+  /** YouTube's own RSS feed for this channel/playlist (fast to poll). */
+  feedUrl?: string;
 }
 
 /** What a link turned out to be (Rust `lookup::inspect_url`): one video with
@@ -301,6 +305,9 @@ export interface DownloadPreset {
 export interface AppPreferences {
   defaultSaveFolder: string;
   maxConcurrentDownloads: number;
+  /** Torrents downloading at once, apart from the limit above. One stalled
+   * for five minutes doesn't count (stores/slots.ts). */
+  maxConcurrentTorrents: number;
   bandwidthLimit: number;
   defaultRetryCount: number;
   theme: 'dark' | 'light' | 'system';
@@ -409,7 +416,7 @@ export interface AppPreferences {
   // seeding ends). Read Rust-side; nothing is ever overwritten.
   moveCompletedEnabled: boolean;
   moveCompletedTo: string;
-  // Folders Prism watches for .torrent files and text files of links. Scanned
+  // Folders Prism watches for .torrent files (only those). Scanned
   // Rust-side; a handled file is renamed, never deleted.
   watchFolders: { path: string; enabled: boolean }[];
   // Categories sort downloads as they arrive: the first whose rules match an
@@ -519,6 +526,15 @@ export interface Subscription {
   /** File everything from this feed under a category, as if it had been
    * added by hand with that category chosen. */
   categoryId?: string;
+  /** YouTube: the channel's or playlist's RSS feed, polled first — when it
+   * shows nothing new, the slower yt-dlp check is skipped. */
+  feedUrl?: string;
+  /** Video ids that feed listed at the last full check. */
+  feedIds?: string[];
+  lastFullCheckAt?: string;
+  /** Premieres and live streams seen but not downloadable yet: not marked
+   * seen, so they are taken once they become ordinary videos. */
+  pendingUrls?: string[];
 }
 
 export interface HistoryItem {
@@ -547,6 +563,7 @@ export interface HistoryItem {
 export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultSaveFolder: '~/Downloads/Prism',
   maxConcurrentDownloads: 3,
+  maxConcurrentTorrents: 3,
   bandwidthLimit: 0,
   defaultRetryCount: 3,
   theme: 'dark',

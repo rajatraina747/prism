@@ -781,7 +781,7 @@ fn proxy_for(url: &str) -> Result<reqwest::Proxy, PrismError> {
     reqwest::Proxy::all(url).map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))
 }
 
-fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
+pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(CONNECT_TIMEOUT)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffFeed, entryToDownloadItem, entryMatches, likelyFeedType, feedEntryAllowed, sameSiteAsSubscription } from '../subscription-check';
+import { diffFeed, entryToDownloadItem, entryMatches, likelyFeedType, feedEntryAllowed, sameSiteAsSubscription, feedShowsNothingNew, youtubeVideoId, FULL_CHECK_EVERY_MS } from '../subscription-check';
 import type { Subscription, PlaylistEntry, AppPreferences } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 
@@ -235,5 +235,48 @@ describe('feed entry safety', () => {
     ]) {
       expect(feedEntryAllowed(url), url).toBe(false);
     }
+  });
+});
+
+// Regression (REVIEW 2026-09-26): a premiere was queued, failed, and marked
+// seen, so it was never downloaded once it had aired.
+describe('premieres and live streams', () => {
+  const entry = (url: string, liveStatus?: string): PlaylistEntry => ({ url, title: url, duration: 0, thumbnail: '', liveStatus });
+
+  it('are neither queued nor marked seen until they have aired', () => {
+    const sub = makeSub({ seenUrls: [] });
+    const first = diffFeed(sub, [entry('https://www.youtube.com/watch?v=up', 'is_upcoming'), entry('https://www.youtube.com/watch?v=old')]);
+    expect(first.newEntries.map(e => e.url)).toEqual(['https://www.youtube.com/watch?v=old']);
+    expect(first.seenUrls).not.toContain('https://www.youtube.com/watch?v=up');
+    expect(first.pendingUrls).toEqual(['https://www.youtube.com/watch?v=up']);
+
+    const aired = diffFeed({ ...sub, seenUrls: first.seenUrls }, [entry('https://www.youtube.com/watch?v=up', 'was_live'), entry('https://www.youtube.com/watch?v=old')]);
+    expect(aired.newEntries.map(e => e.url)).toEqual(['https://www.youtube.com/watch?v=up']);
+    expect(aired.pendingUrls).toEqual([]);
+  });
+});
+
+describe('the RSS shortcut', () => {
+  const now = new Date('2026-09-26T12:00:00Z');
+  const recent = new Date(now.getTime() - 60_000).toISOString();
+  const rss = (ids: string[]): PlaylistEntry[] => ids.map(id => ({ url: `https://www.youtube.com/shorts/${id}`, title: id, duration: 0, thumbnail: '' }));
+
+  it('reads video ids from every YouTube URL shape', () => {
+    expect(youtubeVideoId('https://www.youtube.com/watch?v=abc_1')).toBe('abc_1');
+    expect(youtubeVideoId('https://www.youtube.com/shorts/xyz-2')).toBe('xyz-2');
+    expect(youtubeVideoId('https://youtu.be/q3')).toBe('q3');
+    // As YouTube's RSS feed lists each entry (media:content).
+    expect(youtubeVideoId('https://www.youtube.com/v/wBA83zXaYcc?version=3')).toBe('wBA83zXaYcc');
+    expect(youtubeVideoId('https://vimeo.com/1')).toBeNull();
+  });
+
+  it('skips the full check only when nothing is new, recently checked, and nothing is waiting', () => {
+    const sub = makeSub({ feedIds: ['a', 'b'], lastFullCheckAt: recent });
+    expect(feedShowsNothingNew(sub, rss(['a', 'b']), now)).toBe(true);
+    expect(feedShowsNothingNew(sub, rss(['c', 'a']), now)).toBe(false);
+    expect(feedShowsNothingNew({ ...sub, pendingUrls: ['x'] }, rss(['a']), now)).toBe(false);
+    const stale = new Date(now.getTime() - FULL_CHECK_EVERY_MS).toISOString();
+    expect(feedShowsNothingNew({ ...sub, lastFullCheckAt: stale }, rss(['a']), now)).toBe(false);
+    expect(feedShowsNothingNew(makeSub({}), rss(['a']), now)).toBe(false);
   });
 });
