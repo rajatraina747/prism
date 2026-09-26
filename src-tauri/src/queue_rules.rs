@@ -369,7 +369,7 @@ const REGION: Classified = Classified { category: "parse", suggestion: "Not avai
 const RATE: Classified = Classified { category: "network", suggestion: "Rate limited by the site — wait a few minutes, then retry" };
 const REFUSED: Classified = Classified {
     category: "unknown",
-    suggestion: "The site refused the download — update the engine in Settings → Updates, then retry",
+    suggestion: "The site refused the download — retry; if it keeps happening, update the engine in Settings → Updates",
 };
 const NO_WRITE: Classified = Classified {
     category: "permission",
@@ -451,6 +451,12 @@ pub fn retry_delay_ms(attempt: u32, budget: u32, category: &str, code: Option<&s
     }
     if code == Some("busy") {
         return Some(10_000);
+    }
+    // A site refusing (HTTP 403) usually means its links expired; one fresh
+    // start re-extracts them. More than one would just repeat the refusal.
+    let refused = code == Some("forbidden") || (m.contains("403") && m.contains("forbidden"));
+    if refused {
+        return (attempt == 0).then_some(10_000);
     }
     if category == "network" {
         return Some((5_000u64 << attempt.min(10)).min(60_000));
@@ -814,6 +820,11 @@ mod tests {
         assert_eq!(retry_delay_ms(4, 5, "network", None, "429 Too Many Requests"), Some(900_000));
         assert_eq!(retry_delay_ms(0, 3, "unknown", Some("busy"), ""), Some(10_000));
         assert_eq!(retry_delay_ms(0, 3, "auth", Some("auth"), ""), None);
+        // A refusal gets exactly one fresh start (Windows test run 2026-09-26).
+        assert_eq!(retry_delay_ms(0, 3, "unknown", Some("forbidden"), ""), Some(10_000));
+        assert_eq!(retry_delay_ms(1, 3, "unknown", Some("forbidden"), ""), None);
+        assert_eq!(retry_delay_ms(0, 3, "unknown", None, "HTTP Error 403: Forbidden"), Some(10_000));
+        assert_eq!(retry_delay_ms(0, 0, "unknown", Some("forbidden"), ""), None, "retries off means off");
     }
 
     // ── when done (completion.test.ts) ──

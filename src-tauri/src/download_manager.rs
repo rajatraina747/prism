@@ -582,7 +582,7 @@ impl DownloadManager {
                     return;
                 }
 
-                if !success && !timed_out && info.is_some() && agg.bytes() == 0 {
+                if should_refetch(success, timed_out, info.is_some(), agg.bytes(), &last_error) {
                     log::info!("download {id}: its lookup didn't work ({last_error}); starting from the URL");
                     crate::lookup::forget_info(&app, &url);
                     info = None;
@@ -860,6 +860,19 @@ fn reported_path(line: &str) -> Option<&str> {
     (!path.is_empty() && path != "NA").then_some(path)
 }
 
+/// Whether a run that started from the stored lookup should run once more
+/// from the URL. Nothing written means the lookup never worked. A 403 means
+/// the site refused its links (they expire), however much arrived first:
+/// subtitles download before the video, so a download with subtitles used to
+/// fail outright and Retry reused the same dead links. yt-dlp resumes the
+/// `.part` on the second run.
+fn should_refetch(success: bool, timed_out: bool, from_lookup: bool, bytes: u64, last_error: &str) -> bool {
+    if success || timed_out || !from_lookup {
+        return false;
+    }
+    bytes == 0 || classify_output(last_error).code == ErrorCode::Forbidden
+}
+
 /// The file yt-dlp writes for an `-o` template ending in `.%(ext)s`: that
 /// suffix becomes `.{ext}` and every escaped `%%` a literal `%`. Only the
 /// suffix is replaced, so an escaped `%%(ext)s` inside a name stays literal.
@@ -917,6 +930,20 @@ fn find_output_file(template: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression (Windows test run 2026-09-26, D5/D6): a 403 after any bytes —
+    // subtitles, or part of the video — was final, and Retry repeated it.
+    #[test]
+    fn a_refused_lookup_runs_again_from_the_url() {
+        let refused = "ERROR: unable to download video data: HTTP Error 403: Forbidden";
+        assert!(should_refetch(false, false, true, 0, "anything"), "nothing written: the lookup never worked");
+        assert!(should_refetch(false, false, true, 218_297, refused), "subtitles arrived first");
+        assert!(should_refetch(false, false, true, 19_500_000, refused), "part of the video arrived");
+        assert!(!should_refetch(false, false, true, 19_500_000, "ERROR: Private video"), "other failures after bytes are final");
+        assert!(!should_refetch(false, false, false, 0, refused), "already from the URL: only once");
+        assert!(!should_refetch(false, true, true, 0, refused), "a stall is not a refusal");
+        assert!(!should_refetch(true, false, true, 0, ""), "it worked");
+    }
 
     #[test]
     fn reads_the_reported_path() {
