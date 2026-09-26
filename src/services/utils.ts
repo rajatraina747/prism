@@ -1,4 +1,5 @@
 import type { DownloadKind } from '@/types/models';
+import { noteReferrer } from '@/lib/referrers';
 
 export function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 11);
@@ -91,7 +92,10 @@ export function parsePrismDeepLink(raw: string): string | null {
     const target = u.searchParams.get('url');
     if (!target) return null;
     const t = new URL(target);
-    return (t.protocol === 'http:' || t.protocol === 'https:') ? target : null;
+    if (t.protocol !== 'http:' && t.protocol !== 'https:') return null;
+    // The extension sends the page a link was on; some hosts check it.
+    noteReferrer(target, u.searchParams.get('referrer'));
+    return target;
   } catch {
     return null;
   }

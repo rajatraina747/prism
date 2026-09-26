@@ -116,6 +116,8 @@ pub struct Extras {
     pub embed_subtitles: bool,
     /// yt-dlp's download archive to consult and record in (subscriptions).
     pub archive: Option<std::path::PathBuf>,
+    /// Sent as the Referer (validated by `http_engine::valid_referer`).
+    pub referer: Option<String>,
 }
 
 pub struct DownloadManager {
@@ -299,6 +301,10 @@ impl DownloadManager {
                 args.push(format!("chapter:{}", chapter_template(&output_path)));
             }
 
+            if let Some(referer) = &extras.referer {
+                args.push("--referer".into());
+                args.push(referer.clone());
+            }
             if let Some(archive) = &extras.archive {
                 args.push("--download-archive".into());
                 args.push(archive.to_string_lossy().into_owned());

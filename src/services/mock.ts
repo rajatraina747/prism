@@ -68,7 +68,7 @@ export class MockPrismService implements IPrismService {
     return paths.map(() => false);
   }
 
-  async inspectUrl(url: string): Promise<InspectResult> {
+  async inspectUrl(url: string, _referer?: string): Promise<InspectResult> {
     // The demo has no yt-dlp to ask: the URL decides.
     if (/[?&]list=|\/playlist|\/@|\/sets\//.test(url)) {
       return { kind: 'playlist', playlist: await this.parsePlaylist(url) };

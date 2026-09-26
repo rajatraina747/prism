@@ -59,7 +59,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R4.6** Restart the torrent engine from Settings to apply engine settings.
 
 ### Phase 5 — Direct downloads and the extension
-- [ ] **R5.1** Per-item Referer and a browser-style User-Agent option.
+- [x] **R5.1** Per-item Referer and a browser-style User-Agent option.
 - [ ] **R5.2** Slow segments are re-split across free connections.
 - [ ] **R5.3** Extension: "Download link with Prism" on links.
 

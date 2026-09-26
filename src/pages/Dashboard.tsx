@@ -17,6 +17,7 @@ import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, di
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { createLimiter } from '@/lib/limit';
+import { referrerFor } from '@/lib/referrers';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,7 @@ function presetToFormat(preset: DownloadPreset): FormatOption | null {
 /** Build a queue item for a direct file link. Skips yt-dlp; the engine takes
  * the real name and size from the server when it starts. */
 function buildDirectItem(url: string, destination: string, speedLimit?: number, title = directFileName(url)): DownloadItem {
+  const referer = referrerFor(url);
   let domain = 'download';
   try { domain = new URL(url).hostname; } catch { /* checked by isDirectFileUrl */ }
   return {
@@ -109,6 +111,7 @@ function buildDirectItem(url: string, destination: string, speedLimit?: number, 
       retryCount: 0,
       startImmediately: true,
       speedLimit,
+      ...(referer ? { referer } : {}),
     },
     status: 'queued',
     progress: 0,
@@ -331,7 +334,7 @@ export default function Dashboard() {
       // One lookup says whether this is a video or a list (a playlist, a
       // channel, an album…) — no guessing from the URL.
       const target = mixVideoUrl(url) ?? url;
-      let found = await service.inspectUrl(target);
+      let found = await service.inspectUrl(target, referrerFor(url));
       if (found.kind === 'playlist') {
         const { entries } = found.playlist;
         if (entries.length > 1) {
@@ -372,7 +375,7 @@ export default function Dashboard() {
   // yt-dlp couldn't read the link, but it may still be a plain file.
   const downloadAsFile = useCallback(async (url: string) => {
     try {
-      const probe = await service.probeDirectLink(url);
+      const probe = await service.probeDirectLink(url, referrerFor(url));
       if (probe.contentType?.toLowerCase().startsWith('text/html')) {
         toast.error('That link opens a web page, not a file');
         return;
@@ -413,7 +416,7 @@ export default function Dashboard() {
       if (isTorrentUrl(url) || isDirectFileUrl(url) || findDuplicate(url, queueItems, []) === 'queue') return;
       const lookup = limit(() => abortBulkRef.current
         ? Promise.reject(new Error('Stopped'))
-        : service.inspectUrl(mixVideoUrl(url) ?? url));
+        : service.inspectUrl(mixVideoUrl(url) ?? url, referrerFor(url)));
       lookup.catch(() => { /* reported when the loop reaches it */ });
       lookups.set(i, lookup);
     });
@@ -502,6 +505,9 @@ export default function Dashboard() {
   }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, queueItems]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
+    // The page the link came from, if the extension said (lib/referrers.ts).
+    const referer = item.settings.referer ?? referrerFor(lastParsedUrlRef.current) ?? referrerFor(item.metadata.source.url);
+    if (referer) item = { ...item, settings: { ...item.settings, referer } };
     addToQueue(item);
     setParsedMetadata(null);
     toast.success(`Added to queue: ${item.metadata.title}`, {

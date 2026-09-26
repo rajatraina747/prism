@@ -781,9 +781,43 @@ fn proxy_for(url: &str) -> Result<reqwest::Proxy, PrismError> {
     reqwest::Proxy::all(url).map_err(|e| PrismError::new(ErrorCode::InvalidInput, format!("Invalid proxy: {e}")))
 }
 
+/// A current browser's User-Agent. Many file hosts and CDNs refuse, or send
+/// an error page to, a client that doesn't look like a browser; the setting
+/// ("Identify as a browser", on by default) chooses it over Prism's own.
+#[cfg(target_os = "macos")]
+const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+#[cfg(target_os = "windows")]
+const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+/// A Referer a download may send: an http(s) URL of sane length. Some hosts
+/// serve a file only to the page that links it.
+pub(crate) fn valid_referer(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.len() > 2048 || s.chars().any(char::is_control) {
+        return None;
+    }
+    let u = url::Url::parse(s).ok()?;
+    (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| u.to_string())
+}
+
 pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
+    client_with(app, None)
+}
+
+/// `client_for`, sending `referer` with every request.
+fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
+    let agent = if crate::setting_bool(app, "browserUserAgent", true) {
+        BROWSER_USER_AGENT
+    } else {
+        concat!("Prism/", env!("CARGO_PKG_VERSION"))
+    };
     let mut builder = reqwest::Client::builder()
-        .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
+        .user_agent(agent)
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(READ_TIMEOUT)
         .redirect(reqwest::redirect::Policy::limited(10));
@@ -792,6 +826,11 @@ pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError>
     }
     if let Some(proxy) = crate::proxy_url(app) {
         builder = builder.proxy(proxy_for(&proxy)?);
+    }
+    if let Some(value) = referer.and_then(|r| reqwest::header::HeaderValue::from_str(r).ok()) {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::REFERER, value);
+        builder = builder.default_headers(headers);
     }
     builder
         .build()
@@ -827,9 +866,10 @@ impl HttpEngine {
 
 /// What a link is: a file (name, size, resumable) or a web page.
 #[tauri::command]
-pub async fn probe_direct_link(app: AppHandle, url: String) -> Result<LinkProbe, PrismError> {
+pub async fn probe_direct_link(app: AppHandle, url: String, referer: Option<String>) -> Result<LinkProbe, PrismError> {
     let url = checked_url(&url)?;
-    probe(&client_for(&app)?, url.as_str()).await
+    let referer = referer.as_deref().and_then(valid_referer);
+    probe(&client_with(&app, referer.as_deref())?, url.as_str()).await
 }
 
 #[tauri::command]
@@ -844,6 +884,8 @@ pub async fn start_http_download(
     speed_limit: Option<u64>,
     filename_template: Option<String>,
     template_vars: Option<crate::template::TemplateVars>,
+    // The page the link was found on, for hosts that check it.
+    referer: Option<String>,
 ) -> Result<(), PrismError> {
     // Taken before the first await: the probe can take over a minute, and a
     // stop in that time must be seen (B-5).
@@ -858,7 +900,8 @@ pub async fn start_http_download(
     let dir = PathBuf::from(dir);
     tokio::fs::create_dir_all(&dir).await.map_err(io_error)?;
 
-    let client = client_for(&app)?;
+    let referer = referer.as_deref().and_then(valid_referer);
+    let client = client_with(&app, referer.as_deref())?;
     let link = probe(&client, source.as_str()).await?;
     if link.is_web_page() {
         return Err(PrismError::new(ErrorCode::Unsupported, "That link opens a web page, not a file"));
@@ -1096,6 +1139,14 @@ mod tests {
         assert_eq!(still_needed(1000, &dest, "https://b/other.iso"), 1000, "another file's state");
         assert_eq!(still_needed(2000, &dest, "https://a/big.iso"), 2000, "the file changed size");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_plain_web_pages_are_sent_as_referers() {
+        assert_eq!(valid_referer("https://example.com/page?x=1").as_deref(), Some("https://example.com/page?x=1"));
+        assert_eq!(valid_referer("file:///etc/passwd"), None);
+        assert_eq!(valid_referer("https://a.com/\r\nX-Evil: 1"), None);
+        assert_eq!(valid_referer(&format!("https://a.com/{}", "x".repeat(3000))), None);
     }
 
     #[test]
