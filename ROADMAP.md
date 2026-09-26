@@ -73,7 +73,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R6.7** Reducer tests ported; migration test.
 
 ### Phase 7 — Windows hand-off
-- [ ] **R7.1** `docs/WINDOWS-TEST-PLAN.md`; tag `roadmap-complete`.
+- [x] **R7.1** `docs/WINDOWS-TEST-PLAN.md`; tag `roadmap-complete`.
 
 ## Arcs from the 2026-09-23 review
 
