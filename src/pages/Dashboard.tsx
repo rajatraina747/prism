@@ -10,12 +10,13 @@ import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal'
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
 import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
+import { createLimiter } from '@/lib/limit';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,9 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
     </div>
   );
 }
+
+/** Lookups a pasted batch runs at once (the backend allows six). */
+const BATCH_LOOKUPS = 4;
 
 /** Pick the format that best matches a preset's target resolution. */
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
@@ -400,6 +404,19 @@ export default function Dashboard() {
     const added: DownloadItem[] = [];
     let skipped = 0;
     let failed = 0;
+    // Look links up four at a time, ahead of the loop below, which still adds
+    // them in the order they were given. One at a time, each paying yt-dlp's
+    // start-up, a long batch took many minutes.
+    const limit = createLimiter(BATCH_LOOKUPS);
+    const lookups = new Map<number, Promise<InspectResult>>();
+    urls.forEach((url, i) => {
+      if (isTorrentUrl(url) || isDirectFileUrl(url) || findDuplicate(url, queueItems, []) === 'queue') return;
+      const lookup = limit(() => abortBulkRef.current
+        ? Promise.reject(new Error('Stopped'))
+        : service.inspectUrl(mixVideoUrl(url) ?? url));
+      lookup.catch(() => { /* reported when the loop reaches it */ });
+      lookups.set(i, lookup);
+    });
     for (let i = 0; i < urls.length; i++) {
       if (abortBulkRef.current) break;
       try {
@@ -424,7 +441,7 @@ export default function Dashboard() {
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
-        const found = await service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]);
+        const found = await (lookups.get(i) ?? service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]));
         if (found.kind === 'playlist') {
           // A list in a batch: every entry, as if chosen in the list dialog.
           const listFormat = presetToFormat(selectedPreset);
