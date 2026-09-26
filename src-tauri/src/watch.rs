@@ -1,30 +1,26 @@
-//! Watch folders: drop a `.torrent` or a list of links into a folder and
-//! Prism adds it.
+//! Watch folders: drop a `.torrent` into a folder and Prism adds it.
 //!
 //! A folder the user configured is checked every few seconds. A `.torrent`
-//! becomes a magnet through the same cache a drop uses; a text file is read
-//! for http(s) and magnet links. Whatever is found is emitted as
-//! `watch-folder-links`, which the frontend feeds into the ordinary add flow.
+//! becomes a magnet through the same cache a drop uses, and is emitted as
+//! `watch-folder-links`, which the frontend feeds into the ordinary add flow
+//! through the same confirmation card as a link from a browser: the natural
+//! folder to watch is Downloads, and a web page can put a `.torrent` there
+//! without asking (REVIEW 2026-09-26 H2).
 //!
-//! Everything found goes through the same confirmation card as a link from a
-//! browser. The natural folder to watch is Downloads, and a web page can put
-//! a `.txt` or a `.torrent` there without asking: a link list would otherwise
-//! run yt-dlp with the browser's cookies (REVIEW 2026-09-23 S-1), and a
-//! `.torrent` would join a swarm with the user's address, unconfirmed
-//! (REVIEW 2026-09-26 H2).
+//! Only `.torrent` files, as other clients do. Text files of links were read
+//! too, and renamed once handled — so any note in a watched Downloads that
+//! happened to hold a URL was renamed `.added` and its links offered for
+//! download (REVIEW 2026-09-26). Lists of links still go in through the Add
+//! sheet or a drop.
 //!
 //! Polling rather than filesystem events: network shares and external drives
 //! report changes unreliably (or not at all), and a few seconds' delay costs
 //! nothing here. Files are never deleted — a handled file is renamed to
-//! `<name>.added`, a `.torrent` Prism couldn't read to `<name>.failed`, which
-//! is also what stops it being added twice. A text file with no links in it
-//! is someone's own file and is left exactly as it is.
+//! `<name>.added`, one Prism couldn't read to `<name>.failed`, which is also
+//! what stops it being added twice.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
-use std::collections::HashSet;
-use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -33,10 +29,6 @@ use tauri::{AppHandle, Emitter};
 /// Ten seconds, not five: each pass lists the folder, and the natural one
 /// to watch is a large Downloads (REVIEW 2026-09-26 L4).
 const INTERVAL: Duration = Duration::from_secs(10);
-/// Largest list of links read into memory (real ones are a few KB).
-const MAX_LIST_BYTES: u64 = 1024 * 1024;
-/// Text files scanned for links.
-const LIST_EXTENSIONS: &[&str] = &["txt", "text", "csv", "list", "urls"];
 
 const EVENT: &str = "watch-folder-links";
 
@@ -48,11 +40,6 @@ pub struct WatchLink {
     /// Anything can put a file in the folder, a web page included.
     pub confirm: bool,
 }
-
-/// Text files already read and found to hold no links, by path, size and
-/// modification time, so they are not re-read every pass and are read
-/// again only if they change.
-type Seen = HashSet<(PathBuf, u64, Option<SystemTime>)>;
 
 /// One configured folder, as stored in settings.json.
 #[derive(Debug, Clone, Deserialize)]
@@ -80,7 +67,6 @@ fn folders(app: &AppHandle) -> Vec<WatchFolder> {
 /// settings read (cached) every few seconds.
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Seen::new()));
         loop {
             tokio::time::sleep(INTERVAL).await;
             let configured = folders(&app);
@@ -88,11 +74,8 @@ pub fn spawn(app: AppHandle) {
                 continue;
             }
             let found = tauri::async_runtime::spawn_blocking({
-                let (app, seen) = (app.clone(), seen.clone());
-                move || {
-                    let mut seen = seen.lock().unwrap_or_else(|p| p.into_inner());
-                    sweep(&app, &configured, &mut seen)
-                }
+                let app = app.clone();
+                move || sweep(&app, &configured)
             })
             .await
             .unwrap_or_default();
@@ -104,7 +87,7 @@ pub fn spawn(app: AppHandle) {
     });
 }
 
-fn sweep(app: &AppHandle, configured: &[WatchFolder], seen: &mut Seen) -> Vec<WatchLink> {
+fn sweep(app: &AppHandle, configured: &[WatchFolder]) -> Vec<WatchLink> {
     let allowed = crate::picked_dirs(app);
     let destinations: Vec<PathBuf> = crate::download_destinations(app)
         .into_iter()
@@ -126,7 +109,7 @@ fn sweep(app: &AppHandle, configured: &[WatchFolder], seen: &mut Seen) -> Vec<Wa
             log::warn!("watch folder {}: it is also a download destination; not watched", dir.display());
             continue;
         }
-        links.extend(scan(&dir, seen, &mut |name, bytes| {
+        links.extend(scan(&dir, &mut |name, bytes| {
             crate::store_torrent_bytes(app, name, bytes)
                 .inspect_err(|e| log::warn!("watch folder: {e}"))
                 .ok()
@@ -137,12 +120,8 @@ fn sweep(app: &AppHandle, configured: &[WatchFolder], seen: &mut Seen) -> Vec<Wa
 
 /// One pass over a folder. `to_magnet` caches a `.torrent`'s bytes and
 /// returns its magnet (separated out so the sweep is testable on its own).
-fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> Option<String>) -> Vec<WatchLink> {
+fn scan(dir: &Path, to_magnet: &mut dyn FnMut(&str, &[u8]) -> Option<String>) -> Vec<WatchLink> {
     let mut links = Vec::new();
-    // Text files still here this pass. `seen` keeps only these (for this
-    // folder), so it shrinks as files go instead of growing for as long as
-    // Prism runs (REVIEW 2026-09-26 L4).
-    let mut present: Seen = Seen::new();
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -153,52 +132,26 @@ fn scan(dir: &Path, seen: &mut Seen, to_magnet: &mut dyn FnMut(&str, &[u8]) -> O
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(kind) = entry.file_type() else { continue };
-        if !kind.is_file() {
+        let is_torrent = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("torrent"));
+        if !kind.is_file() || !is_torrent {
+            // Anything else is not ours: left alone.
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        let extension = path
-            .extension()
-            .map(|e| e.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
-        if extension == "torrent" {
-            // Size first: a page can drop a huge file named `.torrent` into a
-            // watched Downloads, and reading it whole to find out it isn't one
-            // would hold all of it in memory (L9).
-            let small = entry.metadata().is_ok_and(|m| m.len() <= crate::MAX_TORRENT_FILE_BYTES);
-            let bytes = if small { std::fs::read(&path).ok() } else { None };
-            match bytes.and_then(|bytes| to_magnet(&name, &bytes)) {
-                Some(magnet) => {
-                    links.push(WatchLink { url: magnet, confirm: true });
-                    mark(&path, "added");
-                }
-                // A .torrent is Prism's kind of file: mark it so it isn't retried forever.
-                None => mark(&path, "failed"),
+        // Size first: a page can drop a huge file named `.torrent` into a
+        // watched Downloads, and reading it whole to find out it isn't one
+        // would hold all of it in memory (L9).
+        let small = entry.metadata().is_ok_and(|m| m.len() <= crate::MAX_TORRENT_FILE_BYTES);
+        let bytes = if small { std::fs::read(&path).ok() } else { None };
+        match bytes.and_then(|bytes| to_magnet(&name, &bytes)) {
+            Some(magnet) => {
+                links.push(WatchLink { url: magnet, confirm: true });
+                mark(&path, "added");
             }
-        } else if LIST_EXTENSIONS.contains(&extension.as_str()) {
-            // Only text files are stat'ed: a watched Downloads folder can hold
-            // thousands of entries that are none of Prism's business (L4).
-            let Ok(metadata) = entry.metadata() else { continue };
-            if metadata.len() > MAX_LIST_BYTES {
-                continue;
-            }
-            let key = (path.clone(), metadata.len(), metadata.modified().ok());
-            present.insert(key.clone());
-            if seen.contains(&key) {
-                continue;
-            }
-            let found = std::fs::read_to_string(&path).map(|text| extract_links(&text)).unwrap_or_default();
-            if found.is_empty() {
-                // Someone's own notes, not a list for Prism: leave it alone.
-                seen.insert(key);
-                continue;
-            }
-            links.extend(found.into_iter().map(|url| WatchLink { url, confirm: true }));
-            mark(&path, "added");
+            // A .torrent is Prism's kind of file: mark it so it isn't retried forever.
+            None => mark(&path, "failed"),
         }
-        // Anything else is not ours: left alone.
     }
-    seen.retain(|key| key.0.parent() != Some(dir) || present.contains(key));
     links
 }
 
@@ -210,20 +163,6 @@ fn mark(path: &Path, outcome: &str) {
     if let Err(e) = std::fs::rename(path, &target) {
         log::warn!("watch folder: could not rename {} : {e}", path.display());
     }
-}
-
-/// http(s) and magnet links in a text file, in order, without duplicates.
-fn extract_links(text: &str) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    text.split_whitespace()
-        .map(str::trim)
-        .filter(|token| {
-            let lower = token.to_ascii_lowercase();
-            lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("magnet:?")
-        })
-        .filter(|token| seen.insert(token.to_string()))
-        .map(str::to_string)
-        .collect()
 }
 
 #[cfg(test)]
@@ -253,80 +192,41 @@ mod tests {
     }
 
     #[test]
-    fn reads_links_out_of_a_text_file() {
-        let text = "https://example.com/a.mp4\n# a comment\nmagnet:?xt=urn:btih:abc\nnot-a-link\nhttps://example.com/a.mp4";
-        assert_eq!(
-            extract_links(text),
-            vec!["https://example.com/a.mp4".to_string(), "magnet:?xt=urn:btih:abc".to_string()]
-        );
-        assert!(extract_links("nothing here").is_empty());
-    }
-
-    #[test]
-    fn picks_up_torrents_and_lists_then_marks_them_handled() {
+    fn picks_up_torrents_then_marks_them_handled() {
         let tmp = TempDir::new("sweep");
         std::fs::write(tmp.0.join("show.torrent"), b"valid").unwrap();
-        std::fs::write(tmp.0.join("links.txt"), "https://example.com/clip.mp4\n").unwrap();
         std::fs::write(tmp.0.join("notes.md"), "left alone").unwrap();
 
-        let mut seen = Seen::new();
-        let mut found = scan(&tmp.0, &mut seen, &mut stub_magnet);
-        found.sort_by(|a, b| a.url.cmp(&b.url));
-        // Regression (REVIEW 2026-09-23 S-1, 2026-09-26 H2): a text file's
-        // links and a .torrent both need the confirmation card — a browser
-        // can drop either into a watched Downloads folder unasked.
+        // Regression (REVIEW 2026-09-26 H2): a .torrent needs the
+        // confirmation card — a browser can drop one into Downloads unasked.
         assert_eq!(
-            found,
-            vec![
-                WatchLink { url: "https://example.com/clip.mp4".into(), confirm: true },
-                WatchLink { url: "magnet:?xt=urn:btih:abc&dn=x".into(), confirm: true },
-            ]
+            scan(&tmp.0, &mut stub_magnet),
+            vec![WatchLink { url: "magnet:?xt=urn:btih:abc&dn=x".into(), confirm: true }]
         );
         assert!(tmp.0.join("show.torrent.added").exists());
-        assert!(tmp.0.join("links.txt.added").exists());
-        // Files Prism doesn't handle are untouched.
-        assert!(tmp.0.join("notes.md").exists());
+        assert!(tmp.0.join("notes.md").exists(), "files Prism doesn't handle are untouched");
         // A second pass finds nothing: handled files were renamed.
-        assert!(scan(&tmp.0, &mut seen, &mut stub_magnet).is_empty());
+        assert!(scan(&tmp.0, &mut stub_magnet).is_empty());
+    }
+
+    // Regression (REVIEW 2026-09-26): someone's notes in a watched Downloads
+    // were renamed `.added` and their links offered for download.
+    #[test]
+    fn text_files_with_links_are_left_alone() {
+        let tmp = TempDir::new("text");
+        std::fs::write(tmp.0.join("links.txt"), "https://example.com/clip.mp4\n").unwrap();
+        assert!(scan(&tmp.0, &mut stub_magnet).is_empty());
+        assert!(tmp.0.join("links.txt").exists());
+        assert!(!tmp.0.join("links.txt.added").exists());
     }
 
     #[test]
-    fn a_file_it_cannot_read_is_marked_failed_not_retried_forever() {
+    fn a_torrent_it_cannot_read_is_marked_failed_not_retried_forever() {
         let tmp = TempDir::new("bad");
-        std::fs::write(tmp.0.join("broken.torrent"), b"not a torrent").unwrap();
-        std::fs::write(tmp.0.join("empty.txt"), "no links in here").unwrap();
-
-        let mut seen = Seen::new();
-        assert!(scan(&tmp.0, &mut seen, &mut stub_magnet).is_empty());
-        assert!(tmp.0.join("broken.torrent.failed").exists());
-        // Regression (REVIEW 2026-09-23 S-1): a text file with no links is
-        // someone's own file, left exactly as it was.
-        assert!(tmp.0.join("empty.txt").exists());
-        assert!(!tmp.0.join("empty.txt.failed").exists());
-        assert!(scan(&tmp.0, &mut seen, &mut stub_magnet).is_empty());
-        assert!(seen.len() == 1, "remembered, so it isn't re-read every pass");
-
-        // Read again once it changes.
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        std::fs::write(tmp.0.join("empty.txt"), "now https://example.com/v.mp4 is in here").unwrap();
-        assert_eq!(scan(&tmp.0, &mut seen, &mut stub_magnet).len(), 1);
-    }
-
-    // Regression (REVIEW 2026-09-26 L4): the remembered set follows the
-    // folder, instead of growing for as long as Prism runs.
-    #[test]
-    fn remembered_files_are_forgotten_once_they_go() {
-        let tmp = TempDir::new("forget");
-        let other = TempDir::new("forget-other");
-        std::fs::write(tmp.0.join("notes.txt"), "no links").unwrap();
-        std::fs::write(other.0.join("notes.txt"), "no links").unwrap();
-        let mut seen = Seen::new();
-        scan(&tmp.0, &mut seen, &mut stub_magnet);
-        scan(&other.0, &mut seen, &mut stub_magnet);
-        assert_eq!(seen.len(), 2);
-        std::fs::remove_file(tmp.0.join("notes.txt")).unwrap();
-        scan(&tmp.0, &mut seen, &mut stub_magnet);
-        assert_eq!(seen.len(), 1, "the removed file is forgotten; the other folder's is kept");
+        std::fs::write(tmp.0.join("broken.TORRENT"), b"not a torrent").unwrap();
+        assert!(scan(&tmp.0, &mut stub_magnet).is_empty());
+        assert!(tmp.0.join("broken.TORRENT.failed").exists());
+        assert!(scan(&tmp.0, &mut stub_magnet).is_empty());
     }
 
     #[test]
@@ -334,7 +234,7 @@ mod tests {
         let tmp = TempDir::new("nested");
         std::fs::create_dir_all(tmp.0.join("inner")).unwrap();
         std::fs::write(tmp.0.join("inner/deep.torrent"), b"valid").unwrap();
-        assert!(scan(&tmp.0, &mut Seen::new(), &mut stub_magnet).is_empty());
+        assert!(scan(&tmp.0, &mut stub_magnet).is_empty());
         assert!(tmp.0.join("inner/deep.torrent").exists());
     }
 }

@@ -416,7 +416,7 @@ export interface AppPreferences {
   // seeding ends). Read Rust-side; nothing is ever overwritten.
   moveCompletedEnabled: boolean;
   moveCompletedTo: string;
-  // Folders Prism watches for .torrent files and text files of links. Scanned
+  // Folders Prism watches for .torrent files (only those). Scanned
   // Rust-side; a handled file is renamed, never deleted.
   watchFolders: { path: string; enabled: boolean }[];
   // Categories sort downloads as they arrive: the first whose rules match an

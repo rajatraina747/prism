@@ -972,7 +972,7 @@ export default function Settings() {
                     </button>
                   </div>
                 </SettingRow>
-                <SettingRow label="Watch folders" description="Drop a .torrent file or a text file of links into one of these and Prism adds it. Links from a text file ask you to confirm first. Handled files are renamed, never deleted">
+                <SettingRow label="Watch folders" description="Drop a .torrent file into one of these and Prism offers to add it. Other files are left alone; handled .torrent files are renamed, never deleted">
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (
                       <div key={folder.path} className="flex items-center gap-1.5">
