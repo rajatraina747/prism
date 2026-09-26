@@ -137,6 +137,9 @@ export function entryToDownloadItem(
       categoryId: sub.categoryId || undefined,
       // Links to another site don't get the browser's cookies (M1).
       noCookies: !sameSiteAsSubscription(entry.url, sub.url) || undefined,
+      // The same video can reach several feeds (a channel and a playlist of
+      // it) under different URLs; yt-dlp's archive knows it by its id.
+      useArchive: true,
     },
     status: 'queued',
     progress: 0,

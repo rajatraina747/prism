@@ -63,6 +63,18 @@ export interface FormatOption {
   codec: string;
   fileSize: number;
   quality: 'best' | 'high' | 'medium' | 'low';
+  /** 30 or 60 (frame-rate class). Absent on formats saved before 2.3. */
+  fps?: number;
+  hdr?: boolean;
+  /** False for VP9/AV1: plays in VLC, IINA and browsers but not QuickTime or
+   * Photos. Absent (older items) means it was H.264. */
+  playsEverywhere?: boolean;
+}
+
+export interface AudioTrack {
+  code: string;
+  name: string;
+  original: boolean;
 }
 
 export interface MediaMetadata {
@@ -76,6 +88,10 @@ export interface MediaMetadata {
   /** `<extractor>:<id>` from yt-dlp: the same video however its URL is
    * written. Absent for torrents, direct files and older records. */
   mediaKey?: string;
+  /** Several audio tracks (YouTube's dubs), original first. Absent: one. */
+  audioTracks?: AudioTrack[];
+  /** Subtitles the uploader provided (not machine translations). */
+  subtitleLanguages?: { code: string; name: string }[];
 }
 
 export interface DownloadSettings {
@@ -89,7 +105,12 @@ export interface DownloadSettings {
   startImmediately: boolean;
   audioOnly?: boolean;
   downloadSubtitles?: boolean;
+  /** One code, or several comma-separated (`en,es`). */
   subtitleLanguage?: string;
+  /** Put the subtitles inside the video file (needs ffmpeg). */
+  embedSubtitles?: boolean;
+  /** A dub to download instead of the original track (see audioTracks). */
+  audioLanguage?: string;
   speedLimit?: number; // bytes per second, 0 = unlimited
   // Torrent-only: indices of files to download. Undefined = all files.
   selectedFiles?: number[];
@@ -110,6 +131,9 @@ export interface DownloadSettings {
   // subscription itself — a feed's links must not become logged-in requests
   // to arbitrary sites (REVIEW 2026-09-26 M1). Absent = the setting decides.
   noCookies?: boolean;
+  /** Subscription items: skip (and drop) a video already downloaded under
+   * any URL, per yt-dlp's archive of site ids (`archive.txt` in app data). */
+  useArchive?: boolean;
   // Direct downloads only: a SHA-256 the finished file has to match, as 64
   // lower-case hex digits. Absent = downloaded without being checked.
   sha256?: string;
@@ -143,6 +167,12 @@ export interface PlaylistInfo {
   title: string;
   entries: PlaylistEntry[];
 }
+
+/** What a link turned out to be (Rust `lookup::inspect_url`): one video with
+ * its formats, or a list of entries. */
+export type InspectResult =
+  | { kind: 'video'; metadata: MediaMetadata }
+  | { kind: 'playlist'; playlist: PlaylistInfo };
 
 export interface DownloadItem {
   id: string;
@@ -583,4 +613,7 @@ export const DEFAULT_PRESETS: DownloadPreset[] = [
   { id: '1080p', name: 'Full HD', resolution: '1080p', container: 'mp4', quality: 'high' },
   { id: '720p', name: 'HD Ready', resolution: '720p', container: 'mp4', quality: 'medium' },
   { id: 'compact', name: 'Compact', resolution: '480p', container: 'mp4', quality: 'low' },
+  // H.264 only (up to 1080p on YouTube): plays in QuickTime, Photos and on
+  // iPhones, where VP9/AV1 at higher resolutions don't.
+  { id: 'compatible', name: 'Compatible (H.264)', resolution: '1080p', container: 'mp4', quality: 'high' },
 ];

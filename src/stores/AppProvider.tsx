@@ -506,6 +506,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           } else {
             // Rust sends a structured EngineError; the web demo plain text.
             const { message, detail, engineCode } = errorText(errorMsg);
+            // A subscription video yt-dlp's archive says was downloaded before
+            // (under another URL): nothing failed, and nothing new arrived.
+            if (engineCode === 'already_downloaded') {
+              diagnostics.log('info', `Skipped, already downloaded: ${item.metadata.title}`);
+              dispatch({ type: 'remove', id: item.id });
+              return;
+            }
             const { category, suggestion, action } = classifyError(message, engineCode);
 
             // Transient failures (connection, rate limit, Prism busy): retry

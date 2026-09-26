@@ -9,7 +9,7 @@ import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { applyFinished, type FinishedDownload } from '@/stores/finished';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
@@ -103,6 +103,10 @@ export class TauriPrismService implements IPrismService {
 
   async parseUrl(url: string): Promise<MediaMetadata> {
     return invoke<MediaMetadata>('parse_url', { url });
+  }
+
+  async inspectUrl(url: string): Promise<InspectResult> {
+    return invoke<InspectResult>('inspect_url', { url });
   }
 
   async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
@@ -261,6 +265,9 @@ export class TauriPrismService implements IPrismService {
         audioOnly: item.settings.audioOnly ?? false,
         downloadSubtitles: item.settings.downloadSubtitles ?? false,
         subtitleLanguage: item.settings.subtitleLanguage ?? null,
+        audioLanguage: item.settings.audioLanguage ?? null,
+        embedSubtitles: item.settings.embedSubtitles ?? false,
+        useArchive: item.settings.useArchive ?? false,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         expectedSize: item.settings.format?.fileSize || null,
         clipStart: item.settings.clipStart ?? null,

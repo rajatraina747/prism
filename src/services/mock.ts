@@ -1,4 +1,4 @@
-import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
+import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { generateId } from './utils';
 
@@ -60,6 +60,14 @@ const STORAGE_KEYS = {
 
 export class MockPrismService implements IPrismService {
   readonly isDemo = true;
+  async inspectUrl(url: string): Promise<InspectResult> {
+    // The demo has no yt-dlp to ask: the URL decides.
+    if (/[?&]list=|\/playlist|\/@|\/sets\//.test(url)) {
+      return { kind: 'playlist', playlist: await this.parsePlaylist(url) };
+    }
+    return { kind: 'video', metadata: await this.parseUrl(url) };
+  }
+
   async parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo> {
     await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
     let count = 3 + Math.floor(Math.random() * 8);

@@ -45,6 +45,11 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
   const [audioOnly, setAudioOnly] = useState(false);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [subtitleLanguage, setSubtitleLanguage] = useState('en');
+  // Codes chosen from the uploader's own subtitles, when the site lists them.
+  const [subtitleCodes, setSubtitleCodes] = useState<string[]>([]);
+  const [embedSubtitles, setEmbedSubtitles] = useState(false);
+  // '' = the original track.
+  const [audioLanguage, setAudioLanguage] = useState('');
   // Per-download destination override; null = use the Settings default.
   const [destination, setDestination] = useState<string | null>(null);
 
@@ -59,12 +64,20 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       setFilename(sanitizeFilename(metadata.title));
       setAudioOnly(false);
       setDownloadSubtitles(false);
+      setEmbedSubtitles(false);
+      setAudioLanguage('');
+      // Start from the uploader's English subtitles when there are any.
+      const listed = metadata.subtitleLanguages ?? [];
+      const english = listed.find(l => l.code === 'en' || l.code.startsWith('en-'));
+      setSubtitleCodes(english ? [english.code] : listed.slice(0, 1).map(l => l.code));
     }
   }, [metadata, preferredResolution]);
 
   if (!metadata) return null;
 
   const fileExtension = audioOnly ? preferences.audioFormat : (selectedFormat?.container || 'mp4');
+  const listedSubtitles = metadata.subtitleLanguages ?? [];
+  const audioTracks = metadata.audioTracks ?? [];
 
   const handleAdd = () => {
     if (!audioOnly && !selectedFormat) return;
@@ -82,8 +95,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
         retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
         startImmediately,
         audioOnly,
-        downloadSubtitles,
-        subtitleLanguage: downloadSubtitles ? subtitleLanguage : undefined,
+        downloadSubtitles: downloadSubtitles && (listedSubtitles.length === 0 || subtitleCodes.length > 0),
+        subtitleLanguage: downloadSubtitles
+          ? (listedSubtitles.length > 0 ? subtitleCodes.join(',') : subtitleLanguage)
+          : undefined,
+        embedSubtitles: downloadSubtitles && embedSubtitles && !audioOnly,
+        audioLanguage: audioLanguage || undefined,
         speedLimit: speedLimitBytes || undefined,
       },
       status: startImmediately ? 'queued' : 'ready',
@@ -179,6 +196,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             </div>
           )}
 
+          {!audioOnly && selectedFormat?.playsEverywhere === false && (
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              {selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.
+            </p>
+          )}
+
           {/* Audio format info */}
           {audioOnly && (
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
@@ -217,7 +240,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               <Subtitles className="w-3 h-3 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Download subtitles</span>
             </label>
-            {downloadSubtitles && (
+            {downloadSubtitles && listedSubtitles.length === 0 && (
               <select
                 value={subtitleLanguage}
                 onChange={e => setSubtitleLanguage(e.target.value)}
@@ -228,7 +251,58 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 ))}
               </select>
             )}
+            {downloadSubtitles && !audioOnly && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={embedSubtitles}
+                  onChange={(e) => setEmbedSubtitles(e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span className="text-xs text-muted-foreground">Inside the video</span>
+              </label>
+            )}
           </div>
+          {downloadSubtitles && listedSubtitles.length > 0 && (
+            // The uploader's own subtitles, several at once.
+            <div className="flex flex-wrap gap-1.5 -mt-2 max-h-24 overflow-y-auto">
+              {listedSubtitles.map(l => {
+                const on = subtitleCodes.includes(l.code);
+                return (
+                  <button
+                    key={l.code}
+                    type="button"
+                    onClick={() => setSubtitleCodes(codes => on ? codes.filter(c => c !== l.code) : [...codes, l.code])}
+                    className={cn(
+                      'px-2 py-0.5 rounded-md text-[11px] border transition-colors',
+                      on ? 'bg-primary/12 border-primary/30 text-foreground' : 'bg-secondary/50 border-transparent text-muted-foreground hover:bg-secondary',
+                    )}
+                  >
+                    {l.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Audio track (dubs) */}
+          {audioTracks.length > 1 && (
+            <div className="flex items-center gap-3">
+              <Music className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Audio</span>
+              <select
+                value={audioLanguage}
+                onChange={e => setAudioLanguage(e.target.value)}
+                className="px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none cursor-pointer"
+              >
+                {audioTracks.map(t => (
+                  <option key={t.code} value={t.original ? '' : t.code}>
+                    {t.name}{t.original ? ' · original' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Advanced */}
           <button

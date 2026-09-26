@@ -1,4 +1,4 @@
-import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction, ConvertPreset } from '@/types/models';
+import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileInfo, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction, ConvertPreset } from '@/types/models';
 
 export type { ConvertPreset };
 import type { EngineError } from '@/services/errors';
@@ -112,6 +112,9 @@ export interface IPrismService {
 
   // URL parsing & metadata
   parseUrl(url: string): Promise<MediaMetadata>;
+  /** One lookup that says whether a link is a video (with its formats) or a
+   * list (flat entries) — for anything a person adds. */
+  inspectUrl(url: string): Promise<InspectResult>;
   /** Flat-parse a playlist/channel feed. `limit` caps to the newest N entries
    * (used by subscription polling; omit for full imports). */
   parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo>;

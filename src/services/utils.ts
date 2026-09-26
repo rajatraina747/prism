@@ -201,3 +201,19 @@ export function torrentDisplayName(url: string): string {
   }
   return 'Torrent download';
 }
+
+/** A YouTube watch URL inside a Mix (`list=RD…`): the video alone. A Mix is
+ * an endless radio queue, not a list anyone means to download, so pasting a
+ * video from one fetches that video. Null for anything else. */
+export function mixVideoUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase().replace(/^(www|m)\./, '');
+    if (host !== 'youtube.com' && host !== 'music.youtube.com') return null;
+    const v = u.searchParams.get('v');
+    const list = u.searchParams.get('list');
+    return v && list?.startsWith('RD') ? `https://www.youtube.com/watch?v=${v}` : null;
+  } catch {
+    return null;
+  }
+}

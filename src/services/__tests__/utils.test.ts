@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey, mixVideoUrl } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -256,5 +256,19 @@ describe('isSameFolder', () => {
     expect(isSameFolder('/Users/r/Downloads', '~/Downloads/Prism')).toBe(false);
     expect(isSameFolder('/Users/r/Downloads/Prism Extra', '~/Downloads/Prism')).toBe(false);
     expect(isSameFolder('/x', '')).toBe(false);
+  });
+});
+
+describe('mixVideoUrl', () => {
+  it('turns a video inside a YouTube Mix into the video alone', () => {
+    expect(mixVideoUrl('https://www.youtube.com/watch?v=abc123&list=RDabc123&start_radio=1')).toBe('https://www.youtube.com/watch?v=abc123');
+    expect(mixVideoUrl('https://music.youtube.com/watch?v=x1&list=RDAMVMx1')).toBe('https://www.youtube.com/watch?v=x1');
+  });
+
+  it('leaves real playlists and other sites alone', () => {
+    expect(mixVideoUrl('https://www.youtube.com/watch?v=abc&list=PL123')).toBeNull();
+    expect(mixVideoUrl('https://www.youtube.com/playlist?list=RD123')).toBeNull();
+    expect(mixVideoUrl('https://vimeo.com/1?list=RD1&v=2')).toBeNull();
+    expect(mixVideoUrl('not a url')).toBeNull();
   });
 });

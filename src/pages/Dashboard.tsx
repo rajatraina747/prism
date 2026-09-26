@@ -10,12 +10,13 @@ import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal'
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type TorrentFileEntry } from '@/types/models';
+import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
+import { createLimiter } from '@/lib/limit';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
 import { cn } from '@/lib/utils';
@@ -42,9 +43,18 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
   );
 }
 
+/** Lookups a pasted batch runs at once (the backend allows six). */
+const BATCH_LOOKUPS = 4;
+
 /** Pick the format that best matches a preset's target resolution. */
 function pickFormatForPreset(formats: FormatOption[], preset: DownloadPreset): FormatOption | undefined {
   if (preset.resolution === 'Best') return formats[0]; // formats are sorted descending
+  if (preset.id === 'compatible') {
+    // The best option that plays everywhere, else the strict H.264 filter.
+    const cap = parseInt(preset.resolution, 10);
+    return formats.find(f => f.playsEverywhere !== false && !f.hdr && parseInt(f.resolution, 10) <= cap)
+      ?? presetToFormat(preset) ?? undefined;
+  }
   return formats.find(f => f.resolution === preset.resolution) || formats[0];
 }
 
@@ -55,12 +65,24 @@ function presetToFormat(preset: DownloadPreset): FormatOption | null {
   if (preset.resolution === 'Best') return null;
   const h = parseInt(preset.resolution, 10);
   if (!h) return null;
+  if (preset.id === 'compatible') {
+    return {
+      id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/best[height<=${h}]`,
+      label: `${preset.resolution} · H.264`,
+      resolution: preset.resolution,
+      container: 'mp4',
+      codec: 'H.264',
+      fileSize: 0,
+      quality: 'high',
+      playsEverywhere: true,
+    };
+  }
   return {
     id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`,
-    label: `${preset.resolution} MP4`,
+    label: `${preset.resolution} · H.264 when available`,
     resolution: preset.resolution,
     container: 'mp4',
-    codec: 'h264/aac',
+    codec: 'H.264',
     fileSize: 0,
     quality: (preset.quality as FormatOption['quality']) || 'high',
   };
@@ -126,18 +148,41 @@ function describeExternalLink(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-/** Detect if a URL looks like a playlist (heuristic). */
-function looksLikePlaylist(url: string): boolean {
-  try {
-    const u = new URL(url);
-    // YouTube playlist
-    if (u.hostname.includes('youtube') || u.hostname.includes('youtu.be')) {
-      if (u.pathname === '/playlist' || u.searchParams.has('list')) return true;
-    }
-    // Other common patterns
-    if (u.pathname.includes('/playlist') || u.pathname.includes('/sets/')) return true;
-  } catch { /* not a valid URL, continue */ }
-  return false;
+/** A queue item for one entry of a list, straight from the flat lookup
+ * (title, duration and thumbnail are already known): no per-video lookup, and
+ * `format` is the preset's synthesized filter, resolved when it starts. */
+function playlistEntryItem(
+  entry: PlaylistEntry,
+  format: FormatOption | null,
+  destination: string,
+  retryCount: number,
+  speedLimit: number | undefined,
+): DownloadItem {
+  return {
+    id: generateId(),
+    metadata: {
+      title: entry.title,
+      duration: entry.duration,
+      thumbnail: entry.thumbnail,
+      source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
+      formats: [],
+    },
+    settings: {
+      format,
+      destination,
+      filename: sanitizeFilename(entry.title),
+      retryCount,
+      startImmediately: true,
+      speedLimit,
+    },
+    status: 'queued',
+    progress: 0,
+    speed: 0,
+    eta: 0,
+    downloadedBytes: 0,
+    totalBytes: 500_000_000,
+    retryAttempt: 0,
+  };
 }
 
 export default function Dashboard() {
@@ -282,24 +327,30 @@ export default function Dashboard() {
     }
     setIsParsing(true);
     try {
-      // Check if it looks like a playlist
-      if (looksLikePlaylist(url)) {
-        try {
-          const playlist = await service.parsePlaylist(url);
-          if (playlist.entries.length > 1) {
-            setParsedPlaylist(playlist);
-            setShowPlaylistModal(true);
-            setIsParsing(false);
-            return;
-          }
-          // Single-entry "playlist" — fall through to single parse
-        } catch {
-          // Not a playlist or failed — fall through to single parse
+      lastParsedUrlRef.current = url;
+      // One lookup says whether this is a video or a list (a playlist, a
+      // channel, an album…) — no guessing from the URL.
+      const target = mixVideoUrl(url) ?? url;
+      let found = await service.inspectUrl(target);
+      if (found.kind === 'playlist') {
+        const { entries } = found.playlist;
+        if (entries.length > 1) {
+          setParsedPlaylist(found.playlist);
+          setShowPlaylistModal(true);
+          return;
+        }
+        if (entries.length === 0) {
+          setParseError({ message: 'That list has no videos Prism can download' });
+          return;
+        }
+        // A list of one is that one video.
+        found = await service.inspectUrl(entries[0].url);
+        if (found.kind !== 'video') {
+          setParseError({ message: 'Couldn’t read that link' });
+          return;
         }
       }
-
-      lastParsedUrlRef.current = url;
-      const metadata = await service.parseUrl(url);
+      const { metadata } = found;
       // The same video under a URL the check above didn't recognise: now the
       // lookup has named it (extractor + the site's own id), ask again.
       if (dup === null) {
@@ -353,6 +404,19 @@ export default function Dashboard() {
     const added: DownloadItem[] = [];
     let skipped = 0;
     let failed = 0;
+    // Look links up four at a time, ahead of the loop below, which still adds
+    // them in the order they were given. One at a time, each paying yt-dlp's
+    // start-up, a long batch took many minutes.
+    const limit = createLimiter(BATCH_LOOKUPS);
+    const lookups = new Map<number, Promise<InspectResult>>();
+    urls.forEach((url, i) => {
+      if (isTorrentUrl(url) || isDirectFileUrl(url) || findDuplicate(url, queueItems, []) === 'queue') return;
+      const lookup = limit(() => abortBulkRef.current
+        ? Promise.reject(new Error('Stopped'))
+        : service.inspectUrl(mixVideoUrl(url) ?? url));
+      lookup.catch(() => { /* reported when the loop reaches it */ });
+      lookups.set(i, lookup);
+    });
     for (let i = 0; i < urls.length; i++) {
       if (abortBulkRef.current) break;
       try {
@@ -377,7 +441,23 @@ export default function Dashboard() {
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
-        const metadata = await service.parseUrl(urls[i]);
+        const found = await (lookups.get(i) ?? service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]));
+        if (found.kind === 'playlist') {
+          // A list in a batch: every entry, as if chosen in the list dialog.
+          const listFormat = presetToFormat(selectedPreset);
+          for (const entry of found.playlist.entries) {
+            if (findDuplicate(entry.url, [...queueItems, ...added], []) === 'queue') {
+              skipped++;
+              continue;
+            }
+            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined);
+            added.push(item);
+            addToQueue(item);
+          }
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
+        const { metadata } = found;
         // Two URLs for the same video, one of them already queued (or earlier
         // in this batch): the lookup's mediaKey says so where the URLs don't.
         if (findMediaDuplicate(metadata.mediaKey, [...queueItems, ...added], []) === 'queue') {
@@ -459,31 +539,7 @@ export default function Dashboard() {
     const format = presetToFormat(selectedPreset);
 
     for (const entry of entries) {
-      addToQueue({
-        id: generateId(),
-        metadata: {
-          title: entry.title,
-          duration: entry.duration,
-          thumbnail: entry.thumbnail,
-          source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
-          formats: [],
-        },
-        settings: {
-          format,
-          destination: preferences.defaultSaveFolder,
-          filename: sanitizeFilename(entry.title),
-          retryCount: preferences.defaultRetryCount,
-          startImmediately: true,
-          speedLimit: speedLimitBytes || undefined,
-        },
-        status: 'queued',
-        progress: 0,
-        speed: 0,
-        eta: 0,
-        downloadedBytes: 0,
-        totalBytes: 500_000_000,
-        retryAttempt: 0,
-      });
+      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined));
     }
 
     setShowPlaylistModal(false);

@@ -17,7 +17,7 @@ export type EngineErrorCode =
   | 'network' | 'timeout' | 'auth' | 'geo' | 'unavailable' | 'rate_limited'
   | 'forbidden' | 'disk_full' | 'permission' | 'not_found' | 'unsupported'
   | 'format' | 'checksum' | 'engine_missing' | 'invalid_input' | 'busy'
-  | 'cancelled' | 'unknown';
+  | 'cancelled' | 'already_downloaded' | 'unknown';
 
 /** A structured error from Rust: what commands reject with and what
  * download-complete events carry since 2.0. */
@@ -74,6 +74,7 @@ const BY_CODE: Partial<Record<EngineErrorCode, ClassifiedError>> = {
   engine_missing: { category: 'unknown', suggestion: 'Prism\'s downloader is missing — reinstall Prism', action: 'none' },
   busy: { category: 'unknown', suggestion: 'Prism is busy — try again in a moment', action: 'retry' },
   cancelled: { category: 'unknown', suggestion: 'The download was stopped', action: 'retry' },
+  already_downloaded: { category: 'unknown', suggestion: 'Already downloaded — Prism skipped it', action: 'none' },
 };
 
 /** Map an engine error to a category (drives auto-retry), a human suggestion

@@ -5,11 +5,13 @@ mod content_index;
 mod convert;
 mod download_manager;
 mod finished;
+mod formats;
 mod engine;
 mod errors;
 mod http_engine;
 mod jobs;
 mod lifecycle;
+mod lookup;
 mod ledger;
 mod migrate;
 mod mpv_worker;
@@ -55,6 +57,18 @@ pub struct FormatOption {
     pub codec: String,
     pub file_size: u64,
     pub quality: String,
+    /// 30 or 60 (frame-rate class); None for formats saved before 2.3.
+    #[serde(default)]
+    pub fps: Option<u32>,
+    #[serde(default)]
+    pub hdr: bool,
+    /// H.264/HEVC: plays in QuickTime and Photos too, not only VLC/IINA.
+    #[serde(default = "plays_everywhere_default")]
+    pub plays_everywhere: bool,
+}
+
+fn plays_everywhere_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +85,19 @@ pub struct MediaMetadata {
     /// site yt-dlp supports (see `media_key`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_key: Option<String>,
+    /// Several audio tracks (dubs), original first; empty when there's one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_tracks: Vec<formats::AudioTrack>,
+    /// Subtitles the uploader provided (not machine translations), by code.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_languages: Vec<SubtitleLanguage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleLanguage {
+    pub code: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,22 +118,9 @@ pub struct PlaylistInfo {
 
 // ── yt-dlp JSON subset ───────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct YtDlpFormat {
-    format_id: Option<String>,
-    format_note: Option<String>,
-    ext: Option<String>,
-    vcodec: Option<String>,
-    acodec: Option<String>,
-    height: Option<u32>,
-    width: Option<u32>,
-    filesize: Option<u64>,
-    filesize_approx: Option<u64>,
-}
 
 #[derive(Debug, Deserialize)]
-struct YtDlpInfo {
+pub(crate) struct YtDlpInfo {
     title: Option<String>,
     duration: Option<f64>,
     thumbnail: Option<String>,
@@ -114,9 +128,16 @@ struct YtDlpInfo {
     webpage_url_domain: Option<String>,
     description: Option<String>,
     uploader: Option<String>,
-    formats: Option<Vec<YtDlpFormat>>,
+    formats: Option<Vec<formats::YtDlpFormat>>,
+    #[serde(default)]
+    subtitles: Option<std::collections::BTreeMap<String, Vec<YtDlpSubtitle>>>,
     id: Option<String>,
     extractor_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct YtDlpSubtitle {
+    name: Option<String>,
 }
 
 /// A key for "the same video" that doesn't depend on how its URL was written:
@@ -135,16 +156,24 @@ pub(crate) fn media_key(extractor_key: Option<&str>, id: Option<&str>) -> Option
 }
 
 #[derive(Debug, Deserialize)]
-struct YtDlpPlaylistEntry {
-    url: Option<String>,
-    title: Option<String>,
-    duration: Option<f64>,
-    thumbnails: Option<Vec<YtDlpThumbnail>>,
+pub(crate) struct YtDlpPlaylistEntry {
+    pub(crate) url: Option<String>,
+    pub(crate) title: Option<String>,
+    pub(crate) duration: Option<f64>,
+    pub(crate) thumbnails: Option<Vec<YtDlpThumbnail>>,
+    /// yt-dlp's extractor for the entry (`Youtube`) and the site's own id:
+    /// together they rebuild a URL when a flat entry carries only the id.
+    #[serde(default)]
+    pub(crate) ie_key: Option<String>,
+    #[serde(default)]
+    pub(crate) id: Option<String>,
+    #[serde(default)]
+    pub(crate) webpage_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct YtDlpThumbnail {
-    url: Option<String>,
+pub(crate) struct YtDlpThumbnail {
+    pub(crate) url: Option<String>,
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -232,6 +261,24 @@ pub(crate) async fn run_ytdlp_capture(
     }
 }
 
+/// The network flags every lookup shares: address family, browser cookies
+/// and proxy, each already whitelisted by its accessor.
+pub(crate) fn lookup_network_args(app: &AppHandle) -> Vec<String> {
+    let mut args = Vec::new();
+    if force_ipv4(app) {
+        args.push("--force-ipv4".into());
+    }
+    if let Some(browser) = cookies_browser(app) {
+        args.push("--cookies-from-browser".into());
+        args.push(browser);
+    }
+    if let Some(proxy) = proxy_url(app) {
+        args.push("--proxy".into());
+        args.push(proxy);
+    }
+    args
+}
+
 /// The yt-dlp command for a lookup; a missing engine is its own error code.
 fn lookup_command(app: &AppHandle) -> Result<spawn::CommandSpec, errors::PrismError> {
     engine::ytdlp_command(app).map_err(|e| errors::PrismError::new(errors::ErrorCode::EngineMissing, e))
@@ -244,17 +291,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         "--no-download".into(),
         "--no-warnings".into(),
     ];
-    if force_ipv4(&app) {
-        parse_args.push("--force-ipv4".into());
-    }
-    if let Some(browser) = cookies_browser(&app) {
-        parse_args.push("--cookies-from-browser".into());
-        parse_args.push(browser);
-    }
-    if let Some(proxy) = proxy_url(&app) {
-        parse_args.push("--proxy".into());
-        parse_args.push(proxy);
-    }
+    parse_args.extend(lookup_network_args(&app));
     // `--` terminates options so a URL starting with `-` can't be parsed as a
     // yt-dlp flag (e.g. `--exec`). Defense-in-depth against arg injection.
     parse_args.push("--".into());
@@ -275,107 +312,39 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
 
     let info: YtDlpInfo = serde_json::from_slice(&stdout)
         .map_err(|e| format!("Failed to parse yt-dlp output: {}", e))?;
+    Ok(metadata_from_info(info, &url, keep_original_container(&app)))
+}
 
+/// The details dialog's view of one video from yt-dlp's JSON: title, source
+/// and the resolutions on offer.
+pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: bool) -> MediaMetadata {
     let domain = info
         .webpage_url_domain
         .clone()
-        .unwrap_or_else(|| extract_domain(&url));
+        .unwrap_or_else(|| extract_domain(url));
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Collect unique resolutions from real video formats (not storyboards, not audio-only)
-    // Use format_note (e.g. "720p", "1080p") for labels, height for yt-dlp filters
     let raw_formats = info.formats.unwrap_or_default();
-
-    struct ResInfo {
-        label: String,  // e.g. "1080p"
-        height: u32,    // actual pixel height (for yt-dlp filter)
-        size: u64,
-    }
-
-    let mut resolutions: std::collections::HashMap<String, ResInfo> = std::collections::HashMap::new();
-
-    for f in &raw_formats {
-        let height = f.height.unwrap_or(0);
-        if height < 144 {
-            continue;
-        }
-        let vcodec = f.vcodec.as_deref().unwrap_or("none");
-        if vcodec == "none" {
-            continue;
-        }
-        let ext = f.ext.as_deref().unwrap_or("");
-        if ext == "mhtml" {
-            continue;
-        }
-
-        // Use format_note (e.g. "1080p") if available, otherwise fall back to height
-        let note = f.format_note.as_deref().unwrap_or("");
-        let label = if note.ends_with('p') && note.len() <= 6 {
-            note.to_string()
-        } else {
-            format!("{}p", height)
-        };
-
-        let size = f.filesize.or(f.filesize_approx).unwrap_or(0);
-        let entry = resolutions.entry(label.clone()).or_insert(ResInfo {
-            label: label.clone(),
-            height,
-            size: 0,
-        });
-        if size > entry.size {
-            entry.size = size;
-        }
-        // Keep the largest height for this label (in case of aspect ratio differences)
-        if height > entry.height {
-            entry.height = height;
-        }
-    }
-
-    // Sort by resolution height descending
-    let mut unique_formats: Vec<FormatOption> = resolutions
-        .into_values()
-        .map(|r| {
-            let label_height: u32 = r.label.trim_end_matches('p').parse().unwrap_or(r.height);
-            let quality = match label_height {
-                h if h >= 2160 => "best",
-                h if h >= 1080 => "high",
-                h if h >= 720 => "medium",
-                _ => "low",
-            };
-            FormatOption {
-                // The chosen resolution must win over codec compatibility:
-                // yt-dlp takes the FIRST satisfiable alternative, and a
-                // "<=H avc1" branch is satisfiable at 1080p even when the user
-                // picked 2160p (YouTube's H.264 stops at 1080p; 4K/HDR only
-                // exists as VP9/AV1) — silently degrading the download. Order:
-                // exact height with avc1 → exact height any codec → then the
-                // <=H fallbacks for when the exact height has vanished.
-                id: format!(
-                    "bestvideo[height={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height={h}]+bestaudio/bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[height<={h}]+bestaudio/best[height<={h}]/best",
-                    h = r.height
-                ),
-                label: format!("{} MP4", r.label),
-                resolution: r.label.clone(),
-                container: "mp4".into(),
-                codec: "h264/aac".into(),
-                file_size: r.size,
-                quality: quality.into(),
-            }
+    let unique_formats = formats::options(&raw_formats, keep_container);
+    let audio_tracks = formats::audio_tracks(&raw_formats);
+    let subtitle_languages = info
+        .subtitles
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(code, _)| formats::valid_language(code) && code != "live_chat")
+        .map(|(code, subs)| {
+            let name = subs.into_iter().find_map(|s| s.name).unwrap_or_else(|| code.clone());
+            SubtitleLanguage { code, name }
         })
         .collect();
-    unique_formats.sort_by(|a, b| {
-        let a_h: u32 = a.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        let b_h: u32 = b.resolution.trim_end_matches('p').parse().unwrap_or(0);
-        b_h.cmp(&a_h)
-    });
 
-    Ok(MediaMetadata {
+    MediaMetadata {
         title: info.title.unwrap_or_else(|| "Unknown".into()),
         duration: info.duration.unwrap_or(0.0),
         thumbnail: info.thumbnail.unwrap_or_default(),
         source: MediaSource {
-            url: info.webpage_url.unwrap_or_else(|| url.clone()),
+            url: info.webpage_url.unwrap_or_else(|| url.to_string()),
             domain,
             added_at: now,
         },
@@ -383,7 +352,9 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         description: info.description,
         uploader: info.uploader,
         media_key: media_key(info.extractor_key.as_deref(), info.id.as_deref()),
-    })
+        audio_tracks,
+        subtitle_languages,
+    }
 }
 
 #[tauri::command]
@@ -394,23 +365,13 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         "--no-download".into(),
         "--no-warnings".into(),
     ];
-    if force_ipv4(&app) {
-        playlist_args.push("--force-ipv4".into());
-    }
     // Subscription polls only need the newest entries, not a channel's whole
     // catalog — feeds are newest-first, so a window off the top is enough.
     if let Some(n) = limit.filter(|n| *n > 0) {
         playlist_args.push("--playlist-items".into());
         playlist_args.push(format!("1:{}", n));
     }
-    if let Some(browser) = cookies_browser(&app) {
-        playlist_args.push("--cookies-from-browser".into());
-        playlist_args.push(browser);
-    }
-    if let Some(proxy) = proxy_url(&app) {
-        playlist_args.push("--proxy".into());
-        playlist_args.push(proxy);
-    }
+    playlist_args.extend(lookup_network_args(&app));
     playlist_args.push("--".into()); // options terminator — see parse_url
     playlist_args.push(url.clone());
 
@@ -437,46 +398,34 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         return Err("No playlist entries found".into());
     }
 
+    Ok(playlist_from_lines(&lines))
+}
+
+/// A flat `--dump-json` list (one entry per line) as the subscription code
+/// reads it. Entries keep their own site's URLs (`lookup::entry_url`), and the
+/// title is the list's own, which yt-dlp repeats on every line.
+fn playlist_from_lines(lines: &[&str]) -> PlaylistInfo {
+    let mut title: Option<String> = None;
     let mut entries = Vec::new();
-    let mut playlist_title = String::from("Playlist");
-
-    for line in &lines {
-        if let Ok(entry) = serde_json::from_str::<YtDlpPlaylistEntry>(line) {
-            let thumb = entry.thumbnails
-                .and_then(|ts| ts.into_iter().rev().find_map(|t| t.url))
-                .unwrap_or_default();
-
-            let raw_url = entry.url.unwrap_or_default();
-            if raw_url.is_empty() {
-                continue;
-            }
-            // --flat-playlist may return bare video IDs; expand to full URLs
-            let entry_url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
-                raw_url
-            } else {
-                format!("https://www.youtube.com/watch?v={}", raw_url)
-            };
-
-            entries.push(PlaylistEntry {
-                url: entry_url,
-                title: entry.title.unwrap_or_else(|| "Unknown".into()),
-                duration: entry.duration.unwrap_or(0.0),
-                thumbnail: thumb,
-            });
+    for line in lines {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if title.is_none() {
+            title = ["playlist_title", "playlist"]
+                .iter()
+                .find_map(|k| value.get(*k).and_then(|t| t.as_str()))
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(str::to_string);
+        }
+        if let Some(entry) = serde_json::from_value::<YtDlpPlaylistEntry>(value).ok().and_then(lookup::playlist_entry) {
+            entries.push(entry);
         }
     }
-
-    // Try to extract playlist title from the URL
-    if entries.len() > 1 {
-        playlist_title = format!("Playlist ({} videos)", entries.len());
-    } else if entries.len() == 1 {
-        playlist_title = entries[0].title.clone();
-    }
-
-    Ok(PlaylistInfo {
-        title: playlist_title,
-        entries,
-    })
+    let title = title.unwrap_or_else(|| match entries.as_slice() {
+        [only] => only.title.clone(),
+        _ => format!("Playlist ({} videos)", entries.len()),
+    });
+    PlaylistInfo { title, entries }
 }
 
 #[tauri::command]
@@ -501,7 +450,21 @@ async fn start_download(
     // False for a subscription entry on another site (REVIEW 2026-09-26 M1).
     // Absent (older items) = the cookies setting decides, as before.
     use_cookies: Option<bool>,
+    // A dub other than the original (YouTube's audio tracks); None = original.
+    audio_language: Option<String>,
+    // Put the subtitles inside the video file rather than beside it.
+    embed_subtitles: Option<bool>,
+    // Subscription items: consult and update yt-dlp's download archive.
+    use_archive: Option<bool>,
 ) -> Result<(), String> {
+    // Both end up inside yt-dlp arguments: codes only, nothing else.
+    let audio_language = audio_language.filter(|l| !l.is_empty());
+    if audio_language.as_deref().is_some_and(|l| !formats::valid_language(l)) {
+        return Err("Unknown audio language".into());
+    }
+    if subtitle_language.as_deref().is_some_and(|l| !l.split(',').all(formats::valid_language)) {
+        return Err("Unknown subtitle language".into());
+    }
     // Validated here rather than deeper in: a bad range should be refused
     // before anything is spawned, with a message the user can act on.
     let clip_section = match (clip_start.as_deref(), clip_end.as_deref()) {
@@ -556,6 +519,14 @@ async fn start_download(
         clip_section,
         split_chapters.unwrap_or(false),
         use_cookies.unwrap_or(true),
+        download_manager::Extras {
+            audio_language,
+            embed_subtitles: embed_subtitles.unwrap_or(false),
+            archive: use_archive
+                .unwrap_or(false)
+                .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))
+                .flatten(),
+        },
     ).await;
     Ok(())
 }
@@ -2439,6 +2410,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_url,
             parse_playlist,
+            lookup::inspect_url,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,
@@ -2534,6 +2506,19 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn flat_list_lines_keep_their_title_and_their_sites() {
+        let lines = [
+            r#"{"_type":"url","ie_key":"Youtube","url":"https://www.youtube.com/watch?v=a1","title":"One","playlist_title":"Talks 2026"}"#,
+            r#"{"_type":"url","ie_key":"Vimeo","url":"https://vimeo.com/22","title":"Two","playlist_title":"Talks 2026"}"#,
+            r#"{"_type":"url","ie_key":"Dailymotion","url":"x9","title":"No URL"}"#,
+            "not json",
+        ];
+        let list = super::playlist_from_lines(&lines);
+        assert_eq!(list.title, "Talks 2026");
+        let urls: Vec<&str> = list.entries.iter().map(|e| e.url.as_str()).collect();
+        assert_eq!(urls, ["https://www.youtube.com/watch?v=a1", "https://vimeo.com/22"]);
+    }
     #[test]
     fn partial_bytes_counts_this_downloads_parts_only() {
         let dir = std::env::temp_dir().join(format!("prism-partial-{}", std::process::id()));

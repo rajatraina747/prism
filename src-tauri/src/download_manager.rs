@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 
-use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
@@ -10,10 +9,14 @@ use tokio::sync::Mutex;
 use crate::errors::{classify_output, ErrorCode, PrismError};
 use crate::spawn::{Child, Event};
 
-static PCT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+\.?\d*)%").unwrap());
-static SIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"of\s+~?\s*([\d.]+)([KMG]i?B)").unwrap());
-static SPEED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"at\s+([\d.]+)([KMG]i?B)/s").unwrap());
-static ETA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"ETA\s+(?:(\d+):)?(\d+):(\d+)").unwrap());
+/// Prefix of the progress lines yt-dlp prints for Prism (`PROGRESS_TEMPLATE`).
+const PROGRESS_MARKER: &str = "PRISM:P=";
+/// yt-dlp's own numbers, not its display strings: those were rounded
+/// ("~ 120.50MiB") and turned back into bytes by Prism, losing precision and
+/// any unit the pattern didn't know (REVIEW 2026-09-26). Missing fields print
+/// `NA`. Fields: downloaded, total, estimated total, speed (B/s), ETA (s),
+/// percent.
+const PROGRESS_TEMPLATE: &str = "PRISM:P=%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress._percent)s";
 
 /// yt-dlp download processes allowed at once (S-8). The UI caps concurrency
 /// at 10; this is the backstop against a flood of `start_download` calls, so
@@ -105,6 +108,16 @@ impl ActiveDownload {
     }
 }
 
+/// Per-download choices beyond the format: the dub and where subtitles go.
+/// Already validated by `start_download`.
+#[derive(Debug, Default, Clone)]
+pub struct Extras {
+    pub audio_language: Option<String>,
+    pub embed_subtitles: bool,
+    /// yt-dlp's download archive to consult and record in (subscriptions).
+    pub archive: Option<std::path::PathBuf>,
+}
+
 pub struct DownloadManager {
     downloads: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     /// Output templates claimed by in-flight downloads (id → template).
@@ -141,6 +154,7 @@ impl DownloadManager {
         // Whether the browser's cookies may go with this run at all; the
         // setting still has to be on too.
         use_cookies: bool,
+        extras: Extras,
     ) {
         // Taken before the first await, so a stop that arrives meanwhile is seen.
         let ticket = crate::jobs::begin(&id);
@@ -180,11 +194,16 @@ impl DownloadManager {
                 "--newline".into(),
                 "--progress".into(),
                 "--progress-template".into(),
-                "%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s".into(),
+                PROGRESS_TEMPLATE.into(),
             ];
 
             if audio_only {
-                // Audio-only: extract to the user's configured format
+                // Audio-only: extract to the user's configured format, from
+                // the chosen dub when there is one.
+                if let Some(lang) = &extras.audio_language {
+                    args.push("-f".into());
+                    args.push(crate::formats::with_audio_language("bestaudio", lang));
+                }
                 args.push("--extract-audio".into());
                 args.push("--audio-format".into());
                 args.push(crate::audio_format(&app));
@@ -203,13 +222,14 @@ impl DownloadManager {
                     args.push("mp4".into());
                 }
 
-                if let Some(ref fmt) = format_id {
-                    args.push("-f".into());
-                    args.push(fmt.clone());
-                } else {
-                    args.push("-f".into());
-                    args.push("bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into());
-                }
+                let chain = format_id.clone().unwrap_or_else(|| {
+                    "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]/bestvideo+bestaudio/best".into()
+                });
+                args.push("-f".into());
+                args.push(match &extras.audio_language {
+                    Some(lang) => crate::formats::with_audio_language(&chain, lang),
+                    None => chain,
+                });
                 if !keep_container {
                     // Prefer H.264/AAC for QuickTime compatibility
                     args.push("-S".into());
@@ -232,6 +252,7 @@ impl DownloadManager {
             args.push(format!("after_move:{PATH_MARKER}%(filepath)s"));
             args.push("--no-quiet".into());
 
+            let mut embed_subs = false;
             if download_subtitles {
                 args.push("--write-subs".into());
                 args.push("--write-auto-subs".into());
@@ -240,6 +261,11 @@ impl DownloadManager {
                 args.push(lang.into());
                 args.push("--sub-format".into());
                 args.push("srt/vtt/best".into());
+                // Inside the file (ffmpeg, checked below) rather than beside
+                // it: one file that carries its subtitles to any player.
+                if extras.embed_subtitles && !audio_only {
+                    embed_subs = true;
+                }
             }
 
             if let Some(limit) = speed_limit {
@@ -272,6 +298,16 @@ impl DownloadManager {
                 args.push("-o".into());
                 args.push(format!("chapter:{}", chapter_template(&output_path)));
             }
+
+            if let Some(archive) = &extras.archive {
+                args.push("--download-archive".into());
+                args.push(archive.to_string_lossy().into_owned());
+            }
+
+            // Every item is one video. A watch URL that also names a list
+            // (`&list=`) would otherwise download the whole list into this
+            // one item's name.
+            args.push("--no-playlist".into());
 
             // Resume partial (.part) files from a previous paused/cancelled run.
             // The frontend reuses the same output template per queue item, so a
@@ -327,6 +363,9 @@ impl DownloadManager {
             // Finder and media players. Gated on ffmpeg: these postprocessors
             // fail the whole download when it's missing.
             if ffmpeg.is_some() {
+                if embed_subs {
+                    args.push("--embed-subs".into());
+                }
                 args.push("--embed-thumbnail".into());
                 args.push("--embed-metadata".into());
                 if !audio_only {
@@ -349,10 +388,6 @@ impl DownloadManager {
                 }
             }
 
-            // Options terminator + URL last (arg-injection defense; see lib::parse_url).
-            args.push("--".into());
-            args.push(url.clone());
-
             // Held for the life of this task, i.e. until the process is done.
             let Ok(_slot) = DOWNLOAD_SLOTS.clone().try_acquire_owned() else {
                 log::warn!("download {id}: refused, {MAX_CONCURRENT_DOWNLOADS} already running");
@@ -368,150 +403,193 @@ impl DownloadManager {
                 return;
             };
 
-            let cmd = match crate::engine::ytdlp_command(&app) {
-                Ok(c) => c.args(&args),
-                Err(e) => {
-                    reserved.lock().await.remove(&id);
-                    emit_start_failure(
-                        &app,
-                        id,
-                        PrismError::new(ErrorCode::EngineMissing, format!("Failed to find yt-dlp sidecar: {}", e)),
-                    );
-                    return;
-                }
-            };
-
-            let (mut rx, child) = match cmd.spawn() {
-                Ok(pair) => pair,
-                Err(e) => {
-                    reserved.lock().await.remove(&id);
-                    emit_start_failure(
-                        &app,
-                        id,
-                        PrismError::new(ErrorCode::EngineMissing, format!("Failed to start yt-dlp: {}", e)),
-                    );
-                    return;
-                }
-            };
-
+            // Start from the lookup made when this was added, while it's fresh:
+            // no second extraction of the page. If that run fails before a
+            // single byte arrives (an expired link inside it), it runs again
+            // from the URL.
+            let mut info = crate::lookup::fresh_info(&app, &url);
+            let mut ticket = Some(ticket);
             let alive = Arc::new(AtomicBool::new(true));
             // Files this run writes are the ones modified from here on.
             let run_started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
-            {
-                let mut map = downloads.lock().await;
-                // Stopped while it was being set up: nothing is tracking it,
-                // so end it here rather than let it run unowned (B-5).
-                if ticket.cancelled() {
-                    drop(map);
-                    child.kill();
-                    reserved.lock().await.remove(&id);
-                    log::info!("download {id}: stopped before it started");
-                    return;
-                }
-                map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
-            }
-            drop(ticket);
-            log::info!("download {id}: yt-dlp started");
-
-            let mut success = false;
-            // Prefer the last explicit "ERROR:" line for the failure message —
-            // the last stderr line in general can be a progress fragment or
-            // postprocessor chatter rather than the actual cause.
-            let mut last_error = String::new();
-            let mut last_stderr = String::new();
-            // The failure's detail: redacted and capped again in PrismError.
-            let mut stderr_tail = String::new();
-            let mut timed_out = false;
-            let mut actual_height: Option<u32> = None;
-            let mut reported: Option<String> = None;
-            let mut agg = PhaseAggregator::new();
-            // yt-dlp prints a progress line per fragment/chunk — many per
-            // second with -N. Each emit is an IPC hop plus a reducer pass and
-            // a re-render, so cap the rate; the final 100% always goes out.
-            let mut throttle = EmitThrottle::new(std::time::Duration::from_millis(250));
-
-            loop {
-                // Cancelled, or superseded by a newer run for this id: stop
-                // reading rather than emit progress the item no longer owns.
-                if !alive.load(Ordering::Relaxed) {
-                    return;
-                }
-                // ffmpeg postprocessing (merging a multi-GB file) can be silent
-                // for a long time — don't kill it as inactive.
-                let inactivity = std::time::Duration::from_secs(if agg.processing { 1800 } else { 300 });
-                match tokio::time::timeout(inactivity, rx.recv()).await {
-                    Ok(Some(event)) => match event {
-                        Event::Stdout(data) => {
-                            let line = String::from_utf8_lossy(&data);
-                            if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
-                                actual_height = h.parse().ok(); // "NA" → None
-                            }
-                            if let Some(path) = reported_path(&line) {
-                                reported = Some(path.to_string());
-                            }
-                            if agg.on_line(&line) {
-                                let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
-                            }
-                            if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
-                                agg.apply(&mut p);
-                                if throttle.allow(p.progress) {
-                                    let _ = app.emit(&format!("download-progress-{}", id), p);
-                                }
-                            }
-                        }
-                        Event::Stderr(data) => {
-                            let line = String::from_utf8_lossy(&data);
-                            let trimmed = line.trim();
-                            if !trimmed.is_empty() {
-                                last_stderr = clip_line(trimmed);
-                                if trimmed.starts_with("ERROR") {
-                                    last_error = last_stderr.clone();
-                                }
-                                stderr_tail.push_str(&last_stderr);
-                                stderr_tail.push('\n');
-                                if stderr_tail.len() > MAX_STDERR_TAIL {
-                                    let mut cut = stderr_tail.len() - MAX_STDERR_TAIL;
-                                    while !stderr_tail.is_char_boundary(cut) {
-                                        cut += 1;
-                                    }
-                                    stderr_tail.drain(..cut);
-                                }
-                            }
-                            if agg.on_line(&line) {
-                                let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
-                            }
-                            if let Some(mut p) = parse_progress(&line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, &id) {
-                                agg.apply(&mut p);
-                                if throttle.allow(p.progress) {
-                                    let _ = app.emit(&format!("download-progress-{}", id), p);
-                                }
-                            }
-                        }
-                        Event::Terminated(code) => {
-                            success = code == Some(0);
-                            break;
-                        }
-                    },
-                    Ok(None) => break,
-                    Err(_) => {
-                        // Inactivity timeout. Stays "alive" — this run still
-                        // owns the id and reports its own failure, which is
-                        // what drives the frontend's retry.
-                        let stalled = downloads.lock().await.remove(&id);
-                        if let Some(dl) = stalled {
-                            dl.kill();
-                        }
-                        timed_out = true;
-                        break;
+            let outcome = 'attempt: loop {
+                let mut run_args = args.clone();
+                match &info {
+                    Some(path) => {
+                        run_args.push("--load-info-json".into());
+                        run_args.push(path.to_string_lossy().into_owned());
+                    }
+                    None => {
+                        // Options terminator + URL last (arg-injection defense; see lib::parse_url).
+                        run_args.push("--".into());
+                        run_args.push(url.clone());
                     }
                 }
-            }
+                let cmd = match crate::engine::ytdlp_command(&app) {
+                    Ok(c) => c.args(&run_args),
+                    Err(e) => {
+                        reserved.lock().await.remove(&id);
+                        emit_start_failure(
+                            &app,
+                            id,
+                            PrismError::new(ErrorCode::EngineMissing, format!("Failed to find yt-dlp sidecar: {}", e)),
+                        );
+                        return;
+                    }
+                };
 
-            // Cancelled or superseded while we were reading: the map entry and
-            // the template claim belong to whoever stopped us (or to the run
-            // that replaced us), and the completion is not ours to report.
-            if !alive.load(Ordering::SeqCst) {
-                return;
+                let (mut rx, child) = match cmd.spawn() {
+                    Ok(pair) => pair,
+                    Err(e) => {
+                        reserved.lock().await.remove(&id);
+                        emit_start_failure(
+                            &app,
+                            id,
+                            PrismError::new(ErrorCode::EngineMissing, format!("Failed to start yt-dlp: {}", e)),
+                        );
+                        return;
+                    }
+                };
+
+                {
+                    let mut map = downloads.lock().await;
+                    // Stopped while it was being set up: nothing is tracking it,
+                    // so end it here rather than let it run unowned (B-5). On the
+                    // second attempt the cancel signal is `alive`.
+                    let stopped = match ticket.take() {
+                        Some(t) => t.cancelled(),
+                        None => !alive.load(Ordering::SeqCst),
+                    };
+                    if stopped {
+                        drop(map);
+                        child.kill();
+                        reserved.lock().await.remove(&id);
+                        log::info!("download {id}: stopped before it started");
+                        return;
+                    }
+                    map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
+                }
+                log::info!("download {id}: yt-dlp started{}", if info.is_some() { " from its lookup" } else { "" });
+
+                let mut success = false;
+                // Prefer the last explicit "ERROR:" line for the failure message —
+                // the last stderr line in general can be a progress fragment or
+                // postprocessor chatter rather than the actual cause.
+                let mut last_error = String::new();
+                let mut last_stderr = String::new();
+                // The failure's detail: redacted and capped again in PrismError.
+                let mut stderr_tail = String::new();
+                let mut timed_out = false;
+                let mut actual_height: Option<u32> = None;
+                let mut reported: Option<String> = None;
+                let mut agg = PhaseAggregator::new();
+                let mut in_archive = false;
+                // yt-dlp prints a progress line per fragment/chunk — many per
+                // second with -N. Each emit is an IPC hop plus a reducer pass and
+                // a re-render, so cap the rate; the final 100% always goes out.
+                let mut throttle = EmitThrottle::new(std::time::Duration::from_millis(250));
+
+                loop {
+                    // Cancelled, or superseded by a newer run for this id: stop
+                    // reading rather than emit progress the item no longer owns.
+                    if !alive.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    // ffmpeg postprocessing (merging a multi-GB file) can be silent
+                    // for a long time — don't kill it as inactive.
+                    let inactivity = std::time::Duration::from_secs(if agg.processing { 1800 } else { 300 });
+                    match tokio::time::timeout(inactivity, rx.recv()).await {
+                        Ok(Some(event)) => match event {
+                            Event::Stdout(data) => {
+                                let line = String::from_utf8_lossy(&data);
+                                if line.contains("has already been recorded in the archive") {
+                                    in_archive = true;
+                                }
+                                if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
+                                    actual_height = h.parse().ok(); // "NA" → None
+                                }
+                                if let Some(path) = reported_path(&line) {
+                                    reported = Some(path.to_string());
+                                }
+                                if agg.on_line(&line) {
+                                    let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                                }
+                                if let Some(mut p) = parse_progress(&line, &id) {
+                                    agg.apply(&mut p);
+                                    if throttle.allow(p.progress) {
+                                        let _ = app.emit(&format!("download-progress-{}", id), p);
+                                    }
+                                }
+                            }
+                            Event::Stderr(data) => {
+                                let line = String::from_utf8_lossy(&data);
+                                let trimmed = line.trim();
+                                if !trimmed.is_empty() {
+                                    last_stderr = clip_line(trimmed);
+                                    if trimmed.starts_with("ERROR") {
+                                        last_error = last_stderr.clone();
+                                    }
+                                    stderr_tail.push_str(&last_stderr);
+                                    stderr_tail.push('\n');
+                                    if stderr_tail.len() > MAX_STDERR_TAIL {
+                                        let mut cut = stderr_tail.len() - MAX_STDERR_TAIL;
+                                        while !stderr_tail.is_char_boundary(cut) {
+                                            cut += 1;
+                                        }
+                                        stderr_tail.drain(..cut);
+                                    }
+                                }
+                                if agg.on_line(&line) {
+                                    let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                                }
+                                if let Some(mut p) = parse_progress(&line, &id) {
+                                    agg.apply(&mut p);
+                                    if throttle.allow(p.progress) {
+                                        let _ = app.emit(&format!("download-progress-{}", id), p);
+                                    }
+                                }
+                            }
+                            Event::Terminated(code) => {
+                                success = code == Some(0);
+                                break;
+                            }
+                        },
+                        Ok(None) => break,
+                        Err(_) => {
+                            // Inactivity timeout. Stays "alive" — this run still
+                            // owns the id and reports its own failure, which is
+                            // what drives the frontend's retry.
+                            let stalled = downloads.lock().await.remove(&id);
+                            if let Some(dl) = stalled {
+                                dl.kill();
+                            }
+                            timed_out = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Cancelled or superseded while we were reading: the map entry and
+                // the template claim belong to whoever stopped us (or to the run
+                // that replaced us), and the completion is not ours to report.
+                if !alive.load(Ordering::SeqCst) {
+                    return;
+                }
+
+                if !success && !timed_out && info.is_some() && agg.bytes() == 0 {
+                    log::info!("download {id}: its lookup didn't work ({last_error}); starting from the URL");
+                    crate::lookup::forget_info(&app, &url);
+                    info = None;
+                    continue 'attempt;
+                }
+                break 'attempt (success, last_error, last_stderr, stderr_tail, timed_out, actual_height, reported, in_archive);
+            };
+            let (success, mut last_error, last_stderr, stderr_tail, timed_out, actual_height, reported, in_archive) = outcome;
+            // Skipped as already downloaded: nothing new on disk, and not a
+            // failure either — the page drops the item.
+            let success = success && !in_archive;
+            if in_archive {
+                last_error = "Already downloaded".into();
             }
 
             // Remove from active downloads and release the template claim
@@ -572,6 +650,8 @@ impl DownloadManager {
                         None
                     } else if timed_out {
                         Some(PrismError::new(ErrorCode::Timeout, "Download timed out (no activity for 5 minutes)"))
+                    } else if in_archive {
+                        Some(PrismError::new(ErrorCode::AlreadyDownloaded, "Already downloaded"))
                     } else if last_error.is_empty() {
                         Some(PrismError::new(ErrorCode::Unknown, "Download failed or was cancelled"))
                     } else {
@@ -721,6 +801,11 @@ impl PhaseAggregator {
         }
     }
 
+    /// Bytes downloaded so far, across every file of the run.
+    fn bytes(&self) -> u64 {
+        self.done_prev + self.cur_done
+    }
+
     /// Synthetic event marking the switch to ffmpeg postprocessing.
     fn processing_event(&self, id: &str) -> DownloadProgress {
         let done = self.done_prev + self.cur_done;
@@ -736,68 +821,27 @@ impl PhaseAggregator {
     }
 }
 
-fn parse_progress(
-    line: &str,
-    pct_re: &Regex,
-    size_re: &Regex,
-    speed_re: &Regex,
-    eta_re: &Regex,
-    id: &str,
-) -> Option<DownloadProgress> {
-    let pct = pct_re
-        .captures(line)
-        .and_then(|c| c.get(1))
-        .and_then(|m| m.as_str().parse::<f64>().ok())?;
-
-    let total_bytes = size_re
-        .captures(line)
-        .and_then(|c| {
-            let val: f64 = c.get(1)?.as_str().parse().ok()?;
-            let unit = c.get(2)?.as_str();
-            Some(parse_size(val, unit))
-        })
-        .unwrap_or(0);
-
-    let speed = speed_re
-        .captures(line)
-        .and_then(|c| {
-            let val: f64 = c.get(1)?.as_str().parse().ok()?;
-            let unit = c.get(2)?.as_str();
-            Some(parse_size(val, unit) as f64)
-        })
-        .unwrap_or(0.0);
-
-    let eta = eta_re
-        .captures(line)
-        .and_then(|c| {
-            let hours: f64 = c.get(1).map_or("0", |m| m.as_str()).parse().ok()?;
-            let mins: f64 = c.get(2)?.as_str().parse().ok()?;
-            let secs: f64 = c.get(3)?.as_str().parse().ok()?;
-            Some(hours * 3600.0 + mins * 60.0 + secs)
-        })
-        .unwrap_or(0.0);
-
-    let downloaded = (pct / 100.0 * total_bytes as f64) as u64;
-
+fn parse_progress(line: &str, id: &str) -> Option<DownloadProgress> {
+    let fields: Vec<&str> = line.trim().strip_prefix(PROGRESS_MARKER)?.split('|').collect();
+    if fields.len() < 6 {
+        return None;
+    }
+    let num = |i: usize| fields[i].trim().parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0);
+    let downloaded = num(0).unwrap_or(0.0) as u64;
+    let total = num(1).or_else(|| num(2)).unwrap_or(0.0) as u64;
+    let progress = num(5)
+        .or_else(|| (total > 0).then(|| downloaded as f64 / total as f64 * 100.0))
+        .unwrap_or(0.0)
+        .min(100.0);
     Some(DownloadProgress {
         id: id.to_string(),
         downloaded_bytes: downloaded,
-        total_bytes,
-        progress: pct,
-        speed,
-        eta,
+        total_bytes: total,
+        progress,
+        speed: num(3).unwrap_or(0.0),
+        eta: num(4).unwrap_or(0.0),
         stage: None,
     })
-}
-
-fn parse_size(val: f64, unit: &str) -> u64 {
-    let multiplier = match unit {
-        "KiB" | "KB" => 1024.0,
-        "MiB" | "MB" => 1024.0 * 1024.0,
-        "GiB" | "GB" => 1024.0 * 1024.0 * 1024.0,
-        _ => 1.0,
-    };
-    (val * multiplier) as u64
 }
 
 /// Prefix of the stdout line yt-dlp prints with the finished file's path.
@@ -914,40 +958,38 @@ mod tests {
         assert_eq!(template_file("/dl/a%%(ext)s.%(ext)s", "mkv"), "/dl/a%(ext)s.mkv");
     }
 
+    // As yt-dlp 2026.08.19 prints PROGRESS_TEMPLATE.
     #[test]
-    fn parses_progress_template_line() {
-        let line = " 45.2% of ~ 120.50MiB at 2.5MiB/s ETA 01:23";
-        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "test-id").unwrap();
+    fn parses_yt_dlps_own_numbers() {
+        let p = parse_progress("PRISM:P=3072|1915378|NA|1323021.0378889004|1|0.1603860961126211", "test-id").unwrap();
         assert_eq!(p.id, "test-id");
-        assert!((p.progress - 45.2).abs() < f64::EPSILON);
-        assert_eq!(p.total_bytes, (120.5 * 1024.0 * 1024.0) as u64);
-        assert_eq!(p.speed, 2.5 * 1024.0 * 1024.0);
-        assert_eq!(p.eta, 83.0);
-        assert_eq!(p.downloaded_bytes, (0.452 * 120.5 * 1024.0 * 1024.0) as u64);
+        assert_eq!(p.downloaded_bytes, 3072);
+        assert_eq!(p.total_bytes, 1_915_378);
+        assert!((p.speed - 1_323_021.04).abs() < 0.01);
+        assert_eq!(p.eta, 1.0);
+        assert!((p.progress - 0.16).abs() < 0.001);
     }
 
     #[test]
-    fn parses_eta_with_hours() {
-        let line = " 12.0% of ~ 4.20GiB at 1.0MiB/s ETA 1:02:33";
-        let p = parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap();
-        assert_eq!(p.eta, 3600.0 + 2.0 * 60.0 + 33.0);
+    fn an_estimated_total_stands_in_and_missing_numbers_are_zero() {
+        // Fragmented streams (HLS/DASH) often only have an estimate.
+        let p = parse_progress("PRISM:P=500|NA|1000.0|NA|NA|NA", "x").unwrap();
+        assert_eq!(p.total_bytes, 1000);
+        assert_eq!(p.progress, 50.0);
+        assert_eq!((p.speed, p.eta), (0.0, 0.0));
+        let p = parse_progress("PRISM:P=500|NA|NA|NA|NA|NA", "x").unwrap();
+        assert_eq!((p.total_bytes, p.progress), (0, 0.0));
     }
 
     #[test]
-    fn ignores_lines_without_percent() {
-        assert!(parse_progress("[download] Destination: video.mp4", &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").is_none());
-    }
-
-    #[test]
-    fn parses_sizes_by_unit() {
-        assert_eq!(parse_size(1.0, "KiB"), 1024);
-        assert_eq!(parse_size(1.0, "MiB"), 1024 * 1024);
-        assert_eq!(parse_size(2.0, "GiB"), 2 * 1024 * 1024 * 1024);
-        assert_eq!(parse_size(5.0, "??"), 5);
+    fn ignores_everything_else() {
+        assert!(parse_progress("[download] Destination: video.mp4", "x").is_none());
+        assert!(parse_progress("PRISM:PATH=/dl/a.mp4", "x").is_none());
+        assert!(parse_progress("PRISM:P=1|2", "x").is_none());
     }
 
     fn parsed(line: &str) -> DownloadProgress {
-        parse_progress(line, &PCT_RE, &SIZE_RE, &SPEED_RE, &ETA_RE, "x").unwrap()
+        parse_progress(line, "x").unwrap()
     }
 
     #[test]
@@ -956,23 +998,23 @@ mod tests {
         let mut agg = PhaseAggregator::new();
 
         assert!(!agg.on_line("[download] Destination: clip.f616.mp4"));
-        let mut p = parsed(" 50.0% of 100.00MiB at 2.0MiB/s ETA 00:25");
+        let mut p = parsed("PRISM:P=52428800|104857600|NA|0|0|50.0");
         agg.apply(&mut p);
         assert_eq!(p.total_bytes, 100 * MIB);
         assert!((p.progress - 50.0).abs() < 0.1);
 
-        let mut p = parsed("100.0% of 100.00MiB at 2.0MiB/s ETA 00:00");
+        let mut p = parsed("PRISM:P=104857600|104857600|NA|0|0|100.0");
         agg.apply(&mut p);
 
         // Audio file starts: bar must NOT reset — bytes and total accumulate.
         assert!(!agg.on_line("[download] Destination: clip.f140.m4a"));
-        let mut p = parsed(" 10.0% of 10.00MiB at 1.0MiB/s ETA 00:09");
+        let mut p = parsed("PRISM:P=1048576|10485760|NA|0|0|10.0");
         agg.apply(&mut p);
         assert_eq!(p.downloaded_bytes, 101 * MIB);
         assert_eq!(p.total_bytes, 110 * MIB);
         assert!(p.progress > 90.0 && p.progress < 93.0);
 
-        let mut p = parsed("100.0% of 10.00MiB at 1.0MiB/s ETA 00:00");
+        let mut p = parsed("PRISM:P=10485760|10485760|NA|0|0|100.0");
         agg.apply(&mut p);
         assert!((p.progress - 100.0).abs() < 0.01);
 
@@ -990,7 +1032,7 @@ mod tests {
         let mut agg = PhaseAggregator::new();
         agg.on_line("[download] Destination: live.mp4");
         // No "of <size>" → total 0; percent passes through untouched.
-        let mut p = parsed(" 37.5% at 1.0MiB/s ETA 00:09");
+        let mut p = parsed("PRISM:P=0|NA|NA|0|0|37.5");
         agg.apply(&mut p);
         assert_eq!(p.total_bytes, 0);
         assert!((p.progress - 37.5).abs() < 0.01);
