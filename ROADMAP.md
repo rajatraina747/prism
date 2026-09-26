@@ -15,6 +15,66 @@ what remains open is below. Completed items live in git history.
 - [x] **Per-site smart preset** that remembers last-used settings per domain
   (`perSitePresets`, keyed via `siteKey`).
 
+## 2.3 roadmap — from the 2026-09-26 third-party review
+
+A fresh, ground-up review of 2.2.1 (no docs or earlier reviews consulted).
+Work happens on `roadmap/2.3`, one commit per item below; each phase ends in an
+annotated tag `roadmap-pN` and a `--no-ff` merge to `main`, so any item
+(`git revert <sha>`) or phase (`git revert -m1 <merge>`) can be undone. Nothing
+is released until the build passes hands-on testing on a Windows (AMD x64) PC
+(Phase 7). Baseline: tag `roadmap-base`.
+
+### Phase 1 — Critical fixes
+- [ ] **R1.1** Close to tray (setting, default on) and confirm Quit while work is active.
+- [ ] **R1.2** "Retries on failure" actually used; manual retry resets the budget; rate limits back off minutes, not seconds.
+- [ ] **R1.3** A corrupt JSON file is set aside and recovered from `.bak.json`, never silently replaced by `[]`; failed saves are reported.
+- [ ] **R1.4** yt-dlp stopped with SIGTERM before SIGKILL; stale PyInstaller `_MEI*` folders swept at launch (115 / 8 GB found on one Mac).
+- [ ] **R1.5** Direct downloads honour a SOCKS proxy.
+- [ ] **R1.6** Resume disk-space checks count only the bytes still to download.
+- [ ] **R1.7** A tray that can't be created no longer stops Prism starting.
+- [ ] **R1.8** Torrent engine falls back to IPv4 / another port when its listen address is taken.
+
+### Phase 2 — Link intake and honest formats
+- [ ] **R2.1** One lookup (`-J --flat-playlist`) decides video vs playlist for single and batch adds; downloads pass `--no-playlist`.
+- [ ] **R2.2** Playlist entries keep their own URLs (not forced to YouTube) and the real playlist title.
+- [ ] **R2.3** Format list shows real codec, fps and HDR; no more "MP4 h264/aac" on VP9/AV1.
+- [ ] **R2.4** Audio language (dubs) and multi-language / embedded subtitles.
+- [ ] **R2.5** Batch lookups run in parallel.
+- [ ] **R2.6** The lookup's info JSON is reused by the download (`--load-info-json`, with fallback).
+- [ ] **R2.7** Progress read from yt-dlp's raw byte counts, not its formatted strings.
+- [ ] **R2.8** Download archive for subscriptions.
+
+### Phase 3 — Engine speed
+- [ ] **R3.1** Bundle yt-dlp's onedir build (no per-run unpacking: ~5 s → well under 2 s per start).
+- [ ] **R3.2** Engine self-update installs the onedir zip, verified and staged.
+- [ ] **R3.3** Signing/bundling cover the engine folder on all platforms.
+- [ ] **R3.4** Start-time test; ffmpeg location cached.
+
+### Phase 4 — Queueing, torrents, subscriptions, Library
+- [ ] **R4.1** Separate torrent concurrency limit; slow/peerless torrents don't hold slots.
+- [ ] **R4.2** YouTube subscriptions polled via RSS; parallel checks; premieres/lives held until they air.
+- [ ] **R4.3** Watch folders take `.torrent` files only.
+- [ ] **R4.4** Thumbnails cached locally (through the proxy).
+- [ ] **R4.5** Library marks files that have gone missing.
+- [ ] **R4.6** Restart the torrent engine from Settings to apply engine settings.
+
+### Phase 5 — Direct downloads and the extension
+- [ ] **R5.1** Per-item Referer and a browser-style User-Agent option.
+- [ ] **R5.2** Slow segments are re-split across free connections.
+- [ ] **R5.3** Extension: "Download link with Prism" on links.
+
+### Phase 6 — Queue owned by Rust, stored in SQLite
+- [ ] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).
+- [ ] **R6.2** Rust `QueueManager`: transitions, scheduling, retries, quiet hours, when-done.
+- [ ] **R6.3** The UI becomes a view of Rust's queue.
+- [ ] **R6.4** Retire `finished.rs`, `jobs.rs` tickets and Rust's reading of `queue.json`.
+- [ ] **R6.5** Library paged from the database; no 2,000-entry cap.
+- [ ] **R6.6** Torrents reach the Library when downloaded, marked Seeding.
+- [ ] **R6.7** Reducer tests ported; migration test.
+
+### Phase 7 — Windows hand-off
+- [ ] **R7.1** `docs/WINDOWS-TEST-PLAN.md`; tag `roadmap-complete`.
+
 ## Arcs from the 2026-09-23 review
 
 Full findings in [docs/REVIEW-2026-09-23.md](docs/REVIEW-2026-09-23.md), a
