@@ -356,6 +356,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// How long a very large Library takes to load:
+    /// `cargo test --release --lib library_load_time -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn library_load_time() {
+        let dir = tmp("loadtime");
+        let mut conn = open_at(&dir.join("prism.db")).unwrap();
+        let settings = json!({"format": {"id": "bestvideo[height=1080]+bestaudio/best", "label": "1080p · H.264", "resolution": "1080p"}, "destination": "~/Downloads/Prism", "filename": "A reasonably long video title for realism"});
+        let items: Vec<Value> = (0..20_000)
+            .map(|i| json!({"id": format!("h{i}"), "status": "completed", "completedAt": format!("2026-01-01T00:{:02}:{:02}Z", (i / 60) % 60, i % 60),
+                "metadata": {"title": "A reasonably long video title for realism", "duration": 612.0, "thumbnail": "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg",
+                "source": {"url": format!("https://www.youtube.com/watch?v=v{i:010}"), "domain": "youtube.com", "addedAt": "2026-01-01T00:00:00Z"}, "formats": [], "uploader": "Someone"},
+                "settings": settings, "fileSize": 123456789, "filePath": format!("/Users/me/Downloads/Prism/A reasonably long video title {i}.mp4")}))
+            .collect();
+        let tx = conn.transaction().unwrap();
+        put_history(&tx, &items).unwrap();
+        tx.commit().unwrap();
+        let started = std::time::Instant::now();
+        let loaded = load_history(&conn).unwrap();
+        let json = serde_json::to_string(&loaded).unwrap();
+        println!("20,000 rows: loaded and serialised in {:?}, {} MB", started.elapsed(), json.len() / 1_000_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_damaged_database_is_set_aside_not_lost() {
         let dir = tmp("corrupt");
