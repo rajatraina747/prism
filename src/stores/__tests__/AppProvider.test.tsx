@@ -141,7 +141,8 @@ describe('AppProvider - Queue', () => {
     act(() => { q!.retryDownload('x'); });
     // Auto-start may have already transitioned to downloading
     expect(['queued', 'downloading']).toContain(q!.items[0].status);
-    expect(q!.items[0].retryAttempt).toBe(1);
+    // A retry by hand starts a fresh automatic-retry budget.
+    expect(q!.items[0].retryAttempt).toBe(0);
   });
 
   it('reorders items', async () => {

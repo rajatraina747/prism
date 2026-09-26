@@ -241,12 +241,12 @@ describe('queueReducer', () => {
     expect(queueReducer([makeItem({ status: 'completed' })], { type: 'cancel', id: 'a' })[0].status).toBe('completed');
   });
 
-  it('retry resets counters and increments the attempt', () => {
+  it('a retry by hand resets counters and the automatic-retry budget', () => {
     const next = queueReducer(
       [makeItem({ status: 'failed', error: err, progress: 80, retryAttempt: 2 })],
       { type: 'retry', id: 'a' },
     );
-    expect(next[0]).toMatchObject({ status: 'queued', retryAttempt: 3, progress: 0, error: undefined });
+    expect(next[0]).toMatchObject({ status: 'queued', retryAttempt: 0, progress: 0, error: undefined });
   });
 
   it('removes single items and batches', () => {

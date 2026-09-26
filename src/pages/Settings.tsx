@@ -648,7 +648,7 @@ export default function Settings() {
                 <SettingRow label="Keep running when the window is closed" description="Downloads carry on in the background; open Prism again from the tray or Dock. Quitting asks first while anything is running">
                   <Toggle checked={p.closeToTray} onChange={v => updatePreference('closeToTray', v)} />
                 </SettingRow>
-                <SettingRow label="Retries on failure" description="Attempts before a download is marked failed">
+                <SettingRow label="Retries on failure" description="Automatic retries after a dropped connection or a site's rate limit (rate limits wait minutes, not seconds)">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>
                 <SettingRow label="Subscription check interval" description="How often subscribed channels and playlists are checked for new videos">
