@@ -908,6 +908,9 @@ pub async fn queue_pause(app: AppHandle, id: String) -> Result<(), String> {
     } else {
         stop_engine(&app, &id).await;
     }
+    // Only start/finish/fail used to be logged, which left gaps in a report
+    // (Windows test run 2026-09-26).
+    log::info!("queue: {id} paused{}", if native { " (in place)" } else { "" });
     update(&app, &id, rules::pause)?;
     tick(&app);
     Ok(())
@@ -915,6 +918,7 @@ pub async fn queue_pause(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn queue_resume(app: AppHandle, id: String) -> Result<(), String> {
+    log::info!("queue: {id} resumed");
     let native = require(&app)?.lock().paused_native.contains(&id);
     if native {
         if app.state::<crate::torrent::TorrentManager>().resume_torrent(&id).await.is_ok() {

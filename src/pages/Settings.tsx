@@ -174,7 +174,7 @@ function BackupRow() {
 
   return (
     <>
-      <SettingRow label="Back up settings and Library" description="Save your settings, Library and subscriptions to a file, or bring them in from one. Download and watch folders stay as they are on this Mac">
+      <SettingRow label="Back up settings and Library" description="Save your settings, Library and subscriptions to a file, or bring them in from one. Download and watch folders stay as they are on this computer">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -896,7 +896,7 @@ export default function Settings() {
                       type="button"
                       {...{ 'aria-label': `Move finished downloads to: ${p.moveCompletedTo || 'not set yet'}. Choose a folder` }}
                       onClick={async () => {
-                        const dir = await service.pickDirectory();
+                        const dir = await service.pickDirectory('move');
                         if (dir) updatePreference('moveCompletedTo', dir);
                       }}
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
@@ -951,7 +951,7 @@ export default function Settings() {
                             type="button"
                             aria-label={`Category ${index + 1} folder: ${category.destination || 'the default download folder'}. Choose a folder`}
                             onClick={async () => {
-                              const dir = await service.pickDirectory();
+                              const dir = await service.pickDirectory('category');
                               if (dir) updateCategory(category.id, { destination: dir });
                             }}
                             className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-muted-foreground hover:bg-secondary transition-colors max-w-44"
@@ -1023,7 +1023,7 @@ export default function Settings() {
                     <button
                       type="button"
                       onClick={async () => {
-                        const dir = await service.pickDirectory();
+                        const dir = await service.pickDirectory('watch');
                         // Prism's own downloads land there: watching it would
                         // re-add every .torrent or link list it downloads.
                         // Rust skips such a folder too; this says why.

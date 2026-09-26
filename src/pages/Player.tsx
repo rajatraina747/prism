@@ -12,6 +12,7 @@ import { Slider } from '@/components/ui/slider';
 import { formatDuration } from '@/services/utils';
 import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
 import { playerFailureHint } from '@/lib/player-failure';
+import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
 
 // The in-app player. Runs in its own transparent "player" window: mpv embeds
 // into the window's native view and renders *beneath* the webview, so this
@@ -67,8 +68,6 @@ interface VideoParams {
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-const IS_MAC = navigator.userAgent.includes('Mac');
-const IS_WINDOWS = navigator.userAgent.includes('Windows');
 
 function trackLabel(t: MpvTrack): string {
   const parts = [t.title, t.lang?.toUpperCase()].filter(Boolean);

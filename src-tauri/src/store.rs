@@ -43,20 +43,61 @@ pub struct Snapshot {
     pub subscriptions: Option<Value>,
     pub stats: Option<Value>,
     /// The database couldn't be opened and was set aside (`prism.corrupt-…`);
-    /// what loaded came from the JSON files instead.
+    /// what loaded came from `prism.bak.db` or, failing that, the JSON files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovered_from: Option<String>,
+    /// Where the recovered data came from: "backup" (`prism.bak.db`, as of the
+    /// last launch) or "older-files" (the JSON files from before 2.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovered_with: Option<String>,
+}
+
+/// A damaged database, set aside, and what replaced it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Recovery {
+    /// The damaged file's new name (`prism.corrupt-….db`).
+    pub kept_as: String,
+    /// Restored from `prism.bak.db` rather than rebuilt from the JSON files.
+    pub from_backup: bool,
 }
 
 pub struct Store {
     conn: Mutex<Option<Connection>>,
     /// Set when opening had to set a damaged database aside.
-    recovered_from: Mutex<Option<String>>,
+    recovered: Mutex<Option<Recovery>>,
 }
 
 impl Store {
     pub fn new() -> Self {
-        Store { conn: Mutex::new(None), recovered_from: Mutex::new(None) }
+        Store { conn: Mutex::new(None), recovered: Mutex::new(None) }
+    }
+}
+
+/// The copy kept beside the database, refreshed each launch it opens cleanly.
+fn backup_path(path: &Path) -> PathBuf {
+    path.with_file_name("prism.bak.db")
+}
+
+/// Refresh `prism.bak.db` from the open database: `VACUUM INTO` a temporary
+/// file, then rename it over the old backup, so a crash never leaves a
+/// half-written one. Like `settings.bak.json`, it is the fallback if the
+/// database is ever damaged — before, a damaged database was rebuilt from the
+/// pre-2.3 JSON files and the Library went back in time (Windows test run
+/// 2026-09-26, G2).
+pub(crate) fn refresh_backup(conn: &Connection, path: &Path) {
+    let backup = backup_path(path);
+    let tmp = backup.with_extension("db.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    match conn.execute("VACUUM INTO ?1", params![tmp.to_string_lossy()]) {
+        Ok(_) => {
+            if let Err(e) = std::fs::rename(&tmp, &backup) {
+                log::warn!("store: couldn't keep the backup: {e}");
+            }
+        }
+        Err(e) => {
+            log::warn!("store: couldn't write the backup: {e}");
+            let _ = std::fs::remove_file(&tmp);
+        }
     }
 }
 
@@ -76,8 +117,9 @@ pub(crate) fn open_at(path: &Path) -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
-/// Open, and if the file is damaged, set it aside and start a new one.
-fn open_or_recover(path: &Path) -> Result<(Connection, Option<String>), String> {
+/// Open, and if the file is damaged, set it aside and carry on from the
+/// backup, or a new database when there is no usable backup.
+fn open_or_recover(path: &Path) -> Result<(Connection, Option<Recovery>), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Couldn't create the data folder: {e}"))?;
     }
@@ -93,8 +135,23 @@ fn open_or_recover(path: &Path) -> Result<(Connection, Option<String>), String> 
                 side.push(suffix);
                 let _ = std::fs::remove_file(PathBuf::from(side));
             }
+            let kept_as = aside.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            // The backup from the last clean launch, if it opens.
+            let backup = backup_path(path);
+            if backup.exists() && std::fs::copy(&backup, path).is_ok() {
+                match open_at(path) {
+                    Ok(conn) => {
+                        log::info!("store: restored the database from {}", backup.display());
+                        return Ok((conn, Some(Recovery { kept_as, from_backup: true })));
+                    }
+                    Err(e) => {
+                        log::warn!("store: the backup is damaged too: {e}");
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+            }
             let conn = open_at(path).map_err(|e| format!("Couldn't create the database: {e}"))?;
-            Ok((conn, Some(aside.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())))
+            Ok((conn, Some(Recovery { kept_as, from_backup: false })))
         }
     }
 }
@@ -109,8 +166,10 @@ pub(crate) fn with_db<T>(app: &AppHandle, f: impl FnOnce(&mut Connection) -> Res
         let (mut conn, recovered) = open_or_recover(&path)?;
         let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
         import_json_once(&mut conn, &dir).map_err(|e| format!("Couldn't copy the saved data in: {e}"))?;
-        if recovered.is_some() {
-            *store.recovered_from.lock().unwrap_or_else(|p| p.into_inner()) = recovered;
+        match recovered {
+            // A clean open: this is the state worth falling back to.
+            None => refresh_backup(&conn, &path),
+            Some(r) => *store.recovered.lock().unwrap_or_else(|p| p.into_inner()) = Some(r),
         }
         *guard = Some(conn);
     }
@@ -249,9 +308,13 @@ pub async fn store_load(app: AppHandle) -> Result<Snapshot, String> {
                 subscriptions: load_doc(conn, "subscriptions").map_err(sql_err)?,
                 stats: load_doc(conn, "stats").map_err(sql_err)?,
                 recovered_from: None,
+                recovered_with: None,
             })
         })?;
-        snapshot.recovered_from = app.state::<Store>().recovered_from.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(r) = app.state::<Store>().recovered.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            snapshot.recovered_with = Some(if r.from_backup { "backup" } else { "older-files" }.into());
+            snapshot.recovered_from = Some(r.kept_as);
+        }
         Ok(snapshot)
     })
     .await
@@ -405,11 +468,38 @@ mod tests {
         let dir = tmp("corrupt");
         let path = dir.join("prism.db");
         std::fs::write(&path, b"this is not a database, just bytes that look like nothing at all").unwrap();
-        let (conn, aside) = open_or_recover(&path).unwrap();
-        let aside = aside.expect("set aside");
-        assert!(aside.starts_with("prism.corrupt-"));
-        assert!(dir.join(&aside).exists());
+        let (conn, recovery) = open_or_recover(&path).unwrap();
+        let recovery = recovery.expect("set aside");
+        assert!(recovery.kept_as.starts_with("prism.corrupt-"));
+        assert!(dir.join(&recovery.kept_as).exists());
+        assert!(!recovery.from_backup, "no backup to restore");
         assert!(load_queue(&conn).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Windows test run 2026-09-26, G2: a damaged database came back as the
+    // pre-2.3 JSON files; the backup from the last clean launch comes first now.
+    #[test]
+    fn a_damaged_database_comes_back_from_the_backup() {
+        let dir = tmp("restore");
+        let path = dir.join("prism.db");
+        {
+            let conn = open_at(&path).unwrap();
+            conn.execute(
+                "INSERT OR REPLACE INTO docs (name, data) VALUES ('stats', ?1)",
+                params![r#"{"downloads":7}"#],
+            )
+            .unwrap();
+            refresh_backup(&conn, &path);
+        }
+        assert!(backup_path(&path).exists());
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(PathBuf::from(format!("{}{suffix}", path.display())));
+        }
+        std::fs::write(&path, b"damaged damaged damaged damaged damaged damaged damaged").unwrap();
+        let (conn, recovery) = open_or_recover(&path).unwrap();
+        assert!(recovery.expect("set aside").from_backup);
+        assert_eq!(load_doc(&conn, "stats").unwrap(), Some(serde_json::json!({"downloads": 7})));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -377,6 +377,12 @@ impl DownloadManager {
             // fail the whole download when it's missing.
             if ffmpeg.is_some() {
                 if embed_subs {
+                    // --embed-subs asks for the subtitles itself; an explicit
+                    // --write-subs tells yt-dlp they're wanted as files too, so
+                    // the .srt copies were kept beside the video (Windows test
+                    // run 2026-09-26). Auto-captions still come via
+                    // --write-auto-subs.
+                    args.retain(|a| a != "--write-subs");
                     args.push("--embed-subs".into());
                 }
                 args.push("--embed-thumbnail".into());

@@ -19,5 +19,9 @@ describe('store problems', () => {
     expect(d.title).toBe('Restored your Library from a backup');
     expect(d.description).toContain('history.corrupt-x.json');
     expect(describeStoreProblem({ kind: 'reset', file: 'settings.json', keptAs: null }).title).toBe("Couldn't read your settings");
+    // A rebuilt database says so, rather than claiming a fresh start.
+    const rebuilt = describeStoreProblem({ kind: 'rebuilt', file: 'prism.db', keptAs: 'prism.corrupt-x.db' });
+    expect(rebuilt.title).toBe('Rebuilt your queue and Library from an older copy');
+    expect(rebuilt.description).toContain('prism.corrupt-x.db');
   });
 });

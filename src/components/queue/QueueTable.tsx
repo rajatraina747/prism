@@ -478,9 +478,12 @@ function RetryCountdown({ at, reason }: { at: string; reason?: string }) {
   }, []);
   const secs = Math.max(0, Math.round((Date.parse(at) - now) / 1000));
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  // The reason without its advice ("… — wait a few minutes, then retry"),
+  // which the countdown already is; the whole text stays in the tooltip.
+  const short = reason?.split(' — ')[0];
   return (
     <span className="text-warning" title={reason}>
-      {secs > 0 ? `Retrying in ${clock}` : 'Retrying…'}{reason ? ` — ${reason}` : ''}
+      {secs > 0 ? `Retrying in ${clock}` : 'Retrying…'}{short ? ` — ${short}` : ''}
     </span>
   );
 }

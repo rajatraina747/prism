@@ -15,6 +15,9 @@ interface PlaylistModalProps {
   onQueueSelected: (entries: PlaylistEntry[]) => void;
 }
 
+/** Lists up to this long open with every entry ticked. */
+export const PRESELECT_LIMIT = 100;
+
 export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const prevPlaylistRef = useRef<string | null>(null);
@@ -24,7 +27,10 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
       const key = playlist.title;
       if (key !== prevPlaylistRef.current) {
         prevPlaylistRef.current = key;
-        setSelected(new Set(playlist.entries.map((_, i) => i)));
+        // A playlist is usually wanted whole; a channel's uploads (1,212 for
+        // Blender) are not — one click queued them all (Windows test run
+        // 2026-09-26). Big lists start empty; "Select all" is still there.
+        setSelected(playlist.entries.length <= PRESELECT_LIMIT ? new Set(playlist.entries.map((_, i) => i)) : new Set());
       }
     }
   }, [playlist]);

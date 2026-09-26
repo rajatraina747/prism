@@ -1434,6 +1434,17 @@ async fn missing_files(app: AppHandle, paths: Vec<String>) -> Result<Vec<bool>, 
         .map_err(|e| format!("Checking files: {e}"))
 }
 
+/// The page's own data files (settings.json, …) are read and repaired in the
+/// page; this puts what it found in Prism.log, where a recovery was invisible
+/// before (Windows test run 2026-09-26, G1). Values are clipped: the page
+/// names its own files, but the log shouldn't take anything unbounded.
+#[tauri::command]
+fn log_store_problem(kind: String, file: String, kept_as: Option<String>) {
+    let clip = |s: &str| s.chars().take(120).collect::<String>();
+    let kept = kept_as.as_deref().map(|k| format!("; damaged copy kept as {}", clip(k))).unwrap_or_default();
+    log::warn!("store: {} {}{kept}", clip(&file), clip(&kind));
+}
+
 /// The OS progress bar's state for a given overall progress.
 ///
 /// Pure so the mapping is testable without a window: `None` hides the bar
@@ -1992,14 +2003,26 @@ async fn open_backup_file(app: AppHandle) -> Result<Option<String>, String> {
     .map_err(|e| format!("Couldn't read that file: {e}"))?
 }
 
+/// The picker's title for what the folder is for. Every picker used to say
+/// "where Prism saves downloads", the "Move them to" one included (Windows
+/// test run 2026-09-26). Unknown purposes get the download-folder title.
+fn picker_title(purpose: Option<&str>) -> &'static str {
+    match purpose {
+        Some("move") => "Choose where finished downloads move to",
+        Some("category") => "Choose where this category's downloads go",
+        Some("watch") => "Choose a folder to watch for .torrent files and link lists",
+        _ => "Choose where Prism saves downloads",
+    }
+}
+
 #[tauri::command]
-async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
+async fn pick_download_dir(app: AppHandle, purpose: Option<String>) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .set_title("Choose where Prism saves downloads")
+        .set_title(picker_title(purpose.as_deref()))
         .pick_folder(move |picked| {
             let _ = tx.send(picked);
         });
@@ -2505,6 +2528,7 @@ pub fn run() {
             lookup::inspect_url,
             thumbnails::cache_thumbnail,
             missing_files,
+            log_store_problem,
             restart_torrent_engine,
             store::store_load,
             store::store_save_queue,
@@ -2638,6 +2662,14 @@ mod tests {
         } else {
             std::env::temp_dir().join(name)
         }
+    }
+
+    #[test]
+    fn each_folder_picker_says_what_it_is_for() {
+        assert_eq!(picker_title(None), "Choose where Prism saves downloads");
+        assert_eq!(picker_title(Some("move")), "Choose where finished downloads move to");
+        assert_ne!(picker_title(Some("watch")), picker_title(None));
+        assert_eq!(picker_title(Some("anything else")), picker_title(None));
     }
 
     // As yt-dlp 2026.08.19 prints a channel's Videos tab.

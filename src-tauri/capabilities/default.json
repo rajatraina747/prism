@@ -50,6 +50,7 @@
     "allow-inspect-url",
     "allow-cache-thumbnail",
     "allow-missing-files",
+    "allow-log-store-problem",
     "allow-restart-torrent-engine",
     "allow-store-load",
     "allow-store-save-queue",

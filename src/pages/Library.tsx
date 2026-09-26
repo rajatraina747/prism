@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
 
 type FilterTab = 'all' | 'completed' | 'failed' | 'canceled';
@@ -222,12 +223,14 @@ export default function Library() {
   // A real file, or a torrent's own folder, never the folder a download was
   // saved into (see trashTarget): that is the whole download folder, and
   // trashing it would take every other download with it.
+  // Never a Missing row: its file is already gone, and one missing path made
+  // the whole all-or-nothing request fail (Windows test run 2026-09-26).
   const trashable = useMemo(
     () => selectedItems.flatMap(i => {
-      const target = trashTarget(i);
+      const target = missing.has(i.id) ? undefined : trashTarget(i);
       return target ? [{ item: i, ...target }] : [];
     }),
-    [selectedItems],
+    [selectedItems, missing],
   );
   const trashTargets = useMemo(() => trashable.map(t => t.path), [trashable]);
   const trashFolders = useMemo(() => trashable.filter(t => t.folder).map(t => baseName(t.path)), [trashable]);
@@ -242,9 +245,9 @@ export default function Library() {
       // No Undo offered: the files are in the OS Trash now, and restoring the
       // entries would leave them pointing at paths that have moved. The Trash
       // itself is the undo.
-      toast.success(`Moved ${count} ${count === 1 ? 'item' : 'items'} to the Trash`);
+      toast.success(`Moved ${count} ${count === 1 ? 'item' : 'items'} to the ${TRASH_NAME}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not move those to the Trash');
+      toast.error(e instanceof Error ? e.message : `Could not move those to the ${TRASH_NAME}`);
     }
   }, [trashable, trashTargets, service, removeFromHistory, clearSelection]);
 
@@ -387,14 +390,16 @@ export default function Library() {
           </div>
         )}
 
-        {selectedItems.length > 1 && (
+        {/* One selected row too: it was the only way to move a download to the
+            Recycle Bin, and a single row had no way at all. */}
+        {selectedItems.length > 0 && (
           <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary/8 border border-primary/20 text-xs animate-fade-in">
             <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
             <BulkButton icon={RotateCcw} label="Download again" onClick={() => selectedItems.forEach(requeue)} />
             <BulkButton icon={FolderOpen} label="Show in folder" onClick={revealSelected} />
             <BulkButton icon={ListX} label="Remove" onClick={removeSelected} />
             {trashTargets.length > 0 && (
-              <BulkButton icon={Trash2} label="Move to Trash" onClick={() => setConfirmTrash(true)} />
+              <BulkButton icon={Trash2} label={`Move to ${TRASH_NAME}`} onClick={() => setConfirmTrash(true)} />
             )}
             <button
               onClick={clearSelection}
@@ -469,9 +474,9 @@ export default function Library() {
       <ConfirmDialog
         open={confirmTrash}
         onOpenChange={setConfirmTrash}
-        title={`Move ${trashTargets.length} ${trashTargets.length === 1 ? 'download' : 'downloads'} to the Trash?`}
+        title={`Move ${trashTargets.length} ${trashTargets.length === 1 ? 'download' : 'downloads'} to the ${TRASH_NAME}?`}
         description={[
-          'The files go to your system Trash, where you can put them back. Their library entries are removed too.',
+          `The files go to the ${TRASH_NAME}, where you can put them back. Their library entries are removed too.`,
           trashFolders.length > 0
             ? `${trashFolders.length === 1 ? 'This folder goes' : 'These folders go'} with everything in ${trashFolders.length === 1 ? 'it' : 'them'}: ${trashFolders.map(n => `“${n}”`).join(', ')}.`
             : '',
@@ -479,7 +484,7 @@ export default function Library() {
             ? `${selectedItems.length - trashTargets.length} selected ${selectedItems.length - trashTargets.length === 1 ? 'item has' : 'items have'} no file of its own on disk and will be left alone.`
             : '',
         ].join(' ').trim()}
-        confirmLabel="Move to Trash"
+        confirmLabel={`Move to ${TRASH_NAME}`}
         destructive
         onConfirm={trashSelected}
       />

@@ -1,3 +1,4 @@
+import { IS_MAC } from '@/lib/platform';
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
@@ -198,7 +199,9 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
 
           {!audioOnly && selectedFormat?.playsEverywhere === false && (
             <p className="text-[11px] text-muted-foreground -mt-2">
-              {selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.
+              {IS_MAC
+                ? `${selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.`
+                : `${selectedFormat.codec} video plays in VLC and browsers, but not in every player or editor. Pick an H.264 option for the widest support.`}
             </p>
           )}
 
