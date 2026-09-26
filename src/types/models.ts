@@ -301,6 +301,9 @@ export interface DownloadPreset {
 export interface AppPreferences {
   defaultSaveFolder: string;
   maxConcurrentDownloads: number;
+  /** Torrents downloading at once, apart from the limit above. One stalled
+   * for five minutes doesn't count (stores/slots.ts). */
+  maxConcurrentTorrents: number;
   bandwidthLimit: number;
   defaultRetryCount: number;
   theme: 'dark' | 'light' | 'system';
@@ -547,6 +550,7 @@ export interface HistoryItem {
 export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultSaveFolder: '~/Downloads/Prism',
   maxConcurrentDownloads: 3,
+  maxConcurrentTorrents: 3,
   bandwidthLimit: 0,
   defaultRetryCount: 3,
   theme: 'dark',

@@ -642,8 +642,11 @@ export default function Settings() {
 
             <TabsContent value="speed" className="mt-0">
               <SettingGroup title="Queue">
-                <SettingRow label="Max concurrent downloads" description="Transfers running at the same time">
+                <SettingRow label="Max concurrent downloads" description="Videos and direct downloads running at the same time">
                   <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
+                </SettingRow>
+                <SettingRow label="Max concurrent torrents" description="Torrents downloading at the same time. One with no peers or no speed for five minutes stops counting, so the next can start">
+                  <NumberInput value={p.maxConcurrentTorrents} onChange={v => updatePreference('maxConcurrentTorrents', v)} min={1} max={20} />
                 </SettingRow>
                 <SettingRow label="Keep running when the window is closed" description="Downloads carry on in the background; open Prism again from the tray or Dock. Quitting asks first while anything is running">
                   <Toggle checked={p.closeToTray} onChange={v => updatePreference('closeToTray', v)} />

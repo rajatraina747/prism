@@ -14,6 +14,7 @@ import {
 } from '@/stores/completion';
 import { scheduleGate, itemStartBlocked } from '@/stores/schedule';
 import { autoRetryDelayMs } from '@/stores/retry';
+import { itemsToStart } from '@/stores/slots';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
 import { overallProgress } from '@/stores/progress';
@@ -425,22 +426,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const gate = scheduleGate(settings, new Date());
     if (gate.blockStarts) return;
 
-    const activeCount = queue.filter(i => i.status === 'downloading').length;
-    const available = settings.maxConcurrentDownloads - activeCount;
-    if (available <= 0) return;
-
-    const toStart = queue
+    // Torrents have their own pool, and a stalled one doesn't hold its slot
+    // (stores/slots.ts).
+    const now = new Date();
+    const toStart = itemsToStart(
+      queue,
+      { transfers: settings.maxConcurrentDownloads, torrents: settings.maxConcurrentTorrents },
+      now,
       // An item whose kill is still in flight has to wait for it: starting
       // now means the backend kills the *new* process when the cancel lands,
       // leaving the item 'downloading' with nothing behind it. stoppedTick
-      // re-runs this effect as each kill settles.
-      .filter(i => i.status === 'queued' && !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id))
-      // An item waiting for its own start time holds back only itself — the
-      // rest of the queue carries on, which is the whole point of scheduling
-      // one download for later. The minute tick above re-runs this, so it
-      // starts on its own when the time comes.
-      .filter(i => !itemStartBlocked(i, new Date()))
-      .slice(0, available);
+      // re-runs this effect as each kill settles. An item waiting for its own
+      // start time holds back only itself; the minute tick starts it later.
+      i => !startedRef.current.has(i.id) && !stoppingRef.current.has(i.id) && !itemStartBlocked(i, now),
+    );
 
     if (toStart.length === 0) return;
 

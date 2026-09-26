@@ -51,7 +51,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R3.4** Start-time test; ffmpeg location cached.
 
 ### Phase 4 — Queueing, torrents, subscriptions, Library
-- [ ] **R4.1** Separate torrent concurrency limit; slow/peerless torrents don't hold slots.
+- [x] **R4.1** Separate torrent concurrency limit; slow/peerless torrents don't hold slots.
 - [ ] **R4.2** YouTube subscriptions polled via RSS; parallel checks; premieres/lives held until they air.
 - [ ] **R4.3** Watch folders take `.torrent` files only.
 - [ ] **R4.4** Thumbnails cached locally (through the proxy).
