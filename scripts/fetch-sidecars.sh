@@ -203,7 +203,11 @@ case "$PLATFORM" in
     fetch_deno x86_64-pc-windows-msvc "$DENO_SHA256_X86_64_PC_WINDOWS_MSVC"
     ;;
   linux)
-    stage_ytdlp yt-dlp_linux.zip "$YTDLP_ZIP_SHA256_LINUX" yt-dlp_linux
+    # One-file on Linux (see sidecars.lock), in the same place.
+    rm -rf "$YTDLP_DIR" && mkdir -p "$YTDLP_DIR"
+    fetch "$YTDLP_BASE/yt-dlp_linux" "$YTDLP_DIR/yt-dlp" "$YTDLP_SHA256_LINUX"
+    chmod +x "$YTDLP_DIR/yt-dlp"
+    rm -f "$BIN"/yt-dlp-*
     fetch_deno x86_64-unknown-linux-gnu "$DENO_SHA256_X86_64_UNKNOWN_LINUX_GNU"
     ;;
 esac

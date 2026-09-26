@@ -59,7 +59,10 @@ HEADER=$(awk '/^# yt-dlp/{exit} {print}' "$LOCK")
   echo "# the one-file ones: those unpack ~70 MB into a temp folder on every single"
   echo "# run, which cost ~5 s per lookup and per download on macOS (REVIEW 2026-09-26)."
   echo "YTDLP_ZIP_SHA256_MACOS=$(sum_for yt-dlp_macos.zip)"
-  echo "YTDLP_ZIP_SHA256_LINUX=$(sum_for yt-dlp_linux.zip)"
+  echo "# Linux keeps the one-file build: linuxdeploy (AppImage) resolves every"
+  echo "# library it finds, and the onedir's Python modules only find libpython at"
+  echo "# run time, the trap the bundled ffmpeg libraries once fell into."
+  echo "YTDLP_SHA256_LINUX=$(sum_for yt-dlp_linux)"
   echo "YTDLP_ZIP_SHA256_WINDOWS=$(sum_for yt-dlp_win.zip)"
   echo
   echo "# Deno — https://github.com/denoland/deno/releases (hashes from <asset>.zip.sha256sum)"

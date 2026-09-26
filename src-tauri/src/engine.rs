@@ -31,8 +31,10 @@ const EXECUTABLE_IN_ZIP: &str = "yt-dlp_macos";
 const RELEASE_ASSET: &str = "yt-dlp_win.zip";
 #[cfg(target_os = "windows")]
 const EXECUTABLE_IN_ZIP: &str = "yt-dlp.exe";
+/// Linux stays on the one-file build (see scripts/sidecars.lock): the asset
+/// is the executable itself.
 #[cfg(target_os = "linux")]
-const RELEASE_ASSET: &str = "yt-dlp_linux.zip";
+const RELEASE_ASSET: &str = "yt-dlp_linux";
 #[cfg(target_os = "linux")]
 const EXECUTABLE_IN_ZIP: &str = "yt-dlp_linux";
 
@@ -87,6 +89,21 @@ fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
 /// reset.
 fn legacy_managed_path(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_data_dir().ok()?.join("engine").join(YTDLP_NAME))
+}
+
+/// Put a one-file engine (Linux) in `dir`, as the onedir one would be.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn install_single_file(bytes: &[u8], dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("Failed to install yt-dlp: {e}"))?;
+    let exe = dir.join(YTDLP_NAME);
+    std::fs::write(&exe, bytes).map_err(|e| format!("Failed to install yt-dlp: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to mark yt-dlp executable: {e}"))?;
+    }
+    Ok(exe)
 }
 
 /// Unpack a onedir zip into `dir`, the executable renamed `YTDLP_NAME`.
@@ -548,7 +565,11 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     let unpacked = {
         let staging = staging.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let result = unpack_onedir(&bytes, &staging, EXECUTABLE_IN_ZIP);
+            let result = if RELEASE_ASSET.ends_with(".zip") {
+                unpack_onedir(&bytes, &staging, EXECUTABLE_IN_ZIP)
+            } else {
+                install_single_file(&bytes, &staging)
+            };
             if result.is_err() {
                 let _ = std::fs::remove_dir_all(&staging);
             }
