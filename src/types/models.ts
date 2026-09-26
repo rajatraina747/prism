@@ -131,6 +131,9 @@ export interface DownloadSettings {
   // subscription itself — a feed's links must not become logged-in requests
   // to arbitrary sites (REVIEW 2026-09-26 M1). Absent = the setting decides.
   noCookies?: boolean;
+  /** Subscription items: skip (and drop) a video already downloaded under
+   * any URL, per yt-dlp's archive of site ids (`archive.txt` in app data). */
+  useArchive?: boolean;
   // Direct downloads only: a SHA-256 the finished file has to match, as 64
   // lower-case hex digits. Absent = downloaded without being checked.
   sha256?: string;

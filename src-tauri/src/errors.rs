@@ -37,6 +37,8 @@ pub enum ErrorCode {
     InvalidInput,
     Busy,
     Cancelled,
+    /// yt-dlp's download archive already lists this video (subscriptions).
+    AlreadyDownloaded,
     Unknown,
 }
 

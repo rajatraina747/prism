@@ -267,6 +267,7 @@ export class TauriPrismService implements IPrismService {
         subtitleLanguage: item.settings.subtitleLanguage ?? null,
         audioLanguage: item.settings.audioLanguage ?? null,
         embedSubtitles: item.settings.embedSubtitles ?? false,
+        useArchive: item.settings.useArchive ?? false,
         speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
         expectedSize: item.settings.format?.fileSize || null,
         clipStart: item.settings.clipStart ?? null,

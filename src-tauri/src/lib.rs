@@ -454,6 +454,8 @@ async fn start_download(
     audio_language: Option<String>,
     // Put the subtitles inside the video file rather than beside it.
     embed_subtitles: Option<bool>,
+    // Subscription items: consult and update yt-dlp's download archive.
+    use_archive: Option<bool>,
 ) -> Result<(), String> {
     // Both end up inside yt-dlp arguments: codes only, nothing else.
     let audio_language = audio_language.filter(|l| !l.is_empty());
@@ -517,7 +519,14 @@ async fn start_download(
         clip_section,
         split_chapters.unwrap_or(false),
         use_cookies.unwrap_or(true),
-        download_manager::Extras { audio_language, embed_subtitles: embed_subtitles.unwrap_or(false) },
+        download_manager::Extras {
+            audio_language,
+            embed_subtitles: embed_subtitles.unwrap_or(false),
+            archive: use_archive
+                .unwrap_or(false)
+                .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))
+                .flatten(),
+        },
     ).await;
     Ok(())
 }

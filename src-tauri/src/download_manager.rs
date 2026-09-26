@@ -114,6 +114,8 @@ impl ActiveDownload {
 pub struct Extras {
     pub audio_language: Option<String>,
     pub embed_subtitles: bool,
+    /// yt-dlp's download archive to consult and record in (subscriptions).
+    pub archive: Option<std::path::PathBuf>,
 }
 
 pub struct DownloadManager {
@@ -297,6 +299,11 @@ impl DownloadManager {
                 args.push(format!("chapter:{}", chapter_template(&output_path)));
             }
 
+            if let Some(archive) = &extras.archive {
+                args.push("--download-archive".into());
+                args.push(archive.to_string_lossy().into_owned());
+            }
+
             // Every item is one video. A watch URL that also names a list
             // (`&list=`) would otherwise download the whole list into this
             // one item's name.
@@ -476,6 +483,7 @@ impl DownloadManager {
                 let mut actual_height: Option<u32> = None;
                 let mut reported: Option<String> = None;
                 let mut agg = PhaseAggregator::new();
+                let mut in_archive = false;
                 // yt-dlp prints a progress line per fragment/chunk — many per
                 // second with -N. Each emit is an IPC hop plus a reducer pass and
                 // a re-render, so cap the rate; the final 100% always goes out.
@@ -494,6 +502,9 @@ impl DownloadManager {
                         Ok(Some(event)) => match event {
                             Event::Stdout(data) => {
                                 let line = String::from_utf8_lossy(&data);
+                                if line.contains("has already been recorded in the archive") {
+                                    in_archive = true;
+                                }
                                 if let Some(h) = line.trim().strip_prefix("PRISM:HEIGHT=") {
                                     actual_height = h.parse().ok(); // "NA" → None
                                 }
@@ -571,9 +582,15 @@ impl DownloadManager {
                     info = None;
                     continue 'attempt;
                 }
-                break 'attempt (success, last_error, last_stderr, stderr_tail, timed_out, actual_height, reported);
+                break 'attempt (success, last_error, last_stderr, stderr_tail, timed_out, actual_height, reported, in_archive);
             };
-            let (success, mut last_error, last_stderr, stderr_tail, timed_out, actual_height, reported) = outcome;
+            let (success, mut last_error, last_stderr, stderr_tail, timed_out, actual_height, reported, in_archive) = outcome;
+            // Skipped as already downloaded: nothing new on disk, and not a
+            // failure either — the page drops the item.
+            let success = success && !in_archive;
+            if in_archive {
+                last_error = "Already downloaded".into();
+            }
 
             // Remove from active downloads and release the template claim
             {
@@ -633,6 +650,8 @@ impl DownloadManager {
                         None
                     } else if timed_out {
                         Some(PrismError::new(ErrorCode::Timeout, "Download timed out (no activity for 5 minutes)"))
+                    } else if in_archive {
+                        Some(PrismError::new(ErrorCode::AlreadyDownloaded, "Already downloaded"))
                     } else if last_error.is_empty() {
                         Some(PrismError::new(ErrorCode::Unknown, "Download failed or was cancelled"))
                     } else {
