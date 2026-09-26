@@ -45,7 +45,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R2.8** Download archive for subscriptions.
 
 ### Phase 3 — Engine speed
-- [ ] **R3.1** Bundle yt-dlp's onedir build (no per-run unpacking: ~5 s → well under 2 s per start).
+- [x] **R3.1** Bundle yt-dlp's onedir build (no per-run unpacking: ~5 s → well under 2 s per start).
 - [ ] **R3.2** Engine self-update installs the onedir zip, verified and staged.
 - [ ] **R3.3** Signing/bundling cover the engine folder on all platforms.
 - [ ] **R3.4** Start-time test; ffmpeg location cached.

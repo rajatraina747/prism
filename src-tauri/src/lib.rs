@@ -3338,28 +3338,18 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// Integration: the bundled yt-dlp sidecar binary actually executes.
-    /// Skips (rather than fails) when the binary isn't present, e.g. on a
-    /// fresh clone before sidecars are fetched.
+    /// Integration: the bundled yt-dlp (onedir, staged by
+    /// scripts/fetch-sidecars.sh into src-tauri/ytdlp) actually executes.
+    /// Skips (rather than fails) on a fresh clone before it is fetched.
     #[test]
     fn bundled_ytdlp_runs() {
-        let triple = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-            "aarch64-apple-darwin"
-        } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-            "x86_64-unknown-linux-gnu"
-        } else {
-            eprintln!("skipping: no bundled sidecar for this platform in-repo");
-            return;
-        };
-        let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("binaries")
-            .join(format!("yt-dlp-{}", triple));
+        let bin = engine::bundled_ytdlp_in(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
         if !bin.exists() {
-            eprintln!("skipping: sidecar binary not present at {:?}", bin);
+            eprintln!("skipping: yt-dlp not staged at {:?}", bin);
             return;
         }
         let out = std::process::Command::new(&bin)
-            .arg("--version")
+            .args(["--ignore-config", "--version"])
             .output()
             .expect("failed to spawn bundled yt-dlp");
         assert!(out.status.success(), "yt-dlp --version exited nonzero");

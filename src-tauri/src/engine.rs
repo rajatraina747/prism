@@ -167,7 +167,7 @@ const LOCKDOWN_ARGS: [&str; 2] = ["--ignore-config", "--no-plugin-dirs"];
 pub fn ytdlp_command(app: &AppHandle) -> Result<CommandSpec, String> {
     let program = match managed_ytdlp_path(app) {
         Some(managed) if prefer_managed(&managed, BUNDLED_VERSION) => managed,
-        _ => bundled_ytdlp_path()?,
+        _ => bundled_ytdlp_path(app)?,
     };
     // UTF-8 output everywhere: Prism reads it as UTF-8, and on Windows yt-dlp
     // would otherwise print paths in the console code page (B-7).
@@ -177,20 +177,24 @@ pub fn ytdlp_command(app: &AppHandle) -> Result<CommandSpec, String> {
         .env("PYTHONIOENCODING", "utf-8"))
 }
 
-/// The sidecar Tauri places beside the app binary (`externalBin`, target
-/// triple stripped): `Contents/MacOS/yt-dlp` in the macOS bundle, next to the
-/// exe on Windows and Linux, `target/<profile>/yt-dlp` in development.
-fn bundled_ytdlp_path() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Failed to find yt-dlp sidecar: {e}"))?;
-    let path = exe
-        .parent()
-        .map(|dir| dir.join(YTDLP_NAME))
-        .ok_or("Failed to find yt-dlp sidecar")?;
+/// The bundled engine: yt-dlp's onedir build, shipped as a folder of
+/// resources (`Contents/Resources/ytdlp` in the macOS bundle, `ytdlp\` beside
+/// the exe on Windows, `target/<profile>/ytdlp` in development; see
+/// scripts/fetch-sidecars.sh). A folder rather than the one-file build, which
+/// unpacked itself into a temp folder on every run (~5 s each on macOS).
+fn bundled_ytdlp_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let resources = app.path().resource_dir().map_err(|e| format!("Failed to find yt-dlp: {e}"))?;
+    let path = bundled_ytdlp_in(&resources);
     if path.exists() {
         Ok(path)
     } else {
-        Err(format!("Failed to find yt-dlp sidecar at {}", path.display()))
+        Err(format!("Failed to find yt-dlp at {}", path.display()))
     }
+}
+
+/// Where the bundled engine sits under a resource folder.
+pub(crate) fn bundled_ytdlp_in(resources: &Path) -> PathBuf {
+    resources.join("ytdlp").join(YTDLP_NAME)
 }
 
 #[tauri::command]
