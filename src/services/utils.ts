@@ -129,6 +129,14 @@ export function isDirectFileUrl(url: string): boolean {
   }
 }
 
+/** A lookup with nothing to choose from: yt-dlp's generic extractor calls any
+ * file a "video" (no `mediaKey`, which it never sets for generic results), and
+ * with no formats the details dialog can't add it — a `.dat` link was a dead
+ * end (Windows test run 2026-09-26). Such a link is fetched as a plain file. */
+export function isFormatlessLookup(metadata: { formats: unknown[]; mediaKey?: string }): boolean {
+  return metadata.formats.length === 0 && !metadata.mediaKey;
+}
+
 /** Which engine a link belongs to.
  *
  * Composed from the two predicates above rather than re-deriving the rules, so

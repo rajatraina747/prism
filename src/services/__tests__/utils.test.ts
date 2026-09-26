@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, sourceKey, siteKey, mixVideoUrl } from '../utils';
+import { generateId, formatBytes, formatDuration, formatSpeed, formatEta, sanitizeFilename, ytdlpLiteral, isSameFolder, formatReleaseNotes, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, directFileName, torrentDisplayName, sourceKey, siteKey, mixVideoUrl } from '../utils';
 
 describe('sanitizeFilename', () => {
   it('passes ordinary titles through', () => {
@@ -139,6 +139,17 @@ describe('formatReleaseNotes', () => {
     expect(out).not.toContain('`');
     expect(out).not.toContain('Install');
     expect(out).not.toContain('.dmg');
+  });
+});
+
+describe('isFormatlessLookup', () => {
+  it('is a plain file when the generic extractor found nothing to choose', () => {
+    expect(isFormatlessLookup({ formats: [] })).toBe(true);
+  });
+  it('is a real video otherwise', () => {
+    expect(isFormatlessLookup({ formats: [{}] })).toBe(false);
+    // A known site with no formats is its own problem, not a file.
+    expect(isFormatlessLookup({ formats: [], mediaKey: 'youtube:abc' })).toBe(false);
   });
 });
 
