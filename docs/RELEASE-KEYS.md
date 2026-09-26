@@ -5,78 +5,92 @@ minisign **public** key compiled into the app (`plugins.updater.pubkey` in
 `src-tauri/tauri.conf.json`). Whoever holds the matching **private** key can
 push code to every installed copy. Treat it accordingly.
 
-## Where the key lives
+## Where the key lives (since 2.2.1)
 
 | What | Where |
 | --- | --- |
 | Public key | `src-tauri/tauri.conf.json` → `plugins.updater.pubkey` (in git) |
-| Private key | GitHub → repo Settings → Secrets → `TAURI_SIGNING_PRIVATE_KEY` |
-| Key password | GitHub secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty until step 1 below is done) |
-| Offline backup | Password manager entry "Prism updater key" + one offline copy (encrypted USB / printed) |
+| Private key | GitHub → repo Settings → Environments → `release` → secret `TAURI_SIGNING_PRIVATE_KEY`. There is **no** repository-level copy. |
+| Key password | None. The key was generated without one (see §4). |
+| Local copy | `~/.tauri/prism.key` on Rajat's Mac: the file `tauri signer generate` wrote. The secret holds this file's contents as-is. |
 
-Only the three `build-*` jobs in `.github/workflows/build.yml` receive the key,
-and only they have `contents: write`.
+Key ID `39f3e4ae0ac6fafb`. `tauri.conf.json`'s pubkey decodes to the same text
+as `~/.tauri/prism.key.pub`.
 
-## 1. Encrypt the existing key (one-off, no rotation)
+## 1. How a release is protected
 
-Adding a password does **not** change the key pair, so installed copies keep
-updating. `TAURI_SIGNING_PRIVATE_KEY` holds the base64 of a minisign secret-key
-file.
+- **Environment `release`.** The three `build-*` jobs in
+  `.github/workflows/build.yml` run in it, and only they can read the key.
+  - Required reviewer: `rajatraina747`.
+  - Only `v*` tags may deploy to it.
+- **Tag ruleset "Release tags".** Creating, moving or deleting a `refs/tags/v*`
+  tag is blocked for everyone except repository admins, i.e. Rajat.
 
-```sh
-brew install minisign                     # free
-cd "$(mktemp -d)"
-pbpaste | base64 -d > prism.key           # copy the current secret value first
-minisign -C -s prism.key                  # set a new password (it asks for the old one; press Enter if none)
-base64 < prism.key | tr -d '\n' | pbcopy  # new secret value
-```
+Releasing:
 
-1. Paste it into `TAURI_SIGNING_PRIVATE_KEY`, and put the password into
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
-2. Update the offline backup with the encrypted file. Store the password
-   separately.
-3. `rm -P prism.key`, then clear the clipboard.
-4. Check it on the next tag: all three build jobs must upload `.sig` files.
-   `latest.json` must list signatures for every platform.
+1. Push `main`, then the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+2. The `notes` job runs. The three build jobs then show **Waiting**. Open the
+   run and click **Review deployments**. Tick `release`, then click
+   **Approve and deploy**.
+3. When the run is green, check the draft (§5), then publish it:
+   `gh release edit vX.Y.Z -R rajatraina747/prism --draft=false --latest`.
+4. Bump the Homebrew cask in `rajatraina747/homebrew-prism`. Set `version`,
+   and set `sha256` to the `shasum -a 256` of `Prism_X.Y.Z_aarch64.dmg`.
 
 ## 2. Backups
 
-- Keep two copies of the encrypted key, in different places, plus the password
-  in a password manager. If you lose the private key, every installed copy is
-  stranded: no future update can ever verify.
-- Once a year, restore from the backup and sign a test file
-  (`minisign -S -s prism.key -m README.md`). Verify it against the pubkey in
-  `tauri.conf.json`.
+`~/.tauri/prism.key` is the only copy outside GitHub, and GitHub never gives a
+secret back. If both are lost, every installed copy is stranded: no future
+update can ever verify.
+
+- Keep at least one offline copy of `~/.tauri/prism.key` (USB stick, or an
+  encrypted archive somewhere other than this Mac).
+- Once a year, check the copy still matches. Compare its `.pub` with the pubkey
+  in `tauri.conf.json`:
+  `[ "$(cat prism.key.pub)" = "$(jq -r .plugins.updater.pubkey src-tauri/tauri.conf.json)" ]`.
 
 ## 3. Rotation (compromise, or a planned change)
 
 Installed apps only trust the old public key, so rotate in two releases:
 
-1. `npx tauri signer generate -w prism-new.key` (with a password).
+1. `npx tauri signer generate -w prism-new.key`.
 2. **Release N**, still signed with the **old** key, ships the **new** public
    key in `tauri.conf.json`. Every copy that installs N now trusts the new key.
-3. Swap both GitHub secrets to the new key and password.
-4. **Release N+1** onward is signed with the new key.
+3. Replace the `release` environment's `TAURI_SIGNING_PRIVATE_KEY`:
+   `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release -R rajatraina747/prism < prism-new.key`.
+4. **Release N+1** onward is signed with the new key. Update §2's backup.
 
 If the old key is known to be **compromised**, an attacker can sign too.
 Publish N quickly, say so in the release notes, and remove older releases that
 an attacker could replay. The updater has no downgrade protection (S-15).
 Copies that never install N need a manual download.
 
-## 4. Release environment (REVIEW 2026-09-26 M2)
+## 4. Why there is no key password
 
-The three `build-*` jobs run in a GitHub **environment** named `release`
-(`environment: release` in `build.yml`). On its own that changes nothing. It
-starts protecting the key once the environment is set up:
+A password would have to live in the same `release` environment as the key,
+readable by the same jobs after the same approval. It protects against nothing
+the environment doesn't already cover (REVIEW 2026-09-26 M2, decided
+2026-09-26). It would matter if the key file itself leaked from this Mac. To
+add one:
 
-1. Repo Settings → Environments → `release` (created by the first run, or add
-   it by hand).
-2. **Required reviewers**: yourself. Every tag build then waits for a click
-   before any job can read the key.
-3. **Deployment branches and tags**: selected tags only, pattern `v*`.
-4. Move `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-   from repository secrets into the environment's secrets. Then delete the
-   repository-level copies, so no other workflow can read them.
-5. Repo Settings → Rules → add a tag ruleset for `v*` that blocks creation,
-   update and deletion except by you. Without it, anyone with write access
-   can push a tag that starts a signed build.
+```sh
+brew install minisign
+cd "$(mktemp -d)" && base64 -d < ~/.tauri/prism.key > prism.key
+minisign -C -s prism.key          # press Enter for the old (empty) password
+base64 < prism.key | tr -d '\n' | gh secret set TAURI_SIGNING_PRIVATE_KEY --env release -R rajatraina747/prism
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release -R rajatraina747/prism
+```
+
+Then replace `~/.tauri/prism.key` and the offline copy with the new contents,
+and `rm -P prism.key`.
+
+## 5. Checking a release was signed by this key
+
+Every signature carries the ID of the key that made it. After the build, all
+platforms in the draft's `latest.json` should carry signatures made by key
+`39f3e4ae0ac6fafb`:
+
+```sh
+cd "$(mktemp -d)" && gh release download vX.Y.Z -R rajatraina747/prism -p latest.json
+python3 -c "import json,base64; d=json.load(open('latest.json')); print({base64.b64decode(base64.b64decode(v['signature']).decode().splitlines()[1])[2:10].hex() for v in d['platforms'].values()})"
+```
