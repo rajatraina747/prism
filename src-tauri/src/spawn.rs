@@ -229,27 +229,147 @@ pub struct Child {
     job: Option<usize>,
 }
 
+/// How long a run has to exit after SIGTERM before it is killed outright.
+///
+/// SIGKILL straight away gave yt-dlp no chance to clean up: its PyInstaller
+/// launcher unpacks ~70 MB into a `_MEI*` temp folder per run and removes it
+/// only when it exits normally, so every pause and cancel left one behind
+/// (115 folders, 8 GB, on one Mac: REVIEW 2026-09-26). SIGTERM lets the
+/// launcher forward the signal, wait for the worker and tidy up; a `.part`
+/// file is resumable either way.
+pub const KILL_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
 impl Child {
-    /// Kill the whole run: its process group on unix (forked workers
-    /// included), its job object on Windows. A no-op once it has exited,
-    /// when its pid may already belong to another process.
+    /// Stop the whole run: its process group on unix (forked workers
+    /// included), its job object on Windows. On unix it is asked to stop
+    /// first and killed outright after `KILL_GRACE` if it hasn't. A no-op once
+    /// it has exited, when its pid may already belong to another process.
     pub fn kill(&self) {
-        // pid 0 would make killpg signal Prism's own group.
-        if self.pid <= 1 || self.exited.load(Ordering::SeqCst) {
+        if self.gone() {
             return;
         }
         #[cfg(unix)]
-        unsafe {
-            libc::killpg(self.pid as libc::pid_t, libc::SIGKILL);
+        {
+            // SAFETY: a plain signal to this run's own process group; `gone`
+            // ruled out pid 0/1 (which would mean Prism's group or init).
+            unsafe {
+                libc::killpg(self.pid as libc::pid_t, libc::SIGTERM);
+            }
+            let (pid, exited) = (self.pid, self.exited.clone());
+            let _ = std::thread::Builder::new().name("prism-kill-grace".into()).spawn(move || {
+                if !wait_for(&exited, KILL_GRACE) {
+                    hard_kill(pid, &exited);
+                }
+            });
         }
         #[cfg(windows)]
-        if let Some(job) = self.job {
-            job::terminate(job);
-        }
-        // Unix: anything that left the group. Windows: anything that forked
-        // before the job assignment landed.
-        crate::proc::kill_tree(self.pid);
+        self.force_kill();
     }
+
+    /// Kill the run outright, now.
+    pub fn force_kill(&self) {
+        if self.gone() {
+            return;
+        }
+        #[cfg(unix)]
+        hard_kill(self.pid, &self.exited);
+        #[cfg(windows)]
+        {
+            if let Some(job) = self.job {
+                job::terminate(job);
+            }
+            // Anything that forked before the job assignment landed.
+            crate::proc::kill_tree(self.pid);
+        }
+    }
+
+    /// Wait (blocking) up to `timeout` for the run to exit; true if it did.
+    pub fn wait_exited(&self, timeout: std::time::Duration) -> bool {
+        wait_for(&self.exited, timeout)
+    }
+
+    fn gone(&self) -> bool {
+        // pid 0 would make killpg signal Prism's own group.
+        self.pid <= 1 || self.exited.load(Ordering::SeqCst)
+    }
+}
+
+/// Stop several runs, giving them `KILL_GRACE` between them to exit before
+/// the stragglers are killed outright. For quitting: blocks until done.
+pub fn stop_all(children: &[&Child]) {
+    for child in children {
+        child.kill();
+    }
+    let deadline = std::time::Instant::now() + KILL_GRACE;
+    for child in children {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if !child.wait_exited(left) {
+            child.force_kill();
+        }
+    }
+}
+
+/// How old an unpack folder must be before the launch sweep removes it. A
+/// day, not an hour: a long download (or someone's own yt-dlp in a terminal)
+/// keeps its folder for as long as it runs, and removing it mid-run would
+/// crash that run.
+const STALE_UNPACK_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Whether `dir` is a PyInstaller unpack folder yt-dlp left behind: named
+/// `_MEI…`, holding yt-dlp's own files, and older than `STALE_UNPACK_AGE`.
+fn is_stale_ytdlp_unpack(dir: &std::path::Path, now: std::time::SystemTime) -> bool {
+    let named = dir.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("_MEI"));
+    let ours = dir.join("yt_dlp_ejs").is_dir() || dir.join("yt_dlp").is_dir();
+    let old = std::fs::metadata(dir)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| now.duration_since(t).ok())
+        .is_some_and(|age| age >= STALE_UNPACK_AGE);
+    named && ours && old
+}
+
+/// Remove the temp folders earlier yt-dlp runs couldn't clean up (killed
+/// outright before 2.3, or cut off by a crash). Returns how many went.
+pub fn sweep_stale_unpack_dirs(temp: &std::path::Path) -> usize {
+    let now = std::time::SystemTime::now();
+    let Ok(entries) = std::fs::read_dir(temp) else { return 0 };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Not following links: a `_MEI` symlink to somewhere else is not ours.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) || !is_stale_ytdlp_unpack(&path, now) {
+            continue;
+        }
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => removed += 1,
+            Err(e) => log::warn!("could not remove {}: {e}", path.display()),
+        }
+    }
+    removed
+}
+
+fn wait_for(exited: &AtomicBool, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    while !exited.load(Ordering::SeqCst) {
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    true
+}
+
+#[cfg(unix)]
+fn hard_kill(pid: u32, exited: &AtomicBool) {
+    if pid <= 1 || exited.load(Ordering::SeqCst) {
+        return;
+    }
+    // SAFETY: as in `kill`.
+    unsafe {
+        libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+    }
+    // Anything that left the group.
+    crate::proc::kill_tree(pid);
 }
 
 #[cfg(all(unix, test))]
@@ -342,6 +462,60 @@ mod tests {
             }
             assert!(gone, "orphaned worker {orphan} survived the kill");
         });
+    }
+
+    /// SIGTERM first: a run gets to clean up after itself (yt-dlp's launcher
+    /// removes its `_MEI*` temp folder), which SIGKILL never allowed.
+    #[test]
+    fn kill_lets_the_run_clean_up() {
+        tauri::async_runtime::block_on(async {
+            let marker = std::env::temp_dir().join(format!("prism-kill-clean-{}", std::process::id()));
+            let _ = std::fs::remove_file(&marker);
+            let script = format!("trap 'echo done > \"{}\"; exit 0' TERM; echo ready; sleep 30 & wait", marker.display());
+            let (mut rx, child) = CommandSpec::new("/bin/sh").args(["-c", &script]).spawn().unwrap();
+            assert!(matches!(rx.recv().await, Some(Event::Stdout(_))), "script should start");
+            child.kill();
+            tokio::time::timeout(Duration::from_secs(10), until_terminated(&mut rx))
+                .await
+                .expect("run should terminate after kill");
+            assert!(marker.exists(), "the run's TERM handler never ran");
+            let _ = std::fs::remove_file(&marker);
+        });
+    }
+
+    /// A run that ignores SIGTERM is still gone after the grace period.
+    #[test]
+    fn kill_escalates_when_terminate_is_ignored() {
+        tauri::async_runtime::block_on(async {
+            let (mut rx, child) = CommandSpec::new("/bin/sh")
+                .args(["-c", "trap '' TERM; echo ready; while :; do sleep 1; done"])
+                .spawn()
+                .unwrap();
+            assert!(matches!(rx.recv().await, Some(Event::Stdout(_))), "script should start");
+            let started = std::time::Instant::now();
+            child.kill();
+            tokio::time::timeout(KILL_GRACE + Duration::from_secs(10), until_terminated(&mut rx))
+                .await
+                .expect("run should be killed after the grace period");
+            assert!(started.elapsed() >= KILL_GRACE - Duration::from_millis(200), "killed before the grace period");
+        });
+    }
+
+    #[test]
+    fn only_old_ytdlp_unpack_folders_are_swept() {
+        let temp = std::env::temp_dir().join(format!("prism-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp);
+        for (name, marker) in [("_MEIold", "yt_dlp_ejs"), ("_MEIfresh", "yt_dlp_ejs"), ("_MEIother", "numpy"), ("keep", "yt_dlp_ejs")] {
+            std::fs::create_dir_all(temp.join(name).join(marker)).unwrap();
+        }
+        let later = std::time::SystemTime::now() + STALE_UNPACK_AGE + Duration::from_secs(60);
+        assert!(is_stale_ytdlp_unpack(&temp.join("_MEIold"), later));
+        assert!(!is_stale_ytdlp_unpack(&temp.join("_MEIfresh"), std::time::SystemTime::now()), "a running download's folder");
+        assert!(!is_stale_ytdlp_unpack(&temp.join("_MEIother"), later), "another PyInstaller app's folder");
+        assert!(!is_stale_ytdlp_unpack(&temp.join("keep"), later), "not an unpack folder");
+        // Everything here is new, so a real sweep removes nothing.
+        assert_eq!(sweep_stale_unpack_dirs(&temp), 0);
+        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]

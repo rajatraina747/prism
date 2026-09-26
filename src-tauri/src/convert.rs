@@ -48,9 +48,7 @@ pub fn kill_all() {
         .lock()
         .map(|mut map| map.drain().map(|(_, child)| child).collect())
         .unwrap_or_default();
-    for child in &children {
-        child.kill();
-    }
+    crate::spawn::stop_all(&children.iter().collect::<Vec<_>>());
 }
 
 /// The conversions offered. Deliberately a short list of destinations people

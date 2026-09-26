@@ -620,9 +620,13 @@ impl DownloadManager {
     /// same files the next launch resumes) with nothing left to stop it.
     pub async fn kill_all(&self) {
         let running: Vec<ActiveDownload> = self.downloads.lock().await.drain().map(|(_, dl)| dl).collect();
-        for dl in running {
-            dl.stop();
+        for dl in &running {
+            dl.alive.store(false, Ordering::SeqCst);
         }
+        // Asked to stop, then killed if they haven't within the grace period:
+        // blocking, since the process is about to exit.
+        let children: Vec<&Child> = running.iter().map(|dl| &dl.child).collect();
+        crate::spawn::stop_all(&children);
         self.reserved.lock().await.clear();
     }
 }

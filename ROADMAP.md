@@ -28,7 +28,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R1.1** Close to tray (setting, default on) and confirm Quit while work is active.
 - [x] **R1.2** "Retries on failure" actually used; manual retry resets the budget; rate limits back off minutes, not seconds.
 - [x] **R1.3** A corrupt JSON file is set aside and recovered from `.bak.json`, never silently replaced by `[]`; failed saves are reported.
-- [ ] **R1.4** yt-dlp stopped with SIGTERM before SIGKILL; stale PyInstaller `_MEI*` folders swept at launch (115 / 8 GB found on one Mac).
+- [x] **R1.4** yt-dlp stopped with SIGTERM before SIGKILL; stale PyInstaller `_MEI*` folders swept at launch (115 / 8 GB found on one Mac).
 - [ ] **R1.5** Direct downloads honour a SOCKS proxy.
 - [ ] **R1.6** Resume disk-space checks count only the bytes still to download.
 - [ ] **R1.7** A tray that can't be created no longer stops Prism starting.

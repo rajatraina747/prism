@@ -2372,6 +2372,14 @@ pub fn run() {
 
             setup_tray(app)?;
 
+            // yt-dlp temp folders earlier runs couldn't clean up (R1.4).
+            tauri::async_runtime::spawn_blocking(|| {
+                let removed = spawn::sweep_stale_unpack_dirs(&std::env::temp_dir());
+                if removed > 0 {
+                    log::info!("removed {removed} stale yt-dlp temp folder(s)");
+                }
+            });
+
             // Watch folders (none configured = a cached settings read every
             // few seconds).
             watch::spawn(app.handle().clone());
