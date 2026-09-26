@@ -9,6 +9,7 @@ import { useDropToAdd } from '@/hooks/use-drop-to-add';
 import { pushDeepLink } from '@/lib/deep-link-bus';
 import { setRemoteImagesAllowed } from '@/lib/remote-images';
 import { onNavigateRequest } from '@/lib/nav-bus';
+import { onStoreProblem, describeStoreProblem } from '@/lib/store-problems';
 import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
 import { toast } from 'sonner';
 import {
@@ -182,6 +183,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Navigation asked for from outside a route (e.g. a failure toast's
   // "Set browser cookies").
   React.useEffect(() => onNavigateRequest((path) => navigateRef.current(path)), []);
+  // A damaged or unsaveable data file is worth a word (lib/json-store.ts).
+  React.useEffect(() => onStoreProblem((p) => {
+    const { title, description } = describeStoreProblem(p);
+    (p.kind === 'recovered' ? toast.warning : toast.error)(title, { description, duration: 15000 });
+  }), []);
 
   // Engine freshness: an hourly look at a lookup Rust caches for a day, so
   // GitHub is asked at most daily. Offline or rate-limited just means no nudge.

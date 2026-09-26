@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins, and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs. Prism's own commands: everything except the player window's (see player.json), each granted by name.",
+  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins and the .bak/.corrupt copies renamed from them (src/lib/json-store.ts), and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs. Prism's own commands: everything except the player window's (see player.json), each granted by name.",
   "windows": [
     "main"
   ],

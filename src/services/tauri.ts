@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { loadJson, saveJson, type JsonFs } from '@/lib/json-store';
+import { reportStoreProblem } from '@/lib/store-problems';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -25,26 +27,28 @@ const FILES = {
   stats: 'stats.json',
 } as const;
 
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    const text = await readTextFile(file, { baseDir: BaseDirectory.AppData });
-    return JSON.parse(text) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-// Write-then-rename so a crash mid-write can't corrupt the real file (a
-// corrupted queue/history file silently resets to [] on next launch). Through
-// a per-file queue, so two saves of one file never share the `.tmp` at once.
-const writeJsonText = createWriteQueue(async (file, text) => {
-  const tmp = `${file}.tmp`;
-  await writeTextFile(tmp, text, { baseDir: BaseDirectory.AppData });
-  await rename(tmp, file, {
+const appDataFs: JsonFs = {
+  read: file => readTextFile(file, { baseDir: BaseDirectory.AppData }),
+  write: (file, text) => writeTextFile(file, text, { baseDir: BaseDirectory.AppData }),
+  rename: (from, to) => rename(from, to, {
     oldPathBaseDir: BaseDirectory.AppData,
     newPathBaseDir: BaseDirectory.AppData,
-  });
-});
+  }),
+};
+
+// A damaged file is set aside and its backup loaded, never silently replaced
+// by the fallback (lib/json-store.ts).
+function readJson<T>(file: string, fallback: T): Promise<T> {
+  return loadJson(appDataFs, file, fallback, reportStoreProblem);
+}
+
+// Write-then-rename (keeping the previous copy as `.bak.json`) through a
+// per-file queue, so two saves of one file never share the `.tmp` at once.
+// A save that fails is reported rather than swallowed.
+const writeJsonText = createWriteQueue(
+  (file, text) => saveJson(appDataFs, file, text),
+  file => reportStoreProblem({ kind: 'save-failed', file }),
+);
 
 async function writeJson(file: string, data: unknown): Promise<void> {
   // Serialised now, so what is saved is the data as it was at this call.

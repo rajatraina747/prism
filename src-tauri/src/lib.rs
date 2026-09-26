@@ -2750,6 +2750,41 @@ mod tests {
         ] {
             assert!(write(&refused).is_err(), "the webview could write {refused}");
         }
+
+        // Saves keep the previous copy as `<name>.bak.json` and a damaged file
+        // is set aside as `<name>.corrupt-<time>.json` (src/lib/json-store.ts):
+        // renames between top-level JSON names must work, and nothing else.
+        let rename = |from: &str, to: &str| {
+            std::fs::write(data_dir.join(from), b"{}").unwrap();
+            let response = tauri::test::get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: "plugin:fs|rename".into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: InvokeBody::Json(serde_json::json!({
+                        "oldPath": from,
+                        "newPath": to,
+                        "options": { "oldPathBaseDir": 14, "newPathBaseDir": 14 },
+                    })),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            );
+            for f in [from, to] {
+                let _ = std::fs::remove_file(data_dir.join(f));
+            }
+            response
+        };
+        let r = rename(&format!("{tag}.json"), &format!("{tag}.bak.json"));
+        assert!(r.is_ok(), "keeping a backup copy was refused: {r:?}");
+        let r = rename(&format!("{tag}.json"), &format!("{tag}.corrupt-2026-09-26T10-00-00-000Z.json"));
+        assert!(r.is_ok(), "setting a damaged file aside was refused: {r:?}");
+        assert!(
+            rename(&format!("{tag}.json"), &format!("engine/{tag}")).is_err(),
+            "the webview could move a file into engine/"
+        );
     }
 
     /// The commands `generate_handler!` registers, read from this file.
