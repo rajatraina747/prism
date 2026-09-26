@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use reqwest::header::{CONTENT_DISPOSITION, CONTENT_RANGE, CONTENT_TYPE, ETAG, IF_RANGE, LAST_MODIFIED, RANGE};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::download_manager::{DownloadComplete, DownloadProgress};
@@ -1146,9 +1146,10 @@ async fn progress_ticker(app: AppHandle, id: String, size: Option<u64>, t: Trans
         speed = if speed == 0.0 { instant } else { speed * 0.7 + instant * 0.3 };
         (last_bytes, last_at) = (bytes, Instant::now());
         let total = size.unwrap_or(0);
-        let _ = app.emit(
-            &format!("download-progress-{id}"),
-            DownloadProgress {
+        crate::queue::emit_progress(
+            &app,
+            &id,
+            &DownloadProgress {
                 id: id.clone(),
                 downloaded_bytes: bytes,
                 total_bytes: total,

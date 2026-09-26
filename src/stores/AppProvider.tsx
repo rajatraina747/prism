@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useReducer, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
-import { queueReducer } from '@/stores/queue-reducer';
+import { queueReducer, type QueueAction } from '@/stores/queue-reducer';
+import { remoteQueueReducer } from '@/stores/remote-queue';
 import { createThrottledSaver, queueShape } from '@/stores/queue-save';
 import { installAppUpdate } from '@/stores/app-update';
 import { mergeHistory, mergeSettings } from '@/stores/backup';
@@ -40,6 +41,11 @@ function playNotificationSound() {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.3);
   } catch { /* audio not available */ }
+}
+
+/** A queue action Rust refused (see src-tauri/src/queue.rs). */
+function reportQueueError(e: unknown) {
+  toast.error(errorText(e, 'The queue could not do that').message);
 }
 
 // ── Types ──
@@ -142,7 +148,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Queue transitions live in queueReducer (pure, guarded); this component
   // only performs side effects — spawning/killing downloads — and dispatches.
-  const [queue, dispatch] = useReducer(queueReducer, null, () => service.persistence.loadQueue());
+  const [localQueue, dispatch] = useReducer(queueReducer, null, () => service.persistence.loadQueue());
+  // The desktop app's queue is Rust's (src-tauri/src/queue.rs): the page
+  // keeps a copy to render, and every action below goes to Rust. The browser
+  // demo has no Rust, and runs the queue here with the reducer above.
+  const remote = service.queue;
+  const [remoteQueue, dispatchRemote] = useReducer(remoteQueueReducer, []);
+  const queue = remote ? remoteQueue : localQueue;
   const [history, setHistory] = useState<HistoryItem[]>(() => service.persistence.loadHistory());
   // Migrate whatever was stored into the shape this build expects, then merge
   // it over the defaults so settings saved by older versions pick up new keys.
@@ -178,6 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const queueShapeRef = useRef<string | null>(null);
   useEffect(() => {
+    if (remote) return; // Rust saves its own queue
     const shape = queueShape(queue);
     if (shape !== queueShapeRef.current) {
       queueShapeRef.current = shape;
@@ -185,8 +198,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       queueSaver.schedule(queue);
     }
-  }, [queue, queueSaver]);
-  useEffect(() => () => queueSaver.flush(), [queueSaver]);
+  }, [queue, queueSaver, remote]);
+  useEffect(() => () => { if (!remote) queueSaver.flush(); }, [queueSaver, remote]);
   // History is rewritten in full on every completion (and can hold 2,000
   // rows) — debounce it like the queue so a burst of finishing playlist items
   // doesn't serialize the file once per item.
@@ -288,7 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     .map(i => i.id)
     .join('|');
   useEffect(() => {
-    if (terminalKey === '') return;
+    if (remote || terminalKey === '') return; // Rust archives (queue-archived)
 
     const timeout = setTimeout(() => {
       const terminal = queueRef.current.filter(i => i.status === 'completed' || i.status === 'failed' || i.status === 'canceled');
@@ -322,8 +335,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (acc, i) => recordCompletion(acc, i, i.status as 'completed' | 'failed' | 'canceled'),
         s,
       ));
-      // Cap history so history.json can't grow (and load/render) unboundedly
-      setHistory(prev => [...historyItems, ...prev].slice(0, 2000));
+      // No cap: the Library lives in the database now (store.rs), where a
+      // finished download is one row, not a rewrite of the whole list.
+      setHistory(prev => [...historyItems, ...prev]);
       dispatch({ type: 'removeMany', ids: terminal.map(t => t.id) });
 
       // Content-level duplicates. Only answerable once a file exists, so it
@@ -344,7 +358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }, 300);
     return () => clearTimeout(timeout);
-  }, [terminalKey]);
+  }, [terminalKey, remote]);
 
   // Re-evaluate the quiet-hours gate once a minute while a schedule is on,
   // so held items start (or throttling changes) when the window flips.
@@ -360,18 +374,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // call, so only a change someone could see is worth sending.
   const shownProgress = useRef('');
   useEffect(() => {
+    if (remote) return; // Rust keeps the Dock in step
     const overall = overallProgress(queue);
     const key = overall ? `${overall.percent}:${overall.paused}` : 'idle';
     if (key === shownProgress.current) return;
     shownProgress.current = key;
     void service.setProgress(overall?.percent ?? null, overall?.paused ?? false);
-  }, [queue, service]);
+  }, [queue, service, remote]);
 
   // Sleep, shut down or quit once everything has finished. The decision is
   // made in stores/completion.ts, which only says yes after the queue has
   // actually been working — turning the setting on with an empty queue must
   // not put the machine to sleep on the spot.
   useEffect(() => {
+    if (remote) return; // Rust decides, and says so (when-done-countdown)
     const { state, start } = evaluateWhenDone(whenDoneRef.current, queue, settings);
     whenDoneRef.current = state;
     if (!start) return;
@@ -394,7 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       duration: WHEN_DONE_COUNTDOWN_SECONDS * 1000,
       action: { label: 'Cancel', onClick: cancel },
     });
-  }, [queue, settings, service]);
+  }, [queue, settings, service, remote]);
 
   // Only on unmount: a countdown must survive the effect above re-running.
   useEffect(() => () => {
@@ -407,6 +423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // persistent session, so the limits are applied out-of-band and live.
   useEffect(() => {
     void scheduleTick;
+    if (remote) return; // Rust applies the caps
     const gate = scheduleGate(settings, new Date());
     const userDown = settings.torrentDownloadLimitKBps > 0 ? settings.torrentDownloadLimitKBps * 1024 : null;
     const userUp = settings.torrentUploadLimitKBps > 0 ? settings.torrentUploadLimitKBps * 1024 : null;
@@ -417,15 +434,91 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Direct downloads get their own limit per item at start, like yt-dlp;
     // this cap reaches the ones already running when quiet hours begin.
     service.setDirectRateLimit(override ?? null).catch(() => {});
-  }, [settings, scheduleTick, service]);
+  }, [settings, scheduleTick, service, remote]);
 
   // The failure toast's Retry fires long after this render; read the current
   // retryDownload through a ref (assigned where it's defined, below).
   const retryRef = useRef<(id: string) => void>(() => {});
 
+  // Rust's queue: its snapshot, then its events. What the page did for its own
+  // queue — Library entries, statistics, toasts, the when-done countdown — it
+  // now does for what Rust reports.
+  useEffect(() => {
+    if (!remote) return;
+    const stop = remote.subscribe({
+      changed: patch => dispatchRemote({ type: 'patch', patch }),
+      archived: entries => {
+        // A torrent is listed when it starts seeding and its entry replaced
+        // when seeding ends: the same id, the newer entry.
+        setHistory(prev => {
+          const incoming = new Map(entries.map(e => [e.history.id, e.history]));
+          const kept = prev.map(h => incoming.get(h.id) ?? h);
+          const known = new Set(prev.map(h => h.id));
+          return [...entries.map(e => e.history).filter(h => !known.has(h.id)), ...kept];
+        });
+        // Counted once, when the item leaves the queue.
+        const final = entries.filter(e => (e.stage ?? 'final') === 'final');
+        setStats(s => final.reduce(
+          (acc, e) => recordCompletion(acc, e.item, e.item.status as 'completed' | 'failed' | 'canceled'),
+          s,
+        ));
+        // Content-level duplicates: only answerable once a file exists.
+        for (const { item } of final) {
+          if (item.status !== 'completed' || !item.filePath) continue;
+          void serviceRef.current
+            .indexDownload(item.filePath, item.metadata.title)
+            .then(existing => { if (existing) toast.info(`You already had this: ${existing.title}`, { duration: 8000 }); })
+            .catch(() => {});
+        }
+      },
+      notice: n => {
+        const current = settingsRef.current;
+        if (n.kind === 'completed') {
+          diagnostics.log('info', `Download completed: ${n.title}`);
+          if (current.notificationsEnabled) toast.success(`Downloaded: ${n.title}`);
+          if (current.soundEnabled) playNotificationSound();
+        } else if (n.kind === 'quality' && n.actual && n.requested) {
+          diagnostics.log('warn', `Quality mismatch: requested ${n.requested}p, got ${n.actual}p`, { title: n.title });
+          toast.warning(`Downloaded at ${n.actual}p — ${n.requested}p wasn't delivered`, { description: n.title, duration: 8000 });
+        } else if (n.kind === 'failed') {
+          const message = n.message ?? 'Download failed';
+          diagnostics.log('error', `Download failed: ${n.title}`, { error: message });
+          if (!current.notificationsEnabled) return;
+          const { suggestion, action } = classifyError(message, n.engineCode);
+          toast.error(`Failed: ${n.title}`, {
+            description: suggestion,
+            action: action === 'cookies'
+              ? { label: 'Set browser cookies', onClick: () => requestNavigate(COOKIES_SETTINGS_PATH) }
+              : action === 'engine'
+                ? { label: 'Update engine', onClick: () => requestNavigate(ENGINE_SETTINGS_PATH) }
+                : action === 'retry'
+                  ? { label: 'Retry', onClick: () => retryRef.current(n.id) }
+                  : undefined,
+            duration: 10000,
+          });
+        }
+      },
+      whenDone: ({ action, seconds }) => {
+        toast(`${whenDoneLabel(action)} in ${seconds} seconds`, {
+          description: 'Everything has finished downloading.',
+          duration: seconds * 1000,
+          action: { label: 'Cancel', onClick: () => { void remote.cancelWhenDone(); } },
+        });
+      },
+    });
+    // A torrent removed along with its files leaves the Library too.
+    const stopRemoved = service.onLibraryRemoved?.(ids => setHistory(prev => prev.filter(h => !ids.includes(h.id))));
+    // After listening, so nothing between the two is missed.
+    remote.snapshot()
+      .then(items => dispatchRemote({ type: 'snapshot', items }))
+      .catch(reportQueueError);
+    return () => { stop(); stopRemoved?.(); };
+  }, [remote, service]);
+
   // Auto-start queued items
   useEffect(() => {
     void scheduleTick; // dep only: minute tick re-runs the gate below
+    if (remote) return; // Rust starts downloads
     const gate = scheduleGate(settings, new Date());
     if (gate.blockStarts) return;
 
@@ -562,7 +655,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
       cleanupRefs.current.set(item.id, cleanup);
     });
-  }, [queue, settings, scheduleTick, stoppedTick, service]);
+  }, [queue, settings, scheduleTick, stoppedTick, service, remote]);
 
   const addToQueue = useCallback((item: DownloadItem) => {
     diagnostics.log('info', `Added to queue: ${item.metadata.title}`);
@@ -578,8 +671,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // details dialog. Also fixed now rather than looked up later, so editing
     // a category can't move a download that is already under way.
     const category = stamped.settings.categoryId ? null : categoryFor(settings.categories, stamped);
-    dispatch({ type: 'add', item: category ? applyCategory(stamped, category) : stamped });
-  }, [settings.filenameTemplate, settings.categories]);
+    const filed = category ? applyCategory(stamped, category) : stamped;
+    if (remote) {
+      remote.add(filed).catch(e => toast.error(`Couldn't add ${item.metadata.title}: ${errorText(e).message}`));
+      return;
+    }
+    dispatch({ type: 'add', item: filed });
+  }, [settings.filenameTemplate, settings.categories, remote]);
 
   // Detach listeners AND kill the backend yt-dlp process for a download.
   const stopDownload = useCallback((id: string) => {
@@ -596,11 +694,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [service]);
 
   const removeFromQueue = useCallback((id: string) => {
+    if (remote) { remote.remove(id).catch(reportQueueError); return; }
     stopDownload(id);
     dispatch({ type: 'remove', id });
-  }, [stopDownload]);
+  }, [stopDownload, remote]);
 
   const pauseDownload = useCallback((id: string) => {
+    if (remote) { remote.pause(id).catch(reportQueueError); return; }
     const item = queueRef.current.find(i => i.id === id);
     // A torrent with a live listener pauses in place: the engine keeps the
     // handle, so resume needs no re-add and no hash re-check of the data on
@@ -613,9 +713,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     stopDownload(id);
     dispatch({ type: 'pause', id });
-  }, [service, stopDownload]);
+  }, [service, stopDownload, remote]);
 
   const resumeDownload = useCallback((id: string) => {
+    if (remote) { remote.resume(id).catch(reportQueueError); return; }
     const item = queueRef.current.find(i => i.id === id);
     // Natively-paused torrent: unpause and go straight back to downloading —
     // the auto-start effect must not spawn a second add (startedRef still
@@ -632,9 +733,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     dispatch({ type: 'resume', id });
-  }, [service, stopDownload]);
+  }, [service, stopDownload, remote]);
 
   const cancelDownload = useCallback((id: string) => {
+    if (remote) { remote.cancel(id).catch(reportQueueError); return; }
     const item = queueRef.current.find(i => i.id === id);
     if (item?.status === 'seeding') {
       // Stopping a seed is a success, not a cancel: the download finished, the
@@ -652,26 +754,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     stopDownload(id);
     dispatch({ type: 'cancel', id });
-  }, [service, stopDownload]);
+  }, [service, stopDownload, remote]);
 
   const retryDownload = useCallback((id: string) => {
+    if (remote) { remote.retry(id).catch(reportQueueError); return; }
     stopDownload(id);
     dispatch({ type: 'retry', id });
-  }, [stopDownload]);
+  }, [stopDownload, remote]);
   retryRef.current = retryDownload;
 
   const clearCompleted = useCallback(() => {
+    if (remote) { remote.clearCompleted().catch(reportQueueError); return; }
     dispatch({ type: 'clearCompleted' });
-  }, []);
+  }, [remote]);
 
   const startAll = useCallback(() => {
+    if (remote) { remote.resumeAll().catch(reportQueueError); return; }
     // Per-item rather than the bulk 'startAll' action: natively-paused
     // torrents are still in startedRef, so the auto-start effect would skip
     // them — resumeDownload routes each item down the right path.
     queueRef.current.filter(i => i.status === 'paused').forEach(i => resumeDownload(i.id));
-  }, [resumeDownload]);
+  }, [resumeDownload, remote]);
 
   const pauseAll = useCallback(() => {
+    if (remote) { remote.pauseAll().catch(reportQueueError); return; }
     // Side effect stays outside the reducer: pause torrents natively (their
     // handles survive, so resume is instant) and kill yt-dlp processes, then
     // let the (pure) transition flip statuses.
@@ -685,45 +791,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     dispatch({ type: 'pauseAll' });
-  }, [service, stopDownload]);
+  }, [service, stopDownload, remote]);
 
   const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    if (remote) { remote.reorder(fromIndex, toIndex).catch(reportQueueError); return; }
     dispatch({ type: 'reorder', from: fromIndex, to: toIndex });
-  }, []);
+  }, [remote]);
 
   const updateTorrentFiles = useCallback((id: string, onlyFiles: number[]) => {
+    if (remote) {
+      remote.updateTorrentFiles(id, onlyFiles).catch((e) => toast.error(`Couldn't update file selection: ${errorText(e).message}`));
+      return;
+    }
     // Engine first, then state — the selection in settings should only change
     // once the swarm is actually downloading that subset.
     service.updateTorrentFiles(id, onlyFiles)
       .then(() => dispatch({ type: 'setSelectedFiles', id, files: onlyFiles }))
       .catch((e) => toast.error(`Couldn't update file selection: ${e}`));
-  }, [service]);
+  }, [service, remote]);
+
+  // Changes to one item's settings. The rules for each are the reducer's
+  // (queue-reducer.ts) either way: with Rust's queue the page works out the
+  // new settings the same way and sends them, to apply only while the item
+  // is still in the state they were worked out for.
+  const changeItem = useCallback((action: QueueAction & { id: string }) => {
+    if (!remote) {
+      dispatch(action);
+      return;
+    }
+    const item = queueRef.current.find(i => i.id === action.id);
+    if (!item) return;
+    const [next] = queueReducer([item], action);
+    if (next !== item) remote.setSettings(item.id, next.settings, item.status).catch(reportQueueError);
+  }, [remote]);
 
   const setItemCategory = useCallback((id: string, category: DownloadCategory | null) => {
-    dispatch({ type: 'setCategory', id, category });
-  }, []);
+    changeItem({ type: 'setCategory', id, category });
+  }, [changeItem]);
 
   const setItemLabels = useCallback((id: string, labelIds: string[]) => {
-    dispatch({ type: 'setLabels', id, labelIds });
-  }, []);
+    changeItem({ type: 'setLabels', id, labelIds });
+  }, [changeItem]);
 
   const setItemChecksum = useCallback((id: string, sha256: string | null) => {
-    dispatch({ type: 'setChecksum', id, sha256 });
-  }, []);
+    changeItem({ type: 'setChecksum', id, sha256 });
+  }, [changeItem]);
 
   const setItemWhenComplete = useCallback((id: string, action: PostCompletionAction | null) => {
-    dispatch({ type: 'setWhenComplete', id, action });
-  }, []);
+    changeItem({ type: 'setWhenComplete', id, action });
+  }, [changeItem]);
 
   const setItemStartAt = useCallback((id: string, startAt: string | null) => {
-    dispatch({ type: 'setStartAt', id, startAt });
-  }, []);
+    changeItem({ type: 'setStartAt', id, startAt });
+  }, [changeItem]);
 
   const setItemClip = useCallback(
     (id: string, clipStart: string | null, clipEnd: string | null, splitChapters: boolean) => {
-      dispatch({ type: 'setClip', id, clipStart, clipEnd, splitChapters });
+      changeItem({ type: 'setClip', id, clipStart, clipEnd, splitChapters });
     },
-    [],
+    [changeItem],
   );
 
   const reannounceTorrent = useCallback((id: string) => {
@@ -742,6 +868,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Engine first (it owns the files), then drop the item. The listener is
     // torn down without a completion so nothing lands in history as "done".
     const item = queueRef.current.find(i => i.id === id);
+    if (remote) {
+      remote.removeWithData(id)
+        .then(() => toast.success(`Removed ${item?.metadata.title ?? 'torrent'} and deleted its files`))
+        .catch((e) => toast.error(`Couldn't delete files: ${errorText(e).message}`));
+      return;
+    }
     const cleanup = cleanupRefs.current.get(id);
     cleanup?.();
     cleanupRefs.current.delete(id);
@@ -750,20 +882,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     service.removeTorrentData(id)
       .then(() => toast.success(`Removed ${item?.metadata.title ?? 'torrent'} and deleted its files`))
       .catch((e) => toast.error(`Couldn't delete files: ${e instanceof Error ? e.message : e}`));
-  }, [service]);
+  }, [service, remote]);
 
   const moveToTop = useCallback((id: string) => {
     const from = queueRef.current.findIndex(i => i.id === id);
-    if (from > 0) dispatch({ type: 'reorder', from, to: 0 });
-  }, []);
+    if (from > 0) reorderQueue(from, 0);
+  }, [reorderQueue]);
 
   const moveToBottom = useCallback((id: string) => {
     const current = queueRef.current;
     const from = current.findIndex(i => i.id === id);
-    if (from >= 0 && from < current.length - 1) dispatch({ type: 'reorder', from, to: current.length - 1 });
-  }, []);
+    if (from >= 0 && from < current.length - 1) reorderQueue(from, current.length - 1);
+  }, [reorderQueue]);
 
   const restartTorrentEngine = useCallback(async () => {
+    if (remote) {
+      await remote.restartTorrentEngine();
+      return;
+    }
     // Every torrent the engine is watching loses its handle in the restart:
     // detach them, pause the running ones, and queue those again after, when
     // each re-adds and adopts its own restored torrent.
@@ -780,7 +916,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       running.forEach(id => dispatch({ type: 'resume', id }));
     }
-  }, [service]);
+  }, [service, remote]);
 
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
@@ -792,7 +928,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // a restored entry lands back where it was rather than at the top.
       prev.some(i => i.id === item.id)
         ? prev
-        : [...prev, item].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 2000)
+        : [...prev, item].sort((a, b) => b.completedAt.localeCompare(a.completedAt))
     ));
   }, []);
 

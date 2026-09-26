@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::errors::{classify_output, ErrorCode, PrismError};
@@ -518,12 +518,12 @@ impl DownloadManager {
                                     reported = Some(path.to_string());
                                 }
                                 if agg.on_line(&line) {
-                                    let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                                    crate::queue::emit_progress(&app, &id, &agg.processing_event(&id));
                                 }
                                 if let Some(mut p) = parse_progress(&line, &id) {
                                     agg.apply(&mut p);
                                     if throttle.allow(p.progress) {
-                                        let _ = app.emit(&format!("download-progress-{}", id), p);
+                                        crate::queue::emit_progress(&app, &id, &p);
                                     }
                                 }
                             }
@@ -546,12 +546,12 @@ impl DownloadManager {
                                     }
                                 }
                                 if agg.on_line(&line) {
-                                    let _ = app.emit(&format!("download-progress-{}", id), agg.processing_event(&id));
+                                    crate::queue::emit_progress(&app, &id, &agg.processing_event(&id));
                                 }
                                 if let Some(mut p) = parse_progress(&line, &id) {
                                     agg.apply(&mut p);
                                     if throttle.allow(p.progress) {
-                                        let _ = app.emit(&format!("download-progress-{}", id), p);
+                                        crate::queue::emit_progress(&app, &id, &p);
                                     }
                                 }
                             }

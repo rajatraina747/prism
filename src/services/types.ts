@@ -127,6 +127,12 @@ export interface IPrismService {
    * is the intended destination directory. */
   parseTorrent(magnet: string, dest: string): Promise<TorrentFileEntry[]>;
 
+  /** The desktop app's queue, owned by Rust (src-tauri/src/queue.rs). Absent
+   * in the browser demo, which runs its queue in the page. */
+  readonly queue?: RemoteQueue;
+  /** Library entries Rust removed (a torrent deleted with its files). */
+  onLibraryRemoved?(handler: (ids: string[]) => void): () => void;
+
   // Download lifecycle — returns a cancel/cleanup function
   startDownload(
     item: DownloadItem,
@@ -277,4 +283,33 @@ export interface IPrismService {
     loadStats(): unknown;
     saveStats(stats: unknown): void;
   };
+}
+
+/** The page's handle on Rust's queue: its actions, and its events. */
+export interface RemoteQueue {
+  snapshot(): Promise<DownloadItem[]>;
+  add(item: DownloadItem): Promise<void>;
+  remove(id: string): Promise<void>;
+  pause(id: string): Promise<void>;
+  resume(id: string): Promise<void>;
+  cancel(id: string): Promise<void>;
+  retry(id: string): Promise<void>;
+  pauseAll(): Promise<void>;
+  resumeAll(): Promise<void>;
+  clearCompleted(): Promise<void>;
+  reorder(from: number, to: number): Promise<void>;
+  /** Replace an item's settings while it is still `onlyIf` (a start that
+   * happened meanwhile keeps what it started with). */
+  setSettings(id: string, settings: DownloadItem['settings'], onlyIf?: DownloadItem['status']): Promise<boolean>;
+  updateTorrentFiles(id: string, files: number[]): Promise<void>;
+  removeWithData(id: string): Promise<void>;
+  restartTorrentEngine(): Promise<number>;
+  cancelWhenDone(): Promise<void>;
+  /** Listen to the queue; returns the function that stops listening. */
+  subscribe(handlers: {
+    changed: (patch: import('@/stores/remote-queue').QueuePatch) => void;
+    archived: (entries: import('@/stores/remote-queue').ArchivedEntry[]) => void;
+    notice: (notice: import('@/stores/remote-queue').QueueNotice) => void;
+    whenDone: (countdown: { action: import('@/types/models').WhenDoneAction; seconds: number }) => void;
+  }): () => void;
 }

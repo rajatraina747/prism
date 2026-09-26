@@ -66,6 +66,9 @@ feed-rs = "2.4.0"
 # tree through the updater; decompression only, on the zlib-rs flate2 backend
 # the tree already builds.
 zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# The queue, the Library, statistics and subscriptions, in one database
+# (store.rs). Bundled: the same SQLite on every platform, no system library.
+rusqlite = { version = "0.40", features = ["bundled"] }
 # Opt-in global hotkeys (add from clipboard, show Prism, pause all).
 tauri-plugin-global-shortcut = "2.3.2"
 

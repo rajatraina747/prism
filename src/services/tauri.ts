@@ -5,14 +5,15 @@ import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialo
 import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { loadJson, saveJson, type JsonFs } from '@/lib/json-store';
 import { reportStoreProblem } from '@/lib/store-problems';
+import { createLatestWriter, createHistoryWriter } from '@/lib/db-writers';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
-import { applyFinished, type FinishedDownload } from '@/stores/finished';
+import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset, RemoteQueue } from './types';
+import type { QueuePatch, ArchivedEntry, QueueNotice } from '@/stores/remote-queue';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
 import { createWriteQueue } from '@/lib/write-queue';
 
@@ -50,6 +51,27 @@ const writeJsonText = createWriteQueue(
   (file, text) => saveJson(appDataFs, file, text),
   file => reportStoreProblem({ kind: 'save-failed', file }),
 );
+
+/** What `store_load` returns (src-tauri/src/store.rs). */
+interface StoreSnapshot {
+  queue: unknown[];
+  history: unknown[];
+  subscriptions: unknown;
+  stats: unknown;
+  /** The database was damaged and set aside under this name. */
+  recoveredFrom?: string;
+}
+
+const failedSave = (file: string) => () => reportStoreProblem({ kind: 'save-failed', file });
+// The database (store.rs): the queue and documents replaced whole, newest
+// wins; the Library saved as the rows that changed (lib/db-writers.ts).
+const queueWriter = createLatestWriter<unknown[]>(items => invoke('store_save_queue', { items }), failedSave('queue.json'));
+const historyWriter = createHistoryWriter<HistoryItem>(
+  ({ put, remove, clear }) => invoke('store_update_history', { put, remove, clear }),
+  failedSave('history.json'),
+);
+const subscriptionsWriter = createLatestWriter<unknown>(data => invoke('store_save_doc', { name: 'subscriptions', data }), failedSave('subscriptions.json'));
+const statsWriter = createLatestWriter<unknown>(data => invoke('store_save_doc', { name: 'stats', data }), failedSave('stats.json'));
 
 async function writeJson(file: string, data: unknown): Promise<void> {
   // Serialised now, so what is saved is the data as it was at this call.
@@ -94,8 +116,43 @@ function templateVarsFor(item: DownloadItem): TemplateVars {
   };
 }
 
+/** Rust's queue (src-tauri/src/queue.rs), as the page sees it. */
+const rustQueue: RemoteQueue = {
+  snapshot: () => invoke<DownloadItem[]>('queue_snapshot'),
+  add: item => invoke('queue_add', { item }),
+  remove: id => invoke('queue_remove', { id }),
+  pause: id => invoke('queue_pause', { id }),
+  resume: id => invoke('queue_resume', { id }),
+  cancel: id => invoke('queue_cancel', { id }),
+  retry: id => invoke('queue_retry', { id }),
+  pauseAll: () => invoke('queue_pause_all'),
+  resumeAll: () => invoke('queue_resume_all'),
+  clearCompleted: () => invoke('queue_clear_completed'),
+  reorder: (from, to) => invoke('queue_reorder', { from, to }),
+  setSettings: (id, settings, onlyIf) => invoke<boolean>('queue_set_settings', { id, settings, onlyIf: onlyIf ?? null }),
+  updateTorrentFiles: (id, files) => invoke('queue_update_torrent_files', { id, files }),
+  removeWithData: id => invoke('queue_remove_with_data', { id }),
+  restartTorrentEngine: () => invoke<number>('queue_restart_torrent_engine'),
+  cancelWhenDone: () => invoke('when_done_cancel'),
+  subscribe(handlers) {
+    const stops: Promise<UnlistenFn>[] = [
+      listen<QueuePatch>('queue-changed', e => handlers.changed(e.payload)),
+      listen<ArchivedEntry[]>('queue-archived', e => handlers.archived(e.payload)),
+      listen<QueueNotice>('queue-notice', e => handlers.notice(e.payload)),
+      listen<{ action: WhenDoneAction; seconds: number }>('when-done-countdown', e => handlers.whenDone(e.payload)),
+    ];
+    return () => { stops.forEach(p => p.then(stop => stop()).catch(() => {})); };
+  },
+};
+
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
+  readonly queue = rustQueue;
+
+  onLibraryRemoved(handler: (ids: string[]) => void): () => void {
+    const stop = listen<string[]>('library-removed', e => handler(e.payload));
+    return () => { stop.then(f => f()).catch(() => {}); };
+  }
 
   async init(): Promise<void> {
     // Thumbnails from a local copy, fetched once through the proxy.
@@ -707,21 +764,36 @@ export class TauriPrismService implements IPrismService {
     async _ensureLoaded() {
       if (this._loaded) return;
       this._loaded = true;
-      this._queueCache = await readJson<DownloadItem[]>(FILES.queue, []);
-      this._queueCache = this._queueCache.map(i => ({
+      // The queue, Library, subscriptions and statistics live in the
+      // database (src-tauri/src/store.rs); settings stay in settings.json,
+      // which Rust reads. If the database can't be read at all, the JSON
+      // files it was first copied from are the fallback.
+      let snapshot: StoreSnapshot;
+      try {
+        snapshot = await invoke<StoreSnapshot>('store_load');
+        if (snapshot.recoveredFrom) {
+          reportStoreProblem({ kind: 'reset', file: 'prism.db', keptAs: snapshot.recoveredFrom });
+        }
+      } catch {
+        reportStoreProblem({ kind: 'reset', file: 'prism.db', keptAs: null });
+        snapshot = {
+          queue: await readJson<DownloadItem[]>(FILES.queue, []),
+          history: await readJson<HistoryItem[]>(FILES.history, []),
+          subscriptions: await readJson<Subscription[] | null>(FILES.subscriptions, null),
+          stats: await readJson<unknown>(FILES.stats, null),
+        };
+      }
+      this._queueCache = (snapshot.queue as DownloadItem[]).map(i => ({
         ...i,
         status: i.status === 'downloading' ? 'queued' as const : i.status,
         speed: 0,
         eta: 0,
       }));
-      this._historyCache = await readJson<HistoryItem[]>(FILES.history, []);
-      // What Rust saw finish, applied before anything can start: queue.json
-      // may predate the last completions (stores/finished.ts).
-      const finished = await invoke<FinishedDownload[]>('finished_downloads').catch(() => [] as FinishedDownload[]);
-      this._queueCache = applyFinished(this._queueCache, finished, new Set(this._historyCache.map(h => h.id)));
+      this._historyCache = snapshot.history as HistoryItem[];
+      historyWriter.seed(this._historyCache);
       this._settingsCache = await readJson<AppPreferences | null>(FILES.settings, null);
-      this._subscriptionsCache = await readJson<Subscription[]>(FILES.subscriptions, []);
-      this._statsCache = await readJson<unknown>(FILES.stats, null);
+      this._subscriptionsCache = (snapshot.subscriptions as Subscription[] | null) ?? [];
+      this._statsCache = snapshot.stats ?? null;
     },
 
     loadQueue(): DownloadItem[] {
@@ -734,7 +806,7 @@ export class TauriPrismService implements IPrismService {
         // Don't persist the (potentially large) per-file torrent breakdown — it's
         // runtime detail that repopulates from progress events on the next run.
         const slim = items.map(({ files: _files, pieces: _pieces, ...rest }) => rest);
-        writeJson(FILES.queue, slim).catch(() => {});
+        queueWriter(slim);
       }
     },
 
@@ -744,7 +816,7 @@ export class TauriPrismService implements IPrismService {
 
     saveHistory: (items: HistoryItem[]) => {
       this.persistence._historyCache = items;
-      if (this._initDone) writeJson(FILES.history, items).catch(() => {});
+      if (this._initDone) historyWriter.save(items);
     },
 
     loadSettings(): AppPreferences | null {
@@ -762,7 +834,7 @@ export class TauriPrismService implements IPrismService {
 
     saveSubscriptions: (subs: Subscription[]) => {
       this.persistence._subscriptionsCache = subs;
-      if (this._initDone) writeJson(FILES.subscriptions, subs).catch(() => {});
+      if (this._initDone) subscriptionsWriter(subs);
     },
 
     loadStats(): unknown {
@@ -771,7 +843,7 @@ export class TauriPrismService implements IPrismService {
 
     saveStats: (stats: unknown) => {
       this.persistence._statsCache = stats;
-      if (this._initDone) writeJson(FILES.stats, stats).catch(() => {});
+      if (this._initDone) statsWriter(stats);
     },
   };
 }
