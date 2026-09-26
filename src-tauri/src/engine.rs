@@ -21,13 +21,25 @@ const YTDLP_NAME: &str = "yt-dlp.exe";
 #[cfg(not(target_os = "windows"))]
 const YTDLP_NAME: &str = "yt-dlp";
 
-/// The release asset for this platform.
+/// The release asset for this platform: the onedir build (a folder in a zip),
+/// like the bundled engine, and the executable's name inside it.
 #[cfg(target_os = "macos")]
-const RELEASE_ASSET: &str = "yt-dlp_macos";
+const RELEASE_ASSET: &str = "yt-dlp_macos.zip";
+#[cfg(target_os = "macos")]
+const EXECUTABLE_IN_ZIP: &str = "yt-dlp_macos";
 #[cfg(target_os = "windows")]
-const RELEASE_ASSET: &str = "yt-dlp.exe";
+const RELEASE_ASSET: &str = "yt-dlp_win.zip";
+#[cfg(target_os = "windows")]
+const EXECUTABLE_IN_ZIP: &str = "yt-dlp.exe";
 #[cfg(target_os = "linux")]
-const RELEASE_ASSET: &str = "yt-dlp";
+const RELEASE_ASSET: &str = "yt-dlp_linux.zip";
+#[cfg(target_os = "linux")]
+const EXECUTABLE_IN_ZIP: &str = "yt-dlp_linux";
+
+/// Files a onedir zip may hold, and their total unpacked size: well past any
+/// real release (a few hundred files, ~125 MB), well short of a zip bomb.
+const MAX_ZIP_ENTRIES: usize = 5_000;
+const MAX_UNPACKED_BYTES: u64 = 600 * 1024 * 1024;
 
 /// Redirects to `/releases/tag/<latest>`; the redirect itself names the tag,
 /// so no API call (and no API rate limit) is needed.
@@ -63,9 +75,70 @@ fn expected_sha256(sums: &str, asset: &str) -> Option<String> {
     })
 }
 
+/// The self-updated engine: a onedir folder, `engine/ytdlp/`, holding the
+/// executable and its `_internal/`.
 fn managed_ytdlp_path(app: &AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_data_dir().ok()?;
-    Some(dir.join("engine").join(YTDLP_NAME))
+    Some(dir.join("engine").join("ytdlp").join(YTDLP_NAME))
+}
+
+/// Before 2.3 the self-updated engine was one file, `engine/yt-dlp`. It is
+/// never used again (the new one is a folder) and goes at the next update or
+/// reset.
+fn legacy_managed_path(app: &AppHandle) -> Option<PathBuf> {
+    Some(app.path().app_data_dir().ok()?.join("engine").join(YTDLP_NAME))
+}
+
+/// Unpack a onedir zip into `dir`, the executable renamed `YTDLP_NAME`.
+/// Every entry must stay inside `dir` (no `..`, no absolute paths), and the
+/// count and total size are capped.
+pub(crate) fn unpack_onedir(zip_bytes: &[u8], dir: &Path, executable_in_zip: &str) -> Result<PathBuf, String> {
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(|e| format!("Not a yt-dlp archive: {e}"))?;
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err("The yt-dlp archive holds too many files".into());
+    }
+    let mut total: u64 = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("Couldn't read the yt-dlp archive: {e}"))?;
+        let Some(relative) = entry.enclosed_name() else {
+            return Err(format!("The yt-dlp archive names a path outside its folder: {}", entry.name()));
+        };
+        let target = dir.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target).map_err(|e| format!("Failed to unpack yt-dlp: {e}"))?;
+            continue;
+        }
+        total = total.saturating_add(entry.size());
+        if total > MAX_UNPACKED_BYTES {
+            return Err("The yt-dlp archive unpacks larger than any real release".into());
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("Failed to unpack yt-dlp: {e}"))?;
+        }
+        let mut out = std::fs::File::create(&target).map_err(|e| format!("Failed to unpack yt-dlp: {e}"))?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| format!("Failed to unpack yt-dlp: {e}"))?;
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode & 0o755));
+        }
+    }
+    let exe = dir.join(executable_in_zip);
+    if !exe.is_file() || !dir.join("_internal").is_dir() {
+        return Err("The yt-dlp archive isn't laid out as an executable beside _internal/".into());
+    }
+    let renamed = dir.join(YTDLP_NAME);
+    if exe != renamed {
+        std::fs::rename(&exe, &renamed).map_err(|e| format!("Failed to unpack yt-dlp: {e}"))?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&renamed, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to mark yt-dlp executable: {e}"))?;
+    }
+    Ok(renamed)
 }
 
 /// Beside the managed binary: the SHA-256 it had when `update_ytdlp` verified
@@ -464,26 +537,32 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
         return Err("Downloaded yt-dlp failed checksum verification — keeping current engine. Please try again.".into());
     }
 
-    // Unique staging name so a crashed earlier attempt can't collide.
+    // Unpacked beside its final place under a unique name, so a crashed
+    // earlier attempt can't collide, and swapped in only once it has run.
+    let folder = target.parent().ok_or("Could not resolve the engine folder")?.to_path_buf();
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let staging = target.with_extension(format!("download-{unique}"));
-    std::fs::write(&staging, &bytes).map_err(|e| format!("Failed to write yt-dlp: {}", e))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("Failed to mark yt-dlp executable: {}", e))?;
-    }
+    let staging = folder.with_file_name(format!("ytdlp.staging-{unique}"));
+    let unpacked = {
+        let staging = staging.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let result = unpack_onedir(&bytes, &staging, EXECUTABLE_IN_ZIP);
+            if result.is_err() {
+                let _ = std::fs::remove_dir_all(&staging);
+            }
+            result
+        })
+        .await
+        .map_err(|e| format!("Failed to unpack yt-dlp: {e}"))??
+    };
 
     // Verify the download actually runs before swapping it in. Bounded and
     // async: a binary that hangs must not park a runtime thread or leave the
     // Settings action spinning.
-    let mut version_check = tokio::process::Command::new(&staging);
-    version_check.arg("--version").kill_on_drop(true);
+    let mut version_check = tokio::process::Command::new(&unpacked);
+    version_check.args(["--ignore-config", "--version"]).kill_on_drop(true);
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -491,35 +570,58 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     }
     let check = tokio::time::timeout(Duration::from_secs(VERSION_TIMEOUT_SECS), version_check.output()).await;
     let version = match check {
-        Ok(Ok(out)) if out.status.success() => {
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        }
+        Ok(Ok(out)) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
         _ => {
-            let _ = std::fs::remove_file(&staging);
+            let _ = std::fs::remove_dir_all(&staging);
             return Err("Downloaded yt-dlp failed verification — keeping current engine".into());
         }
     };
 
-    std::fs::rename(&staging, &target).map_err(|e| format!("Failed to install yt-dlp: {}", e))?;
-    // Recorded after the swap: a failure in between leaves a stale record,
-    // which only means the bundled engine is used until the next update.
-    std::fs::write(recorded_sha_path(&target), &actual)
+    // The old folder steps aside, the new one takes its name, then the old
+    // one goes. On Windows a folder whose engine is running can't be moved:
+    // that fails here, with the current engine untouched.
+    let retired = folder.with_file_name(format!("ytdlp.old-{unique}"));
+    if folder.exists() {
+        if let Err(e) = std::fs::rename(&folder, &retired) {
+            let _ = std::fs::remove_dir_all(&staging);
+            log::warn!("yt-dlp update: couldn't move the current engine aside: {e}");
+            return Err("The engine is in use — try again when nothing is downloading".into());
+        }
+    }
+    if let Err(e) = std::fs::rename(&staging, &folder) {
+        let _ = std::fs::rename(&retired, &folder);
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(format!("Failed to install yt-dlp: {e}"));
+    }
+    let _ = std::fs::remove_dir_all(&retired);
+    // Recorded after the swap: a failure in between leaves no record, which
+    // only means the bundled engine is used until the next update.
+    let executable_sha = sha256_file(&target).map_err(|e| format!("Failed to record yt-dlp checksum: {e}"))?;
+    std::fs::write(recorded_sha_path(&target), &executable_sha)
         .map_err(|e| format!("Failed to record yt-dlp checksum: {}", e))?;
     let _ = std::fs::write(recorded_version_path(&target), &version);
+    remove_legacy_engine(&app);
     log::info!("yt-dlp engine updated to {version}");
     Ok(version)
 }
 
-/// Remove the self-updated engine, falling back to the bundled sidecar.
+/// The one-file engine a pre-2.3 update installed, with its records.
+fn remove_legacy_engine(app: &AppHandle) {
+    if let Some(old) = legacy_managed_path(app) {
+        for f in [recorded_sha_path(&old), recorded_version_path(&old), old] {
+            let _ = std::fs::remove_file(f);
+        }
+    }
+}
+
+/// Remove the self-updated engine, falling back to the bundled one.
 #[tauri::command]
 pub async fn reset_ytdlp(app: AppHandle) -> Result<(), String> {
-    if let Some(managed) = managed_ytdlp_path(&app) {
-        if managed.exists() {
-            std::fs::remove_file(&managed)
-                .map_err(|e| format!("Failed to remove managed yt-dlp: {}", e))?;
+    if let Some(folder) = managed_ytdlp_path(&app).and_then(|p| p.parent().map(Path::to_path_buf)) {
+        if folder.exists() {
+            std::fs::remove_dir_all(&folder).map_err(|e| format!("Failed to remove managed yt-dlp: {}", e))?;
         }
-        let _ = std::fs::remove_file(recorded_sha_path(&managed));
-        let _ = std::fs::remove_file(recorded_version_path(&managed));
+        remove_legacy_engine(&app);
         log::info!("yt-dlp engine reset to the bundled copy");
     }
     Ok(())
@@ -528,6 +630,61 @@ pub async fn reset_ytdlp(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            for (name, data) in entries {
+                w.start_file(*name, zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored))
+                    .unwrap();
+                w.write_all(data).unwrap();
+            }
+            w.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    #[test]
+    fn unpacks_a_onedir_build_with_the_executable_renamed() {
+        let dir = std::env::temp_dir().join(format!("prism-onedir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let bytes = zip_of(&[("yt-dlp_macos", b"exe"), ("_internal/base_library.zip", b"lib")]);
+        let exe = unpack_onedir(&bytes, &dir, "yt-dlp_macos").unwrap();
+        assert_eq!(exe, dir.join(YTDLP_NAME));
+        assert_eq!(std::fs::read(&exe).unwrap(), b"exe");
+        assert!(dir.join("_internal/base_library.zip").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refuses_archives_that_escape_or_are_not_onedir() {
+        let dir = std::env::temp_dir().join(format!("prism-onedir-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let escape = zip_of(&[("../evil", b"x"), ("yt-dlp_macos", b"exe"), ("_internal/a", b"a")]);
+        assert!(unpack_onedir(&escape, &dir, "yt-dlp_macos").is_err());
+        assert!(!dir.parent().unwrap().join("evil").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+        let onefile = zip_of(&[("yt-dlp_macos", b"exe")]);
+        assert!(unpack_onedir(&onefile, &dir, "yt-dlp_macos").is_err(), "no _internal/");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The real release: `PRISM_ONEDIR_ZIP=path/to/yt-dlp_macos.zip cargo test
+    /// real_onedir_zip -- --ignored`.
+    #[test]
+    #[ignore]
+    fn real_onedir_zip_unpacks_and_runs() {
+        let zip = std::env::var("PRISM_ONEDIR_ZIP").expect("PRISM_ONEDIR_ZIP");
+        let dir = std::env::temp_dir().join(format!("prism-onedir-real-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let exe = unpack_onedir(&std::fs::read(zip).unwrap(), &dir, EXECUTABLE_IN_ZIP).unwrap();
+        let out = std::process::Command::new(&exe).args(["--ignore-config", "--version"]).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        println!("unpacked engine reports {}", String::from_utf8_lossy(&out.stdout).trim());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn finds_checksum_for_asset() {
