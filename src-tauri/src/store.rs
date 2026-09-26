@@ -197,6 +197,34 @@ fn load_doc(conn: &Connection, name: &str) -> rusqlite::Result<Option<Value>> {
     Ok(text.and_then(|t| serde_json::from_str(&t).ok()))
 }
 
+/// Replace the saved queue (the queue manager's save).
+pub(crate) fn save_queue(app: &AppHandle, items: &[Value]) -> Result<(), String> {
+    with_db(app, |conn| {
+        let tx = conn.transaction().map_err(sql_err)?;
+        write_queue(&tx, items).map_err(sql_err)?;
+        tx.commit().map_err(sql_err)
+    })
+}
+
+/// Add finished items to the Library (the queue manager's archive).
+pub(crate) fn add_history(app: &AppHandle, entries: &[Value]) -> Result<(), String> {
+    with_db(app, |conn| {
+        let tx = conn.transaction().map_err(sql_err)?;
+        put_history(&tx, entries).map_err(sql_err)?;
+        tx.commit().map_err(sql_err)
+    })
+}
+
+/// The ids the Library holds.
+pub(crate) fn history_ids(app: &AppHandle) -> std::collections::HashSet<String> {
+    with_db(app, |conn| {
+        let mut stmt = conn.prepare("SELECT id FROM history").map_err(sql_err)?;
+        let ids = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(sql_err)?;
+        Ok(ids.flatten().collect())
+    })
+    .unwrap_or_default()
+}
+
 /// The queue as saved, for Rust's own readers (the torrent session's prune).
 pub(crate) fn queue_items(app: &AppHandle) -> Option<Vec<Value>> {
     with_db(app, |conn| load_queue(conn).map_err(|e| e.to_string())).ok()

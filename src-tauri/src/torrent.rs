@@ -968,9 +968,10 @@ impl TorrentManager {
                     Vec::new()
                 };
 
-                let _ = app.emit(
-                    &format!("download-progress-{id}"),
-                    TorrentProgress {
+                crate::queue::emit_progress(
+                    &app,
+                    &id,
+                    &TorrentProgress {
                         id: id.clone(),
                         downloaded_bytes: stats.progress_bytes,
                         total_bytes: stats.total_bytes,

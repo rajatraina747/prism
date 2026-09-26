@@ -20,6 +20,8 @@ mod player_state;
 mod postprocess;
 mod proc;
 mod quarantine;
+mod queue;
+mod queue_rules;
 mod rss;
 mod shortcuts;
 mod spawn;
@@ -2369,6 +2371,7 @@ pub fn run() {
         .manage(stream_server::StreamServer::new())
         .manage(player_state::PlayerState::new())
         .manage(store::Store::new())
+        .manage(queue::QueueManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
         .manage(updater::PendingUpdate::default())
         // Embedded player (separate "player" window). The plugin cleans up its
@@ -2492,6 +2495,22 @@ pub fn run() {
             store::store_save_queue,
             store::store_update_history,
             store::store_save_doc,
+            queue::queue_snapshot,
+            queue::queue_add,
+            queue::queue_remove,
+            queue::queue_pause,
+            queue::queue_resume,
+            queue::queue_cancel,
+            queue::queue_retry,
+            queue::queue_pause_all,
+            queue::queue_resume_all,
+            queue::queue_clear_completed,
+            queue::queue_reorder,
+            queue::queue_set_settings,
+            queue::queue_update_torrent_files,
+            queue::queue_remove_with_data,
+            queue::queue_restart_torrent_engine,
+            queue::when_done_cancel,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,

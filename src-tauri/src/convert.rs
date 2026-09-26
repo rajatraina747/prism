@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::download_manager::{DownloadComplete, DownloadProgress};
 use crate::errors::{ErrorCode, PrismError};
@@ -333,9 +333,10 @@ pub async fn convert_file(
                         let complete: String = line.drain(..=at).collect();
                         if apply_progress_line(&complete, &mut state) {
                             let progress = percent(&state, duration_secs).unwrap_or(0.0);
-                            let _ = app.emit(
-                                &format!("download-progress-{id}"),
-                                DownloadProgress {
+                            crate::queue::emit_progress(
+                                &app,
+                                &id,
+                                &DownloadProgress {
                                     id: id.clone(),
                                     downloaded_bytes: state.total_size,
                                     total_bytes: 0,

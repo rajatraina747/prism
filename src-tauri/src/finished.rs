@@ -91,7 +91,17 @@ pub fn emit(app: &AppHandle, complete: DownloadComplete) {
     if complete.success {
         record(app, &complete);
     }
+    // The queue (queue.rs) hears it first, then the page.
+    crate::queue::on_complete(app, &complete);
     let _ = app.emit(&format!("download-complete-{}", complete.id), complete);
+}
+
+/// What finished recently, for the queue to apply as it loads (queue.rs).
+#[allow(dead_code)] // the queue's start (R6.3)
+pub(crate) fn entries(app: &AppHandle) -> Vec<serde_json::Value> {
+    let Some(path) = journal_file(app) else { return Vec::new() };
+    let _guard = lock().lock().unwrap_or_else(|p| p.into_inner());
+    read(&path).into_iter().filter_map(|f| serde_json::to_value(f).ok()).collect()
 }
 
 /// What finished recently, for the page to apply at launch.
