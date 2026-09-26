@@ -60,6 +60,7 @@ pub(crate) fn playlist_entry(entry: YtDlpPlaylistEntry) -> Option<PlaylistEntry>
         title: entry.title.unwrap_or_else(|| "Unknown".into()),
         duration: entry.duration.unwrap_or(0.0),
         thumbnail,
+        live_status: entry.live_status.filter(|s| !s.is_empty()),
     })
 }
 
@@ -102,7 +103,7 @@ pub(crate) fn inspected_from_json(doc: serde_json::Value, url: &str, keep_contai
         .filter_map(playlist_entry)
         .collect();
     let title = title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| format!("Playlist ({} videos)", entries.len()));
-    Ok(Inspected::Playlist { playlist: PlaylistInfo { title, entries } })
+    Ok(Inspected::Playlist { playlist: PlaylistInfo { title, entries, feed_url: None } })
 }
 
 /// How long a lookup's JSON stands in for a fresh extraction. The media URLs

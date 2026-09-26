@@ -161,11 +161,15 @@ export interface PlaylistEntry {
   title: string;
   duration: number;
   thumbnail: string;
+  /** yt-dlp's live_status: 'is_upcoming' (premiere/scheduled), 'is_live', … */
+  liveStatus?: string;
 }
 
 export interface PlaylistInfo {
   title: string;
   entries: PlaylistEntry[];
+  /** YouTube's own RSS feed for this channel/playlist (fast to poll). */
+  feedUrl?: string;
 }
 
 /** What a link turned out to be (Rust `lookup::inspect_url`): one video with
@@ -522,6 +526,15 @@ export interface Subscription {
   /** File everything from this feed under a category, as if it had been
    * added by hand with that category chosen. */
   categoryId?: string;
+  /** YouTube: the channel's or playlist's RSS feed, polled first — when it
+   * shows nothing new, the slower yt-dlp check is skipped. */
+  feedUrl?: string;
+  /** Video ids that feed listed at the last full check. */
+  feedIds?: string[];
+  lastFullCheckAt?: string;
+  /** Premieres and live streams seen but not downloadable yet: not marked
+   * seen, so they are taken once they become ordinary videos. */
+  pendingUrls?: string[];
 }
 
 export interface HistoryItem {

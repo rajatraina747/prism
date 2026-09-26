@@ -168,6 +168,7 @@ fn feed_to_playlist(feed: feed_rs::model::Feed, limit: Option<u32>) -> PlaylistI
                 // both in once the item actually starts.
                 duration: 0.0,
                 thumbnail: String::new(),
+                live_status: None,
             })
         })
         .collect();
@@ -178,7 +179,7 @@ fn feed_to_playlist(feed: feed_rs::model::Feed, limit: Option<u32>) -> PlaylistI
     if let Some(n) = limit.filter(|n| *n > 0) {
         entries.truncate(n as usize);
     }
-    PlaylistInfo { title, entries }
+    PlaylistInfo { title, entries, feed_url: None }
 }
 
 /// Last path segment of a URL, for an entry with no title of its own.

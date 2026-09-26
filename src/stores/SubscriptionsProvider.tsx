@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import type { Subscription, PlaylistInfo } from '@/types/models';
-import { diffFeed, entryToDownloadItem, feedEntryAllowed, likelyFeedType } from '@/stores/subscription-check';
+import { diffFeed, entryToDownloadItem, feedEntryAllowed, likelyFeedType, feedShowsNothingNew, youtubeVideoId } from '@/stores/subscription-check';
+import { createLimiter } from '@/lib/limit';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { mergeSubscriptions } from '@/stores/backup';
@@ -30,6 +31,8 @@ interface SubscriptionActions {
 // so anything that can ever appear in a future poll is already marked seen at
 // subscribe time — entries below the window are older and can't re-enter it.
 const POLL_WINDOW = 100;
+// Subscriptions checked at once: each full check is a yt-dlp run.
+const PARALLEL_CHECKS = 3;
 
 const SubscriptionsContext = createContext<SubscriptionActions | null>(null);
 
@@ -72,12 +75,29 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
     setChecking(true);
     try {
       const targets = subsRef.current.filter(s => (onlyId ? s.id === onlyId : s.enabled));
-      for (const sub of targets) {
+      const limit = createLimiter(PARALLEL_CHECKS);
+      const checkOne = async (sub: Subscription) => {
         const checkedAt = new Date().toISOString();
         try {
+          // YouTube's own RSS feed first: it answers in a fraction of a
+          // second, and when it shows nothing new the yt-dlp run is skipped.
+          // A check by hand always runs in full.
+          let feedIds: string[] | undefined;
+          if (sub.feedUrl && (sub.type ?? 'channel') === 'channel') {
+            try {
+              const rss = await service.fetchRss(sub.feedUrl, POLL_WINDOW);
+              if (!onlyId && feedShowsNothingNew(sub, rss.entries, new Date())) {
+                setSubs(prev => prev.map(s => (s.id === sub.id ? { ...s, lastCheckedAt: checkedAt, lastError: undefined } : s)));
+                return;
+              }
+              feedIds = rss.entries.map(e => youtubeVideoId(e.url)).filter((id): id is string => id !== null);
+            } catch {
+              // The feed is only a shortcut; the full check still runs.
+            }
+          }
           const feed = await fetchFeed(sub.type ?? 'channel', sub.url);
           const diff = diffFeed(sub, feed.entries);
-          const { seenUrls } = diff;
+          const { seenUrls, pendingUrls } = diff;
           // Refused entries still count as seen, so they aren't reconsidered
           // on every poll.
           const refused = diff.newEntries.filter(e => !feedEntryAllowed(e.url));
@@ -94,8 +114,22 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
               toast(`${sub.title}: ${newEntries.length} new video${newEntries.length !== 1 ? 's' : ''} queued`);
             }
           }
+          if (pendingUrls.length > 0) {
+            diagnostics.log('info', `Subscription "${sub.title}": ${pendingUrls.length} premiere(s) or live stream(s) waiting to air`);
+          }
           setSubs(prev => prev.map(s =>
-            s.id === sub.id ? { ...s, seenUrls, lastCheckedAt: checkedAt, lastError: undefined } : s
+            s.id === sub.id
+              ? {
+                  ...s,
+                  seenUrls,
+                  pendingUrls,
+                  lastCheckedAt: checkedAt,
+                  lastFullCheckAt: checkedAt,
+                  lastError: undefined,
+                  feedUrl: s.feedUrl ?? feed.feedUrl,
+                  feedIds: feedIds ?? s.feedIds,
+                }
+              : s
           ));
         } catch (e) {
           const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Check failed';
@@ -104,12 +138,13 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
             s.id === sub.id ? { ...s, lastCheckedAt: checkedAt, lastError: msg } : s
           ));
         }
-      }
+      };
+      await Promise.all(targets.map(sub => limit(() => checkOne(sub))));
     } finally {
       checkingRef.current = false;
       setChecking(false);
     }
-  }, [fetchFeed, addToQueue]);
+  }, [fetchFeed, addToQueue, service]);
 
   // Scheduler: one check shortly after launch, then on the configured interval.
   useEffect(() => {
@@ -155,6 +190,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
       enabled: true,
       audioOnly: false,
       seenUrls: feed.entries.map(e => e.url),
+      feedUrl: feed.feedUrl,
     };
     setSubs(prev => [...prev, sub]);
     diagnostics.log('info', `Subscribed: ${sub.title} (${feed.entries.length} existing videos marked seen)`);

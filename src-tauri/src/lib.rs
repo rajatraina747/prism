@@ -107,6 +107,10 @@ pub struct PlaylistEntry {
     pub title: String,
     pub duration: f64,
     pub thumbnail: String,
+    /// yt-dlp's `live_status`: `is_upcoming` (a premiere or scheduled
+    /// stream), `is_live`, … — absent for an ordinary video.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +118,24 @@ pub struct PlaylistEntry {
 pub struct PlaylistInfo {
     pub title: String,
     pub entries: Vec<PlaylistEntry>,
+    /// A YouTube channel's or playlist's own RSS feed, which answers in a
+    /// fraction of a second: subscriptions poll it to see whether anything
+    /// is new before running yt-dlp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_url: Option<String>,
+}
+
+/// The RSS feed YouTube publishes for a channel (`UC…`) or playlist id.
+pub(crate) fn youtube_feed_url(playlist_id: &str) -> Option<String> {
+    let id = playlist_id.trim();
+    if id.len() < 10 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return None;
+    }
+    Some(if id.starts_with("UC") && id.len() == 24 {
+        format!("https://www.youtube.com/feeds/videos.xml?channel_id={id}")
+    } else {
+        format!("https://www.youtube.com/feeds/videos.xml?playlist_id={id}")
+    })
 }
 
 // ── yt-dlp JSON subset ───────────────────────────────────────────────
@@ -169,6 +191,8 @@ pub(crate) struct YtDlpPlaylistEntry {
     pub(crate) id: Option<String>,
     #[serde(default)]
     pub(crate) webpage_url: Option<String>,
+    #[serde(default)]
+    pub(crate) live_status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -406,9 +430,13 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
 /// title is the list's own, which yt-dlp repeats on every line.
 fn playlist_from_lines(lines: &[&str]) -> PlaylistInfo {
     let mut title: Option<String> = None;
+    let mut feed_url: Option<String> = None;
     let mut entries = Vec::new();
     for line in lines {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if feed_url.is_none() && value.get("ie_key").and_then(|k| k.as_str()) == Some("Youtube") {
+            feed_url = value.get("playlist_id").and_then(|p| p.as_str()).and_then(youtube_feed_url);
+        }
         if title.is_none() {
             title = ["playlist_title", "playlist"]
                 .iter()
@@ -425,7 +453,7 @@ fn playlist_from_lines(lines: &[&str]) -> PlaylistInfo {
         [only] => only.title.clone(),
         _ => format!("Playlist ({} videos)", entries.len()),
     });
-    PlaylistInfo { title, entries }
+    PlaylistInfo { title, entries, feed_url }
 }
 
 #[tauri::command]
@@ -2523,6 +2551,20 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // As yt-dlp 2026.08.19 prints a channel's Videos tab.
+    #[test]
+    fn a_youtube_list_knows_its_rss_feed() {
+        let lines = [r#"{"ie_key":"Youtube","url":"https://www.youtube.com/watch?v=a1","title":"A","playlist_id":"UCBR8-60-B28hp2BmDPdntcQ","live_status":"is_upcoming"}"#];
+        let list = super::playlist_from_lines(&lines);
+        assert_eq!(list.feed_url.as_deref(), Some("https://www.youtube.com/feeds/videos.xml?channel_id=UCBR8-60-B28hp2BmDPdntcQ"));
+        assert_eq!(list.entries[0].live_status.as_deref(), Some("is_upcoming"));
+        assert_eq!(
+            super::youtube_feed_url("PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf").as_deref(),
+            Some("https://www.youtube.com/feeds/videos.xml?playlist_id=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf")
+        );
+        assert_eq!(super::youtube_feed_url("x&y=1"), None);
+    }
+
     #[test]
     fn flat_list_lines_keep_their_title_and_their_sites() {
         let lines = [
@@ -2533,6 +2575,7 @@ mod tests {
         ];
         let list = super::playlist_from_lines(&lines);
         assert_eq!(list.title, "Talks 2026");
+        assert_eq!(list.feed_url, None, "no playlist_id on these lines");
         let urls: Vec<&str> = list.entries.iter().map(|e| e.url.as_str()).collect();
         assert_eq!(urls, ["https://www.youtube.com/watch?v=a1", "https://vimeo.com/22"]);
     }
