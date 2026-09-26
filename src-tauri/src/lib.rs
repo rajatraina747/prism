@@ -529,7 +529,9 @@ async fn start_download(
         // need ~2x the final size. Failing here beats failing at 99%.
         if let Some(size) = expected_size.filter(|s| *s > 0) {
             if let Ok(available) = fs2::available_space(parent) {
-                let needed = size.saturating_mul(2);
+                // Less what a paused run's partial files already hold: a
+                // resume only needs room for the rest (REVIEW 2026-09-26).
+                let needed = size.saturating_mul(2).saturating_sub(partial_bytes(&output_path));
                 if available < needed {
                     return Err(format!(
                         "Not enough disk space: need ~{} MB free, have {} MB",
@@ -556,6 +558,28 @@ async fn start_download(
         use_cookies.unwrap_or(true),
     ).await;
     Ok(())
+}
+
+/// Bytes already downloaded for the yt-dlp template `template`: the `.part`
+/// files (and HLS/DASH `.part-Frag` pieces) beside it that share its name.
+fn partial_bytes(template: &str) -> u64 {
+    let base = download_manager::template_file(template, "");
+    let base = base.strip_suffix('.').unwrap_or(&base);
+    let base = std::path::Path::new(base);
+    let (Some(dir), Some(prefix)) = (base.parent(), base.file_name().map(|n| n.to_string_lossy().into_owned())) else {
+        return 0;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.starts_with(&prefix) && (name.ends_with(".part") || name.contains(".part-Frag"))
+        })
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
 }
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
@@ -2504,6 +2528,21 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn partial_bytes_counts_this_downloads_parts_only() {
+        let dir = std::env::temp_dir().join(format!("prism-partial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Talk.f137.mp4.part"), vec![0u8; 300]).unwrap();
+        std::fs::write(dir.join("Talk.f140.m4a.part"), vec![0u8; 50]).unwrap();
+        std::fs::write(dir.join("Talk.mp4.part-Frag7"), vec![0u8; 5]).unwrap();
+        std::fs::write(dir.join("Other.mp4.part"), vec![0u8; 999]).unwrap();
+        std::fs::write(dir.join("Talk.en.srt"), vec![0u8; 999]).unwrap();
+        let template = dir.join("Talk.%(ext)s").to_string_lossy().into_owned();
+        assert_eq!(super::partial_bytes(&template), 355);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
 
     #[test]
