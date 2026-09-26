@@ -1413,6 +1413,23 @@ fn take_discard(id: &str) -> bool {
     discards().lock().map(|mut set| set.remove(id)).unwrap_or(false)
 }
 
+/// Tidy up after a *stopped* magnet that is then cancelled. Transfers pauses
+/// first and cancels a few seconds later (its Undo window), so the start that
+/// made the magnet's folder already ended as a pause, and nothing running
+/// knows the folder any more. Before its metadata arrives that folder is
+/// always `<destination>/<fallback name>`: remove it if it is still empty
+/// (a finished download's folder never is). Blocking.
+pub(crate) fn discard_stopped_magnet(destination: &str, url: &str) {
+    if !url.trim_start().to_ascii_lowercase().starts_with("magnet:") {
+        return;
+    }
+    let dest = crate::expand_tilde(destination);
+    let own = effective_output_dir(&dest, None, &fallback_folder_name(&TorrentSource::Url(url.to_string())));
+    if !same_dir(Path::new(&own), &dest) {
+        crate::postprocess::remove_empty_tree(Path::new(&own));
+    }
+}
+
 impl Default for TorrentManager {
     fn default() -> Self {
         Self::new()
@@ -2338,6 +2355,25 @@ mod tests {
         session.stop().await;
         drop(taken);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Windows test run 2026-09-26, D8: Transfers pauses before it cancels, so
+    // a peerless magnet's folder was left behind.
+    #[test]
+    fn a_stopped_magnet_leaves_no_empty_folder() {
+        let dest = std::env::temp_dir().join(format!("prism-stopped-magnet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(dest.join("Quiet Magnet")).unwrap();
+        std::fs::create_dir_all(dest.join("Busy Magnet")).unwrap();
+        std::fs::write(dest.join("Busy Magnet/part.bin"), b"x").unwrap();
+        let d = dest.to_string_lossy().into_owned();
+        discard_stopped_magnet(&d, "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Quiet%20Magnet");
+        discard_stopped_magnet(&d, "magnet:?xt=urn:btih:89abcdef0123456789abcdef0123456789abcdef&dn=Busy%20Magnet");
+        discard_stopped_magnet(&d, "https://example.com/not-a-magnet.torrent");
+        assert!(!dest.join("Quiet Magnet").exists(), "empty: removed");
+        assert!(dest.join("Busy Magnet/part.bin").exists(), "anything with a file stays");
+        assert!(dest.exists(), "never the destination");
+        let _ = std::fs::remove_dir_all(&dest);
     }
 
     // Windows test run 2026-09-26, D12: qBittorrent held the port on each

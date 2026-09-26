@@ -414,6 +414,12 @@ async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
     crate::http_engine::discard_http_download(app, id).await;
     let _ = crate::convert::cancel_convert(id.to_string()).await;
     // A paused video isn't running, so its files are found from the item.
+    // A stopped magnet's (empty) folder, likewise from the item.
+    if let Some(i) = item.as_ref().filter(|i| rules::kind(i) == "torrent") {
+        let dest = rules::setting_str(i, "destination").unwrap_or("~/Downloads/Prism").to_string();
+        let url = rules::source_url(i).to_string();
+        let _ = tauri::async_runtime::spawn_blocking(move || crate::torrent::discard_stopped_magnet(&dest, &url)).await;
+    }
     // (yt-dlp items are kind "http", the default; direct links are "direct".)
     if let Some(item) = item.filter(|i| rules::kind(i) == "http") {
         if let Some(template) = video_template(&item) {
