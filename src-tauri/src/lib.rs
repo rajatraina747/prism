@@ -2394,7 +2394,13 @@ pub fn run() {
             #[cfg(debug_assertions)]
             player::verify_player_from_env(app.handle())?;
 
-            setup_tray(app)?;
+            // Like the menu: without a tray Prism still works — but a hidden
+            // window would then have no way back on Windows/Linux, so closing
+            // it quits instead (lifecycle::close_to_tray).
+            match setup_tray(app) {
+                Ok(()) => lifecycle::set_tray_available(true),
+                Err(e) => log::warn!("tray: not available: {e}"),
+            }
 
             // yt-dlp temp folders earlier runs couldn't clean up (R1.4).
             tauri::async_runtime::spawn_blocking(|| {

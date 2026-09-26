@@ -19,9 +19,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Manager};
 
-/// Whether closing the main window hides it rather than quitting.
+/// Whether the tray icon was created. Without it a hidden window can only be
+/// reached again through the Dock (macOS) or a second launch.
+static TRAY_AVAILABLE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn set_tray_available(available: bool) {
+    TRAY_AVAILABLE.store(available, Ordering::SeqCst);
+}
+
+/// Whether closing the main window hides it rather than quitting: the
+/// setting, and somewhere to bring it back from.
 pub(crate) fn close_to_tray(app: &AppHandle) -> bool {
-    crate::setting_bool(app, "closeToTray", true)
+    let reachable = cfg!(target_os = "macos") || TRAY_AVAILABLE.load(Ordering::SeqCst);
+    reachable && crate::setting_bool(app, "closeToTray", true)
 }
 
 /// Downloads, direct downloads and torrents (seeding included) running now.
