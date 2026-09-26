@@ -1,5 +1,6 @@
 import React from 'react';
 import { useRemoteImagesAllowed } from '@/lib/remote-images';
+import { useCachedThumb } from '@/lib/thumb-cache';
 import type { DownloadStatus } from '@/types/models';
 import { cn } from '@/lib/utils';
 import { useService } from '@/services/ServiceProvider';
@@ -208,10 +209,13 @@ interface ThumbProps {
 
 export function Thumb({ src, className, fallbackIcon }: ThumbProps) {
   const [failed, setFailed] = React.useState(false);
-  // Remote pictures bypass the proxy; with one set they aren't loaded (M6).
+  // Remote pictures bypass the proxy; with one set they aren't loaded (M6)
+  // — unless Prism keeps a local copy, fetched through the proxy.
   const remoteAllowed = useRemoteImagesAllowed();
   const remote = !!src && /^https?:/i.test(src);
-  if (!src || failed || (remote && !remoteAllowed)) {
+  const local = useCachedThumb(src);
+  const shown = local ?? (remote && !remoteAllowed ? null : src);
+  if (!shown || failed || local === undefined) {
     return (
       <div className={cn('rounded-md bg-secondary flex items-center justify-center shrink-0', className)}>
         {fallbackIcon}
@@ -220,7 +224,7 @@ export function Thumb({ src, className, fallbackIcon }: ThumbProps) {
   }
   return (
     <img
-      src={src}
+      src={shown}
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}

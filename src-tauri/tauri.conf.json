@@ -25,7 +25,11 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'"
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/thumbs/*"]
+      },
+      "csp": "default-src 'self'; connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; img-src 'self' https: data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'"
     }
   },
   "plugins": {

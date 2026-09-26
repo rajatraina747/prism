@@ -25,6 +25,7 @@ mod shortcuts;
 mod spawn;
 mod stream_server;
 mod template;
+mod thumbnails;
 pub mod torrent;
 mod watch;
 mod updater;
@@ -2456,6 +2457,7 @@ pub fn run() {
             parse_url,
             parse_playlist,
             lookup::inspect_url,
+            thumbnails::cache_thumbnail,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,

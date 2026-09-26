@@ -54,7 +54,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R4.1** Separate torrent concurrency limit; slow/peerless torrents don't hold slots.
 - [x] **R4.2** YouTube subscriptions polled via RSS; parallel checks; premieres/lives held until they air.
 - [x] **R4.3** Watch folders take `.torrent` files only.
-- [ ] **R4.4** Thumbnails cached locally (through the proxy).
+- [x] **R4.4** Thumbnails cached locally (through the proxy).
 - [ ] **R4.5** Library marks files that have gone missing.
 - [ ] **R4.6** Restart the torrent engine from Settings to apply engine settings.
 

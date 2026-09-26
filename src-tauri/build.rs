@@ -25,6 +25,7 @@ const COMMANDS: &[&str] = &[
     "parse_url",
     "parse_playlist",
     "inspect_url",
+    "cache_thumbnail",
     "start_download",
     "cancel_download",
     "probe_direct_link",

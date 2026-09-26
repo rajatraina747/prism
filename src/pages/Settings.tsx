@@ -803,7 +803,7 @@ export default function Settings() {
 
             <TabsContent value="network" className="mt-0">
               <SettingGroup title="Connection">
-                <SettingRow label="Proxy" help={HELP.proxy} description="Video and direct downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails aren't shown while a proxy is set, since the app would fetch them directly. Empty = direct">
+                <SettingRow label="Proxy" help={HELP.proxy} description="Video and direct downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails are fetched through it too, and kept on this machine. Empty = direct">
                   <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
                 </SettingRow>
                 <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">
