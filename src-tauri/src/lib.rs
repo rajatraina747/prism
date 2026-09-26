@@ -9,6 +9,7 @@ mod engine;
 mod errors;
 mod http_engine;
 mod jobs;
+mod lifecycle;
 mod ledger;
 mod migrate;
 mod mpv_worker;
@@ -2250,7 +2251,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 }
                 show_main_window(app);
             }
-            "quit" => app.exit(0),
+            "quit" => lifecycle::request_quit(app),
             _ => {}
         });
     if let Some(icon) = app.default_window_icon() {
@@ -2318,6 +2319,13 @@ pub fn run() {
         // Keep mpv's adopted video window glued to the player window on
         // resize (see player.rs module docs).
         .on_window_event(|window, event| {
+            // Closing the main window hides it (or asks before quitting):
+            // downloads live in this process (see lifecycle.rs).
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    lifecycle::on_main_close_requested(window, api);
+                }
+            }
             #[cfg(target_os = "macos")]
             if window.label() == "player"
                 && matches!(event, tauri::WindowEvent::Resized(_))
@@ -2457,6 +2465,21 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app, event| {
+            // Every window gone without anyone choosing Quit (e.g. the player
+            // closing while the main window is somehow destroyed): ask rather
+            // than end whatever is running. `app.exit` carries a code and
+            // passes straight through.
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+                api.prevent_exit();
+                lifecycle::request_quit(app);
+                return;
+            }
+            // The Dock icon brings a hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                show_main_window(app);
+                return;
+            }
             // Downloads must not outlive the app: yt-dlp's forked worker is
             // reparented to init and keeps downloading otherwise, racing the
             // next launch for the same files (see `proc`).

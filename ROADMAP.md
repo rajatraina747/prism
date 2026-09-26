@@ -25,7 +25,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 (Phase 7). Baseline: tag `roadmap-base`.
 
 ### Phase 1 — Critical fixes
-- [ ] **R1.1** Close to tray (setting, default on) and confirm Quit while work is active.
+- [x] **R1.1** Close to tray (setting, default on) and confirm Quit while work is active.
 - [ ] **R1.2** "Retries on failure" actually used; manual retry resets the budget; rate limits back off minutes, not seconds.
 - [ ] **R1.3** A corrupt JSON file is set aside and recovered from `.bak.json`, never silently replaced by `[]`; failed saves are reported.
 - [ ] **R1.4** yt-dlp stopped with SIGTERM before SIGKILL; stale PyInstaller `_MEI*` folders swept at launch (115 / 8 GB found on one Mac).

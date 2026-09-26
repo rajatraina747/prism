@@ -798,6 +798,11 @@ pub struct HttpEngine {
 }
 
 impl HttpEngine {
+    /// Direct downloads in progress (for the quit confirmation).
+    pub async fn active_count(&self) -> usize {
+        self.active.lock().await.len()
+    }
+
     pub fn new() -> Self {
         HttpEngine {
             active: tokio::sync::Mutex::new(HashMap::new()),

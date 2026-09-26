@@ -645,6 +645,9 @@ export default function Settings() {
                 <SettingRow label="Max concurrent downloads" description="Transfers running at the same time">
                   <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
                 </SettingRow>
+                <SettingRow label="Keep running when the window is closed" description="Downloads carry on in the background; open Prism again from the tray or Dock. Quitting asks first while anything is running">
+                  <Toggle checked={p.closeToTray} onChange={v => updatePreference('closeToTray', v)} />
+                </SettingRow>
                 <SettingRow label="Retries on failure" description="Attempts before a download is marked failed">
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>

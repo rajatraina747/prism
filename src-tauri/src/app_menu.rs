@@ -11,7 +11,7 @@
 //! that already owns it (`src/lib/nav-bus.ts`) instead of a second path that
 //! could drift from it.
 
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Runtime};
 
 /// Carries the chosen item's id to the frontend.
@@ -19,6 +19,9 @@ const EVENT: &str = "menu-action";
 
 /// Opens the Add sheet.
 const ADD_ID: &str = "add";
+
+/// Prism's own Quit, in place of the predefined one (see `replace_quit`).
+const QUIT_ID: &str = "app-quit";
 
 /// Where each "Go" entry leads: menu id, label, accelerator. The id after
 /// `nav:` is the route, so the shell needs no table of its own.
@@ -37,21 +40,49 @@ fn is_ours(id: &str) -> bool {
     id == ADD_ID || id.starts_with("nav:")
 }
 
-pub(crate) fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+/// Whether a predefined item is the standard Quit. Matched on its label
+/// ("Quit Prism" on macOS, "Quit" elsewhere; `&` marks a Windows mnemonic).
+fn is_quit_label(text: &str) -> bool {
+    text.replace('&', "").trim().to_ascii_lowercase().starts_with("quit")
+}
+
+/// Swap the predefined Quit for one of Prism's own. The predefined item ends
+/// the process on the spot (`-[NSApp terminate:]` on macOS), so there would be
+/// no chance to ask about running downloads (see lifecycle.rs).
+fn replace_quit<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
+    for top in menu.items()? {
+        let MenuItemKind::Submenu(sub) = top else { continue };
+        for (pos, item) in sub.items()?.into_iter().enumerate() {
+            let MenuItemKind::Predefined(pre) = &item else { continue };
+            if is_quit_label(&pre.text()?) {
+                sub.remove_at(pos)?;
+                let quit = MenuItem::with_id(app, QUIT_ID, "Quit Prism", true, Some("CmdOrCtrl+Q"))?;
+                sub.insert(&quit, pos)?;
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
     // The standard menu first: everything below is added to it.
     let menu = Menu::default(app)?;
+    if let Err(e) = replace_quit(app, &menu) {
+        log::warn!("menu: kept the standard Quit: {e}");
+    }
 
     let add = MenuItem::with_id(app, ADD_ID, "Add Link…", true, Some("CmdOrCtrl+N"))?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let nav: Vec<MenuItem<R>> = NAV_ITEMS
+    let nav: Vec<MenuItem<tauri::Wry>> = NAV_ITEMS
         .iter()
         .map(|(id, label, accelerator)| {
             MenuItem::with_id(app, *id, *label, true, Some(*accelerator))
         })
         .collect::<tauri::Result<_>>()?;
 
-    let mut items: Vec<&dyn IsMenuItem<R>> = vec![&add, &separator];
-    items.extend(nav.iter().map(|item| item as &dyn IsMenuItem<R>));
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&add, &separator];
+    items.extend(nav.iter().map(|item| item as &dyn IsMenuItem<tauri::Wry>));
 
     // A submenu, not loose items: a root menu's children have to be submenus.
     let go = Submenu::with_items(app, "Go", true, &items)?;
@@ -60,7 +91,9 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     app.on_menu_event(|app, event| {
         let id = event.id.as_ref();
-        if is_ours(id) {
+        if id == QUIT_ID {
+            crate::lifecycle::request_quit(app);
+        } else if is_ours(id) {
             let _ = app.emit(EVENT, id.to_string());
         }
     });
@@ -94,6 +127,14 @@ mod tests {
             let route = id.strip_prefix("nav:").unwrap_or_else(|| panic!("{id} is not a nav id"));
             assert!(route.starts_with('/'), "{label}: {route} is not a route");
         }
+    }
+
+    #[test]
+    fn finds_the_standard_quit_on_every_platform() {
+        assert!(is_quit_label("Quit Prism"));
+        assert!(is_quit_label("&Quit"));
+        assert!(!is_quit_label("Close Window"));
+        assert!(!is_quit_label("Hide Others"));
     }
 
     #[test]

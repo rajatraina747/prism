@@ -393,6 +393,10 @@ export interface AppPreferences {
   // Seeding counts as work by default, so a machine doesn't sleep in the
   // middle of uploading. This waives that.
   whenDoneIgnoresSeeding: boolean;
+  // Closing the main window hides it and downloads carry on; Quit (tray, menu,
+  // ⌘Q) asks first while anything runs. Off = closing the window quits (still
+  // asking first). Read Rust-side (src-tauri/src/lifecycle.rs).
+  closeToTray: boolean;
   // Optional global hotkeys — off unless the user assigns one, because a
   // shortcut registered system-wide takes that key away from every other app.
   // Registered Rust-side; see src-tauri/src/shortcuts.rs.
@@ -560,6 +564,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   defaultWhenComplete: 'nothing',
   whenDoneAction: 'nothing',
   whenDoneIgnoresSeeding: false,
+  closeToTray: true,
   librarySort: 'newest',
   libraryView: 'list',
   listDensity: 'comfortable',

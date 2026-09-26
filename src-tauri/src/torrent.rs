@@ -572,6 +572,11 @@ impl TorrentManager {
         }
     }
 
+    /// Torrents downloading or seeding (for the quit confirmation).
+    pub async fn active_count(&self) -> usize {
+        self.active.lock().await.len()
+    }
+
     async fn session(&self) -> Option<Arc<Session>> {
         self.session.lock().await.as_ref().map(|(s, _)| s.clone())
     }

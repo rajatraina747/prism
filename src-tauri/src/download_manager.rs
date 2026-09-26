@@ -610,6 +610,11 @@ impl DownloadManager {
         stopped
     }
 
+    /// yt-dlp runs in progress (for the quit confirmation).
+    pub async fn active_count(&self) -> usize {
+        self.downloads.lock().await.len()
+    }
+
     /// Kill every running download. Called on app exit: yt-dlp's forked worker
     /// outlives the app otherwise, and keeps downloading (and writing into the
     /// same files the next launch resumes) with nothing left to stop it.
