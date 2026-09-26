@@ -37,15 +37,46 @@ pub(crate) struct Ledger {
     index: HashSet<PathBuf>,
 }
 
+/// The one form paths are stored and looked up in.
+///
+/// On Windows `canonicalize` gives a verbatim `\\?\C:\…` path, while callers
+/// hold `C:\…` (`validate_open_path` strips the prefix) or the page's own
+/// strings, `/`-separated and in whatever case — and NTFS ignores case. Storing
+/// the verbatim form meant no lookup ever matched, so Play, Open, Move to Trash,
+/// Convert and the Missing badge all refused every download on Windows. Strip
+/// the prefix, use `\`, lower-case. Elsewhere the path is already the key.
+fn key(p: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        PathBuf::from(crate::canonical_string(p).replace('/', "\\").to_lowercase())
+    }
+    #[cfg(not(windows))]
+    {
+        p.to_path_buf()
+    }
+}
+
 impl Ledger {
+    /// Build the lookup set, rekeying entries as they load: a ledger saved
+    /// before `key` existed holds verbatim `\\?\` paths on Windows.
     fn rebuild_index(&mut self) {
-        self.index = self.entries.iter().cloned().collect();
+        let mut seen = HashSet::new();
+        self.entries = std::mem::take(&mut self.entries)
+            .into_iter()
+            .map(|e| key(&e))
+            .filter(|k| seen.insert(k.clone()))
+            .collect();
+        self.index = seen;
     }
 
-    /// Record a finished download (canonicalised, so later checks compare
-    /// like with like). Returns whether anything changed.
+    /// Record a finished download (canonicalised and keyed, so later checks
+    /// compare like with like). Returns whether anything changed.
     pub(crate) fn record(&mut self, path: &Path) -> bool {
+        // A verbatim `\\?\` path takes `/` literally, so a mixed one (a verbatim
+        // destination + "/file") wouldn't resolve: drop the prefix first.
+        let path = PathBuf::from(crate::canonical_string(path));
         let Ok(canonical) = path.canonicalize() else { return false };
+        let canonical = key(&canonical);
         if !self.index.insert(canonical.clone()) {
             return false;
         }
@@ -61,12 +92,12 @@ impl Ledger {
 
     /// For each path, whether it was recorded and is no longer on disk.
     pub(crate) fn missing(&self, paths: &[PathBuf]) -> Vec<bool> {
-        paths.iter().map(|p| !p.exists() && self.index.contains(p)).collect()
+        paths.iter().map(|p| !p.exists() && self.index.contains(&key(p))).collect()
     }
 
     /// Whether `canonical` is a recorded file, or inside a recorded folder.
     pub(crate) fn contains(&self, canonical: &Path) -> bool {
-        canonical.ancestors().any(|p| self.index.contains(p))
+        key(canonical).ancestors().any(|p| self.index.contains(p))
     }
 
     /// The one-time seed: every path the Library's records point at. A torrent's
@@ -286,7 +317,10 @@ mod tests {
         let dest = dir.join("Downloads");
         std::fs::create_dir_all(dest.join("Pack")).unwrap();
         std::fs::write(dest.join("film.mkv"), b"x").unwrap();
-        let d = dest.to_string_lossy();
+        // JSON-escaped: a Windows path's backslashes are escapes otherwise, the
+        // history fails to parse, and nothing is seeded.
+        let quoted = serde_json::to_string(&dest.to_string_lossy()).unwrap();
+        let d = &quoted[1..quoted.len() - 1];
         let history = format!(
             r#"[
               {{"filePath":"{d}/film.mkv","settings":{{"destination":"{d}"}}}},
@@ -302,6 +336,48 @@ mod tests {
         assert!(ledger.contains(&dest.join("Pack")));
         assert!(!ledger.contains(&dest), "the destination itself is never recorded");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression (Windows test run 2026-09-26): entries were stored verbatim
+    // (`\\?\C:\…`) and looked up in the caller's form, so nothing ever matched.
+    #[test]
+    fn lookups_match_the_form_each_caller_holds() {
+        let dir = tmp("forms");
+        let file = dir.join("Clip.mp4");
+        std::fs::write(&file, b"x").unwrap();
+        let mut ledger = Ledger::default();
+        assert!(ledger.record(&file));
+        // What `validate_open_path` hands `require_recorded`: prefix stripped.
+        assert!(ledger.contains(Path::new(&crate::canonical_string(&file))), "Play / Open / Trash / Convert");
+        // What the page sends `missing_files`: its own string — on Windows
+        // possibly `/`-separated and in another case.
+        std::fs::remove_file(&file).unwrap();
+        let page = if cfg!(windows) {
+            crate::canonical_string(&file).replace('\\', "/").to_uppercase()
+        } else {
+            file.to_string_lossy().into_owned()
+        };
+        assert_eq!(ledger.missing(&[PathBuf::from(page)]), [true], "the Missing badge");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_ledger_saved_with_verbatim_paths_still_matches() {
+        let dir = tmp("verbatim");
+        let file = dir.join("a.mp4");
+        std::fs::write(&file, b"x").unwrap();
+        // How builds before `key` saved an entry: `canonicalize()` as is.
+        let old = Ledger { entries: vec![file.canonicalize().unwrap()], seeded: true, index: HashSet::new() };
+        let mut back: Ledger = serde_json::from_str(&serde_json::to_string(&old).unwrap()).unwrap();
+        back.rebuild_index();
+        assert!(back.contains(Path::new(&crate::canonical_string(&file))));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unc_paths_key_the_same_with_or_without_the_verbatim_prefix() {
+        assert_eq!(key(Path::new(r"\\?\UNC\nas\Media\Film.mkv")), key(Path::new(r"\\NAS\media/film.mkv")));
     }
 
     #[test]

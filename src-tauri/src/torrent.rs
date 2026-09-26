@@ -2007,6 +2007,12 @@ mod tests {
         b
     }
 
+    /// `dest` joined with one component, in this platform's separator (what
+    /// `effective_output_dir` produces: `\` on Windows).
+    fn under(dest: &str, name: &str) -> String {
+        Path::new(dest).join(name).to_string_lossy().into_owned()
+    }
+
     #[test]
     fn multi_file_torrents_get_their_own_folder() {
         let dest = "/tmp/dl";
@@ -2014,8 +2020,8 @@ mod tests {
         let qatar = multi_file_torrent("F1.2024x23.Qatar", &["01.Buildup.mp4", "02.Race.mp4"]);
         let a = effective_output_dir(dest, Some(&abu), "fallback");
         let q = effective_output_dir(dest, Some(&qatar), "fallback");
-        assert_eq!(a, "/tmp/dl/F1.2024x24.Abu-Dhabi");
-        assert_eq!(q, "/tmp/dl/F1.2024x23.Qatar");
+        assert_eq!(a, under(dest, "F1.2024x24.Abu-Dhabi"));
+        assert_eq!(q, under(dest, "F1.2024x23.Qatar"));
         assert_ne!(a, q, "same inner file names must never share a folder");
     }
 
@@ -2095,16 +2101,16 @@ mod tests {
 
     #[test]
     fn unknown_layout_uses_the_fallback_name() {
-        assert_eq!(effective_output_dir("/tmp/dl", None, "Some Magnet"), "/tmp/dl/Some Magnet");
-        assert_eq!(effective_output_dir("/tmp/dl", Some(b"not a torrent"), "x"), "/tmp/dl/x");
+        assert_eq!(effective_output_dir("/tmp/dl", None, "Some Magnet"), under("/tmp/dl", "Some Magnet"));
+        assert_eq!(effective_output_dir("/tmp/dl", Some(b"not a torrent"), "x"), under("/tmp/dl", "x"));
         // A fallback that sanitizes to nothing still yields a subfolder.
-        assert_eq!(effective_output_dir("/tmp/dl", None, ".."), "/tmp/dl/torrent");
+        assert_eq!(effective_output_dir("/tmp/dl", None, ".."), under("/tmp/dl", "torrent"));
     }
 
     #[test]
     fn hostile_names_become_one_safe_component() {
         let t = multi_file_torrent("../../evil", &["a", "b"]);
-        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "f"), "/tmp/dl/_.._evil");
+        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "f"), under("/tmp/dl", "_.._evil"));
         assert_eq!(safe_folder_name("a/b\\c:d*e?f\"g<h>i|j"), "a_b_c_d_e_f_g_h_i_j");
         assert_eq!(safe_folder_name("  .hidden.  "), "hidden");
         assert_eq!(safe_folder_name("con\u{0}trol"), "con_trol");

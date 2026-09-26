@@ -8,16 +8,40 @@ fn main() {
     #[cfg(target_os = "macos")]
     stage_player_libs();
     export_bundled_ytdlp_version();
+    link_manifest();
 
     // Prism's own commands go through the ACL like the plugins' do: each
     // window may call only what its capability grants (capabilities/*.json).
     // Without an app manifest every command was callable from every window,
     // the player's included (REVIEW 2026-09-23 S-2). Keep this in step with
     // `generate_handler!` in src/lib.rs; a test there checks it.
+    // No Windows app manifest from tauri-build: `link_manifest` puts the same
+    // one into every binary, tests included.
     tauri_build::try_build(
-        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)),
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest()),
     )
     .expect("failed to run tauri-build")
+}
+
+/// Every Windows binary needs Common Controls v6, the `cargo test` ones too:
+/// rfd (the dialog plugin) imports `TaskDialogIndirect`, which only comctl32 v6
+/// has. tauri-build's manifest reached the app alone, so test exes loaded v5
+/// and died before `main` with STATUS_ENTRYPOINT_NOT_FOUND — the Rust tests had
+/// never run on Windows. The linker now writes the manifest (the same single
+/// dependency tauri-build's had) into every binary; the lib's unit-test
+/// harness isn't a "tests" target, so this can't be scoped to tests.
+fn link_manifest() {
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_os == "windows" && target_env == "msvc" {
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!(
+            "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' \
+             version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+        );
+    }
 }
 
 /// Every command registered in `generate_handler!`.

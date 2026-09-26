@@ -744,7 +744,9 @@ cccc3333  yt-dlp.exe";
     #[test]
     fn bundled_version_comes_from_the_sidecars_lock() {
         let lock = include_str!("../../scripts/sidecars.lock");
-        assert!(lock.contains(&format!("YTDLP_VERSION={BUNDLED_VERSION}\n")), "{BUNDLED_VERSION}");
+        // By line, not "…\n": a Windows checkout may give the lock CRLF endings.
+        let wanted = format!("YTDLP_VERSION={BUNDLED_VERSION}");
+        assert!(lock.lines().any(|l| l.trim_end() == wanted), "{BUNDLED_VERSION}");
         assert!(version_key(BUNDLED_VERSION).is_some());
     }
 

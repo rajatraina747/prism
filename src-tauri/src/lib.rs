@@ -1015,7 +1015,7 @@ pub(crate) fn validate_open_path(
 /// A canonical path as a string for consumers outside Rust (the OS opener,
 /// mpv, `explorer /select`). On Windows `canonicalize` yields a `\\?\`
 /// verbatim path, which those consumers don't all accept — strip the prefix.
-fn canonical_string(p: &std::path::Path) -> String {
+pub(crate) fn canonical_string(p: &std::path::Path) -> String {
     let s = p.to_string_lossy().into_owned();
     #[cfg(windows)]
     {
@@ -1302,7 +1302,10 @@ pub(crate) fn trashable_paths(
     if paths.len() > MAX_TRASH_PATHS {
         return Err(format!("Too many items at once (limit {MAX_TRASH_PATHS})"));
     }
-    let canon = |p: &PathBuf| p.canonicalize().unwrap_or_else(|_| p.clone());
+    // In `validate_open_path`'s form (no `\\?\` on Windows): the candidates
+    // below come from it, and a verbatim `\\?\C:` component never equals `C:`,
+    // so on Windows this guard used to match nothing at all.
+    let canon = |p: &PathBuf| PathBuf::from(canonical_string(&p.canonicalize().unwrap_or_else(|_| p.clone())));
     let mut keep: Vec<PathBuf> = [
         dirs::home_dir(),
         dirs::download_dir(),
@@ -1315,6 +1318,11 @@ pub(crate) fn trashable_paths(
     ]
     .into_iter()
     .flatten()
+    // The usual names under home too: with OneDrive folder backup the system
+    // folders move into OneDrive, but the original ones stay, still full.
+    .chain(dirs::home_dir().into_iter().flat_map(|home| {
+        ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"].map(|name| home.join(name))
+    }))
     .chain(roots.iter().cloned())
     .chain(protected.iter().cloned())
     .map(|p| canon(&p))
@@ -2609,6 +2617,26 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// Where the app's own pages are served from, as capability URL matching
+    /// sees it: wry serves `tauri://localhost` on macOS/Linux and
+    /// `http://tauri.localhost` on Windows.
+    #[cfg(windows)]
+    const LOCAL_ORIGIN: &str = "http://tauri.localhost";
+    #[cfg(not(windows))]
+    const LOCAL_ORIGIN: &str = "tauri://localhost";
+
+    /// A scratch folder standing in for a user-picked one. Windows' temp dir is
+    /// under AppData, which the deny-list refuses even when picked, so there it
+    /// lives under the build's target folder instead.
+    fn scratch_dir(tag: &str) -> std::path::PathBuf {
+        let name = format!("prism-{tag}-{}", std::process::id());
+        if cfg!(windows) {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test-tmp").join(name)
+        } else {
+            std::env::temp_dir().join(name)
+        }
+    }
+
     // As yt-dlp 2026.08.19 prints a channel's Videos tab.
     #[test]
     fn a_youtube_list_knows_its_rss_feed() {
@@ -2709,7 +2737,7 @@ mod tests {
 
         // A real file under a root the user picked is fine — and so is the
         // folder itself, because a multi-file torrent is a folder.
-        let dir = std::env::temp_dir().join(format!("prism-trash-{}", std::process::id()));
+        let dir = scratch_dir("trash");
         std::fs::create_dir_all(dir.join("inner")).unwrap();
         let file = dir.join("inner/a.bin");
         std::fs::write(&file, b"x").unwrap();
@@ -2884,7 +2912,7 @@ mod tests {
                     cmd: "plugin:fs|write_text_file".into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::Raw(b"{}".to_vec()),
                     headers,
                     invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -2918,7 +2946,7 @@ mod tests {
                     cmd: "plugin:fs|rename".into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::Json(serde_json::json!({
                         "oldPath": from,
                         "newPath": to,
@@ -3015,7 +3043,7 @@ mod tests {
                     cmd: cmd.into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::default(),
                     headers: Default::default(),
                     invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -3192,7 +3220,7 @@ mod tests {
     /// outside home (external drive, NAS) — the temp dir stands in for one.
     #[test]
     fn picked_directories_become_allowed_roots() {
-        let dir = std::env::temp_dir().join(format!("prism-picked-{}", std::process::id()));
+        let dir = scratch_dir("picked");
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("clip.%(ext)s");
         let home = dirs::home_dir().unwrap().canonicalize().unwrap();
