@@ -117,6 +117,9 @@ export interface IPrismService {
   inspectUrl(url: string): Promise<InspectResult>;
   /** For each path, whether it is a recorded download no longer on disk. */
   missingFiles(paths: string[]): Promise<boolean[]>;
+  /** Stop the torrent engine so the next torrent starts it with the current
+   * settings. Returns how many torrents were running. */
+  restartTorrentEngine(): Promise<number>;
   /** Flat-parse a playlist/channel feed. `limit` caps to the newest N entries
    * (used by subscription polling; omit for full imports). */
   parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo>;

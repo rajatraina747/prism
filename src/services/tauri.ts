@@ -108,6 +108,10 @@ export class TauriPrismService implements IPrismService {
     return invoke<MediaMetadata>('parse_url', { url });
   }
 
+  async restartTorrentEngine(): Promise<number> {
+    return invoke<number>('restart_torrent_engine');
+  }
+
   async missingFiles(paths: string[]): Promise<boolean[]> {
     return invoke<boolean[]>('missing_files', { paths });
   }

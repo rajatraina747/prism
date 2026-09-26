@@ -60,6 +60,10 @@ const STORAGE_KEYS = {
 
 export class MockPrismService implements IPrismService {
   readonly isDemo = true;
+  async restartTorrentEngine(): Promise<number> {
+    return 0;
+  }
+
   async missingFiles(paths: string[]): Promise<boolean[]> {
     return paths.map(() => false);
   }

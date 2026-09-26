@@ -27,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "inspect_url",
     "cache_thumbnail",
     "missing_files",
+    "restart_torrent_engine",
     "start_download",
     "cancel_download",
     "probe_direct_link",

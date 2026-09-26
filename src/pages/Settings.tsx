@@ -97,6 +97,35 @@ function ClientImportRow() {
   );
 }
 
+/** Apply the engine settings now rather than at the next launch. */
+function RestartTorrentEngineRow() {
+  const { restartTorrentEngine } = useQueue();
+  const [busy, setBusy] = React.useState(false);
+  const restart = async () => {
+    setBusy(true);
+    try {
+      await restartTorrentEngine();
+      toast.success('Torrent engine restarted with these settings');
+    } catch (e) {
+      toast.error(`Couldn't restart the torrent engine: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SettingRow label="Apply now" description="Restart the torrent engine with the settings above. Running torrents pause for a moment and carry on, without checking their files again">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void restart()}
+        className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
+      >
+        {busy ? 'Restarting…' : 'Restart engine'}
+      </button>
+    </SettingRow>
+  );
+}
+
 /** Export and import settings, Library and subscriptions (stores/backup.ts). */
 function BackupRow() {
   const service = useService();
@@ -611,7 +640,7 @@ export default function Settings() {
                 </SettingRow>
               </SettingGroup>
               <Advanced>
-                <SettingGroup title="Engine (applies on next launch)">
+                <SettingGroup title="Engine (applies when the engine restarts)">
                   <SettingRow label="DHT" help={HELP.dht} description="Find peers without a tracker. Off = tracker-only">
                     <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                   </SettingRow>
@@ -633,6 +662,7 @@ export default function Settings() {
                   <SettingRow label="IP blocklist" help={HELP.blocklist} description="URL of a blocklist (https, gz supported). Empty = off">
                     <TextInput value={p.blocklistUrl} onChange={v => updatePreference('blocklistUrl', v)} placeholder="https://example.com/blocklist.p2p.gz" />
                   </SettingRow>
+                  <RestartTorrentEngineRow />
                 </SettingGroup>
               </Advanced>
               <SettingGroup title="Move from another client">

@@ -922,6 +922,13 @@ fn read_local_torrent(path: &str, extra_roots: &[PathBuf]) -> Result<torrent::To
     Ok(torrent::TorrentSource::Bytes { key: validated, bytes, trackers: Vec::new() })
 }
 
+/// Restart the torrent engine so its settings apply now (see
+/// `TorrentManager::restart`). The page pauses and resumes the torrents.
+#[tauri::command]
+async fn restart_torrent_engine(app: AppHandle) -> Result<usize, String> {
+    Ok(app.state::<torrent::TorrentManager>().restart().await)
+}
+
 /// Stop a torrent. `delete_files` also removes its data from disk ("Remove
 /// and delete files" — the frontend confirms first).
 #[tauri::command]
@@ -2475,6 +2482,7 @@ pub fn run() {
             lookup::inspect_url,
             thumbnails::cache_thumbnail,
             missing_files,
+            restart_torrent_engine,
             start_download,
             cancel_download,
             http_engine::probe_direct_link,

@@ -56,7 +56,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R4.3** Watch folders take `.torrent` files only.
 - [x] **R4.4** Thumbnails cached locally (through the proxy).
 - [x] **R4.5** Library marks files that have gone missing.
-- [ ] **R4.6** Restart the torrent engine from Settings to apply engine settings.
+- [x] **R4.6** Restart the torrent engine from Settings to apply engine settings.
 
 ### Phase 5 — Direct downloads and the extension
 - [ ] **R5.1** Per-item Referer and a browser-style User-Agent option.

@@ -77,6 +77,9 @@ interface QueueActions {
   removeWithData: (id: string) => void;
   moveToTop: (id: string) => void;
   moveToBottom: (id: string) => void;
+  /** Restart the torrent engine so its settings apply now: running torrents
+   * pause, the engine restarts, they carry on (no re-check of their data). */
+  restartTorrentEngine: () => Promise<void>;
 }
 
 interface HistoryActions {
@@ -760,6 +763,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (from >= 0 && from < current.length - 1) dispatch({ type: 'reorder', from, to: current.length - 1 });
   }, []);
 
+  const restartTorrentEngine = useCallback(async () => {
+    // Every torrent the engine is watching loses its handle in the restart:
+    // detach them, pause the running ones, and queue those again after, when
+    // each re-adds and adopts its own restored torrent.
+    const watched = queueRef.current.filter(i => i.kind === 'torrent' && cleanupRefs.current.has(i.id));
+    const running = watched.filter(i => i.status === 'downloading' || i.status === 'seeding').map(i => i.id);
+    for (const item of watched) {
+      cleanupRefs.current.get(item.id)?.();
+      cleanupRefs.current.delete(item.id);
+      startedRef.current.delete(item.id);
+    }
+    running.forEach(id => dispatch({ type: 'pause', id }));
+    try {
+      await service.restartTorrentEngine();
+    } finally {
+      running.forEach(id => dispatch({ type: 'resume', id }));
+    }
+  }, [service]);
+
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
@@ -797,8 +819,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [settings, updatePreference, resetToDefaults, importSettings],
   );
   const queueValue = useMemo(
-    () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom }),
-    [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom],
+    () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
+    [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
   );
   const historyValue = useMemo(
     () => ({ items: history, removeFromHistory, restoreHistory, importHistory, clearHistory }),
