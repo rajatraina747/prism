@@ -386,7 +386,17 @@ async fn start_session(default_dir: &str, limits: LimitsConfig, cfg: &SessionCon
     // torrent could start at all (REVIEW 2026-09-26).
     let mut session = None;
     let mut last_error = None;
+    // On Windows librqbit's own bind can't tell that the port is taken: it
+    // shares it with another client's listeners (Windows test run 2026-09-26,
+    // D12), and inbound peers then reach that client, not Prism. Ask first.
+    let held_elsewhere = port_in_use_elsewhere(cfg.listen_port);
+    if held_elsewhere {
+        log::warn!("torrent session: port {} is used by another program; picking a free one", cfg.listen_port);
+    }
     for (addr, ipv4_only) in listen_attempts(cfg.listen_port) {
+        if held_elsewhere && addr.port() == cfg.listen_port {
+            continue;
+        }
         match Session::new_with_opts(PathBuf::from(default_dir), build(addr, ipv4_only)).await {
             Ok(s) => {
                 if addr.port() != cfg.listen_port || ipv4_only {
@@ -405,6 +415,51 @@ async fn start_session(default_dir: &str, limits: LimitsConfig, cfg: &SessionCon
         return Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no listen address to try")));
     };
     Ok(session)
+}
+
+/// Whether another program already holds `port` for TCP or UDP, on any
+/// address. A throwaway socket bound to the wildcard with SO_EXCLUSIVEADDRUSE
+/// fails if any other socket uses the port, even on one specific address or
+/// with SO_REUSEADDR — the cases a plain bind (librqbit's) quietly shares.
+#[cfg(windows)]
+fn port_in_use_elsewhere(port: u16) -> bool {
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    use std::os::windows::io::AsRawSocket;
+    use windows_sys::Win32::Networking::WinSock::{setsockopt, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, WSAEACCES, WSAEADDRINUSE};
+
+    let taken = |ty: Type, proto: Protocol| -> bool {
+        // Dual-stack IPv6 covers both families; IPv4 alone where IPv6 is off.
+        let (socket, addr) = match Socket::new(Domain::IPV6, ty, Some(proto)) {
+            Ok(s) if s.set_only_v6(false).is_ok() => (s, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port))),
+            _ => match Socket::new(Domain::IPV4, ty, Some(proto)) {
+                Ok(s) => (s, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))),
+                Err(_) => return false,
+            },
+        };
+        let on: i32 = 1;
+        // SAFETY: a valid socket handle and a live 4-byte int for the option.
+        unsafe {
+            setsockopt(
+                socket.as_raw_socket() as usize,
+                SOL_SOCKET,
+                SO_EXCLUSIVEADDRUSE,
+                (&on as *const i32).cast(),
+                std::mem::size_of::<i32>() as i32,
+            );
+        }
+        match socket.bind(&addr.into()) {
+            Ok(()) => false,
+            Err(e) => matches!(e.raw_os_error(), Some(WSAEADDRINUSE) | Some(WSAEACCES)),
+        }
+    };
+    taken(Type::STREAM, Protocol::TCP) || taken(Type::DGRAM, Protocol::UDP)
+}
+
+/// Elsewhere a bind that would share the port fails on its own.
+#[cfg(not(windows))]
+fn port_in_use_elsewhere(_port: u16) -> bool {
+    false
 }
 
 /// Listen addresses to try, in order, with whether to stay on IPv4.
@@ -1458,6 +1513,7 @@ async fn add_or_adopt(
                     }
                     if h.is_paused() {
                         session.unpause(&h).await.map_err(|e| e.to_string())?;
+                        start_after_restore_check(session, &h);
                     }
                     return Ok((h, effective));
                 }
@@ -1477,6 +1533,35 @@ async fn add_or_adopt(
 fn same_dir(a: &std::path::Path, b: &str) -> bool {
     let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     canon(a) == canon(std::path::Path::new(b))
+}
+
+/// How long an adopted torrent's restore check may take before we stop
+/// waiting to start it (a large torrent re-hashing on a slow disk).
+const RESTORE_CHECK_WAIT: Duration = Duration::from_secs(30 * 60);
+
+/// Make sure an adopted torrent actually starts once its restore check ends.
+///
+/// librqbit 9 restores a persisted torrent paused and starts its check with
+/// `start_paused = true`. An `unpause` that lands while that check runs only
+/// clears the paused flag (`try_start_check` is already taken), and when the
+/// check finishes it parks the torrent in Paused anyway — with the flag
+/// saying it isn't. So after "Restart engine" (and on a relaunch) a resumed
+/// torrent sat at 0 peers until someone paused and resumed it by hand
+/// (Windows test run 2026-09-26, D13). Flag clear + state Paused is exactly
+/// that case: a user's pause sets the flag, so it is never overridden here.
+fn start_after_restore_check(session: &Arc<Session>, h: &ManagedTorrentHandle) {
+    let (session, h) = (session.clone(), h.clone());
+    tauri::async_runtime::spawn(async move {
+        if tokio::time::timeout(RESTORE_CHECK_WAIT, h.wait_until_initialized()).await.is_err() {
+            return;
+        }
+        if !h.is_paused() && matches!(h.stats().state, TorrentStatsState::Paused) {
+            log::info!("torrent {}: came out of its restore check paused; starting it", h.info_hash().as_string());
+            if let Err(e) = session.unpause(&h).await {
+                log::warn!("torrent {}: could not start after its restore check: {e}", h.info_hash().as_string());
+            }
+        }
+    });
 }
 
 /// Pause + unpause: librqbit keeps the piece state and issues a fresh
@@ -2166,6 +2251,18 @@ mod tests {
         session.stop().await;
         drop(taken);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Windows test run 2026-09-26, D12: qBittorrent held the port on each
+    // specific address; Prism's wildcard bind shared it and never fell back.
+    #[cfg(windows)]
+    #[test]
+    fn a_port_held_on_one_address_counts_as_taken() {
+        let other_app = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = other_app.local_addr().unwrap().port();
+        assert!(port_in_use_elsewhere(port), "held on 127.0.0.1 only");
+        drop(other_app);
+        assert!(!port_in_use_elsewhere(port), "free again once it lets go");
     }
 
     // R4.6: a restart stops the session and the next one takes the same
