@@ -2541,7 +2541,6 @@ pub fn run() {
             import_torrent_file,
             pick_download_dir,
             open_backup_file,
-            finished::finished_downloads,
             client_import::import_torrent_client,
             get_app_version,
             ffmpeg_available,

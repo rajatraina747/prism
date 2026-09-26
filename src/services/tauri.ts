@@ -14,7 +14,6 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
 import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset, RemoteQueue } from './types';
 import type { QueuePatch, ArchivedEntry, QueueNotice } from '@/stores/remote-queue';
-import { applyFinished, type FinishedDownload } from '@/stores/finished';
 import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
 import { createWriteQueue } from '@/lib/write-queue';
 
@@ -787,10 +786,6 @@ export class TauriPrismService implements IPrismService {
       }));
       this._historyCache = snapshot.history as HistoryItem[];
       historyWriter.seed(this._historyCache);
-      // What Rust saw finish, applied before anything can start: the saved
-      // queue may predate the last completions (stores/finished.ts).
-      const finished = await invoke<FinishedDownload[]>('finished_downloads').catch(() => [] as FinishedDownload[]);
-      this._queueCache = applyFinished(this._queueCache, finished, new Set(this._historyCache.map(h => h.id)));
       this._settingsCache = await readJson<AppPreferences | null>(FILES.settings, null);
       this._subscriptionsCache = (snapshot.subscriptions as Subscription[] | null) ?? [];
       this._statsCache = snapshot.stats ?? null;

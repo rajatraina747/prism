@@ -181,7 +181,8 @@ pub fn start(app: &AppHandle) {
         item.insert("speed".into(), json!(0));
         item.insert("eta".into(), json!(0));
     }
-    rules::apply_finished(&mut items, &crate::finished::entries(app), &crate::store::history_ids(app));
+    // Completions 2.2.x's journal saw that its page never saved (finished.rs).
+    rules::apply_finished(&mut items, &crate::finished::take_legacy_entries(app), &crate::store::history_ids(app));
     {
         let mut inner = state.lock();
         inner.items = items;
@@ -515,6 +516,7 @@ fn on_success(app: &AppHandle, complete: &DownloadComplete) {
         inner.terminal_since.insert(complete.id.clone(), Instant::now());
         item
     };
+    save_now(app);
     let title = title_of(&done);
     let requested = rules::settings(&done)
         .and_then(|s| s.get("format"))
@@ -601,6 +603,9 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
         });
         return;
     }
+    if failed.is_some() {
+        save_now(app);
+    }
     if let Some(item) = failed {
         notice(
             app,
@@ -664,6 +669,24 @@ async fn archive_due(app: &AppHandle) {
 }
 
 // ── Telling the page, and saving ─────────────────────────────────────────
+
+/// Save the queue now, not at the next flush: a completion that isn't on
+/// disk when Prism is quit (or killed) would download again next launch —
+/// the bug the old finished journal existed for (REVIEW 2026-09-23 B-1).
+fn save_now(app: &AppHandle) {
+    let Some(state) = manager(app) else { return };
+    let items: Vec<Value> = {
+        let mut inner = state.lock();
+        inner.save_now = false;
+        inner.save_soon = false;
+        inner.last_save = Some(Instant::now());
+        inner.items.iter().map(rules::slim_for_saving).collect()
+    };
+    if let Err(e) = crate::store::save_queue(app, &items) {
+        log::warn!("queue: couldn't save a completion at once ({e}); the next flush tries again");
+        state.lock().save_now = true;
+    }
+}
 
 #[derive(Serialize, Clone)]
 struct Patch {

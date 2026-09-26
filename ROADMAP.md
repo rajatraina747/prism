@@ -67,7 +67,7 @@ is released until the build passes hands-on testing on a Windows (AMD x64) PC
 - [x] **R6.1** SQLite store; one-time copy of queue/history/stats JSON (JSON kept).
 - [x] **R6.2** Rust `QueueManager`: transitions, scheduling, retries, quiet hours, when-done.
 - [x] **R6.3** The UI becomes a view of Rust's queue.
-- [ ] **R6.4** Retire `finished.rs`, `jobs.rs` tickets and Rust's reading of `queue.json`.
+- [x] **R6.4** Retire the finished journal (Rust saves completions at once) and Rust's reading of `queue.json` (R6.1); `jobs.rs` tickets stay — they still guard a stop that lands while an engine starts.
 - [ ] **R6.5** Library paged from the database; no 2,000-entry cap.
 - [ ] **R6.6** Torrents reach the Library when downloaded, marked Seeding.
 - [ ] **R6.7** Reducer tests ported; migration test.
