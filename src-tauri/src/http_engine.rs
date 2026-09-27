@@ -928,8 +928,43 @@ pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError>
     client_with(app, None)
 }
 
+/// For URLs a remote site chose (thumbnails in a video's metadata): never
+/// follows a redirect to a loopback, private or link-local address.
+pub(crate) fn client_public_only(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
+    build_client(app, None, true)
+}
+
+/// Whether `ip` is an address on the public internet: not this machine, the
+/// LAN, link-local (cloud metadata lives at 169.254.169.254), carrier NAT,
+/// or unique-local IPv6.
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, ..] = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || (a == 100 && (64..128).contains(&b)))
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            let first = v6.segments()[0];
+            !(v6.is_loopback() || v6.is_unspecified() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
 /// `client_for`, sending `referer` with every request.
 fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
+    build_client(app, referer, false)
+}
+
+fn build_client(app: &AppHandle, referer: Option<&str>, public_only: bool) -> Result<reqwest::Client, PrismError> {
     let agent = if crate::setting_bool(app, "browserUserAgent", true) {
         BROWSER_USER_AGENT
     } else {
@@ -939,7 +974,22 @@ fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client
         .user_agent(agent)
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(READ_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(10));
+        .redirect(if public_only {
+            reqwest::redirect::Policy::custom(|attempt| {
+                let private = attempt.url().host().is_some_and(|h| match h {
+                    url::Host::Ipv4(ip) => !is_public_ip(IpAddr::V4(ip)),
+                    url::Host::Ipv6(ip) => !is_public_ip(IpAddr::V6(ip)),
+                    url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
+                });
+                if private || attempt.previous().len() >= 10 {
+                    attempt.stop()
+                } else {
+                    attempt.follow()
+                }
+            })
+        } else {
+            reqwest::redirect::Policy::limited(10)
+        });
     if crate::force_ipv4(app) {
         builder = builder.local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     }
