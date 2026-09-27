@@ -558,6 +558,9 @@ async fn start_download(
         }
         _ => output_path,
     };
+    if !only_ext_field(&output_path) {
+        return Err("Invalid download path".into());
+    }
     let expanded_path = validate_download_path(&output_path, &picked_dirs(&app))?;
     // Auto-numbering against disk + other active downloads happens inside the
     // manager, atomically with reserving the template (two adds of the same
@@ -636,6 +639,15 @@ fn partial_bytes(template: &str) -> u64 {
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
 /// subfolders kept, `%` escaped (yt-dlp would expand it), `.%(ext)s` appended.
+/// Whether a yt-dlp `-o` path's only template field is the trailing
+/// `.%(ext)s` (`%%` is a literal `%`). Any other field is expanded by yt-dlp
+/// after the path was validated here — `%(title)s` names a folder the check
+/// never saw (REVIEW 2026-09-28).
+fn only_ext_field(path: &str) -> bool {
+    let body = path.strip_suffix(".%(ext)s").unwrap_or(path);
+    !body.replace("%%", "").contains('%')
+}
+
 pub(crate) fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
     let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
     let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
@@ -2877,6 +2889,14 @@ mod tests {
         write_private(&file, "--proxy \"http://u:p@h:1\"\n").unwrap();
         assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_output_path_carries_no_template_fields_but_its_extension() {
+        assert!(only_ext_field("/dl/Talk.%(ext)s"));
+        assert!(only_ext_field("/dl/100%% Music/Talk.%(ext)s"), "an escaped percent is a literal");
+        assert!(!only_ext_field("/dl/%(uploader)s/Talk.%(ext)s"));
+        assert!(!only_ext_field("/dl/%(title|/etc)s.%(ext)s"));
     }
 
     #[test]
