@@ -110,9 +110,13 @@ async fn fetch_capped(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, Pr
 /// Falling back to a plain link keeps feeds that carry no enclosure working;
 /// those entries are pages, and yt-dlp is the right engine for a page.
 fn entry_url(entry: &feed_rs::model::Entry) -> Option<String> {
+    // Only what a download can start from: a feed is remote content, and a
+    // `file://` (or `\\server`) enclosure would have Prism reach for a path
+    // the feed chose (REVIEW 2026-09-28 S-3).
     let clean = |s: &str| {
         let t = s.trim();
-        (!t.is_empty()).then(|| t.to_string())
+        let lower = t.to_ascii_lowercase();
+        ["http://", "https://", "magnet:"].iter().any(|p| lower.starts_with(p)).then(|| t.to_string())
     };
 
     // Atom: stated outright.
@@ -242,6 +246,24 @@ mod tests {
         assert_eq!(info.entries[0].title, "Episode One");
         // The file, not the page it is described on.
         assert_eq!(info.entries[0].url, "https://example.com/files/ep1.mp3");
+    }
+
+    // Regression (REVIEW 2026-09-28 S-3): a feed's enclosure could name a
+    // local or network file.
+    #[test]
+    fn an_enclosure_that_is_not_a_web_or_magnet_link_is_ignored() {
+        let info = parse(
+            r#"<?xml version="1.0"?>
+            <rss version="2.0"><channel>
+              <title>Odd Cast</title>
+              <item>
+                <title>Episode One</title>
+                <link>https://example.com/episodes/1</link>
+                <enclosure url="file://evil/share/x.torrent" length="9" type="application/x-bittorrent"/>
+              </item>
+            </channel></rss>"#,
+        );
+        assert_eq!(info.entries[0].url, "https://example.com/episodes/1");
     }
 
     #[test]

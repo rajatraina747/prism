@@ -905,6 +905,10 @@ fn resolve_torrent_source(raw: &str, extra_roots: &[PathBuf]) -> Result<torrent:
         return match u.scheme() {
             "magnet" | "http" | "https" => Ok(torrent::TorrentSource::Url(s.to_string())),
             "file" => {
+                // `file://host/share/x.torrent` is a network path (S-3).
+                if u.host_str().is_some_and(|h| !h.is_empty() && !h.eq_ignore_ascii_case("localhost")) {
+                    return Err("Torrent files on another computer can't be opened directly: copy it here first".into());
+                }
                 let p = u
                     .to_file_path()
                     .map_err(|_| "Invalid torrent file path".to_string())?;
@@ -998,6 +1002,7 @@ pub(crate) fn validate_open_path(
     extra_roots: &[PathBuf],
 ) -> Result<String, String> {
     let expanded = expand_tilde(path);
+    refuse_network_path(&expanded, extra_roots)?;
     let p = std::path::Path::new(&expanded);
     let kind_ok = p.is_file() || (allow_dir && p.is_dir());
     if !p.is_absolute() || !kind_ok {
@@ -1851,6 +1856,7 @@ fn denied_subtree(resolved: &std::path::Path, home: &std::path::Path) -> Option<
 /// Validate that a download path doesn't escape allowed directories via traversal.
 pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Result<String, String> {
     let expanded = expand_tilde(path);
+    refuse_network_path(&expanded, extra_roots)?;
     let path_buf = PathBuf::from(&expanded);
 
     if !path_buf.is_absolute() {
@@ -1891,6 +1897,42 @@ pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Res
     }
 
     Ok(expanded)
+}
+
+/// Refuse a network or device path before anything touches it, unless it is
+/// inside a folder the user picked (a NAS chosen in the folder dialog). On
+/// Windows even `exists()` on `\\server\share\x` opens an SMB connection
+/// that sends the user's login hash to that server, so a later "outside the
+/// allowed folders" answer came too late (REVIEW 2026-09-28 S-3). Decided on
+/// the string alone.
+pub(crate) fn refuse_network_path(path: &str, picked: &[PathBuf]) -> Result<(), String> {
+    let Some(share) = network_location(path) else { return Ok(()) };
+    let inside_picked = picked
+        .iter()
+        .filter_map(|r| network_location(&r.to_string_lossy()))
+        .any(|root| share == root || share.starts_with(&format!("{}\\", root.trim_end_matches('\\'))));
+    if inside_picked {
+        Ok(())
+    } else {
+        log::warn!("refused network path {path}");
+        Err("Prism only uses network folders you have chosen in Settings".into())
+    }
+}
+
+/// `path` as `\\server\share\…` (lower case, backslashes) when it names a
+/// network location or a device, else None. `\\?\C:\…` is a local drive;
+/// `\\?\UNC\…` is the long form of a share; any other `\\?\` or `\\.\`
+/// path is a device namespace, never allowed.
+fn network_location(path: &str) -> Option<String> {
+    let p = path.trim().replace('/', "\\").to_ascii_lowercase();
+    if let Some(rest) = p.strip_prefix("\\\\?\\unc\\") {
+        return Some(format!("\\\\{rest}"));
+    }
+    if let Some(rest) = p.strip_prefix("\\\\?\\") {
+        let local_drive = rest.len() >= 2 && rest.as_bytes()[0].is_ascii_alphabetic() && rest.as_bytes()[1] == b':';
+        return (!local_drive).then_some(p);
+    }
+    p.starts_with("\\\\").then_some(p)
 }
 
 const HOME_ITSELF: &str =
@@ -2759,6 +2801,25 @@ mod tests {
 
     /// The refusals are what matter here. Nothing is actually trashed: a test
     /// that threw real files away to prove it could would be a bad trade.
+    // Regression (REVIEW 2026-09-28 S-3): on Windows, touching
+    // `\\server\share` sends the user's login hash to that server, and the
+    // checks touched it before refusing it.
+    #[test]
+    fn network_paths_are_refused_before_anything_touches_them() {
+        for p in [r"\\evil\share\x.mp4", "//evil/share/x", r"\\?\UNC\evil\share\x", r"\\.\pipe\x", r"\\?\GLOBALROOT\Device\Mup\evil\x"] {
+            assert!(refuse_network_path(p, &[]).is_err(), "{p}");
+            assert!(validate_open_path(p, true, &[]).is_err(), "{p}");
+            assert!(validate_download_path(p, &[]).is_err(), "{p}");
+        }
+        for p in [r"C:\Users\me\Downloads\x.mp4", r"\\?\C:\Users\me\x", "/Users/me/Downloads/x"] {
+            assert!(refuse_network_path(p, &[]).is_ok(), "{p}");
+        }
+        let picked = [PathBuf::from(r"\\?\UNC\nas\Media")];
+        assert!(refuse_network_path(r"\\NAS\media\Films\x.mkv", &picked).is_ok(), "inside a folder the user chose");
+        assert!(refuse_network_path(r"\\nas\media2\x.mkv", &picked).is_err(), "a sibling share is not inside it");
+        assert!(resolve_torrent_source("file://evil/share/x.torrent", &[]).is_err());
+    }
+
     #[test]
     fn trashable_paths_refuses_what_it_should() {
         assert!(trashable_paths(&[], &[], &[]).is_err(), "an empty request is a mistake, not a no-op");

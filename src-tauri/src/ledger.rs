@@ -91,8 +91,12 @@ impl Ledger {
     }
 
     /// For each path, whether it was recorded and is no longer on disk.
+    /// The record is checked first: only a path Prism wrote is ever looked for
+    /// on disk, so the page can't make it touch `\\server\share` (on Windows
+    /// that alone sends the user's login hash to the server — REVIEW
+    /// 2026-09-28 S-3).
     pub(crate) fn missing(&self, paths: &[PathBuf]) -> Vec<bool> {
-        paths.iter().map(|p| !p.exists() && self.index.contains(&key(p))).collect()
+        paths.iter().map(|p| self.index.contains(&key(p)) && !p.exists()).collect()
     }
 
     /// Whether `canonical` is a recorded file, or inside a recorded folder.
