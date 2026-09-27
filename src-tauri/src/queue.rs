@@ -618,6 +618,7 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
     let prefs = Prefs::read(app);
     let category = rules::classify(code, message).category;
     let mut retry_in = None;
+    let mut retry_at = String::new();
     let failed = {
         let mut inner = state.lock();
         inner.running.remove(id);
@@ -640,7 +641,8 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
                 // Holds its slot while it waits: a pause or cancel meanwhile wins.
                 let at = chrono::Utc::now() + chrono::Duration::milliseconds(delay as i64);
                 let reason = rules::classify(code, message).suggestion;
-                if rules::mark_retry_wait(item, &at.to_rfc3339(), reason) {
+                retry_at = at.to_rfc3339();
+                if rules::mark_retry_wait(item, &retry_at, reason) {
                     inner.touched(id, true);
                 }
                 None
@@ -661,7 +663,10 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
             if let Some(state) = manager(&app) {
                 let mut inner = state.lock();
                 if let Some(item) = inner.find(&id) {
-                    if rules::requeue_for_retry(item) {
+                    // Only the wait this timer was set for: a pause, resume or
+                    // Retry since then cleared it, and a newer failure set its
+                    // own (REVIEW 2026-09-28 D-2).
+                    if rules::requeue_for_retry(item, &retry_at) {
                         inner.touched(&id, true);
                     }
                 }

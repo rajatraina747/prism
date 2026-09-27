@@ -177,8 +177,12 @@ pub fn fail(item: &mut Item, error: Value) -> bool {
     true
 }
 
-pub fn requeue_for_retry(item: &mut Item) -> bool {
-    if status(item) != "downloading" {
+/// Requeue after an automatic-retry wait, but only the wait that was set at
+/// `scheduled_at`. Without that check, a timer from an earlier failure fired
+/// into a run the user had paused and resumed (or retried) in the meantime,
+/// knocking it back to queued and starting a second copy (D-2).
+pub fn requeue_for_retry(item: &mut Item, scheduled_at: &str) -> bool {
+    if status(item) != "downloading" || item.get("retryAt").and_then(Value::as_str) != Some(scheduled_at) {
         return false;
     }
     set(item, "status", json!("queued"));
@@ -244,6 +248,7 @@ pub fn retry(item: &mut Item) -> bool {
     set(item, "retryAttempt", json!(0));
     reset_counters(item);
     item.remove("error");
+    clear_retry_wait(item);
     true
 }
 
@@ -714,7 +719,7 @@ mod tests {
         let mut paused = item("a", "paused", json!({}));
         assert!(!complete(&mut paused, &Finish::default()), "user pause wins over a late completion");
         assert!(!fail(&mut paused, json!({})));
-        assert!(!requeue_for_retry(&mut paused));
+        assert!(!requeue_for_retry(&mut paused, "2026-09-26T16:12:24Z"));
         assert_eq!(status(&paused), "paused");
 
         let mut running = item("a", "downloading", json!({"totalBytes": 10}));
@@ -749,8 +754,8 @@ mod tests {
 
     #[test]
     fn retries_reset_counters_and_budgets() {
-        let mut i = item("a", "downloading", json!({"progress": 40, "downloadedBytes": 400, "totalBytes": 1000, "retryAttempt": 1}));
-        assert!(requeue_for_retry(&mut i));
+        let mut i = item("a", "downloading", json!({"progress": 40, "downloadedBytes": 400, "totalBytes": 1000, "retryAttempt": 1, "retryAt": "t"}));
+        assert!(requeue_for_retry(&mut i, "t"));
         assert_eq!((status(&i), i["retryAttempt"].as_u64(), i["progress"].as_u64(), i["totalBytes"].as_u64()), ("queued", Some(2), Some(0), Some(1000)));
         let mut failed = item("a", "failed", json!({"retryAttempt": 2, "error": {"message": "x"}}));
         retry(&mut failed);
@@ -838,12 +843,38 @@ mod tests {
         assert!(mark_retry_wait(&mut it, "2026-09-26T16:12:24Z", "Rate limited by the site"));
         assert_eq!((num(&it, "speed"), num(&it, "eta")), (0.0, 0.0), "no stale speed or ETA");
         assert_eq!(it.get("retryAt"), Some(&json!("2026-09-26T16:12:24Z")));
-        assert!(requeue_for_retry(&mut it));
+        assert!(requeue_for_retry(&mut it, "2026-09-26T16:12:24Z"));
         assert!(it.get("retryAt").is_none() && it.get("retryReason").is_none(), "gone once it runs again");
         let mut paused = item("p", "downloading", json!({}));
         mark_retry_wait(&mut paused, "2026-09-26T16:12:24Z", "x");
         pause(&mut paused);
         assert!(paused.get("retryAt").is_none(), "a paused row isn't waiting to retry");
+    }
+
+    // Regression (REVIEW 2026-09-28 D-2): a pause and resume (or a Retry)
+    // inside the backoff, then the old timer fires on the new run.
+    #[test]
+    fn a_stale_retry_timer_leaves_a_later_run_alone() {
+        let at = "2026-09-28T10:00:00Z";
+        let mut it = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut it, at, "Rate limited by the site");
+        pause(&mut it);
+        resume(&mut it);
+        set(&mut it, "status", json!("downloading")); // the queue started it again
+        assert!(!requeue_for_retry(&mut it, at), "the new run is not the one that was waiting");
+        assert_eq!((status(&it), num(&it, "retryAttempt")), ("downloading", 0.0));
+
+        let mut retried = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut retried, at, "x");
+        retry(&mut retried);
+        set(&mut retried, "status", json!("downloading"));
+        assert!(!requeue_for_retry(&mut retried, at), "Retry by hand ends the wait too");
+
+        let mut again = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut again, at, "x");
+        mark_retry_wait(&mut again, "2026-09-28T10:05:00Z", "x");
+        assert!(!requeue_for_retry(&mut again, at), "a newer failure's wait belongs to its own timer");
+        assert!(requeue_for_retry(&mut again, "2026-09-28T10:05:00Z"));
     }
 
     #[test]
