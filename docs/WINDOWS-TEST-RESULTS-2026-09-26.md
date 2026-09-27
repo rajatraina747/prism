@@ -58,8 +58,15 @@ Every row re-run on the final code (main after PR #18, plus #30 below), on this 
     `vcodec`, `formats::options` read that as audio-only, and the dialog's Add stayed disabled. Fixed on
     `windows-green`; archive.org now offers 720p / 360p / 300p and downloads.
 
-Still for a person: A3 (SmartScreen on a downloaded installer), F1 (watching colours and smoothness), G4
-(sleep / shut down the PC).
+Rows run with a person at the PC:
+
+| Row | Result |
+|---|---|
+| A3 | PASS — installer given Mark of the Web (Zone.Identifier, ZoneId=3): SmartScreen's "Windows protected your PC" appeared; More info → Run anyway installed over the running app ("Prism is running! Click OK to kill it" → OK) |
+| F1 | PASS — 1080p and 4K (2160p60 VP9) played in Prism's player on the NVIDIA GPU: correct colours, smooth, seeking responsive |
+| G4 | PASS — "When everything finishes: Sleep": Cancel during the 60 s countdown kept the PC awake; left alone, it put the PC to sleep after the download finished. Shut down not run (would switch the PC off). |
+
+Every row of `docs/WINDOWS-TEST-PLAN.md` is now green on Windows.
 
 ## Summary
 
