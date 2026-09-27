@@ -104,45 +104,47 @@ impl Ledger {
         key(canonical).ancestors().any(|p| self.index.contains(p))
     }
 
-    /// The one-time seed: every path the Library's records point at. A torrent's
-    /// output folder counts only when it had several files (then it owns the
-    /// folder); otherwise it is the shared destination.
+    /// The one-time seed, for Libraries from before the ledger existed: every
+    /// file the Library's records point at. Only files, and only ones that
+    /// are there — never a folder. `history.json` is a file the page can
+    /// write, and a planted `"outputFolder": "~/Documents"` used to make the
+    /// whole of Documents count as downloaded (REVIEW 2026-09-28 S-5). A
+    /// multi-file torrent's folder is recorded file by file instead, from its
+    /// own list.
     pub(crate) fn seed_from_history(&mut self, history_json: &str) {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Item {
             file_path: Option<String>,
             output_folder: Option<String>,
-            files: Option<Vec<serde_json::Value>>,
-            settings: Option<Settings>,
+            files: Option<Vec<File>>,
         }
         #[derive(Deserialize)]
-        struct Settings {
-            destination: Option<String>,
+        struct File {
+            name: Option<String>,
         }
+        let is_plain_file = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file());
         let items: Vec<Item> = serde_json::from_str(history_json).unwrap_or_default();
         for item in items {
-            let destination = item.settings.and_then(|s| s.destination).map(|d| crate::expand_tilde(&d));
-            let shared = |p: &str| destination.as_deref().is_some_and(|d| same_path(p, d));
             if let Some(file) = item.file_path.as_deref().map(crate::expand_tilde) {
-                if !shared(&file) {
+                if is_plain_file(Path::new(&file)) {
                     self.record(Path::new(&file));
                 }
             }
-            if item.files.as_ref().is_some_and(|f| f.len() > 1) {
-                if let Some(folder) = item.output_folder.as_deref().map(crate::expand_tilde) {
-                    if !shared(&folder) {
-                        self.record(Path::new(&folder));
-                    }
+            let (Some(folder), Some(files)) = (item.output_folder.as_deref().map(crate::expand_tilde), item.files) else {
+                continue;
+            };
+            for name in files.iter().filter_map(|f| f.name.as_deref()) {
+                let inside = Path::new(name);
+                let stays_inside = inside.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+                let path = Path::new(&folder).join(inside);
+                if stays_inside && is_plain_file(&path) {
+                    self.record(&path);
                 }
             }
         }
         self.seeded = true;
     }
-}
-
-fn same_path(a: &str, b: &str) -> bool {
-    a.trim_end_matches(['/', '\\']) == b.trim_end_matches(['/', '\\'])
 }
 
 // ── Process-wide store ──────────────────────────────────────────────────
@@ -313,32 +315,39 @@ mod tests {
         assert!(!ledger.record(Path::new("/definitely/not/here.mp4")));
     }
 
-    // Regression (REVIEW 2026-09-23 B-3): a single-file torrent recorded the
-    // shared destination as its path; seeding must never trust that.
+    // Regressions: REVIEW 2026-09-23 B-3 (a single-file torrent recorded the
+    // shared destination as its path) and 2026-09-28 S-5 (a planted
+    // outputFolder authorised a whole folder). The seed records files only.
     #[test]
-    fn seeding_skips_the_shared_destination() {
+    fn seeding_records_files_never_folders() {
         let dir = tmp("seed");
         let dest = dir.join("Downloads");
-        std::fs::create_dir_all(dest.join("Pack")).unwrap();
+        std::fs::create_dir_all(dest.join("Pack/Extras")).unwrap();
         std::fs::write(dest.join("film.mkv"), b"x").unwrap();
+        std::fs::write(dest.join("Pack/ep1.mkv"), b"x").unwrap();
+        std::fs::write(dest.join("Pack/Extras/ep1.srt"), b"x").unwrap();
+        std::fs::write(dest.join("mine.docx"), b"x").unwrap();
         // JSON-escaped: a Windows path's backslashes are escapes otherwise, the
         // history fails to parse, and nothing is seeded.
         let quoted = serde_json::to_string(&dest.to_string_lossy()).unwrap();
         let d = &quoted[1..quoted.len() - 1];
         let history = format!(
             r#"[
-              {{"filePath":"{d}/film.mkv","settings":{{"destination":"{d}"}}}},
-              {{"filePath":"{d}","outputFolder":"{d}","files":[{{}}],"settings":{{"destination":"{d}"}}}},
-              {{"outputFolder":"{d}/Pack","files":[{{}},{{}}],"settings":{{"destination":"{d}"}}}},
-              {{"outputFolder":"{d}","files":[{{}},{{}}],"settings":{{"destination":"{d}"}}}}
+              {{"filePath":"{d}/film.mkv"}},
+              {{"filePath":"{d}","outputFolder":"{d}","files":[{{}}]}},
+              {{"outputFolder":"{d}/Pack","files":[{{"name":"ep1.mkv"}},{{"name":"Extras/ep1.srt"}},{{"name":"../mine.docx"}}]}},
+              {{"outputFolder":"{d}","files":[{{}},{{}}]}}
             ]"#
         );
         let mut ledger = Ledger::default();
         ledger.seed_from_history(&history);
         assert!(ledger.seeded);
         assert!(ledger.contains(&dest.join("film.mkv")));
-        assert!(ledger.contains(&dest.join("Pack")));
-        assert!(!ledger.contains(&dest), "the destination itself is never recorded");
+        assert!(ledger.contains(&dest.join("Pack/ep1.mkv")));
+        assert!(ledger.contains(&dest.join("Pack/Extras/ep1.srt")));
+        assert!(!ledger.contains(&dest.join("Pack")), "never a folder");
+        assert!(!ledger.contains(&dest), "never the destination");
+        assert!(!ledger.contains(&dest.join("mine.docx")), "a name can't climb out of its folder");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
