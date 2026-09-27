@@ -32,6 +32,9 @@ use crate::errors::{ErrorCode, PrismError};
 const DEFAULT_CONNECTIONS: usize = 4;
 /// Below this per-connection share, extra connections cost more than they win.
 const MIN_SEGMENT: u64 = 4 * 1024 * 1024;
+/// A segment's written bytes count as done only after they have been handed
+/// to the OS, at most this many at a time (see `ranged`).
+const PUBLISH_EVERY: u64 = 4 * 1024 * 1024;
 /// Consecutive failures one connection survives before the download fails.
 const SEGMENT_RETRIES: u32 = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -397,6 +400,13 @@ async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment
         segments,
     };
     let Ok(text) = serde_json::to_string(&state) else { return };
+    // Every byte the state counts reached the OS before this snapshot (see
+    // `ranged`); make it reach the disk before the state says so (C-5).
+    if let Ok(file) = tokio::fs::OpenOptions::new().write(true).open(&part).await {
+        if file.sync_data().await.is_err() {
+            return;
+        }
+    }
     let tmp = with_suffix(state_path, ".tmp");
     if tokio::fs::write(&tmp, text).await.is_ok() {
         let _ = tokio::fs::rename(&tmp, state_path).await;
@@ -603,16 +613,33 @@ async fn fetch_range(
     file.seek(SeekFrom::Start(from)).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
 
     let mut position = from;
+    // Bytes written but not yet counted in `done`. The saved state is what a
+    // resume trusts, so it may only count bytes the OS has: tokio's
+    // `write_all` returns once a chunk is buffered, and a crash then left the
+    // state claiming bytes the (preallocated) file held as zeros — resumed as
+    // zeros, unnoticed without a checksum (REVIEW 2026-09-28 C-5). Counted
+    // after a flush; `save_state` syncs the file before it writes the state.
+    let mut unpublished = 0u64;
+    let publish = |bytes: u64| {
+        if let Ok(mut s) = segments.lock() {
+            let len = s[index].len();
+            s[index].done = (s[index].done + bytes).min(len);
+        }
+    };
     // The end is read afresh for every chunk: another connection may have
     // taken over the second half of this segment (`next_segment`).
     let current_end = || segments.lock().map(|s| s[index].end).unwrap_or(seg.end);
     while position <= current_end() {
         if t.cancel.load(Ordering::Relaxed) {
-            let _ = file.flush().await;
+            if file.flush().await.is_ok() {
+                publish(unpublished);
+            }
             return Err(Attempt::Cancelled);
         }
         let Some(chunk) = resp.chunk().await.map_err(|e| Attempt::Retry(network_error(&e)))? else {
-            let _ = file.flush().await;
+            if file.flush().await.is_ok() {
+                publish(unpublished);
+            }
             return Err(Attempt::Retry(PrismError::new(ErrorCode::Network, "The connection closed early")));
         };
         let end = current_end();
@@ -626,12 +653,16 @@ async fn fetch_range(
         t.global.acquire(n).await;
         file.write_all(&chunk).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
         position += n;
-        if let Ok(mut s) = segments.lock() {
-            s[index].done += n;
+        unpublished += n;
+        if unpublished >= PUBLISH_EVERY {
+            file.flush().await.map_err(|e| Attempt::Fatal(io_error(e)))?;
+            publish(unpublished);
+            unpublished = 0;
         }
         t.downloaded.fetch_add(n, Ordering::Relaxed);
     }
     file.flush().await.map_err(|e| Attempt::Fatal(io_error(e)))?;
+    publish(unpublished);
     Ok(())
 }
 
