@@ -15,6 +15,67 @@ what remains open is below. Completed items live in git history.
 - [x] **Per-site smart preset** that remembers last-used settings per domain
   (`perSitePresets`, keyed via `siteKey`).
 
+## 2.4 roadmap — from the 2026-09-28 third-party review
+
+A ground-up review of 2.3.0, from the code alone. Full findings, file:line citations and the
+competitor comparison are in [docs/REVIEW-2026-09-28.md](docs/REVIEW-2026-09-28.md); IDs below
+are that document's. Not started; Phase 0 waits on Rajat's go-ahead. One commit per item on
+`roadmap/2.4`, each with a regression test at the seam the review names.
+
+### Phase 0 — 2.3.1 "Never delete what isn't ours"
+- [ ] **D-1 + C-3** Cancel deletes only the files Rust claimed for that id, by exact suffix, to the Trash; `queue_add` validates `destination`; revoke `store_save_queue`.
+- [ ] **D-2** Retry timer carries a generation token.
+- [ ] **D-3** Failed torrents are deleted from the librqbit session.
+- [ ] **D-4** libmpv event callback: no borrow of the freed userdata box.
+- [ ] **S-2** Multi-file torrent never writes into an existing folder it doesn't own.
+- [ ] **C-1** "When done" countdown cancelled when new work arrives.
+- [ ] **D-5** Start action for held (`ready`) items.
+- [ ] **D-6** Statistics no longer double-count on launch.
+- [ ] **D-7** Transfers shortcuts leave buttons and confirm dialogs alone.
+- [ ] **C-10** Extension toolbar button works (`activeTab`).
+
+### Phase 1 — 2.3.2 hardening
+- [ ] **S-3** Windows UNC / `file://host` refused before any filesystem call.
+- [ ] **S-4** Clipboard watcher stores a hash, not the text.
+- [ ] **S-5** Ledger seeded from SQLite, files only.
+- [ ] **S-6** yt-dlp update signature + whole-tree manifest.
+- [ ] **C-2** Job ticket taken before start-up checks.
+- [ ] **C-4** Cancel of a non-running torrent discards its data.
+- [ ] **C-5** fsync before resume state; **C-6** single-stream state file.
+- [ ] **C-7** Windows graceful stop.
+- [ ] **C-8** `queue_restore` for undo; **C-9** sequence numbers on snapshot/patch.
+- [ ] **C-11–C-13** Draft-then-commit inputs; shortcut key recorder.
+- [ ] Low security items (review §4).
+
+### Phase 2 — 2.4 performance
+- [ ] **P-1/P-2/P-6** Diff-based queue saves, off the async and main threads.
+- [ ] **P-3** Async queue commands, one settings read per tick.
+- [ ] **P-4/P-5** Torrent file lists on demand; one progress channel.
+- [ ] **P-7** Torrent session init outside the lock.
+- [ ] **P-8–P-11** Split queue contexts, stable row callbacks, subscription scheduler refs, debounced missing-files.
+- [ ] **P-12** Lazy routes. UI state out of `settings.json`.
+
+### Phase 3 — 2.4 architecture
+- [ ] **A-1** Demo engine moves into `MockPrismService`; AppProvider has one path.
+- [ ] **A-2** One `buildItem` factory. **A-3** One error classifier, in Rust.
+- [ ] Align concurrency caps; delete dead code; split Settings / Dashboard / AppProvider.
+- [ ] Rust tests on the macOS CI runner.
+- [ ] React 19 / Vite 7 / Tailwind 4, one per commit.
+
+### Phase 4 — 2.5 UX
+- [ ] Terminology pass; Settings regroup + search; one destructive-action policy.
+- [ ] Empty-state actions, shortcut sheet, Library keyboard, ⌘F; contrast and type scale.
+- [ ] One add pipeline; add-time clip / start-after / checksum / hold.
+- [ ] Conversion UI; bulk retry and edit; per-item speed limit; custom presets; per-subscription options.
+- [ ] i18n scaffold.
+
+### Phase 5 — competitive gaps
+- [ ] Capture for unsupported pages (UGE-style).
+- [ ] Safari Web Extension.
+- [ ] Optional LAN web UI (off by default, token-guarded).
+- [ ] Torrent creation.
+- [ ] Smart mode (one-click defaults).
+
 ## 2.3 roadmap — from the 2026-09-26 third-party review
 
 A fresh, ground-up review of 2.2.1 (no docs or earlier reviews consulted).
