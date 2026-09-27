@@ -387,11 +387,34 @@ fn start_engine(app: &AppHandle, item: Item, quiet_hours_limit: Option<u64>) {
                 .map_err(|e| (e, None))
             }
         };
-        if let Err((message, code)) = result {
-            log::warn!("queue: {id} didn't start: {message}");
-            on_failure(&app, &id, &message, code.as_deref(), None);
+        match result {
+            Err((message, code)) => {
+                log::warn!("queue: {id} didn't start: {message}");
+                on_failure(&app, &id, &message, code.as_deref(), None);
+            }
+            // The engine holds its own ticket once its start call returns, so
+            // a stop from here on reaches it. One that came earlier — while the
+            // start checked the folder and disk space — found nothing to stop,
+            // and the engine ran on for a paused or cancelled item (REVIEW
+            // 2026-09-28 C-2). Look again now.
+            Ok(()) if stopped_while_starting(&app, &id) => {
+                log::info!("queue: {id} was stopped while it started");
+                stop_engine(&app, &id).await;
+            }
+            Ok(()) => {}
         }
     });
+}
+
+/// Whether the user paused, cancelled or removed `id` after the queue
+/// started it. Queued isn't: that is a resume, with a new start on its way.
+fn stopped_while_starting(app: &AppHandle, id: &str) -> bool {
+    let Some(state) = manager(app) else { return false };
+    let mut inner = state.lock();
+    match inner.find(id).map(|i| &*i) {
+        Some(item) => rules::was_stopped(item),
+        None => true,
+    }
 }
 
 /// Where Rust keeps the `-o` template a video item's run actually claimed
