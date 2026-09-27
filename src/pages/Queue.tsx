@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
+import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
@@ -21,11 +21,10 @@ import type { TransfersFilter, TransfersSort } from '@/types/models';
 
 export default function Queue() {
   const {
-    items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
+    items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
     startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData,
     moveToTop, moveToBottom,
   } = useQueue();
-  const { removeFromHistory } = useHistory();
   const { preferences, updatePreference } = useSettings();
   const service = useService();
 
@@ -41,46 +40,30 @@ export default function Queue() {
     }
     const title = item?.metadata.title ?? 'download';
 
-    // A torrent is paused for the length of the toast rather than cancelled
-    // outright: the engine keeps its handle, so undoing is instant and costs
-    // no re-check. The real cancel happens when the toast goes. The wording
-    // says "Canceling" because the row will read Paused until then.
-    if (item?.kind === 'torrent') {
-      let undone = false;
-      const finish = () => { if (!undone) cancelDownload(id); };
-      pauseDownload(id);
-      toast(`Canceling: ${title}`, {
-        action: {
-          label: 'Undo',
-          // Clicking the action also dismisses the toast, so the flag is what
-          // stops the dismissal handler cancelling what was just resumed.
-          onClick: () => { undone = true; resumeDownload(id); },
-        },
-        onAutoClose: finish,
-        onDismiss: finish,
-        duration: 6000,
-      });
-      return;
-    }
-
-    // yt-dlp and direct downloads keep their partial file when cancelled, and
-    // both engines resume from it (--continue, and the .prismpart state file).
-    // So the counters carry over: zeroing them showed a restart that was never
-    // going to happen.
-    cancelDownload(id);
-    toast(`Canceled: ${title}`, {
+    // Paused for the length of the toast rather than cancelled outright, and
+    // cancelled when the toast goes. A cancel deletes what the download wrote,
+    // so this is the only undo that gets it back: Undo resumes from where it
+    // stopped. Every kind works this way now. Undoing a yt-dlp or direct
+    // download used to remove the cancelled item and add it again under the
+    // same id — two calls the queue could take in either order, the second
+    // dropping the first — and restart it from nothing (REVIEW 2026-09-28
+    // C-8). The wording says "Canceling" because the row reads Paused until then.
+    const wasRunning = item?.status === 'downloading' || item?.status === 'queued';
+    let undone = false;
+    const finish = () => { if (!undone) cancelDownload(id); };
+    if (wasRunning) pauseDownload(id);
+    toast(`Canceling: ${title}`, {
       action: {
         label: 'Undo',
-        onClick: () => {
-          if (!item) return;
-          removeFromQueue(id);
-          removeFromHistory(id);
-          addToQueue({ ...item, status: 'queued', speed: 0, eta: 0, error: undefined });
-        },
+        // Clicking the action also dismisses the toast, so the flag is what
+        // stops the dismissal handler cancelling what was just resumed.
+        onClick: () => { undone = true; if (wasRunning) resumeDownload(id); },
       },
+      onAutoClose: finish,
+      onDismiss: finish,
       duration: 6000,
     });
-  }, [items, cancelDownload, pauseDownload, resumeDownload, removeFromQueue, removeFromHistory, addToQueue]);
+  }, [items, cancelDownload, pauseDownload, resumeDownload]);
 
   const [search, setSearch] = useState('');
   // Kept local, like the search box: a filter you can't see the effect of is
