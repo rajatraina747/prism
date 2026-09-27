@@ -40,9 +40,33 @@ on Windows: Rust **255 passed / 0 failed** (they could not start before), Vitest
 | 29 | No `.srt` copies beside embedded subtitles (`c9e1f8d`) | D5: one file with eng + spa tracks |
 | — | Extension build falls back to Windows tar (`77bcf9c`) | extension e2e passes on Windows |
 
-Still for a person: F1 colours/smoothness, G4 (sleep/shut down), A3 (downloaded installer), B3 (needs a newer
-yt-dlp). Not re-run after the fixes (unchanged code, passed before): A1/A2, B1/B2, C2–C4, D1–D4, D6–D11,
-E3/E4/E6, G3, G5.
+## Full re-run on the merged build (2026-09-27)
+
+Every row re-run on the final code (main after PR #18, plus #30 below), on this PC:
+
+| Rows | Result |
+|---|---|
+| A1, A2 | PASS — real 2.2.1 installed from the v2.2.1 release, one download finished and one paused at 35%, then the new build installed over it: JSON untouched, "copied the JSON data into prism.db", 7 Library entries and the paused item kept, nothing restarted, `prism.bak.db` created, 2.2.1's `yt-dlp.exe` removed. The paused item later resumed from its 2.2.1 partial and finished byte-exact. |
+| B1, B2 | PASS — dialogs in 5–8 s; no new `_MEI` folders |
+| B3 | PASS — test build bundling yt-dlp 2026.07.04: "2026.08.19 is available"; updated while a download ran (the download kept going); a download that the old engine got 403 on succeeded after the update. |
+| C1–C4 | PASS — hide + notification; X with the toggle off asks; Keep running / Quit; idle quit is immediate; no orphaned yt-dlp |
+| D1–D13 | PASS — incl. D7 kill at 60.7% → resumed, byte-exact; D9 Seeding tag, move, SHA-256; D10 resume from byte 41,679,620; D11 via socks5h |
+| E1–E6 | PASS — E3's Explorer selection lags in a OneDrive folder (folder opens; file selected on a second try), which is Explorer's |
+| F2, G1–G3, G5 | PASS |
+
+30. **Sites that don't report a codec had no qualities** (found re-testing B3): archive.org's formats have no
+    `vcodec`, `formats::options` read that as audio-only, and the dialog's Add stayed disabled. Fixed on
+    `windows-green`; archive.org now offers 720p / 360p / 300p and downloads.
+
+Rows run with a person at the PC:
+
+| Row | Result |
+|---|---|
+| A3 | PASS — installer given Mark of the Web (Zone.Identifier, ZoneId=3): SmartScreen's "Windows protected your PC" appeared; More info → Run anyway installed over the running app ("Prism is running! Click OK to kill it" → OK) |
+| F1 | PASS — 1080p and 4K (2160p60 VP9) played in Prism's player on the NVIDIA GPU: correct colours, smooth, seeking responsive |
+| G4 | PASS — "When everything finishes: Sleep": Cancel during the 60 s countdown kept the PC awake; left alone, it put the PC to sleep after the download finished. Shut down not run (would switch the PC off). |
+
+Every row of `docs/WINDOWS-TEST-PLAN.md` is now green on Windows.
 
 ## Summary
 

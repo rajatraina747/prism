@@ -197,7 +197,9 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             </div>
           )}
 
-          {!audioOnly && selectedFormat?.playsEverywhere === false && (
+          {/* Not for "Video" (the site didn't say which codec): the note
+              would read "Video video plays in…" and guess. */}
+          {!audioOnly && selectedFormat?.playsEverywhere === false && selectedFormat.codec !== 'Video' && (
             <p className="text-[11px] text-muted-foreground -mt-2">
               {IS_MAC
                 ? `${selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.`
