@@ -34,18 +34,18 @@ are that document's. Phase 0 done on `roadmap/2.4` (tag `roadmap24-p0`), not rel
 - [x] **D-7** Transfers shortcuts leave buttons and confirm dialogs alone.
 - [x] **C-10** Extension toolbar button works (`activeTab`).
 
-### Phase 1 — 2.3.2 hardening
-- [ ] **S-3** Windows UNC / `file://host` refused before any filesystem call.
-- [ ] **S-4** Clipboard watcher stores a hash, not the text.
-- [ ] **S-5** Ledger seeded from SQLite, files only.
-- [ ] **S-6** yt-dlp update signature + whole-tree manifest.
-- [ ] **C-2** Job ticket taken before start-up checks.
-- [ ] **C-4** Cancel of a non-running torrent discards its data.
-- [ ] **C-5** fsync before resume state; **C-6** single-stream state file.
-- [ ] **C-7** Windows graceful stop.
-- [ ] **C-8** `queue_restore` for undo; **C-9** sequence numbers on snapshot/patch.
-- [ ] **C-11–C-13** Draft-then-commit inputs; shortcut key recorder.
-- [ ] Low security items (review §4).
+### Phase 1 — 2.3.2 hardening (done on `roadmap/2.4-p1`, tag `roadmap24-p1`; not released)
+- [x] **S-3** Windows UNC / `file://host` refused before any filesystem call (unless inside a picked folder); feed entries yield only http(s)/magnet.
+- [x] **S-4** Clipboard watcher stores a fingerprint, not the text.
+- [x] **S-5** Ledger's first seed records existing files only, never folders (from `history.json` still — files-only is the fix).
+- [ ] **S-6** yt-dlp update signature — **open, needs a decision**: verifying yt-dlp's GPG signature on SHA2-256SUMS needs an OpenPGP crate (e.g. `pgp`). Whole-folder manifest: [x] done.
+- [x] **C-2** A stop during start-up is caught when the engine's start returns (the queue re-checks), rather than moving tickets.
+- [x] **C-4** Cancel of a non-running torrent discards its data (session delete, or own files from cached metainfo; never a finished download's).
+- [x] **C-5** Segment progress counted only after a flush; part file synced before the state. **C-6** single-stream state file.
+- [x] **C-7** Windows `taskkill` off the caller's thread. (The grace-period half is moot: onedir yt-dlp leaves no `_MEI*`.)
+- [x] **C-8** Undo = pause for the toast, cancel when it goes (no re-add). **C-9** sequence numbers on snapshot/patch.
+- [x] **C-11–C-13** `CommitInput` (blur/Enter); Rust refuses a global shortcut without Ctrl/Alt/Cmd.
+- [x] Low security items (review §4): envPrefix, thumbnail SSRF guard, proxy creds off argv + redacted, DHT/uTP off under a proxy, lookup cache same-site only, reported path checked, `-o` fields, name byte caps/depth/device names, stream Range edges, player_state lock, referrer shown. Deliberately not changed: `player_add_subtitle` ledger check (the picker is the feature), `img-src https:`, Entitlements, settings.json being page-writable (validated in Rust).
 
 ### Phase 2 — 2.4 performance
 - [ ] **P-1/P-2/P-6** Diff-based queue saves, off the async and main threads.
