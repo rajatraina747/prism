@@ -143,6 +143,9 @@ export function useStats() {
 }
 
 // ── Provider ──
+/** One countdown toast, so a call-off can dismiss it. */
+const WHEN_DONE_TOAST = 'when-done';
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const service = useService();
 
@@ -389,6 +392,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (remote) return; // Rust decides, and says so (when-done-countdown)
     const { state, start } = evaluateWhenDone(whenDoneRef.current, queue, settings);
+    // New work during the countdown calls it off (REVIEW 2026-09-28 C-1).
+    if (whenDoneRef.current.armed && state.wasBusy && whenDoneTimerRef.current) {
+      clearTimeout(whenDoneTimerRef.current);
+      whenDoneTimerRef.current = null;
+      toast.dismiss(WHEN_DONE_TOAST);
+      toast('Called off: there is more to download');
+    }
     whenDoneRef.current = state;
     if (!start) return;
 
@@ -406,6 +416,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, WHEN_DONE_COUNTDOWN_SECONDS * 1000);
 
     toast(`${whenDoneLabel(action)} in ${WHEN_DONE_COUNTDOWN_SECONDS} seconds`, {
+      id: WHEN_DONE_TOAST,
       description: 'Everything has finished downloading.',
       duration: WHEN_DONE_COUNTDOWN_SECONDS * 1000,
       action: { label: 'Cancel', onClick: cancel },
@@ -500,10 +511,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       whenDone: ({ action, seconds }) => {
         toast(`${whenDoneLabel(action)} in ${seconds} seconds`, {
+          id: WHEN_DONE_TOAST,
           description: 'Everything has finished downloading.',
           duration: seconds * 1000,
           action: { label: 'Cancel', onClick: () => { void remote.cancelWhenDone(); } },
         });
+      },
+      whenDoneCalledOff: () => {
+        toast.dismiss(WHEN_DONE_TOAST);
+        toast('Called off: there is more to download');
       },
     });
     // A torrent removed along with its files leaves the Library too.

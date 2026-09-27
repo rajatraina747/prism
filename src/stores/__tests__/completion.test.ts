@@ -32,9 +32,14 @@ const prefs = (over: Partial<{ whenDoneAction: WhenDoneAction; whenDoneIgnoresSe
 
 describe('isBusy', () => {
   it('counts everything that still needs Prism awake', () => {
-    for (const s of ['queued', 'parsing', 'ready', 'downloading'] as DownloadStatus[]) {
+    for (const s of ['queued', 'parsing', 'downloading'] as DownloadStatus[]) {
       expect(isBusy(item(s), false)).toBe(true);
     }
+  });
+
+  // Regression (REVIEW 2026-09-28 D-5)
+  it('does not count an item held until the user starts it', () => {
+    expect(isBusy(item('ready'), false)).toBe(false);
   });
 
   it('does not count a paused download, which will never finish on its own', () => {

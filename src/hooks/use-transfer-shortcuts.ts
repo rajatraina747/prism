@@ -18,9 +18,24 @@ function inEditable(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 }
 
+/** A control that owns Enter/Space/Backspace itself: a button, link,
+ * menu item, tab, switch or checkbox. Rows (`role="option"`) are not: the
+ * keys act on the selection there. */
+function isControl(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.closest(
+    'button, a[href], summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="switch"], [role="checkbox"], [role="slider"]',
+  ) !== null;
+}
+
+/** An open modal or menu: the page behind it must not react to keys. */
+const OPEN_OVERLAY =
+  '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]';
+
 /**
  * Keyboard shortcuts for the Transfers page. Inactive while an input has
- * focus or a dialog/menu is open (Radix marks those with data-state).
+ * focus or a dialog/menu is open (Radix marks those with data-state), and
+ * Enter/Space/Backspace/R leave a focused control alone.
  *
  *   ↑ / ↓          move the selection
  *   ⌘/Ctrl + A     select all visible rows
@@ -35,7 +50,12 @@ export function useTransferShortcuts(handlers: TransferShortcutHandlers, enabled
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (inEditable(e.target)) return;
-      if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]')) return;
+      // Radix confirmations are role="alertdialog": missing it here, Enter in
+      // "Remove and delete files" toggled the panel behind the dialog and
+      // Space paused the selection (REVIEW 2026-09-28 D-7).
+      if (document.querySelector(OPEN_OVERLAY)) return;
+      // A focused button, link or toast action gets its own Enter and Space.
+      if (isControl(e.target) && ['Enter', ' ', 'Backspace', 'Delete', 'r', 'R'].includes(e.key)) return;
       const meta = e.metaKey || e.ctrlKey;
       switch (e.key) {
         case 'ArrowDown': e.preventDefault(); handlers.moveSelection(1); break;

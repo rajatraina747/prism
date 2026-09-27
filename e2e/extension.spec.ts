@@ -25,6 +25,11 @@ test('the Chromium extension build loads and its service worker starts', async (
       && chrome.contextMenus.onClicked.hasListeners()
       && chrome.action.onClicked.hasListeners());
     expect(ready).toBe(true);
+    // The toolbar button reads the tab's URL, which the browser hides without
+    // activeTab: the button did nothing (REVIEW 2026-09-28 C-10). activeTab
+    // shows no install warning.
+    const permissions = await worker.evaluate(() => chrome.runtime.getManifest().permissions ?? []);
+    expect(permissions).toContain('activeTab');
   } finally {
     await context.close();
     rmSync(profile, { recursive: true, force: true });

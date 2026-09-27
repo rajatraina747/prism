@@ -141,8 +141,9 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
       );
 
     case 'resume':
+      // Paused, or held at add ('ready'): Start and Resume are one move.
       return update(queue, action.id, i =>
-        i.status === 'paused' ? { ...i, status: 'queued' } : i,
+        i.status === 'paused' || i.status === 'ready' ? { ...i, status: 'queued' } : i,
       );
 
     case 'cancel':

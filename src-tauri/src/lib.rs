@@ -2531,7 +2531,6 @@ pub fn run() {
             log_store_problem,
             restart_torrent_engine,
             store::store_load,
-            store::store_save_queue,
             store::store_update_history,
             store::store_save_doc,
             queue::queue_snapshot,

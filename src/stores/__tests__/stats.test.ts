@@ -113,6 +113,19 @@ describe('backfillFromHistory', () => {
     expect(twice.bytes).toBe(100);
   });
 
+  // Regression (REVIEW 2026-09-28 D-6): each launch counted again whatever
+  // had finished, and been counted live, since the previous launch.
+  it('never counts again what was recorded live', () => {
+    const launched = backfillFromHistory(emptyStats(), [row({ id: 'old', completedAt: '2026-09-10T10:00:00Z', fileSize: 100 })]);
+    const live = recordCompletion(launched, item({ id: 'new', totalBytes: 1000, completedAt: '2026-09-16T10:00:00Z' }));
+    const relaunched = backfillFromHistory(live, [
+      row({ id: 'old', completedAt: '2026-09-10T10:00:00Z', fileSize: 100 }),
+      row({ id: 'new', completedAt: '2026-09-16T10:00:00Z', fileSize: 1000 }),
+    ]);
+    expect(relaunched.completed).toBe(2);
+    expect(relaunched.bytes).toBe(1100);
+  });
+
   it('picks up only rows newer than the last backfill', () => {
     const once = backfillFromHistory(emptyStats(), [row({ id: 'a', completedAt: '2026-09-10T10:00:00Z', fileSize: 100 })]);
     const again = backfillFromHistory(once, [

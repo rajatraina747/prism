@@ -53,7 +53,6 @@
     "allow-log-store-problem",
     "allow-restart-torrent-engine",
     "allow-store-load",
-    "allow-store-save-queue",
     "allow-store-update-history",
     "allow-store-save-doc",
     "allow-queue-snapshot",

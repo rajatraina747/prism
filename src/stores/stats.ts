@@ -136,14 +136,21 @@ export function recordCompletion(
   // would attribute it to yt-dlp, which did none of the work.
   if (item.kind === 'convert') return stats;
 
+  const when = item.completedAt ?? now.toISOString();
   const next = apply(stats, {
     engine: engineOf(item),
     status,
     bytes: item.totalBytes || item.downloadedBytes || 0,
-    when: item.completedAt ?? now.toISOString(),
+    when,
     site: siteKey(item.metadata.source.url),
     category: item.settings.categoryName,
   });
+  // Counted now, so the next launch's backfill must start after it. Without
+  // this, every launch counted again everything finished since the last one
+  // (REVIEW 2026-09-28 D-6).
+  if (!next.backfilledThrough || when > next.backfilledThrough) {
+    next.backfilledThrough = when;
+  }
 
   // Upload is a torrent-only figure and only ever seen live.
   const uploaded = item.uploadedBytes ?? 0;

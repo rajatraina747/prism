@@ -52,6 +52,13 @@ pub unsafe extern "C" fn event_callback<R: Runtime>(event: *const c_char, userda
         free_fn(event as *mut c_char);
     }
 
+    // PRISM VENDOR PATCH: the task must own what it uses. These are borrows of the
+    // userdata box, which `destroy` frees right after mpv's last events —
+    // exactly while tasks for those events can still be queued. Moving the
+    // borrows in (the raw-pointer deref gave them an unbounded lifetime, so
+    // it compiled) was a use-after-free on player close (REVIEW 2026-09-28 D-4).
+    let app = app.clone();
+    let window_label = window_label.clone();
     tauri::async_runtime::spawn(async move {
         match serde_json::from_str::<serde_json::Value>(&event_string) {
             Ok(event) => {

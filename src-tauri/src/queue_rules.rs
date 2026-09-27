@@ -177,8 +177,12 @@ pub fn fail(item: &mut Item, error: Value) -> bool {
     true
 }
 
-pub fn requeue_for_retry(item: &mut Item) -> bool {
-    if status(item) != "downloading" {
+/// Requeue after an automatic-retry wait, but only the wait that was set at
+/// `scheduled_at`. Without that check, a timer from an earlier failure fired
+/// into a run the user had paused and resumed (or retried) in the meantime,
+/// knocking it back to queued and starting a second copy (D-2).
+pub fn requeue_for_retry(item: &mut Item, scheduled_at: &str) -> bool {
+    if status(item) != "downloading" || item.get("retryAt").and_then(Value::as_str) != Some(scheduled_at) {
         return false;
     }
     set(item, "status", json!("queued"));
@@ -220,8 +224,11 @@ pub fn pause(item: &mut Item) -> bool {
     true
 }
 
+/// Paused, or held at add ("Start immediately" off, status `ready`): Start
+/// and Resume are the same move. Nothing could start a held item before, so
+/// it sat forever (REVIEW 2026-09-28 D-5).
 pub fn resume(item: &mut Item) -> bool {
-    if status(item) != "paused" {
+    if !is(item, &["paused", "ready"]) {
         return false;
     }
     set(item, "status", json!("queued"));
@@ -244,6 +251,7 @@ pub fn retry(item: &mut Item) -> bool {
     set(item, "retryAttempt", json!(0));
     reset_counters(item);
     item.remove("error");
+    clear_retry_wait(item);
     true
 }
 
@@ -507,11 +515,13 @@ pub fn error_record(message: &str, code: Option<&str>, detail: Option<&str>, now
 
 // ── When everything finishes (completion.ts) ─────────────────────────────
 
-/// Whether an item still needs Prism awake. Paused doesn't count (it never
-/// finishes on its own); seeding does unless the setting waives it.
+/// Whether an item still needs Prism awake. Paused and held (`ready`) don't
+/// count — neither finishes on its own, and one held item kept "when
+/// everything finishes" from ever firing (D-5); seeding does unless the
+/// setting waives it.
 pub fn is_busy(item: &Item, ignore_seeding: bool) -> bool {
     match status(item) {
-        "queued" | "parsing" | "ready" | "downloading" => true,
+        "queued" | "parsing" | "downloading" => true,
         "seeding" => !ignore_seeding,
         _ => false,
     }
@@ -538,6 +548,14 @@ pub fn evaluate_when_done(prev: WhenDone, items: &[Item], action: &str, ignore_s
     (if prev.armed { prev } else { WhenDone::default() }, false)
 }
 
+/// Whether new work arrived while the countdown ran: it was armed, and the
+/// queue is busy again. Nothing called it off before, so adding a download
+/// during the minute still slept or shut down the machine mid-download
+/// (REVIEW 2026-09-28 C-1).
+pub fn when_done_called_off(prev: WhenDone, next: WhenDone) -> bool {
+    prev.armed && next.was_busy
+}
+
 // ── The Dock / taskbar (progress.ts) ─────────────────────────────────────
 
 /// (percent, paused), or None when nothing is under way. Weighted by bytes
@@ -551,7 +569,7 @@ pub fn overall_progress(items: &[Item]) -> Option<(u64, bool)> {
             clamp(list.iter().map(|i| num(i, "progress")).sum::<f64>() / list.len() as f64)
         }
     };
-    let working: Vec<&Item> = items.iter().filter(|i| is(i, &["downloading", "queued", "parsing", "ready"])).collect();
+    let working: Vec<&Item> = items.iter().filter(|i| is(i, &["downloading", "queued", "parsing"])).collect();
     if working.is_empty() {
         let paused: Vec<&Item> = items.iter().filter(|i| status(i) == "paused").collect();
         return (!paused.is_empty()).then(|| (mean(&paused), true));
@@ -714,7 +732,7 @@ mod tests {
         let mut paused = item("a", "paused", json!({}));
         assert!(!complete(&mut paused, &Finish::default()), "user pause wins over a late completion");
         assert!(!fail(&mut paused, json!({})));
-        assert!(!requeue_for_retry(&mut paused));
+        assert!(!requeue_for_retry(&mut paused, "2026-09-26T16:12:24Z"));
         assert_eq!(status(&paused), "paused");
 
         let mut running = item("a", "downloading", json!({"totalBytes": 10}));
@@ -749,8 +767,8 @@ mod tests {
 
     #[test]
     fn retries_reset_counters_and_budgets() {
-        let mut i = item("a", "downloading", json!({"progress": 40, "downloadedBytes": 400, "totalBytes": 1000, "retryAttempt": 1}));
-        assert!(requeue_for_retry(&mut i));
+        let mut i = item("a", "downloading", json!({"progress": 40, "downloadedBytes": 400, "totalBytes": 1000, "retryAttempt": 1, "retryAt": "t"}));
+        assert!(requeue_for_retry(&mut i, "t"));
         assert_eq!((status(&i), i["retryAttempt"].as_u64(), i["progress"].as_u64(), i["totalBytes"].as_u64()), ("queued", Some(2), Some(0), Some(1000)));
         let mut failed = item("a", "failed", json!({"retryAttempt": 2, "error": {"message": "x"}}));
         retry(&mut failed);
@@ -838,12 +856,38 @@ mod tests {
         assert!(mark_retry_wait(&mut it, "2026-09-26T16:12:24Z", "Rate limited by the site"));
         assert_eq!((num(&it, "speed"), num(&it, "eta")), (0.0, 0.0), "no stale speed or ETA");
         assert_eq!(it.get("retryAt"), Some(&json!("2026-09-26T16:12:24Z")));
-        assert!(requeue_for_retry(&mut it));
+        assert!(requeue_for_retry(&mut it, "2026-09-26T16:12:24Z"));
         assert!(it.get("retryAt").is_none() && it.get("retryReason").is_none(), "gone once it runs again");
         let mut paused = item("p", "downloading", json!({}));
         mark_retry_wait(&mut paused, "2026-09-26T16:12:24Z", "x");
         pause(&mut paused);
         assert!(paused.get("retryAt").is_none(), "a paused row isn't waiting to retry");
+    }
+
+    // Regression (REVIEW 2026-09-28 D-2): a pause and resume (or a Retry)
+    // inside the backoff, then the old timer fires on the new run.
+    #[test]
+    fn a_stale_retry_timer_leaves_a_later_run_alone() {
+        let at = "2026-09-28T10:00:00Z";
+        let mut it = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut it, at, "Rate limited by the site");
+        pause(&mut it);
+        resume(&mut it);
+        set(&mut it, "status", json!("downloading")); // the queue started it again
+        assert!(!requeue_for_retry(&mut it, at), "the new run is not the one that was waiting");
+        assert_eq!((status(&it), num(&it, "retryAttempt")), ("downloading", 0.0));
+
+        let mut retried = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut retried, at, "x");
+        retry(&mut retried);
+        set(&mut retried, "status", json!("downloading"));
+        assert!(!requeue_for_retry(&mut retried, at), "Retry by hand ends the wait too");
+
+        let mut again = item("r", "downloading", json!({}));
+        mark_retry_wait(&mut again, at, "x");
+        mark_retry_wait(&mut again, "2026-09-28T10:05:00Z", "x");
+        assert!(!requeue_for_retry(&mut again, at), "a newer failure's wait belongs to its own timer");
+        assert!(requeue_for_retry(&mut again, "2026-09-28T10:05:00Z"));
     }
 
     #[test]
@@ -930,6 +974,33 @@ mod tests {
         let e = seeding_entry(&t, "now");
         assert_eq!((e["status"].as_str(), e["seeding"].as_bool(), e["filePath"].as_str()), (Some("completed"), Some(true), Some("/d/a.mkv")));
         assert_eq!(e["files"], json!([{"name": "a.mkv", "size": 10}]));
+    }
+
+    // Regression (REVIEW 2026-09-28 C-1): a download added during the
+    // countdown didn't stop the sleep or shutdown.
+    #[test]
+    fn new_work_calls_off_a_running_countdown() {
+        let busy = vec![item("a", "downloading", json!({}))];
+        let idle: Vec<Item> = vec![item("a", "completed", json!({}))];
+        let (armed, fire) = evaluate_when_done(WhenDone { was_busy: true, armed: false }, &idle, "sleep", false);
+        assert!(fire && armed.armed);
+        let (next, _) = evaluate_when_done(armed, &busy, "sleep", false);
+        assert!(when_done_called_off(armed, next), "busy again while armed");
+        let (quiet, _) = evaluate_when_done(armed, &idle, "sleep", false);
+        assert!(!when_done_called_off(armed, quiet), "still idle: the countdown stands");
+        assert!(!when_done_called_off(WhenDone::default(), next), "nothing armed, nothing to call off");
+    }
+
+    // Regression (REVIEW 2026-09-28 D-5): "Start immediately" off made an
+    // item nothing could start, and it held "when done" and the Dock bar.
+    #[test]
+    fn a_held_item_starts_on_request_and_is_not_work_under_way() {
+        let mut held = item("h", "ready", json!({}));
+        assert!(!is_busy(&held, false), "held: not work under way");
+        assert_eq!(overall_progress(std::slice::from_ref(&held)), None, "no Dock bar for it");
+        assert!(resume(&mut held));
+        assert_eq!(status(&held), "queued");
+        assert!(is_busy(&held, false));
     }
 
     #[test]

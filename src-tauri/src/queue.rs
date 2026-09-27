@@ -247,7 +247,13 @@ fn tick(app: &AppHandle) {
         });
 
         let (when_done, fire) = rules::evaluate_when_done(inner.when_done, &inner.items, &prefs.when_done, prefs.when_done_ignores_seeding);
+        let called_off = rules::when_done_called_off(inner.when_done, when_done);
         inner.when_done = when_done;
+        if called_off {
+            state.when_done_generation.fetch_add(1, Ordering::SeqCst);
+            log::info!("when-done: called off, more to download");
+            let _ = app.emit("when-done-cancelled", ());
+        }
         for item in inner.items.iter().filter(|i| rules::is_terminal(i)).map(|i| rules::id(i).to_string()).collect::<Vec<_>>() {
             inner.terminal_since.entry(item).or_insert_with(Instant::now);
         }
@@ -388,18 +394,36 @@ fn start_engine(app: &AppHandle, item: Item, quiet_hours_limit: Option<u64>) {
     });
 }
 
-/// The yt-dlp `-o` template a video item downloads under, built the way
-/// `start_engine` and `start_download` build it: the file name template if
-/// the item has one, else its title.
-fn video_template(item: &Item) -> Option<String> {
-    let settings = rules::settings(item)?;
-    let st = |k: &str| settings.get(k).and_then(Value::as_str).filter(|s| !s.is_empty());
-    let dest = crate::expand_tilde(st("destination").unwrap_or("~/Downloads/Prism"));
-    if let (Some(tpl), Some(vars)) = (st("filenameTemplate"), template_vars(item)) {
-        return crate::templated_output_path(&dest, tpl, &vars).ok();
-    }
-    let name = sanitize_filename(st("filename").or(rules::metadata_str(item, "title")).unwrap_or("video"));
-    Some(format!("{}/{}.%(ext)s", ytdlp_literal(&dest), ytdlp_literal(&name)))
+/// Where Rust keeps the `-o` template a video item's run actually claimed
+/// (after de-duplication, so `Title (1)` when that is what ran) and when it
+/// was first claimed. Only `record_claim` writes it; `queue_add` strips any
+/// the page sends. Cancelling a paused item deletes by this record, never by
+/// a path rebuilt from the item's settings (REVIEW 2026-09-28 D-1, C-3).
+pub(crate) const CLAIM: &str = "engineClaim";
+
+/// Record the template a yt-dlp run claimed for `id`. A restart that claims
+/// the same template keeps the first time, so the files its earlier runs
+/// wrote still count as its own.
+pub(crate) fn record_claim(app: &AppHandle, id: &str, template: &str) {
+    let _ = update(app, id, |i| {
+        if claim_of(i).is_some_and(|(t, _)| t == template) {
+            return false;
+        }
+        // File times can be coarse (2 s on FAT); step back so the run's very
+        // first write isn't taken for an older file.
+        let since = std::time::SystemTime::now() - Duration::from_secs(2);
+        let since_ms = since.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        i.insert(CLAIM.into(), json!({ "template": template, "sinceMs": since_ms }));
+        true
+    });
+}
+
+/// The claimed template and since-when, if a run ever claimed one.
+fn claim_of(item: &Item) -> Option<(String, std::time::SystemTime)> {
+    let claim = item.get(CLAIM)?;
+    let template = claim.get("template")?.as_str()?.to_string();
+    let since = std::time::UNIX_EPOCH + Duration::from_millis(claim.get("sinceMs")?.as_u64()?);
+    Some((template, since))
 }
 
 /// Cancel, not pause: stop whatever engine runs `id` and delete what it
@@ -413,26 +437,21 @@ async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
     app.state::<crate::DownloadManager>().discard_download(id).await;
     crate::http_engine::discard_http_download(app, id).await;
     let _ = crate::convert::cancel_convert(id.to_string()).await;
-    // A paused video isn't running, so its files are found from the item.
-    // A stopped magnet's (empty) folder, likewise from the item.
+    // A paused video isn't running: its files are found from the claim its
+    // run recorded. A stopped magnet's (empty) folder is found from the item,
+    // so its destination must pass the same check a download start does.
     if let Some(i) = item.as_ref().filter(|i| rules::kind(i) == "torrent") {
         let dest = rules::setting_str(i, "destination").unwrap_or("~/Downloads/Prism").to_string();
         let url = rules::source_url(i).to_string();
-        let _ = tauri::async_runtime::spawn_blocking(move || crate::torrent::discard_stopped_magnet(&dest, &url)).await;
+        if let Ok(dest) = crate::validate_download_path(&dest, &crate::picked_dirs(app)) {
+            let _ = tauri::async_runtime::spawn_blocking(move || crate::torrent::discard_stopped_magnet(&dest, &url)).await;
+        }
     }
     // (yt-dlp items are kind "http", the default; direct links are "direct".)
-    if let Some(item) = item.filter(|i| rules::kind(i) == "http") {
-        if let Some(template) = video_template(&item) {
-            let since = item
-                .get("metadata")
-                .and_then(|m| m.get("source"))
-                .and_then(|s| s.get("addedAt"))
-                .and_then(Value::as_str)
-                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                .map(std::time::SystemTime::from)
-                .unwrap_or(std::time::UNIX_EPOCH);
-            let _ = tauri::async_runtime::spawn_blocking(move || crate::download_manager::discard_stopped(&template, since)).await;
-        }
+    // Only what a run of this item claimed: an item that never started wrote
+    // nothing, and its settings are not a path to delete from.
+    if let Some((template, since)) = item.filter(|i| rules::kind(i) == "http").as_ref().and_then(claim_of) {
+        let _ = tauri::async_runtime::spawn_blocking(move || crate::download_manager::discard_stopped(&template, since)).await;
     }
     if let Some(state) = manager(app) {
         let mut inner = state.lock();
@@ -605,6 +624,7 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
     let prefs = Prefs::read(app);
     let category = rules::classify(code, message).category;
     let mut retry_in = None;
+    let mut retry_at = String::new();
     let failed = {
         let mut inner = state.lock();
         inner.running.remove(id);
@@ -627,7 +647,8 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
                 // Holds its slot while it waits: a pause or cancel meanwhile wins.
                 let at = chrono::Utc::now() + chrono::Duration::milliseconds(delay as i64);
                 let reason = rules::classify(code, message).suggestion;
-                if rules::mark_retry_wait(item, &at.to_rfc3339(), reason) {
+                retry_at = at.to_rfc3339();
+                if rules::mark_retry_wait(item, &retry_at, reason) {
                     inner.touched(id, true);
                 }
                 None
@@ -648,7 +669,10 @@ fn on_failure(app: &AppHandle, id: &str, message: &str, code: Option<&str>, deta
             if let Some(state) = manager(&app) {
                 let mut inner = state.lock();
                 if let Some(item) = inner.find(&id) {
-                    if rules::requeue_for_retry(item) {
+                    // Only the wait this timer was set for: a pause, resume or
+                    // Retry since then cleared it, and a newer failure set its
+                    // own (REVIEW 2026-09-28 D-2).
+                    if rules::requeue_for_retry(item, &retry_at) {
                         inner.touched(&id, true);
                     }
                 }
@@ -815,8 +839,12 @@ fn start_when_done(app: &AppHandle, action: String) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(WHEN_DONE_SECS)).await;
-        let current = manager(&app).map(|s| s.when_done_generation.load(Ordering::SeqCst));
-        if current == Some(generation) {
+        let Some(state) = manager(&app) else { return };
+        let still_idle = {
+            let ignore_seeding = crate::setting_bool(&app, "whenDoneIgnoresSeeding", false);
+            !state.lock().items.iter().any(|i| rules::is_busy(i, ignore_seeding))
+        };
+        if state.when_done_generation.load(Ordering::SeqCst) == generation && still_idle {
             log::info!("when-done: {action}");
             let _ = crate::when_done(app, action).await;
         }
@@ -848,6 +876,16 @@ fn update(app: &AppHandle, id: &str, f: impl FnOnce(&mut Item) -> bool) -> Resul
     Ok(changed)
 }
 
+/// A destination the page hands in must be one a download may start in: the
+/// same check every engine makes at start, made at the door so nothing ever
+/// acts on an item with a destination no download could have used (D-1).
+fn check_destination(app: &AppHandle, settings: &serde_json::Map<String, Value>) -> Result<(), String> {
+    match settings.get("destination").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        Some(dest) => crate::validate_download_path(dest, &crate::picked_dirs(app)).map(|_| ()),
+        None => Ok(()),
+    }
+}
+
 #[tauri::command]
 pub fn queue_snapshot(app: AppHandle) -> Result<Vec<Value>, String> {
     let state = require(&app)?;
@@ -860,6 +898,11 @@ pub fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
     let mut item = item.as_object().cloned().ok_or("Not a queue item")?;
     if rules::id(&item).is_empty() {
         return Err("A queue item needs an id".into());
+    }
+    // Rust's own records are Rust's to write (D-1).
+    item.remove(CLAIM);
+    if let Some(settings) = rules::settings(&item) {
+        check_destination(&app, settings)?;
     }
     item.entry("addedAt").or_insert_with(|| json!(now()));
     {
@@ -1038,9 +1081,10 @@ pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), Strin
 /// keeps what it started with.
 #[tauri::command]
 pub fn queue_set_settings(app: AppHandle, id: String, settings: Value, only_if: Option<String>) -> Result<bool, String> {
-    if !settings.is_object() {
+    let Some(fields) = settings.as_object() else {
         return Err("Settings must be an object".into());
-    }
+    };
+    check_destination(&app, fields)?;
     let changed = update(&app, &id, |i| {
         if only_if.as_deref().is_some_and(|s| s != rules::status(i)) {
             return false;
@@ -1117,4 +1161,36 @@ pub async fn queue_restart_torrent_engine(app: AppHandle) -> Result<usize, Strin
     log::info!("queue: torrent engine restarted; {} torrent(s) go back in line", resume.len());
     tick(&app);
     Ok(was_running)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(v: Value) -> Item {
+        v.as_object().cloned().unwrap()
+    }
+
+    // Regression (REVIEW 2026-09-28 D-1): a paused item's Cancel deletes by
+    // what a run claimed, never by a path rebuilt from its settings — a
+    // planted `destination` names nothing to delete.
+    #[test]
+    fn a_cancel_deletes_only_by_the_claim_rust_recorded() {
+        let planted = item(json!({
+            "id": "x",
+            "status": "paused",
+            "settings": { "destination": "~/Documents", "filename": "thesis" },
+            "metadata": { "source": { "addedAt": "1970-01-01T00:00:00Z" } },
+        }));
+        assert!(claim_of(&planted).is_none(), "never started: nothing of its own to delete");
+
+        let ran = item(json!({
+            "id": "y",
+            "settings": { "destination": "~/Documents" },
+            CLAIM: { "template": "/dl/Clip (1).%(ext)s", "sinceMs": 1_000 },
+        }));
+        let (template, since) = claim_of(&ran).unwrap();
+        assert_eq!(template, "/dl/Clip (1).%(ext)s", "the de-duplicated name the run used (C-3)");
+        assert_eq!(since, std::time::UNIX_EPOCH + Duration::from_secs(1));
+    }
 }

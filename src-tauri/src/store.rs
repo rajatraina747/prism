@@ -321,19 +321,6 @@ pub async fn store_load(app: AppHandle) -> Result<Snapshot, String> {
     .map_err(|e| format!("Database: {e}"))?
 }
 
-#[tauri::command]
-pub async fn store_save_queue(app: AppHandle, items: Vec<Value>) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        with_db(&app, |conn| {
-            let tx = conn.transaction().map_err(sql_err)?;
-            write_queue(&tx, &items).map_err(sql_err)?;
-            tx.commit().map_err(sql_err)
-        })
-    })
-    .await
-    .map_err(|e| format!("Database: {e}"))?
-}
-
 /// Add or replace Library entries, and remove others, in one transaction.
 #[tauri::command]
 pub async fn store_update_history(app: AppHandle, put: Vec<Value>, remove: Vec<String>, clear: bool) -> Result<(), String> {
