@@ -228,7 +228,10 @@ pub(crate) async fn transfer(client: &reqwest::Client, job: &Job, t: &Transfer) 
     loop {
         let result = match job.size {
             Some(size) if job.ranges && size > 0 => ranged(client, job, t, &part, &state_path, size, fresh).await,
-            _ => single_stream(client, job, t, &part).await,
+            _ => {
+                claim_single_stream(&state_path, job).await;
+                single_stream(client, job, t, &part).await
+            }
         };
         match result {
             Ok(()) => break,
@@ -667,6 +670,21 @@ async fn fetch_range(
 }
 
 /// No ranges (or no size): one connection from the start; a failure restarts it.
+/// A single-stream download can't resume (it restarts from byte 0), so it
+/// saved no state — and without one, a retry after a failure or a relaunch
+/// didn't recognise its own `.prismpart`: it chose `name (1)` and left the old
+/// part file, possibly many GB, behind for good (REVIEW 2026-09-28 C-6). A
+/// state naming only the source lets `choose_destination` hand the same path
+/// back; it has no segments and no validator, so nothing ever resumes from it.
+async fn claim_single_stream(state_path: &Path, job: &Job) {
+    let state = PartState { source: job.source.clone(), size: 0, validator: None, segments: Vec::new() };
+    let Ok(text) = serde_json::to_string(&state) else { return };
+    let tmp = with_suffix(state_path, ".tmp");
+    if tokio::fs::write(&tmp, text).await.is_ok() {
+        let _ = tokio::fs::rename(&tmp, state_path).await;
+    }
+}
+
 async fn single_stream(client: &reqwest::Client, job: &Job, t: &Transfer, part: &Path) -> Result<(), Stop> {
     let mut failures = 0u32;
     loop {
@@ -1712,6 +1730,29 @@ mod tests {
         assert_eq!(choose_destination(&wanted, b, Some(&second), std::slice::from_ref(&wanted)), second);
         // A previous path that doesn't belong to this name is ignored.
         assert_eq!(choose_destination(&wanted, b, Some(&tmp.0.join("other")), std::slice::from_ref(&wanted)), second);
+    }
+
+    // Regression (REVIEW 2026-09-28 C-6): a single-stream download's retry
+    // didn't know its own `.prismpart`, chose `name (1)` and orphaned it.
+    #[test]
+    fn a_single_stream_retry_reuses_its_own_part_file() {
+        let tmp = TempDir::new("single");
+        let wanted = tmp.0.join("stream.bin");
+        let source = "https://a.example/stream";
+        let job = Job {
+            source: source.into(),
+            url: source.into(),
+            dest: wanted.clone(),
+            size: None,
+            ranges: false,
+            validator: None,
+            sha256: None,
+            connections: 1,
+        };
+        tauri::async_runtime::block_on(claim_single_stream(&with_suffix(&wanted, STATE_SUFFIX), &job));
+        std::fs::write(with_suffix(&wanted, PART_SUFFIX), b"half").unwrap();
+        assert_eq!(choose_destination(&wanted, source, None, &[]), wanted, "its own part file, not a new name");
+        assert_eq!(choose_destination(&wanted, "https://b.example/other", None, &[]), tmp.0.join("stream (1).bin"));
     }
 
     #[test]
