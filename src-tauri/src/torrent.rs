@@ -265,6 +265,9 @@ pub struct SessionStats {
 struct ActiveTorrent {
     handle: ManagedTorrentHandle,
     output_dir: String,
+    /// `output_dir` when it is this torrent's own folder, not the shared
+    /// destination: the one folder a Cancel or a move may tidy away.
+    own_dir: Option<String>,
     /// Uploaded bytes from earlier live phases of this item (folded in on
     /// every pause/reannounce/recheck, since librqbit's counter restarts).
     uploaded_offset: u64,
@@ -386,7 +389,17 @@ async fn start_session(default_dir: &str, limits: LimitsConfig, cfg: &SessionCon
     // torrent could start at all (REVIEW 2026-09-26).
     let mut session = None;
     let mut last_error = None;
+    // On Windows librqbit's own bind can't tell that the port is taken: it
+    // shares it with another client's listeners (Windows test run 2026-09-26,
+    // D12), and inbound peers then reach that client, not Prism. Ask first.
+    let held_elsewhere = port_in_use_elsewhere(cfg.listen_port);
+    if held_elsewhere {
+        log::warn!("torrent session: port {} is used by another program; picking a free one", cfg.listen_port);
+    }
     for (addr, ipv4_only) in listen_attempts(cfg.listen_port) {
+        if held_elsewhere && addr.port() == cfg.listen_port {
+            continue;
+        }
         match Session::new_with_opts(PathBuf::from(default_dir), build(addr, ipv4_only)).await {
             Ok(s) => {
                 if addr.port() != cfg.listen_port || ipv4_only {
@@ -405,6 +418,51 @@ async fn start_session(default_dir: &str, limits: LimitsConfig, cfg: &SessionCon
         return Err(last_error.unwrap_or_else(|| anyhow::anyhow!("no listen address to try")));
     };
     Ok(session)
+}
+
+/// Whether another program already holds `port` for TCP or UDP, on any
+/// address. A throwaway socket bound to the wildcard with SO_EXCLUSIVEADDRUSE
+/// fails if any other socket uses the port, even on one specific address or
+/// with SO_REUSEADDR — the cases a plain bind (librqbit's) quietly shares.
+#[cfg(windows)]
+fn port_in_use_elsewhere(port: u16) -> bool {
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    use std::os::windows::io::AsRawSocket;
+    use windows_sys::Win32::Networking::WinSock::{setsockopt, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, WSAEACCES, WSAEADDRINUSE};
+
+    let taken = |ty: Type, proto: Protocol| -> bool {
+        // Dual-stack IPv6 covers both families; IPv4 alone where IPv6 is off.
+        let (socket, addr) = match Socket::new(Domain::IPV6, ty, Some(proto)) {
+            Ok(s) if s.set_only_v6(false).is_ok() => (s, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port))),
+            _ => match Socket::new(Domain::IPV4, ty, Some(proto)) {
+                Ok(s) => (s, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))),
+                Err(_) => return false,
+            },
+        };
+        let on: i32 = 1;
+        // SAFETY: a valid socket handle and a live 4-byte int for the option.
+        unsafe {
+            setsockopt(
+                socket.as_raw_socket() as usize,
+                SOL_SOCKET,
+                SO_EXCLUSIVEADDRUSE,
+                (&on as *const i32).cast(),
+                std::mem::size_of::<i32>() as i32,
+            );
+        }
+        match socket.bind(&addr.into()) {
+            Ok(()) => false,
+            Err(e) => matches!(e.raw_os_error(), Some(WSAEADDRINUSE) | Some(WSAEACCES)),
+        }
+    };
+    taken(Type::STREAM, Protocol::TCP) || taken(Type::DGRAM, Protocol::UDP)
+}
+
+/// Elsewhere a bind that would share the port fails on its own.
+#[cfg(not(windows))]
+fn port_in_use_elsewhere(_port: u16) -> bool {
+    false
 }
 
 /// Listen addresses to try, in order, with whether to stay on IPv4.
@@ -803,16 +861,53 @@ impl TorrentManager {
 
             // `output_dir` from here on is the folder the files actually go
             // in (a subfolder of the destination for multi-file torrents).
-            let (handle, output_dir) = match add_or_adopt(&session, &active, &resolved, &add_params).await {
-                Ok(pair) => pair,
-                Err(e) => return emit_failure(&app, &id, e),
+            //
+            // A magnet with no peers can wait for its metadata forever, and a
+            // stop has to reach it (Windows test run 2026-09-26, D8: cancelled
+            // magnets lingered). Dropping the add ends it.
+            let mut adding = std::pin::pin!(add_or_adopt(&session, &active, &resolved, &add_params));
+            let added = loop {
+                match tokio::time::timeout(Duration::from_millis(500), adding.as_mut()).await {
+                    Ok(result) => break Some(result),
+                    Err(_) if ticket.cancelled() => break None,
+                    Err(_) => {}
+                }
             };
+            let (handle, output_dir) = match added {
+                Some(Ok(pair)) => pair,
+                Some(Err(e)) => return emit_failure(&app, &id, e),
+                None => {
+                    // Nothing was added; a Cancel also takes the (empty) folder
+                    // made for it.
+                    if take_discard(&id) {
+                        let own = effective_output_dir(&add_params.output_dir, None, &add_params.fallback_name);
+                        if !same_dir(Path::new(&own), &add_params.output_dir) {
+                            let _ = tauri::async_runtime::spawn_blocking(move || {
+                                crate::postprocess::remove_empty_tree(Path::new(&own))
+                            })
+                            .await;
+                        }
+                    }
+                    log::info!("torrent {id}: stopped before it started");
+                    return;
+                }
+            };
+            // Its own folder (a multi-file torrent's, or a single file's that
+            // would have clashed) — never the shared destination.
+            let own_dir = (!same_dir(Path::new(&output_dir), &add_params.output_dir)).then(|| output_dir.clone());
 
-            // Removed while its metadata was being fetched: take it back out
-            // of the session (files kept), or it would download and seed with
-            // no queue item to show it.
+            // Removed while it was being added: take it back out of the
+            // session, or it would download and seed with no queue item to
+            // show it. Files are kept for a pause, deleted for a Cancel.
             if ticket.cancelled() {
-                let _ = session.delete(TorrentIdOrHash::from(handle.id()), false).await;
+                let discard = take_discard(&id);
+                let _ = session.delete(TorrentIdOrHash::from(handle.id()), discard).await;
+                if let (true, Some(dir)) = (discard, own_dir) {
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        crate::postprocess::remove_empty_tree(Path::new(&dir))
+                    })
+                    .await;
+                }
                 log::info!("torrent {id}: stopped before it started");
                 return;
             }
@@ -823,6 +918,7 @@ impl TorrentManager {
                 ActiveTorrent {
                     handle: handle.clone(),
                     output_dir: output_dir.clone(),
+                    own_dir: own_dir.clone(),
                     uploaded_offset: 0,
                     peer_prev: HashMap::new(),
                     reannounce_requested: false,
@@ -1005,8 +1101,15 @@ impl TorrentManager {
                 );
 
                 if stats.finished {
-                    let started = *seed_started.get_or_insert_with(Instant::now);
+                    let started = *seed_started.get_or_insert_with(|| {
+                        log::info!("torrent {id}: downloaded; seeding");
+                        Instant::now()
+                    });
                     if seeding_complete(policy, ratio, cfg.seed_time_limit, started.elapsed()) {
+                        log::info!(
+                            "torrent {id}: seeding done (ratio {ratio:.2} after {} min)",
+                            started.elapsed().as_secs() / 60
+                        );
                         break;
                     }
                 }
@@ -1032,6 +1135,7 @@ impl TorrentManager {
             // that every other command and progress event runs on (REVIEW
             // 2026-09-26 M3).
             let finish_app = app.clone();
+            let own_dir = own_dir.clone();
             let finished = tauri::async_runtime::spawn_blocking(move || {
                 quarantine_torrent(single_file, file_path.as_deref(), &output_dir);
                 // A multi-file torrent owns its folder and moves as one; a
@@ -1041,6 +1145,11 @@ impl TorrentManager {
                     let moved = file_path
                         .as_deref()
                         .and_then(|path| crate::postprocess::move_file(&finish_app, path));
+                    // A single file in a folder of its own (`name [hash]`, when
+                    // the name clashed) leaves that folder empty (D9).
+                    if let (Some(_), Some(dir)) = (&moved, &own_dir) {
+                        crate::postprocess::remove_empty_tree(Path::new(dir));
+                    }
                     (moved.or(file_path), output_dir)
                 } else {
                     match crate::postprocess::move_folder(&finish_app, &output_dir) {
@@ -1232,10 +1341,15 @@ impl TorrentManager {
     /// emit the same success completion the poll loop would, letting the
     /// frontend record it as completed with an openable path.
     pub async fn cancel_torrent(&self, app: &AppHandle, id: &str, delete_files: bool) -> bool {
+        // Seen by a start still fetching metadata, which tidies up itself.
+        if delete_files {
+            mark_discard(id);
+        }
         crate::jobs::cancel(id);
         let entry = self.active.lock().await.remove(id);
         match entry {
-            Some(ActiveTorrent { handle: h, output_dir, .. }) => {
+            Some(ActiveTorrent { handle: h, output_dir, own_dir, .. }) => {
+                take_discard(id);
                 let stats = h.stats();
                 if stats.finished && !delete_files {
                     let file_path = resolve_completion_path(&h, &output_dir);
@@ -1264,10 +1378,55 @@ impl TorrentManager {
                 if let Some(session) = self.session().await {
                     let _ = session.delete(TorrentIdOrHash::from(h.id()), delete_files).await;
                 }
+                // librqbit deletes the torrent's files, not the folders it made.
+                if let (true, Some(dir)) = (delete_files, own_dir) {
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        crate::postprocess::remove_empty_tree(Path::new(&dir))
+                    })
+                    .await;
+                }
                 true
             }
             None => false,
         }
+    }
+}
+
+// ── Cancel = discard ────────────────────────────────────────────────────
+
+/// Torrents whose stop should delete what they wrote (Cancel, "Remove and
+/// delete files") rather than keep it (Pause). A start still fetching
+/// metadata has no handle yet to delete, so it checks here when it stops.
+fn discards() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static DISCARDS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    DISCARDS.get_or_init(Default::default)
+}
+
+fn mark_discard(id: &str) {
+    if let Ok(mut set) = discards().lock() {
+        set.insert(id.to_string());
+    }
+}
+
+/// Whether a discard was asked for `id`, clearing the request.
+fn take_discard(id: &str) -> bool {
+    discards().lock().map(|mut set| set.remove(id)).unwrap_or(false)
+}
+
+/// Tidy up after a *stopped* magnet that is then cancelled. Transfers pauses
+/// first and cancels a few seconds later (its Undo window), so the start that
+/// made the magnet's folder already ended as a pause, and nothing running
+/// knows the folder any more. Before its metadata arrives that folder is
+/// always `<destination>/<fallback name>`: remove it if it is still empty
+/// (a finished download's folder never is). Blocking.
+pub(crate) fn discard_stopped_magnet(destination: &str, url: &str) {
+    if !url.trim_start().to_ascii_lowercase().starts_with("magnet:") {
+        return;
+    }
+    let dest = crate::expand_tilde(destination);
+    let own = effective_output_dir(&dest, None, &fallback_folder_name(&TorrentSource::Url(url.to_string())));
+    if !same_dir(Path::new(&own), &dest) {
+        crate::postprocess::remove_empty_tree(Path::new(&own));
     }
 }
 
@@ -1458,6 +1617,7 @@ async fn add_or_adopt(
                     }
                     if h.is_paused() {
                         session.unpause(&h).await.map_err(|e| e.to_string())?;
+                        start_after_restore_check(session, &h);
                     }
                     return Ok((h, effective));
                 }
@@ -1477,6 +1637,35 @@ async fn add_or_adopt(
 fn same_dir(a: &std::path::Path, b: &str) -> bool {
     let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     canon(a) == canon(std::path::Path::new(b))
+}
+
+/// How long an adopted torrent's restore check may take before we stop
+/// waiting to start it (a large torrent re-hashing on a slow disk).
+const RESTORE_CHECK_WAIT: Duration = Duration::from_secs(30 * 60);
+
+/// Make sure an adopted torrent actually starts once its restore check ends.
+///
+/// librqbit 9 restores a persisted torrent paused and starts its check with
+/// `start_paused = true`. An `unpause` that lands while that check runs only
+/// clears the paused flag (`try_start_check` is already taken), and when the
+/// check finishes it parks the torrent in Paused anyway — with the flag
+/// saying it isn't. So after "Restart engine" (and on a relaunch) a resumed
+/// torrent sat at 0 peers until someone paused and resumed it by hand
+/// (Windows test run 2026-09-26, D13). Flag clear + state Paused is exactly
+/// that case: a user's pause sets the flag, so it is never overridden here.
+fn start_after_restore_check(session: &Arc<Session>, h: &ManagedTorrentHandle) {
+    let (session, h) = (session.clone(), h.clone());
+    tauri::async_runtime::spawn(async move {
+        if tokio::time::timeout(RESTORE_CHECK_WAIT, h.wait_until_initialized()).await.is_err() {
+            return;
+        }
+        if !h.is_paused() && matches!(h.stats().state, TorrentStatsState::Paused) {
+            log::info!("torrent {}: came out of its restore check paused; starting it", h.info_hash().as_string());
+            if let Err(e) = session.unpause(&h).await {
+                log::warn!("torrent {}: could not start after its restore check: {e}", h.info_hash().as_string());
+            }
+        }
+    });
 }
 
 /// Pause + unpause: librqbit keeps the piece state and issues a fresh
@@ -2007,6 +2196,12 @@ mod tests {
         b
     }
 
+    /// `dest` joined with one component, in this platform's separator (what
+    /// `effective_output_dir` produces: `\` on Windows).
+    fn under(dest: &str, name: &str) -> String {
+        Path::new(dest).join(name).to_string_lossy().into_owned()
+    }
+
     #[test]
     fn multi_file_torrents_get_their_own_folder() {
         let dest = "/tmp/dl";
@@ -2014,8 +2209,8 @@ mod tests {
         let qatar = multi_file_torrent("F1.2024x23.Qatar", &["01.Buildup.mp4", "02.Race.mp4"]);
         let a = effective_output_dir(dest, Some(&abu), "fallback");
         let q = effective_output_dir(dest, Some(&qatar), "fallback");
-        assert_eq!(a, "/tmp/dl/F1.2024x24.Abu-Dhabi");
-        assert_eq!(q, "/tmp/dl/F1.2024x23.Qatar");
+        assert_eq!(a, under(dest, "F1.2024x24.Abu-Dhabi"));
+        assert_eq!(q, under(dest, "F1.2024x23.Qatar"));
         assert_ne!(a, q, "same inner file names must never share a folder");
     }
 
@@ -2095,16 +2290,16 @@ mod tests {
 
     #[test]
     fn unknown_layout_uses_the_fallback_name() {
-        assert_eq!(effective_output_dir("/tmp/dl", None, "Some Magnet"), "/tmp/dl/Some Magnet");
-        assert_eq!(effective_output_dir("/tmp/dl", Some(b"not a torrent"), "x"), "/tmp/dl/x");
+        assert_eq!(effective_output_dir("/tmp/dl", None, "Some Magnet"), under("/tmp/dl", "Some Magnet"));
+        assert_eq!(effective_output_dir("/tmp/dl", Some(b"not a torrent"), "x"), under("/tmp/dl", "x"));
         // A fallback that sanitizes to nothing still yields a subfolder.
-        assert_eq!(effective_output_dir("/tmp/dl", None, ".."), "/tmp/dl/torrent");
+        assert_eq!(effective_output_dir("/tmp/dl", None, ".."), under("/tmp/dl", "torrent"));
     }
 
     #[test]
     fn hostile_names_become_one_safe_component() {
         let t = multi_file_torrent("../../evil", &["a", "b"]);
-        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "f"), "/tmp/dl/_.._evil");
+        assert_eq!(effective_output_dir("/tmp/dl", Some(&t), "f"), under("/tmp/dl", "_.._evil"));
         assert_eq!(safe_folder_name("a/b\\c:d*e?f\"g<h>i|j"), "a_b_c_d_e_f_g_h_i_j");
         assert_eq!(safe_folder_name("  .hidden.  "), "hidden");
         assert_eq!(safe_folder_name("con\u{0}trol"), "con_trol");
@@ -2160,6 +2355,37 @@ mod tests {
         session.stop().await;
         drop(taken);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Windows test run 2026-09-26, D8: Transfers pauses before it cancels, so
+    // a peerless magnet's folder was left behind.
+    #[test]
+    fn a_stopped_magnet_leaves_no_empty_folder() {
+        let dest = std::env::temp_dir().join(format!("prism-stopped-magnet-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(dest.join("Quiet Magnet")).unwrap();
+        std::fs::create_dir_all(dest.join("Busy Magnet")).unwrap();
+        std::fs::write(dest.join("Busy Magnet/part.bin"), b"x").unwrap();
+        let d = dest.to_string_lossy().into_owned();
+        discard_stopped_magnet(&d, "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Quiet%20Magnet");
+        discard_stopped_magnet(&d, "magnet:?xt=urn:btih:89abcdef0123456789abcdef0123456789abcdef&dn=Busy%20Magnet");
+        discard_stopped_magnet(&d, "https://example.com/not-a-magnet.torrent");
+        assert!(!dest.join("Quiet Magnet").exists(), "empty: removed");
+        assert!(dest.join("Busy Magnet/part.bin").exists(), "anything with a file stays");
+        assert!(dest.exists(), "never the destination");
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    // Windows test run 2026-09-26, D12: qBittorrent held the port on each
+    // specific address; Prism's wildcard bind shared it and never fell back.
+    #[cfg(windows)]
+    #[test]
+    fn a_port_held_on_one_address_counts_as_taken() {
+        let other_app = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = other_app.local_addr().unwrap().port();
+        assert!(port_in_use_elsewhere(port), "held on 127.0.0.1 only");
+        drop(other_app);
+        assert!(!port_in_use_elsewhere(port), "free again once it lets go");
     }
 
     // R4.6: a restart stops the session and the next one takes the same

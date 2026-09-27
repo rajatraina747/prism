@@ -24,6 +24,9 @@ export type StoreProblem =
   | { kind: 'recovered'; file: string; keptAs: string | null }
   /** Damaged, and no usable backup: started from the fallback. */
   | { kind: 'reset'; file: string; keptAs: string | null }
+  /** Damaged, no backup, and rebuilt from an older copy (prism.db from the
+   * pre-2.3 JSON files): what loaded may be missing recent changes. */
+  | { kind: 'rebuilt'; file: string; keptAs: string | null }
   /** A save didn't reach the disk. */
   | { kind: 'save-failed'; file: string };
 

@@ -4,8 +4,7 @@ import { useSettings } from '@/stores/AppProvider';
 import { CheckCircle2, AlertTriangle, FolderOpen, Cookie, X, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
-const IS_WINDOWS = typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows');
+import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
 
 const FFMPEG_HINT = IS_MAC
   ? 'brew install ffmpeg'

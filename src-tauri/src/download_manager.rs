@@ -91,6 +91,10 @@ struct ActiveDownload {
     /// this before touching shared state or emitting: a process that outlived
     /// its kill must not keep streaming progress under the item's id.
     alive: Arc<AtomicBool>,
+    /// The claimed `-o` template and when this run began: what a Cancel
+    /// deletes is the files named after the template written since then.
+    template: String,
+    started: std::time::SystemTime,
 }
 
 impl ActiveDownload {
@@ -118,6 +122,9 @@ pub struct Extras {
     pub archive: Option<std::path::PathBuf>,
     /// Sent as the Referer (validated by `http_engine::valid_referer`).
     pub referer: Option<String>,
+    /// The download folder the template's subfolders hang from: "Move
+    /// completed" keeps them and tidies up behind the file.
+    pub move_root: Option<std::path::PathBuf>,
 }
 
 pub struct DownloadManager {
@@ -370,6 +377,12 @@ impl DownloadManager {
             // fail the whole download when it's missing.
             if ffmpeg.is_some() {
                 if embed_subs {
+                    // --embed-subs asks for the subtitles itself; an explicit
+                    // --write-subs tells yt-dlp they're wanted as files too, so
+                    // the .srt copies were kept beside the video (Windows test
+                    // run 2026-09-26). Auto-captions still come via
+                    // --write-auto-subs.
+                    args.retain(|a| a != "--write-subs");
                     args.push("--embed-subs".into());
                 }
                 args.push("--embed-thumbnail".into());
@@ -473,7 +486,10 @@ impl DownloadManager {
                         log::info!("download {id}: stopped before it started");
                         return;
                     }
-                    map.insert(id.clone(), ActiveDownload { child, alive: alive.clone() });
+                    map.insert(
+                        id.clone(),
+                        ActiveDownload { child, alive: alive.clone(), template: output_path.clone(), started: run_started },
+                    );
                 }
                 log::info!("download {id}: yt-dlp started{}", if info.is_some() { " from its lookup" } else { "" });
 
@@ -582,7 +598,7 @@ impl DownloadManager {
                     return;
                 }
 
-                if !success && !timed_out && info.is_some() && agg.bytes() == 0 {
+                if should_refetch(success, timed_out, info.is_some(), agg.bytes(), &last_error) {
                     log::info!("download {id}: its lookup didn't work ({last_error}); starting from the URL");
                     crate::lookup::forget_info(&app, &url);
                     info = None;
@@ -617,6 +633,7 @@ impl DownloadManager {
             // The move (a copy across volumes), quarantine and ledger are disk
             // work: off the async workers (REVIEW 2026-09-26 M3).
             let finish_app = app.clone();
+            let move_root = extras.move_root.clone();
             let (final_path, file_size) = tauri::async_runtime::spawn_blocking(move || {
                 let final_path = if success {
                     // "Move completed to" runs before completion is reported, so
@@ -624,7 +641,13 @@ impl DownloadManager {
                     reported
                         .filter(|path| std::path::Path::new(path).is_file())
                         .or_else(|| find_output_file(&output_path))
-                        .map(|path| crate::postprocess::move_file(&finish_app, &path).unwrap_or(path))
+                        .map(|path| {
+                            let moved = match &move_root {
+                                Some(root) => crate::postprocess::move_file_from(&finish_app, &path, root),
+                                None => crate::postprocess::move_file(&finish_app, &path),
+                            };
+                            moved.unwrap_or(path)
+                        })
                 } else {
                     None
                 };
@@ -694,6 +717,27 @@ impl DownloadManager {
             self.reserved.lock().await.remove(id);
         }
         stopped
+    }
+
+    /// Cancel, not pause: stop the run and delete what it wrote — `.part`
+    /// files, fragments, the thumbnail, subtitles — so nothing is left in the
+    /// download folder (Windows test run 2026-09-26). Only files named after
+    /// this run's own claimed template and written since it started go.
+    pub async fn discard_download(&self, id: &str) {
+        crate::jobs::cancel(id);
+        let run = self.downloads.lock().await.remove(id);
+        self.reserved.lock().await.remove(id);
+        let Some(run) = run else { return };
+        let (template, started) = (run.template.clone(), run.started);
+        run.stop();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            let files = run_files(&template, started);
+            if !files.is_empty() {
+                log::info!("download {}: removing {} partial file(s)", template_file(&template, "*"), files.len());
+            }
+            crate::postprocess::remove_files(&files);
+        })
+        .await;
     }
 
     /// yt-dlp runs in progress (for the quit confirmation).
@@ -860,6 +904,19 @@ fn reported_path(line: &str) -> Option<&str> {
     (!path.is_empty() && path != "NA").then_some(path)
 }
 
+/// Whether a run that started from the stored lookup should run once more
+/// from the URL. Nothing written means the lookup never worked. A 403 means
+/// the site refused its links (they expire), however much arrived first:
+/// subtitles download before the video, so a download with subtitles used to
+/// fail outright and Retry reused the same dead links. yt-dlp resumes the
+/// `.part` on the second run.
+fn should_refetch(success: bool, timed_out: bool, from_lookup: bool, bytes: u64, last_error: &str) -> bool {
+    if success || timed_out || !from_lookup {
+        return false;
+    }
+    bytes == 0 || classify_output(last_error).code == ErrorCode::Forbidden
+}
+
 /// The file yt-dlp writes for an `-o` template ending in `.%(ext)s`: that
 /// suffix becomes `.{ext}` and every escaped `%%` a literal `%`. Only the
 /// suffix is replaced, so an escaped `%%(ext)s` inside a name stays literal.
@@ -878,6 +935,40 @@ fn chapter_template(template: &str) -> String {
 /// Files beside a finished download that share its name and were written
 /// since `since`: subtitles (`name.en.srt`), chapter files (`name - 001
 /// Intro.mp4`), the main file itself.
+/// Discard what a *stopped* (paused, then cancelled) video left: its run
+/// claim is gone, so `template` is rebuilt from the item and could also name
+/// another, finished download of the same title. Partial files are always
+/// this download's; the thumbnail and subtitles only when no finished media
+/// file shares the name. Blocking.
+pub fn discard_stopped(template: &str, since: std::time::SystemTime) {
+    let files = run_files(template, since);
+    let finished_beside = find_output_file(template).is_some();
+    let is_partial = |p: &std::path::Path| {
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        name.ends_with(".part") || name.contains(".part-Frag") || name.ends_with(".ytdl")
+    };
+    let doomed: Vec<_> = files.into_iter().filter(|p| is_partial(p) || !finished_beside).collect();
+    if !doomed.is_empty() {
+        log::info!("download {}: removing {} partial file(s)", template_file(template, "*"), doomed.len());
+    }
+    crate::postprocess::remove_files(&doomed);
+}
+
+/// Everything a run of `template` wrote since `since`: the output, `.part`
+/// and `.part-Frag` pieces, the thumbnail, subtitles — what Cancel discards.
+fn run_files(template: &str, since: std::time::SystemTime) -> Vec<std::path::PathBuf> {
+    // `name.` exactly: a parallel download of the same title is `name (1).…`
+    // and must not match.
+    let base = template_file(template, "");
+    companion_files(template, since)
+        .into_iter()
+        .filter(|p| {
+            let file = std::path::Path::new(&base).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&file))
+        })
+        .collect()
+}
+
 fn companion_files(template: &str, since: std::time::SystemTime) -> Vec<std::path::PathBuf> {
     let base = template_file(template, "");
     let base = base.strip_suffix('.').unwrap_or(&base);
@@ -917,6 +1008,38 @@ fn find_output_file(template: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cancel_takes_only_its_own_run_files() {
+        let dir = std::env::temp_dir().join(format!("prism-runfiles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["Clip.f137.mp4.part", "Clip.f137.mp4.part-Frag3", "Clip.webp", "Clip.en.srt", "Clip (1).f137.mp4.part", "Clipper.mp4"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let template = format!("{}/Clip.%(ext)s", dir.to_string_lossy());
+        let mut got: Vec<String> = run_files(&template, std::time::UNIX_EPOCH)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        got.sort();
+        assert_eq!(got, ["Clip.en.srt", "Clip.f137.mp4.part", "Clip.f137.mp4.part-Frag3", "Clip.webp"], "never another download's files");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression (Windows test run 2026-09-26, D5/D6): a 403 after any bytes —
+    // subtitles, or part of the video — was final, and Retry repeated it.
+    #[test]
+    fn a_refused_lookup_runs_again_from_the_url() {
+        let refused = "ERROR: unable to download video data: HTTP Error 403: Forbidden";
+        assert!(should_refetch(false, false, true, 0, "anything"), "nothing written: the lookup never worked");
+        assert!(should_refetch(false, false, true, 218_297, refused), "subtitles arrived first");
+        assert!(should_refetch(false, false, true, 19_500_000, refused), "part of the video arrived");
+        assert!(!should_refetch(false, false, true, 19_500_000, "ERROR: Private video"), "other failures after bytes are final");
+        assert!(!should_refetch(false, false, false, 0, refused), "already from the URL: only once");
+        assert!(!should_refetch(false, true, true, 0, refused), "a stall is not a refusal");
+        assert!(!should_refetch(true, false, true, 0, ""), "it worked");
+    }
 
     #[test]
     fn reads_the_reported_path() {

@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile, rename, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { loadJson, saveJson, type JsonFs } from '@/lib/json-store';
-import { reportStoreProblem } from '@/lib/store-problems';
+import { reportStoreProblem, setStoreProblemLogger } from '@/lib/store-problems';
 import { createLatestWriter, createHistoryWriter } from '@/lib/db-writers';
 import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 import { onOpenUrl, getCurrent as getCurrentDeepLinks } from '@tauri-apps/plugin-deep-link';
@@ -60,6 +60,8 @@ interface StoreSnapshot {
   stats: unknown;
   /** The database was damaged and set aside under this name. */
   recoveredFrom?: string;
+  /** What replaced it: the last launch's backup, or the pre-2.3 JSON files. */
+  recoveredWith?: 'backup' | 'older-files';
 }
 
 const failedSave = (file: string) => () => reportStoreProblem({ kind: 'save-failed', file });
@@ -82,7 +84,13 @@ async function writeJson(file: string, data: unknown): Promise<void> {
 // `getCurrent()` keeps returning it on Windows/Linux (it is parsed from argv at
 // startup), so it is read once and handed to the first live subscriber.
 let launchLinksPromise: Promise<string[]> | null = null;
-let launchLinksDelivered = false;
+// Remembered for the webview session too: a reload re-ran this and showed the
+// launch link's confirmation card again, even after Ignore (Windows test run
+// 2026-09-26). sessionStorage outlives a reload but not the app.
+const LAUNCH_LINKS_KEY = 'prism.launchLinksDelivered';
+let launchLinksDelivered = (() => {
+  try { return sessionStorage.getItem(LAUNCH_LINKS_KEY) === '1'; } catch { return false; }
+})();
 
 function readLaunchLinks(): Promise<string[]> {
   // Scheme deep links (prism://, magnet:) come from the deep-link plugin;
@@ -144,6 +152,12 @@ const rustQueue: RemoteQueue = {
     return () => { stops.forEach(p => p.then(stop => stop()).catch(() => {})); };
   },
 };
+
+// Data-file problems go to Prism.log as well as the toast (settings.json is
+// read here, in the page, so Rust wouldn't otherwise know).
+setStoreProblemLogger(p => {
+  invoke('log_store_problem', { kind: p.kind, file: p.file, keptAs: 'keptAs' in p ? p.keptAs : null }).catch(() => {});
+});
 
 export class TauriPrismService implements IPrismService {
   private _initDone = false;
@@ -457,10 +471,10 @@ export class TauriPrismService implements IPrismService {
     await invoke('open_external', { url });
   }
 
-  async pickDirectory(): Promise<string | null> {
+  async pickDirectory(purpose?: 'download' | 'move' | 'category' | 'watch'): Promise<string | null> {
     // The picker runs in Rust so the user's choice itself becomes an allowed
     // download root (external drives, NAS) — see `pick_download_dir`.
-    return await invoke<string | null>('pick_download_dir');
+    return await invoke<string | null>('pick_download_dir', { purpose });
   }
 
   async getDefaultDownloadPath(): Promise<string> {
@@ -523,6 +537,7 @@ export class TauriPrismService implements IPrismService {
       readLaunchLinks().then(urls => {
         if (cancelled || launchLinksDelivered) return;
         launchLinksDelivered = true;
+        try { sessionStorage.setItem(LAUNCH_LINKS_KEY, '1'); } catch { /* memory only */ }
         extract(urls);
       });
     }
@@ -772,7 +787,10 @@ export class TauriPrismService implements IPrismService {
       try {
         snapshot = await invoke<StoreSnapshot>('store_load');
         if (snapshot.recoveredFrom) {
-          reportStoreProblem({ kind: 'reset', file: 'prism.db', keptAs: snapshot.recoveredFrom });
+          // It used to say "started it fresh" even when the old JSON files
+          // were loaded (Windows test run 2026-09-26, G2).
+          const kind = snapshot.recoveredWith === 'backup' ? 'recovered' : 'rebuilt';
+          reportStoreProblem({ kind, file: 'prism.db', keptAs: snapshot.recoveredFrom });
         }
       } catch {
         reportStoreProblem({ kind: 'reset', file: 'prism.db', keptAs: null });

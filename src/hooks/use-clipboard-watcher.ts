@@ -19,8 +19,18 @@ function isVideoUrl(text: string): boolean {
   }
 }
 
-// Survives remounts so navigating back to the Dashboard doesn't re-offer the same URL
-let lastSeen = '';
+// Survives remounts so navigating back to the Dashboard doesn't re-offer the
+// same URL — and relaunches too: kept in module memory only, the same link was
+// offered again on every start (Windows test run 2026-09-26). Storage can be
+// unavailable, so every access is guarded; memory alone is the fallback.
+const LAST_SEEN_KEY = 'prism.clipboard.lastSeen';
+let lastSeen = (() => {
+  try { return localStorage.getItem(LAST_SEEN_KEY) ?? ''; } catch { return ''; }
+})();
+function remember(text: string) {
+  lastSeen = text;
+  try { localStorage.setItem(LAST_SEEN_KEY, text); } catch { /* memory only */ }
+}
 
 /**
  * Watch the clipboard for video URLs whenever the window regains focus
@@ -37,7 +47,7 @@ export function useClipboardWatcher(onUrl: (url: string) => void, enabled = true
       try {
         const text = (await service.readClipboard()).trim();
         if (!text || text === lastSeen) return;
-        lastSeen = text;
+        remember(text);
         if (isVideoUrl(text)) onUrlRef.current(text);
       } catch { /* clipboard unavailable */ }
     };

@@ -13,7 +13,7 @@ import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
+import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { createLimiter } from '@/lib/limit';
@@ -228,6 +228,8 @@ export default function Dashboard() {
 
   // Ref indirection so the clipboard watcher callback stays stable
   const handleUrlSubmitRef = useRef<(url: string) => void>(() => {});
+  // Declared below handleUrlSubmit, which needs it for formatless lookups.
+  const downloadAsFileRef = useRef<(url: string) => Promise<void>>(async () => {});
   // The link behind the current parse error, for its Retry action.
   const lastParsedUrlRef = useRef('');
   const handleBatchSubmitRef = useRef<(urls: string[]) => void>(() => {});
@@ -354,6 +356,11 @@ export default function Dashboard() {
         }
       }
       const { metadata } = found;
+      // A plain file yt-dlp's generic extractor mistook for a video.
+      if (isFormatlessLookup(metadata)) {
+        await downloadAsFileRef.current(url);
+        return;
+      }
       // The same video under a URL the check above didn't recognise: now the
       // lookup has named it (extractor + the site's own id), ask again.
       if (dup === null) {
@@ -394,6 +401,7 @@ export default function Dashboard() {
       toast.error(errorText(err, 'Could not read that link').message);
     }
   }, [service, preferences.defaultSaveFolder, preferences.bandwidthLimit, addToQueue]);
+  downloadAsFileRef.current = downloadAsFile;
 
   const handleBatchSubmit = useCallback(async (urls: string[]) => {
     setParseError(null);
@@ -461,6 +469,21 @@ export default function Dashboard() {
           continue;
         }
         const { metadata } = found;
+        // A plain file the generic extractor mistook for a video: queue it as
+        // a direct download (a web page is a failure, as in downloadAsFile).
+        if (isFormatlessLookup(metadata)) {
+          const probe = await service.probeDirectLink(urls[i], referrerFor(urls[i]));
+          if (probe.contentType?.toLowerCase().startsWith('text/html')) {
+            failed++;
+          } else {
+            const d = buildDirectItem(urls[i], preferences.defaultSaveFolder, speedLimitBytes || undefined, probe.filename);
+            if (probe.size) d.totalBytes = probe.size;
+            added.push(d);
+            addToQueue(d);
+          }
+          setBatchProgress({ total: urls.length, done: i + 1 });
+          continue;
+        }
         // Two URLs for the same video, one of them already queued (or earlier
         // in this batch): the lookup's mediaKey says so where the URLs don't.
         if (findMediaDuplicate(metadata.mediaKey, [...queueItems, ...added], []) === 'queue') {

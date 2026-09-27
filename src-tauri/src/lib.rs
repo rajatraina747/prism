@@ -508,6 +508,8 @@ async fn start_download(
     };
     // Items queued with a file name template are named here, by the same code
     // Settings previews; older items arrive with a finished output path.
+    // Where the template's subfolders hang from, for "Move completed".
+    let move_root = output_dir.as_deref().map(|d| PathBuf::from(expand_tilde(d)));
     let output_path = match (output_dir, filename_template) {
         (Some(dir), Some(tpl)) if !tpl.trim().is_empty() => {
             templated_output_path(&dir, &tpl, &template_vars.unwrap_or_default())?
@@ -562,6 +564,7 @@ async fn start_download(
                 .unwrap_or(false)
                 .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))
                 .flatten(),
+            move_root,
         },
     ).await;
     Ok(())
@@ -591,7 +594,7 @@ fn partial_bytes(template: &str) -> u64 {
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
 /// subfolders kept, `%` escaped (yt-dlp would expand it), `.%(ext)s` appended.
-fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
+pub(crate) fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
     let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
     let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
     // The folder too: a `100% Music` destination broke every download (B-10).
@@ -1015,7 +1018,7 @@ pub(crate) fn validate_open_path(
 /// A canonical path as a string for consumers outside Rust (the OS opener,
 /// mpv, `explorer /select`). On Windows `canonicalize` yields a `\\?\`
 /// verbatim path, which those consumers don't all accept — strip the prefix.
-fn canonical_string(p: &std::path::Path) -> String {
+pub(crate) fn canonical_string(p: &std::path::Path) -> String {
     let s = p.to_string_lossy().into_owned();
     #[cfg(windows)]
     {
@@ -1302,7 +1305,10 @@ pub(crate) fn trashable_paths(
     if paths.len() > MAX_TRASH_PATHS {
         return Err(format!("Too many items at once (limit {MAX_TRASH_PATHS})"));
     }
-    let canon = |p: &PathBuf| p.canonicalize().unwrap_or_else(|_| p.clone());
+    // In `validate_open_path`'s form (no `\\?\` on Windows): the candidates
+    // below come from it, and a verbatim `\\?\C:` component never equals `C:`,
+    // so on Windows this guard used to match nothing at all.
+    let canon = |p: &PathBuf| PathBuf::from(canonical_string(&p.canonicalize().unwrap_or_else(|_| p.clone())));
     let mut keep: Vec<PathBuf> = [
         dirs::home_dir(),
         dirs::download_dir(),
@@ -1315,6 +1321,11 @@ pub(crate) fn trashable_paths(
     ]
     .into_iter()
     .flatten()
+    // The usual names under home too: with OneDrive folder backup the system
+    // folders move into OneDrive, but the original ones stay, still full.
+    .chain(dirs::home_dir().into_iter().flat_map(|home| {
+        ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"].map(|name| home.join(name))
+    }))
     .chain(roots.iter().cloned())
     .chain(protected.iter().cloned())
     .map(|p| canon(&p))
@@ -1421,6 +1432,17 @@ async fn missing_files(app: AppHandle, paths: Vec<String>) -> Result<Vec<bool>, 
     tauri::async_runtime::spawn_blocking(move || ledger::missing(&app, &paths))
         .await
         .map_err(|e| format!("Checking files: {e}"))
+}
+
+/// The page's own data files (settings.json, …) are read and repaired in the
+/// page; this puts what it found in Prism.log, where a recovery was invisible
+/// before (Windows test run 2026-09-26, G1). Values are clipped: the page
+/// names its own files, but the log shouldn't take anything unbounded.
+#[tauri::command]
+fn log_store_problem(kind: String, file: String, kept_as: Option<String>) {
+    let clip = |s: &str| s.chars().take(120).collect::<String>();
+    let kept = kept_as.as_deref().map(|k| format!("; damaged copy kept as {}", clip(k))).unwrap_or_default();
+    log::warn!("store: {} {}{kept}", clip(&file), clip(&kind));
 }
 
 /// The OS progress bar's state for a given overall progress.
@@ -1981,14 +2003,26 @@ async fn open_backup_file(app: AppHandle) -> Result<Option<String>, String> {
     .map_err(|e| format!("Couldn't read that file: {e}"))?
 }
 
+/// The picker's title for what the folder is for. Every picker used to say
+/// "where Prism saves downloads", the "Move them to" one included (Windows
+/// test run 2026-09-26). Unknown purposes get the download-folder title.
+fn picker_title(purpose: Option<&str>) -> &'static str {
+    match purpose {
+        Some("move") => "Choose where finished downloads move to",
+        Some("category") => "Choose where this category's downloads go",
+        Some("watch") => "Choose a folder to watch for .torrent files and link lists",
+        _ => "Choose where Prism saves downloads",
+    }
+}
+
 #[tauri::command]
-async fn pick_download_dir(app: AppHandle) -> Result<Option<String>, String> {
+async fn pick_download_dir(app: AppHandle, purpose: Option<String>) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .set_title("Choose where Prism saves downloads")
+        .set_title(picker_title(purpose.as_deref()))
         .pick_folder(move |picked| {
             let _ = tx.send(picked);
         });
@@ -2494,6 +2528,7 @@ pub fn run() {
             lookup::inspect_url,
             thumbnails::cache_thumbnail,
             missing_files,
+            log_store_problem,
             restart_torrent_engine,
             store::store_load,
             store::store_save_queue,
@@ -2609,6 +2644,34 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// Where the app's own pages are served from, as capability URL matching
+    /// sees it: wry serves `tauri://localhost` on macOS/Linux and
+    /// `http://tauri.localhost` on Windows.
+    #[cfg(windows)]
+    const LOCAL_ORIGIN: &str = "http://tauri.localhost";
+    #[cfg(not(windows))]
+    const LOCAL_ORIGIN: &str = "tauri://localhost";
+
+    /// A scratch folder standing in for a user-picked one. Windows' temp dir is
+    /// under AppData, which the deny-list refuses even when picked, so there it
+    /// lives under the build's target folder instead.
+    fn scratch_dir(tag: &str) -> std::path::PathBuf {
+        let name = format!("prism-{tag}-{}", std::process::id());
+        if cfg!(windows) {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test-tmp").join(name)
+        } else {
+            std::env::temp_dir().join(name)
+        }
+    }
+
+    #[test]
+    fn each_folder_picker_says_what_it_is_for() {
+        assert_eq!(picker_title(None), "Choose where Prism saves downloads");
+        assert_eq!(picker_title(Some("move")), "Choose where finished downloads move to");
+        assert_ne!(picker_title(Some("watch")), picker_title(None));
+        assert_eq!(picker_title(Some("anything else")), picker_title(None));
+    }
+
     // As yt-dlp 2026.08.19 prints a channel's Videos tab.
     #[test]
     fn a_youtube_list_knows_its_rss_feed() {
@@ -2709,7 +2772,7 @@ mod tests {
 
         // A real file under a root the user picked is fine — and so is the
         // folder itself, because a multi-file torrent is a folder.
-        let dir = std::env::temp_dir().join(format!("prism-trash-{}", std::process::id()));
+        let dir = scratch_dir("trash");
         std::fs::create_dir_all(dir.join("inner")).unwrap();
         let file = dir.join("inner/a.bin");
         std::fs::write(&file, b"x").unwrap();
@@ -2884,7 +2947,7 @@ mod tests {
                     cmd: "plugin:fs|write_text_file".into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::Raw(b"{}".to_vec()),
                     headers,
                     invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -2918,7 +2981,7 @@ mod tests {
                     cmd: "plugin:fs|rename".into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::Json(serde_json::json!({
                         "oldPath": from,
                         "newPath": to,
@@ -3015,7 +3078,7 @@ mod tests {
                     cmd: cmd.into(),
                     callback: CallbackFn(0),
                     error: CallbackFn(1),
-                    url: "tauri://localhost".parse().unwrap(),
+                    url: LOCAL_ORIGIN.parse().unwrap(),
                     body: InvokeBody::default(),
                     headers: Default::default(),
                     invoke_key: tauri::test::INVOKE_KEY.into(),
@@ -3192,7 +3255,7 @@ mod tests {
     /// outside home (external drive, NAS) — the temp dir stands in for one.
     #[test]
     fn picked_directories_become_allowed_roots() {
-        let dir = std::env::temp_dir().join(format!("prism-picked-{}", std::process::id()));
+        let dir = scratch_dir("picked");
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("clip.%(ext)s");
         let home = dirs::home_dir().unwrap().canonicalize().unwrap();

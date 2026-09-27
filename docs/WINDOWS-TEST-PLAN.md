@@ -78,7 +78,7 @@ around it in `Prism.log`.
 |---|---|---|
 | A1 | Install 2.2.1. Add two items to the queue and complete one download. Then install this build over it. | Queue and Library intact. `prism.db` created in the data folder; `queue.json`/`history.json` still there, untouched. The log says "copied the JSON data into prism.db". |
 | A2 | Launch after the upgrade. | Nothing downloads again that had finished. |
-| A3 | SmartScreen at first launch (unsigned build). | "More info → Run anyway" works; nothing else blocks. |
+| A3 | SmartScreen at first launch (unsigned build). Use an installer **downloaded in a browser** (a CI artifact): SmartScreen only checks files carrying Mark of the Web, so a locally built one never shows it. | "More info → Run anyway" works; nothing else blocks. |
 
 ### B. The engine (Phase 3)
 
@@ -86,15 +86,15 @@ around it in `Prism.log`.
 |---|---|---|
 | B1 | Paste a YouTube link. | The details dialog appears in a few seconds. The first run after install may take longer while Defender scans the engine folder; later ones should be quick. |
 | B2 | Pause and cancel a few video downloads, then look in `%TEMP%`. | No new `_MEI…` folders appear: the onedir engine doesn't unpack anything. |
-| B3 | Settings → Updates → update the engine (if a newer yt-dlp exists). | It installs; downloads still work. Update again while a download runs: it may refuse with "The engine is in use" and must leave the current engine working. |
+| B3 | Settings → Updates → update the engine. Only testable when yt-dlp has published a release newer than the bundled one; otherwise note "already current" and re-test later. | It installs; downloads still work. Update again while a download runs: it may refuse with "The engine is in use" and must leave the current engine working. |
 
 ### C. Window, tray, quit (Phase 1)
 
 | ID | Do | Expect |
 |---|---|---|
 | C1 | Start a download, then close the window with ✕. | The window hides, a "Prism is still running" notification appears once, and the download carries on. Open Prism again from the tray. |
-| C2 | With the download running: tray → Quit, and File → Quit Prism (Ctrl+Q). | A "Quit Prism?" dialog. "Keep running" keeps it; "Quit" quits. |
-| C3 | Turn off Settings → Queue → "Keep running when the window is closed", then close the window with a download running. | The quit question appears instead of hiding. |
+| C2 | With the download running: tray → Quit, and Alt+F4 with the toggle in C3 off. (File → Quit Prism / ⌘Q is the macOS path; Windows has no menu bar.) | A "Quit Prism?" dialog. "Keep running" keeps it; "Quit" quits. |
+| C3 | Turn off Settings → Speed & schedule → Queue → "Keep running when the window is closed", then close the window with a download running. | The quit question appears instead of hiding. |
 | C4 | Nothing running → quit. | Quits straight away. |
 
 ### D. Downloads and the queue (Phases 2, 4, 5, 6)
@@ -130,7 +130,7 @@ around it in `Prism.log`.
 
 | ID | Do | Expect |
 |---|---|---|
-| F1 | Play a finished 1080p and a 4K file in Prism's player. | Smooth playback, correct colours, seeking works, and no black window. |
+| F1 | Play a finished 1080p and a 4K file in Prism's player. Watch it yourself: the video surface can't be screenshotted, so colours and smoothness need eyes. | Smooth playback, correct colours, seeking works, and no black window. |
 | F2 | Torrent "Play now" while it downloads. | Starts after a short buffer; seeking fetches the right pieces. |
 
 ### G. Settings, recovery, when-done

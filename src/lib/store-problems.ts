@@ -10,12 +10,20 @@ import type { StoreProblem } from './json-store';
 let listener: ((p: StoreProblem) => void) | null = null;
 const pending: StoreProblem[] = [];
 const saveFailuresTold = new Set<string>();
+// Where problems are also recorded (the desktop app's log file); the web demo
+// has none.
+let logger: ((p: StoreProblem) => void) | null = null;
+
+export function setStoreProblemLogger(log: (p: StoreProblem) => void): void {
+  logger = log;
+}
 
 export function reportStoreProblem(problem: StoreProblem): void {
   if (problem.kind === 'save-failed') {
     if (saveFailuresTold.has(problem.file)) return;
     saveFailuresTold.add(problem.file);
   }
+  try { logger?.(problem); } catch { /* the toast still matters */ }
   if (listener) listener(problem);
   else pending.push(problem);
 }
@@ -44,6 +52,8 @@ export function describeStoreProblem(p: StoreProblem): { title: string; descript
   switch (p.kind) {
     case 'recovered':
       return { title: `Restored ${what} from a backup`, description: `The saved copy was damaged, so Prism loaded the one before it.${kept}` };
+    case 'rebuilt':
+      return { title: `Rebuilt ${what} from an older copy`, description: `The saved copy was damaged and there was no recent backup, so Prism loaded the one from before version 2.3 — anything since may be missing.${kept}` };
     case 'reset':
       return { title: `Couldn't read ${what}`, description: `The saved copy was damaged and there was no backup, so Prism started it fresh.${kept}` };
     case 'save-failed':

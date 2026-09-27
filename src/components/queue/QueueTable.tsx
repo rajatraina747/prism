@@ -292,7 +292,9 @@ const QueueRow = React.memo(function QueueRow({
             {item.settings.downloadSubtitles && (
               <span className="text-muted-foreground/70">+ Subs</span>
             )}
-            {isActive && item.stage === 'processing' ? (
+            {isActive && item.retryAt ? (
+              <RetryCountdown at={item.retryAt} reason={item.retryReason} />
+            ) : isActive && item.stage === 'processing' ? (
               <span className="text-primary/80">Processing — merging &amp; finishing up…</span>
             ) : isActive && (
               <>
@@ -461,6 +463,27 @@ function KindBadge({ torrent }: { torrent: boolean }) {
       aria-label={torrent ? 'BitTorrent' : 'Direct download'}
     >
       <Icon className="w-2.5 h-2.5" strokeWidth={2} />
+    </span>
+  );
+}
+
+/// "Retrying in m:ss — why", counting down, while the queue waits to retry a
+/// failure by itself (a rate limit waits minutes). Replaces the last speed and
+/// ETA, which read as a stalled download.
+function RetryCountdown({ at, reason }: { at: string; reason?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const secs = Math.max(0, Math.round((Date.parse(at) - now) / 1000));
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  // The reason without its advice ("… — wait a few minutes, then retry"),
+  // which the countdown already is; the whole text stays in the tooltip.
+  const short = reason?.split(' — ')[0];
+  return (
+    <span className="text-warning" title={reason}>
+      {secs > 0 ? `Retrying in ${clock}` : 'Retrying…'}{short ? ` — ${short}` : ''}
     </span>
   );
 }

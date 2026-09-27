@@ -20,8 +20,10 @@ vi.mock('@tauri-apps/plugin-notification', () => ({
 
 const MAGNET = 'magnet:?xt=urn:btih:0123456789abcdef';
 
-/** Fresh module per test — the launch link is one-shot per process. */
-async function freshService() {
+/** Fresh module per test — the launch link is one-shot per process. A new
+ * process starts with empty sessionStorage; a reload (`reload: true`) keeps it. */
+async function freshService({ reload = false } = {}) {
+  if (!reload) sessionStorage.clear();
   vi.resetModules();
   const { TauriPrismService } = await import('../tauri');
   return new TauriPrismService();
@@ -75,6 +77,20 @@ describe('onDeepLink launch link', () => {
     service.onDeepLink(vi.fn());
     await new Promise(r => setTimeout(r, 20));
     expect(getCurrent).toHaveBeenCalledTimes(1);
+  });
+
+  // Windows test run 2026-09-26: a webview reload showed the launch link's
+  // card again, even after it had been ignored.
+  it('does not replay it after a reload of the page', async () => {
+    const first = await freshService();
+    const before = vi.fn();
+    first.onDeepLink(before);
+    await vi.waitFor(() => expect(before).toHaveBeenCalledTimes(1));
+    const reloaded = await freshService({ reload: true });
+    const after = vi.fn();
+    reloaded.onDeepLink(after);
+    await new Promise(r => setTimeout(r, 20));
+    expect(after).not.toHaveBeenCalled();
   });
 
   it('still delivers links that arrive while running', async () => {

@@ -379,6 +379,14 @@ fn still_needed(size: u64, dest: &Path, source: &str) -> u64 {
 }
 
 async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment]) {
+    // No part file, nothing to resume: a Cancel deleted both while the
+    // workers were still stopping, and the final save put the state file back
+    // (Windows test run 2026-09-26). The part is the state file's name less
+    // `.json`.
+    let part = state_path.with_extension("");
+    if !tokio::fs::try_exists(&part).await.unwrap_or(false) {
+        return;
+    }
     // In file order: splits append, and a resume checks the ranges are contiguous.
     let mut segments = segments.to_vec();
     segments.sort_by_key(|s| s.start);
@@ -1170,6 +1178,23 @@ pub async fn cancel_http_download(app: AppHandle, id: String) -> Result<(), Stri
         cancel.store(true, Ordering::Relaxed);
     }
     Ok(())
+}
+
+/// Cancel, not pause: stop a direct download and delete its preallocated
+/// `.prismpart` (full size on disk from the first byte) and state file, and
+/// free its name (Windows test run 2026-09-26: a cancelled 1 GB download left
+/// 1 GB behind).
+pub async fn discard_http_download(app: &AppHandle, id: &str) {
+    crate::jobs::cancel(id);
+    let engine = app.state::<HttpEngine>();
+    let claimed = engine.reserved.lock().await.remove(id);
+    if let Some(cancel) = engine.active.lock().await.remove(id) {
+        cancel.store(true, Ordering::Relaxed);
+    }
+    let Some(dest) = claimed else { return };
+    let files = vec![with_suffix(&dest, PART_SUFFIX), with_suffix(&dest, STATE_SUFFIX)];
+    log::info!("direct download {id}: removing its partial file");
+    let _ = tauri::async_runtime::spawn_blocking(move || crate::postprocess::remove_files(&files)).await;
 }
 
 /// Session-wide limit for direct downloads (quiet hours), on top of per-item limits.

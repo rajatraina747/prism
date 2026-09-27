@@ -174,7 +174,8 @@ export interface IPrismService {
   /** Open an http(s) link in the user's browser — `target="_blank"` is inert
    *  inside the webview, so every outbound link goes through this. */
   openExternal(url: string): Promise<void>;
-  pickDirectory(): Promise<string | null>;
+  /** Native folder picker; `purpose` sets its title (default: the download folder). */
+  pickDirectory(purpose?: 'download' | 'move' | 'category' | 'watch'): Promise<string | null>;
   getDefaultDownloadPath(): Promise<string>;
   /** What a folder is holding and what its disk has left. The walk is capped,
    * so `partial` means the totals are a floor rather than a final answer. */

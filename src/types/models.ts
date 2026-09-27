@@ -199,6 +199,10 @@ export interface DownloadItem {
   actualHeight?: number;
   error?: DownloadError;
   retryAttempt: number;
+  /** Set by the queue while it waits to retry by itself (ISO time) and why;
+   * cleared when the retry starts, or on pause/cancel. */
+  retryAt?: string;
+  retryReason?: string;
   // 'processing' while yt-dlp hands off to ffmpeg (merge/extract/embed) —
   // bytes stop moving but the download isn't done. Absent otherwise.
   stage?: 'processing';

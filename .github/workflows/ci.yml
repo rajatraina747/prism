@@ -167,6 +167,15 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
+      # Windows-only path bugs (verbatim `\\?\` paths, `\` separators, the
+      # deny-list under AppData) shipped because the tests only ran on Linux.
+      # build.rs links the Common Controls v6 manifest into test binaries, so
+      # they now start on Windows.
+      - name: Rust tests (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: src-tauri
+        run: cargo test --lib
+
   # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
   audit:
     runs-on: ubuntu-latest
