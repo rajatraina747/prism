@@ -193,6 +193,9 @@ impl DownloadManager {
             guard.insert(id.clone(), path.clone());
             path
         };
+        // Rust's record of what this item's runs write, which a later Cancel
+        // of the paused item deletes by (queue::CLAIM).
+        crate::queue::record_claim(&app, &id, &output_path);
 
         tauri::async_runtime::spawn(async move {
             // URL is appended last (after a `--` terminator) so it can't be
@@ -735,7 +738,7 @@ impl DownloadManager {
             if !files.is_empty() {
                 log::info!("download {}: removing {} partial file(s)", template_file(&template, "*"), files.len());
             }
-            crate::postprocess::remove_files(&files);
+            discard_files(&template, files);
         })
         .await;
     }
@@ -932,14 +935,11 @@ fn chapter_template(template: &str) -> String {
     format!("{base} - %(section_number)03d %(section_title)s.%(ext)s")
 }
 
-/// Files beside a finished download that share its name and were written
-/// since `since`: subtitles (`name.en.srt`), chapter files (`name - 001
-/// Intro.mp4`), the main file itself.
-/// Discard what a *stopped* (paused, then cancelled) video left: its run
-/// claim is gone, so `template` is rebuilt from the item and could also name
-/// another, finished download of the same title. Partial files are always
-/// this download's; the thumbnail and subtitles only when no finished media
-/// file shares the name. Blocking.
+/// Discard what a *stopped* (paused, then cancelled) video left. `template`
+/// is the claim its runs recorded (`queue::CLAIM`), which can still name a
+/// finished download of the same title that an earlier, separate item
+/// wrote. Partial files are always this download's; the thumbnail and
+/// subtitles only when no finished media file shares the name. Blocking.
 pub fn discard_stopped(template: &str, since: std::time::SystemTime) {
     let files = run_files(template, since);
     let finished_beside = find_output_file(template).is_some();
@@ -951,7 +951,60 @@ pub fn discard_stopped(template: &str, since: std::time::SystemTime) {
     if !doomed.is_empty() {
         log::info!("download {}: removing {} partial file(s)", template_file(template, "*"), doomed.len());
     }
-    crate::postprocess::remove_files(&doomed);
+    discard_files(template, doomed);
+}
+
+/// Delete what a cancelled run wrote. Pieces only a download in progress
+/// has — `.part`, fragments, `.ytdl`, `.temp.` and `.fNNN.` intermediates —
+/// are removed; anything that could be a finished file (the media, its
+/// thumbnail, subtitles) goes to the Trash instead, so a mistake here is one
+/// someone can undo (REVIEW 2026-09-28 D-1). Blocking.
+fn discard_files(template: &str, files: Vec<std::path::PathBuf>) {
+    let name = run_name(template);
+    let (partial, whole): (Vec<_>, Vec<_>) = files.into_iter().partition(|p| {
+        p.file_name()
+            .and_then(|n| n.to_string_lossy().strip_prefix(name.as_str()).map(is_intermediate))
+            .unwrap_or(false)
+    });
+    crate::postprocess::remove_files(&partial);
+    if !whole.is_empty() {
+        if let Err(e) = trash::delete_all(&whole) {
+            log::warn!("couldn't move {} cancelled file(s) to the Trash: {e}", whole.len());
+        }
+    }
+}
+
+/// The `name.` every file of a run of `template` starts with.
+fn run_name(template: &str) -> String {
+    let base = template_file(template, "");
+    std::path::Path::new(&base).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Whether `rest` (a run file's name after `name.`) is a piece only an
+/// unfinished run leaves behind.
+fn is_intermediate(rest: &str) -> bool {
+    static INTERMEDIATE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"^(?:f[\w-]+|temp)\.|\.part(?:-Frag\d+(?:\.part)?)?$|\.ytdl$").unwrap()
+    });
+    INTERMEDIATE.is_match(rest)
+}
+
+/// Whether `rest` — a file name with the run's `name.` prefix taken off — is
+/// one of the shapes a yt-dlp run writes: `ext`, `fNNN.ext`, `temp.ext`,
+/// `LANG.subext`, each optionally with `.part`, `.part-FragN` or `.ytdl`.
+/// Anything else only shares a prefix: `Episode 1.5 Special.mp4` is not a
+/// file of the run named `Episode 1` (D-1).
+fn is_run_suffix(rest: &str) -> bool {
+    static SHAPE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(concat!(
+            r"^(?:",
+            r"(?:(?:f[\w-]+|temp)\.)?[A-Za-z0-9]{1,5}",
+            r"|[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*\.(?:srt|vtt|ass|ssa|lrc|ttml|srv[123]|json3)",
+            r")(?:\.part(?:-Frag\d+(?:\.part)?)?|\.ytdl)?$",
+        ))
+        .unwrap()
+    });
+    SHAPE.is_match(rest)
 }
 
 /// Everything a run of `template` wrote since `since`: the output, `.part`
@@ -959,16 +1012,20 @@ pub fn discard_stopped(template: &str, since: std::time::SystemTime) {
 fn run_files(template: &str, since: std::time::SystemTime) -> Vec<std::path::PathBuf> {
     // `name.` exactly: a parallel download of the same title is `name (1).…`
     // and must not match.
-    let base = template_file(template, "");
+    let file = run_name(template);
     companion_files(template, since)
         .into_iter()
         .filter(|p| {
-            let file = std::path::Path::new(&base).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&file))
+            p.file_name()
+                .and_then(|n| n.to_string_lossy().strip_prefix(file.as_str()).map(is_run_suffix))
+                .unwrap_or(false)
         })
         .collect()
 }
 
+/// Files beside a finished download that share its name and were written
+/// since `since`: subtitles (`name.en.srt`), chapter files (`name - 001
+/// Intro.mp4`), the main file itself.
 fn companion_files(template: &str, since: std::time::SystemTime) -> Vec<std::path::PathBuf> {
     let base = template_file(template, "");
     let base = base.strip_suffix('.').unwrap_or(&base);
@@ -1025,6 +1082,44 @@ mod tests {
         got.sort();
         assert_eq!(got, ["Clip.en.srt", "Clip.f137.mp4.part", "Clip.f137.mp4.part-Frag3", "Clip.webp"], "never another download's files");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression (REVIEW 2026-09-28 D-1): a prefix is not a name. Cancelling
+    // "Episode 1" deleted a finished "Episode 1.5 Special.mp4" beside it.
+    #[test]
+    fn a_cancel_never_takes_a_file_that_only_shares_the_prefix() {
+        let dir = std::env::temp_dir().join(format!("prism-prefix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let theirs = ["Episode 1.5 Special.mp4", "Episode 1.5.mp4", "Episode 1.final cut.mkv", "Episode 1.en.notes.txt"];
+        let ours = ["Episode 1.f137.mp4.part", "Episode 1.f140.m4a", "Episode 1.temp.mp4", "Episode 1.en-US.vtt", "Episode 1.webp", "Episode 1.mp4.ytdl"];
+        for f in theirs.iter().chain(ours.iter()) {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let template = format!("{}/Episode 1.%(ext)s", dir.to_string_lossy());
+        let mut got: Vec<String> = run_files(&template, std::time::UNIX_EPOCH)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        got.sort();
+        let mut want: Vec<&str> = ours.to_vec();
+        want.sort();
+        assert_eq!(got, want);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // D-1: only pieces an unfinished run leaves are unlinked; anything that
+    // could be a finished file goes to the Trash.
+    #[test]
+    fn only_intermediates_are_deleted_outright() {
+        for rest in ["f137.mp4.part", "f137.mp4", "mp4.part-Frag3", "mp4.part-Frag3.part", "temp.mp4", "mp4.ytdl"] {
+            assert!(is_intermediate(rest), "{rest}");
+        }
+        for rest in ["mp4", "webp", "en.srt", "mkv"] {
+            assert!(!is_intermediate(rest), "{rest}");
+        }
+        assert_eq!(run_name("/dl/Show.final.%(ext)s"), "Show.final.");
+        assert!(!is_intermediate("mp4"), "Show.final.mp4 is the finished file, not an .f-intermediate");
     }
 
     // Regression (Windows test run 2026-09-26, D5/D6): a 403 after any bytes —

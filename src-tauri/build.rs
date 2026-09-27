@@ -54,7 +54,6 @@ const COMMANDS: &[&str] = &[
     "log_store_problem",
     "restart_torrent_engine",
     "store_load",
-    "store_save_queue",
     "store_update_history",
     "store_save_doc",
     "queue_snapshot",

@@ -65,9 +65,9 @@ interface StoreSnapshot {
 }
 
 const failedSave = (file: string) => () => reportStoreProblem({ kind: 'save-failed', file });
-// The database (store.rs): the queue and documents replaced whole, newest
-// wins; the Library saved as the rows that changed (lib/db-writers.ts).
-const queueWriter = createLatestWriter<unknown[]>(items => invoke('store_save_queue', { items }), failedSave('queue.json'));
+// The database (store.rs): documents replaced whole, newest wins; the
+// Library saved as the rows that changed (lib/db-writers.ts). The queue is
+// Rust's (queue.rs) and saved by Rust: the page has no command to write it.
 const historyWriter = createHistoryWriter<HistoryItem>(
   ({ put, remove, clear }) => invoke('store_update_history', { put, remove, clear }),
   failedSave('history.json'),
@@ -818,14 +818,10 @@ export class TauriPrismService implements IPrismService {
       return this._queueCache;
     },
 
+    // Never called on the desktop (AppProvider skips it when `service.queue`
+    // is Rust's); kept only to satisfy the interface the web demo shares.
     saveQueue: (items: DownloadItem[]) => {
       this.persistence._queueCache = items;
-      if (this._initDone) {
-        // Don't persist the (potentially large) per-file torrent breakdown — it's
-        // runtime detail that repopulates from progress events on the next run.
-        const slim = items.map(({ files: _files, pieces: _pieces, ...rest }) => rest);
-        queueWriter(slim);
-      }
     },
 
     loadHistory(): HistoryItem[] {
