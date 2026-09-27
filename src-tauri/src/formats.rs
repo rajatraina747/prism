@@ -137,7 +137,11 @@ pub(crate) fn options(formats: &[YtDlpFormat], keep_container: bool) -> Vec<Form
     let mut groups: BTreeMap<(u32, bool, bool), Group> = BTreeMap::new();
     for f in formats {
         let height = f.height.unwrap_or(0);
-        let vcodec = f.vcodec.as_deref().unwrap_or("none");
+        // A missing codec is not "none": archive.org (and other sites) don't
+        // report one, and treating it as audio-only left their videos with no
+        // quality to choose and a disabled Add (Windows test run 2026-09-27).
+        // Only an explicit "none" means no video.
+        let vcodec = f.vcodec.as_deref().unwrap_or("unknown");
         if height < 144 || vcodec == "none" || f.ext.as_deref() == Some("mhtml") {
             continue;
         }
@@ -262,6 +266,20 @@ mod tests {
             f(720, "avc1.4d401f", 30.0, "SDR"),
             YtDlpFormat { vcodec: Some("none".into()), acodec: Some("mp4a.40.2".into()), ..Default::default() },
         ]
+    }
+
+    // archive.org reports no codecs (yt-dlp prints "unknown"); its videos had
+    // no quality at all to choose (Windows test run 2026-09-27).
+    #[test]
+    fn a_site_that_reports_no_codec_still_has_qualities() {
+        let file = |height: u32, ext: &str| YtDlpFormat { height: Some(height), ext: Some(ext.into()), ..Default::default() };
+        let opts = options(&[file(300, "ogv"), file(360, "mp4"), file(720, "avi")], false);
+        let labels: Vec<&str> = opts.iter().map(|o| o.label.as_str()).collect();
+        assert_eq!(labels, ["720p · Video", "360p · Video", "300p · Video"]);
+        assert!(opts[0].id.contains("best[height<=720]"), "falls back to the single file");
+        // An explicit "none" is still audio: never a video option.
+        let audio = YtDlpFormat { vcodec: Some("none".into()), acodec: Some("mp4a.40.2".into()), height: None, ..Default::default() };
+        assert!(options(&[audio], false).is_empty());
     }
 
     #[test]
