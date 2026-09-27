@@ -56,6 +56,11 @@ pub fn begin(id: &str) -> Ticket {
     Ticket { id: id.to_string(), cancelled }
 }
 
+/// Whether a start for `id` is still on its way to its engine.
+pub fn is_pending(id: &str) -> bool {
+    pending().lock().map(|map| map.contains_key(id)).unwrap_or(false)
+}
+
 /// Stop a start that hasn't registered yet. A no-op for an id with none,
 /// so every engine's cancel command can call it.
 pub fn cancel(id: &str) {

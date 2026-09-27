@@ -689,7 +689,7 @@ fn is_torrent_file_arg(arg: &str) -> bool {
 
 /// Session-wide torrent engine settings, each read through its whitelisting
 /// accessor. Applied when the engine starts (next launch after a change).
-fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
+pub(crate) fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
     let app_data = app.path().app_data_dir().ok();
     torrent::SessionConfig {
         socks_proxy: proxy_url(app),

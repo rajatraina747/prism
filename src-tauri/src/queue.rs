@@ -467,7 +467,8 @@ async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
         let dest = rules::setting_str(i, "destination").unwrap_or("~/Downloads/Prism").to_string();
         let url = rules::source_url(i).to_string();
         if let Ok(dest) = crate::validate_download_path(&dest, &crate::picked_dirs(app)) {
-            let _ = tauri::async_runtime::spawn_blocking(move || crate::torrent::discard_stopped_magnet(&dest, &url)).await;
+            let cfg = crate::torrent_session_config(app);
+            app.state::<crate::torrent::TorrentManager>().discard_stopped(app, &dest, &url, &cfg).await;
         }
     }
     // (yt-dlp items are kind "http", the default; direct links are "direct".)

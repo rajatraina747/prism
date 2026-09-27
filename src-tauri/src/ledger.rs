@@ -253,6 +253,13 @@ pub fn missing(app: &AppHandle, paths: &[String]) -> Vec<bool> {
     with_ledger(app, |ledger| ledger.missing(&expanded)).unwrap_or_else(|| vec![false; paths.len()])
 }
 
+/// Whether Prism recorded `path` (or a folder holding it) as a finished
+/// download. Such a path is never a cancelled download's leftovers.
+pub fn is_finished_download(app: &AppHandle, path: &Path) -> bool {
+    let canonical = path.canonicalize().map(|p| PathBuf::from(crate::canonical_string(&p))).unwrap_or_else(|_| path.to_path_buf());
+    with_ledger(app, |ledger| ledger.contains(&canonical)).unwrap_or(false)
+}
+
 /// Refuse a path no engine recorded. `validated` is `validate_open_path`'s
 /// canonical result.
 pub fn require_recorded(app: &AppHandle, validated: &str) -> Result<(), String> {
