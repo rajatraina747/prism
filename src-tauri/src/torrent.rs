@@ -1535,6 +1535,28 @@ async fn add_or_adopt(
             }
             dir
         }
+        // A multi-file torrent gets `<dest>/<name>` — unless that folder is
+        // already there and not this torrent's: another pack with the same
+        // name ("Season 1"), or a folder of the user's (REVIEW 2026-09-28 S-2).
+        Some(TorrentLayout::MultiFile { info_hash, .. }) => {
+            let named = effective_output_dir(&p.output_dir, bytes.as_deref(), &p.fallback_name);
+            let managed_here = session.with_torrents(|mut torrents| {
+                Iterator::any(&mut torrents, |(_, h)| {
+                    h.info_hash().as_string() == info_hash && same_dir(h.output_folder(), &named)
+                })
+            });
+            let ours = managed_here
+                || p.claims_file.as_deref().is_some_and(|f| claimed_by(f, Path::new(&named)).as_deref() == Some(info_hash.as_str()));
+            let files = bytes.as_deref().map(torrent_files).unwrap_or_default();
+            let dir = multi_file_dir(&named, &info_hash, ours, &files);
+            if dir != named {
+                log::info!("torrent {info_hash}: \"{named}\" is taken; using its own folder");
+            }
+            if let Some(f) = p.claims_file.as_deref() {
+                record_claim(f, Path::new(&dir), &info_hash);
+            }
+            dir
+        }
         _ => effective_output_dir(&p.output_dir, bytes.as_deref(), &p.fallback_name),
     };
 
@@ -2028,6 +2050,62 @@ pub(crate) fn single_file_dir(dest: &str, file: &Path, info_hash: &str, ours: bo
     PathBuf::from(dest).join(format!("{stem} [{short}]")).to_string_lossy().into_owned()
 }
 
+/// Where a multi-file torrent's files go: its `<dest>/<name>` folder when
+/// that is free or already its own, else `<name> [hash8]` beside it.
+///
+/// librqbit adds with `overwrite: true`, so a second, different torrent with
+/// the same name opened the first one's finished files and rewrote every
+/// piece that didn't match — and the ledger then vouched for the whole
+/// folder, whatever else was in it (REVIEW 2026-09-28 S-2). `ours` is the
+/// session or the claims record saying this info hash is there. A folder
+/// from before claims were kept for multi-file torrents counts as its own
+/// only if everything in it is one of its files, no larger than it should be.
+pub(crate) fn multi_file_dir(named: &str, info_hash: &str, ours: bool, files: &[(PathBuf, u64)]) -> String {
+    let dir = Path::new(named);
+    if ours || std::fs::symlink_metadata(dir).is_err() || holds_only(dir, files) {
+        return named.to_string();
+    }
+    let short = &info_hash[..info_hash.len().min(8)];
+    format!("{named} [{short}]")
+}
+
+/// Whether every file under `dir` is one of `files` (relative path, length)
+/// and no longer than that. A symlink, an unknown file or a walk that runs
+/// long all say no.
+fn holds_only(dir: &Path, files: &[(PathBuf, u64)]) -> bool {
+    const MAX_ENTRIES: usize = 20_000;
+    let expected: HashMap<&Path, u64> = files.iter().map(|(p, len)| (p.as_path(), *len)).collect();
+    let mut stack = vec![dir.to_path_buf()];
+    let mut seen = 0;
+    while let Some(folder) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else { return false };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > MAX_ENTRIES {
+                return false;
+            }
+            let Ok(meta) = std::fs::symlink_metadata(entry.path()) else { return false };
+            if meta.is_dir() {
+                stack.push(entry.path());
+                continue;
+            }
+            let Ok(rel) = entry.path().strip_prefix(dir).map(Path::to_path_buf) else { return false };
+            match expected.get(rel.as_path()) {
+                Some(len) if meta.is_file() && meta.len() <= *len => {}
+                _ => return false,
+            }
+        }
+    }
+    true
+}
+
+/// A torrent's files as (path inside its folder, length).
+fn torrent_files(bytes: &[u8]) -> Vec<(PathBuf, u64)> {
+    let Ok(t) = torrent_from_bytes(bytes) else { return Vec::new() };
+    let Ok(info) = t.info.data.validate() else { return Vec::new() };
+    info.iter_file_details().map(|d| (d.filename.to_pathbuf(), d.len)).collect()
+}
+
 /// Claims kept. Oldest go first; a claim only matters while its torrent can
 /// still be resumed.
 const MAX_CLAIMS: usize = 5000;
@@ -2328,6 +2406,35 @@ mod tests {
         assert_eq!(fallback_folder_name(&http), "thing");
         let file = TorrentSource::Bytes { key: "/Users/x/Downloads/pack.torrent".into(), bytes: vec![], trackers: vec![] };
         assert_eq!(fallback_folder_name(&file), "pack");
+    }
+
+    // Regression (REVIEW 2026-09-28 S-2): a second "Season 1" pack, or a
+    // folder of the user's, was written into with overwrite on.
+    #[test]
+    fn a_multi_file_torrent_never_writes_into_a_folder_it_does_not_own() {
+        let dest = std::env::temp_dir().join(format!("prism-s2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(&dest).unwrap();
+        let hash = "0123456789abcdef0123456789abcdef01234567";
+        let files = vec![(PathBuf::from("E01.mkv"), 100), (PathBuf::from("Extras/E01.srt"), 10)];
+        let named = |n: &str| dest.join(n).to_string_lossy().into_owned();
+
+        assert_eq!(multi_file_dir(&named("Fresh"), hash, false, &files), named("Fresh"), "free: its name");
+
+        std::fs::create_dir_all(dest.join("Season 1")).unwrap();
+        std::fs::write(dest.join("Season 1/E01.mkv"), vec![0u8; 500]).unwrap();
+        assert_eq!(multi_file_dir(&named("Season 1"), hash, false, &files), named("Season 1 [01234567]"), "another pack's larger file");
+        assert_eq!(multi_file_dir(&named("Season 1"), hash, true, &files), named("Season 1"), "claimed: its own");
+
+        std::fs::create_dir_all(dest.join("Documents")).unwrap();
+        std::fs::write(dest.join("Documents/thesis.docx"), b"x").unwrap();
+        assert_eq!(multi_file_dir(&named("Documents"), hash, false, &files), named("Documents [01234567]"), "a user's folder");
+
+        std::fs::create_dir_all(dest.join("Resumed/Extras")).unwrap();
+        std::fs::write(dest.join("Resumed/E01.mkv"), vec![0u8; 40]).unwrap();
+        std::fs::write(dest.join("Resumed/Extras/E01.srt"), b"x").unwrap();
+        assert_eq!(multi_file_dir(&named("Resumed"), hash, false, &files), named("Resumed"), "its own partial files from before claims");
+        let _ = std::fs::remove_dir_all(&dest);
     }
 
     // A session with no network at all, persisting into `dir`.
