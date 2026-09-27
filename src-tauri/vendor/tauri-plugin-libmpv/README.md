@@ -29,6 +29,13 @@
 >   the close handler above found it busy, prevented the close and waited: the
 >   player window could not be closed. An instance whose window closed, or
 >   whose label another init claimed meanwhile, is destroyed, not kept.
+> - `src/desktop.rs`: `event_callback` moved *borrows* of the userdata box
+>   (`app`, `window_label`) into a spawned task. `destroy` frees that box
+>   right after `mpv_wrapper_destroy`, while tasks for mpv's last events can
+>   still be queued: a use-after-free on player close. The task now owns
+>   clones (REVIEW 2026-09-28 D-4). Not verified here: that the wrapper's
+>   event thread has stopped calling back by the time `mpv_wrapper_destroy`
+>   returns — the box is safe only if it has.
 >
 > Prism does NOT grant the plugin's `command`/`set_property`/`init`
 > passthrough to any window (see `src-tauri/capabilities/player.json`); mpv
