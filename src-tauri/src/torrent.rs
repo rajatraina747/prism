@@ -2095,7 +2095,13 @@ pub(crate) fn safe_folder_name(raw: &str) -> String {
         .map(|c| if BAD.contains(&c) || c.is_control() { '_' } else { c })
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').trim();
-    trimmed.chars().take(200).collect()
+    // In bytes, not characters (a 200-character CJK name is 600 bytes), and
+    // never a name Windows reserves for a device (REVIEW 2026-09-28).
+    let mut out = crate::template::cap_bytes(trimmed, 200).trim_end_matches(['.', ' ']).to_string();
+    if crate::template::is_windows_device_name(&out) {
+        out.insert(0, '_');
+    }
+    out
 }
 
 /// Where a single-file torrent's file goes: the destination itself, as every
@@ -2500,6 +2506,16 @@ mod tests {
         assert_eq!(safe_folder_name("con\u{0}trol"), "con_trol");
         assert_eq!(safe_folder_name("..").len(), 0);
         assert_eq!(safe_folder_name(&"x".repeat(500)).len(), 200);
+    }
+
+    // Regression (REVIEW 2026-09-28): a torrent's (untrusted) name could be
+    // a Windows device name, or 600 bytes of CJK under a 200-character cap.
+    #[test]
+    fn folder_names_every_platform_can_store() {
+        assert_eq!(safe_folder_name("CON"), "_CON");
+        assert_eq!(safe_folder_name("nul.txt"), "_nul.txt");
+        let wide = safe_folder_name(&"日本語".repeat(100));
+        assert!(wide.len() <= 200 && wide.starts_with("日本語"), "{} bytes", wide.len());
     }
 
     #[test]
