@@ -181,6 +181,8 @@ const QueueRow = React.memo(function QueueRow({
 
   const isActive = item.status === 'downloading';
   const isPaused = item.status === 'paused';
+  // Added with "Start immediately" off: waits for Start.
+  const isHeld = item.status === 'ready';
   const isSeeding = item.status === 'seeding';
   const isFailed = item.status === 'failed';
   const isQueued = item.status === 'queued';
@@ -406,7 +408,10 @@ const QueueRow = React.memo(function QueueRow({
           {isPaused && (
             <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip="Resume" />
           )}
-          {(isActive || isPaused || isSeeding || isQueued) && (
+          {isHeld && (
+            <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip="Start" />
+          )}
+          {(isActive || isPaused || isSeeding || isQueued || isHeld) && (
             <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip={isSeeding ? 'Stop seeding' : 'Cancel'} />
           )}
           {(isTerminal || isFailed) && (
@@ -424,6 +429,7 @@ const QueueRow = React.memo(function QueueRow({
         {onOpenDetails && <ContextMenuItem onSelect={() => onOpenDetails(item.id)}><Info className="w-3.5 h-3.5 mr-2" />Details</ContextMenuItem>}
         {isLive && <ContextMenuItem onSelect={() => onPause(item.id)}><Pause className="w-3.5 h-3.5 mr-2" />Pause</ContextMenuItem>}
         {isPaused && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />Resume</ContextMenuItem>}
+        {isHeld && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />Start</ContextMenuItem>}
         {isFailed && <ContextMenuItem onSelect={() => onRetry(item.id)}><RotateCcw className="w-3.5 h-3.5 mr-2" />Retry</ContextMenuItem>}
         {isTorrent && isLive && onReannounce && (
           <ContextMenuItem onSelect={() => onReannounce(item.id)}><RefreshCw className="w-3.5 h-3.5 mr-2" />Update tracker</ContextMenuItem>

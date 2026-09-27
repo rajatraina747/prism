@@ -37,6 +37,9 @@ export const WHEN_DONE_COUNTDOWN_SECONDS = 60;
 /**
  * Whether an item still needs Prism to be awake.
  *
+ * `ready` (held at add until the user starts it) doesn't count either, for
+ * the same reason (REVIEW 2026-09-28 D-5).
+ *
  * `paused` deliberately does not count: a paused download will never finish on
  * its own, so treating it as busy would mean the action never fires for anyone
  * who parks something indefinitely. Seeding does count — uploading is real
@@ -46,7 +49,6 @@ export function isBusy(item: DownloadItem, ignoreSeeding: boolean): boolean {
   switch (item.status) {
     case 'queued':
     case 'parsing':
-    case 'ready':
     case 'downloading':
       return true;
     case 'seeding':

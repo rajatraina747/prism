@@ -172,7 +172,7 @@ export default function Queue() {
         const it = items.find(i => i.id === id);
         if (!it) return;
         if (it.status === 'downloading' || it.status === 'seeding' || it.status === 'queued') pauseDownload(id);
-        else if (it.status === 'paused') resumeDownload(id);
+        else if (it.status === 'paused' || it.status === 'ready') resumeDownload(id);
       });
     },
     toggleDetails: () => { if (detailItem) setDetailsOpen(o => !o); },
@@ -198,7 +198,7 @@ export default function Queue() {
 
   const removeSelectedNow = () => {
     selectedItems.forEach(i => {
-      if (i.status === 'downloading' || i.status === 'seeding' || i.status === 'paused' || i.status === 'queued') cancelDownload(i.id);
+      if (i.status === 'downloading' || i.status === 'seeding' || i.status === 'paused' || i.status === 'queued' || i.status === 'ready') cancelDownload(i.id);
       else removeFromQueue(i.id);
     });
     setSelected(new Set());
@@ -313,7 +313,7 @@ export default function Queue() {
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary/8 border border-primary/20 text-xs animate-fade-in">
           <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
           <BulkButton icon={Pause} label="Pause" onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it && (it.status === 'downloading' || it.status === 'seeding' || it.status === 'queued')) pauseDownload(id); })} />
-          <BulkButton icon={Play} label="Resume" onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it?.status === 'paused') resumeDownload(id); })} />
+          <BulkButton icon={Play} label="Resume" onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it?.status === 'paused' || it?.status === 'ready') resumeDownload(id); })} />
           {selectedItems.some(i => i.kind === 'torrent') && (
             <BulkButton icon={RefreshCw} label="Update tracker" onClick={shortcuts.updateTracker} />
           )}

@@ -224,8 +224,11 @@ pub fn pause(item: &mut Item) -> bool {
     true
 }
 
+/// Paused, or held at add ("Start immediately" off, status `ready`): Start
+/// and Resume are the same move. Nothing could start a held item before, so
+/// it sat forever (REVIEW 2026-09-28 D-5).
 pub fn resume(item: &mut Item) -> bool {
-    if status(item) != "paused" {
+    if !is(item, &["paused", "ready"]) {
         return false;
     }
     set(item, "status", json!("queued"));
@@ -512,11 +515,13 @@ pub fn error_record(message: &str, code: Option<&str>, detail: Option<&str>, now
 
 // ── When everything finishes (completion.ts) ─────────────────────────────
 
-/// Whether an item still needs Prism awake. Paused doesn't count (it never
-/// finishes on its own); seeding does unless the setting waives it.
+/// Whether an item still needs Prism awake. Paused and held (`ready`) don't
+/// count — neither finishes on its own, and one held item kept "when
+/// everything finishes" from ever firing (D-5); seeding does unless the
+/// setting waives it.
 pub fn is_busy(item: &Item, ignore_seeding: bool) -> bool {
     match status(item) {
-        "queued" | "parsing" | "ready" | "downloading" => true,
+        "queued" | "parsing" | "downloading" => true,
         "seeding" => !ignore_seeding,
         _ => false,
     }
@@ -564,7 +569,7 @@ pub fn overall_progress(items: &[Item]) -> Option<(u64, bool)> {
             clamp(list.iter().map(|i| num(i, "progress")).sum::<f64>() / list.len() as f64)
         }
     };
-    let working: Vec<&Item> = items.iter().filter(|i| is(i, &["downloading", "queued", "parsing", "ready"])).collect();
+    let working: Vec<&Item> = items.iter().filter(|i| is(i, &["downloading", "queued", "parsing"])).collect();
     if working.is_empty() {
         let paused: Vec<&Item> = items.iter().filter(|i| status(i) == "paused").collect();
         return (!paused.is_empty()).then(|| (mean(&paused), true));
@@ -984,6 +989,18 @@ mod tests {
         let (quiet, _) = evaluate_when_done(armed, &idle, "sleep", false);
         assert!(!when_done_called_off(armed, quiet), "still idle: the countdown stands");
         assert!(!when_done_called_off(WhenDone::default(), next), "nothing armed, nothing to call off");
+    }
+
+    // Regression (REVIEW 2026-09-28 D-5): "Start immediately" off made an
+    // item nothing could start, and it held "when done" and the Dock bar.
+    #[test]
+    fn a_held_item_starts_on_request_and_is_not_work_under_way() {
+        let mut held = item("h", "ready", json!({}));
+        assert!(!is_busy(&held, false), "held: not work under way");
+        assert_eq!(overall_progress(std::slice::from_ref(&held)), None, "no Dock bar for it");
+        assert!(resume(&mut held));
+        assert_eq!(status(&held), "queued");
+        assert!(is_busy(&held, false));
     }
 
     #[test]

@@ -8,7 +8,7 @@ import type { DownloadItem, DownloadStatus } from '@/types/models';
  *
  * Seeding is deliberately not here: the download is finished, and a progress
  * bar that never leaves 100% (or restarts) is worse than no bar. */
-const WORKING: DownloadStatus[] = ['downloading', 'queued', 'parsing', 'ready'];
+const WORKING: DownloadStatus[] = ['downloading', 'queued', 'parsing'];
 
 export interface OverallProgress {
   /** 0–100, rounded — the scale the OS progress APIs take. */
