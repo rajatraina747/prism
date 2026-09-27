@@ -148,6 +148,7 @@ const rustQueue: RemoteQueue = {
       listen<ArchivedEntry[]>('queue-archived', e => handlers.archived(e.payload)),
       listen<QueueNotice>('queue-notice', e => handlers.notice(e.payload)),
       listen<{ action: WhenDoneAction; seconds: number }>('when-done-countdown', e => handlers.whenDone(e.payload)),
+      listen('when-done-cancelled', () => handlers.whenDoneCalledOff?.()),
     ];
     return () => { stops.forEach(p => p.then(stop => stop()).catch(() => {})); };
   },

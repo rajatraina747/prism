@@ -247,7 +247,13 @@ fn tick(app: &AppHandle) {
         });
 
         let (when_done, fire) = rules::evaluate_when_done(inner.when_done, &inner.items, &prefs.when_done, prefs.when_done_ignores_seeding);
+        let called_off = rules::when_done_called_off(inner.when_done, when_done);
         inner.when_done = when_done;
+        if called_off {
+            state.when_done_generation.fetch_add(1, Ordering::SeqCst);
+            log::info!("when-done: called off, more to download");
+            let _ = app.emit("when-done-cancelled", ());
+        }
         for item in inner.items.iter().filter(|i| rules::is_terminal(i)).map(|i| rules::id(i).to_string()).collect::<Vec<_>>() {
             inner.terminal_since.entry(item).or_insert_with(Instant::now);
         }
@@ -833,8 +839,12 @@ fn start_when_done(app: &AppHandle, action: String) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(WHEN_DONE_SECS)).await;
-        let current = manager(&app).map(|s| s.when_done_generation.load(Ordering::SeqCst));
-        if current == Some(generation) {
+        let Some(state) = manager(&app) else { return };
+        let still_idle = {
+            let ignore_seeding = crate::setting_bool(&app, "whenDoneIgnoresSeeding", false);
+            !state.lock().items.iter().any(|i| rules::is_busy(i, ignore_seeding))
+        };
+        if state.when_done_generation.load(Ordering::SeqCst) == generation && still_idle {
             log::info!("when-done: {action}");
             let _ = crate::when_done(app, action).await;
         }

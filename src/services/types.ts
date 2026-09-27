@@ -312,5 +312,7 @@ export interface RemoteQueue {
     archived: (entries: import('@/stores/remote-queue').ArchivedEntry[]) => void;
     notice: (notice: import('@/stores/remote-queue').QueueNotice) => void;
     whenDone: (countdown: { action: import('@/types/models').WhenDoneAction; seconds: number }) => void;
+    /** More work arrived while the countdown ran, so Rust called it off. */
+    whenDoneCalledOff?: () => void;
   }): () => void;
 }

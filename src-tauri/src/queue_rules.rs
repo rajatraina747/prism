@@ -543,6 +543,14 @@ pub fn evaluate_when_done(prev: WhenDone, items: &[Item], action: &str, ignore_s
     (if prev.armed { prev } else { WhenDone::default() }, false)
 }
 
+/// Whether new work arrived while the countdown ran: it was armed, and the
+/// queue is busy again. Nothing called it off before, so adding a download
+/// during the minute still slept or shut down the machine mid-download
+/// (REVIEW 2026-09-28 C-1).
+pub fn when_done_called_off(prev: WhenDone, next: WhenDone) -> bool {
+    prev.armed && next.was_busy
+}
+
 // ── The Dock / taskbar (progress.ts) ─────────────────────────────────────
 
 /// (percent, paused), or None when nothing is under way. Weighted by bytes
@@ -961,6 +969,21 @@ mod tests {
         let e = seeding_entry(&t, "now");
         assert_eq!((e["status"].as_str(), e["seeding"].as_bool(), e["filePath"].as_str()), (Some("completed"), Some(true), Some("/d/a.mkv")));
         assert_eq!(e["files"], json!([{"name": "a.mkv", "size": 10}]));
+    }
+
+    // Regression (REVIEW 2026-09-28 C-1): a download added during the
+    // countdown didn't stop the sleep or shutdown.
+    #[test]
+    fn new_work_calls_off_a_running_countdown() {
+        let busy = vec![item("a", "downloading", json!({}))];
+        let idle: Vec<Item> = vec![item("a", "completed", json!({}))];
+        let (armed, fire) = evaluate_when_done(WhenDone { was_busy: true, armed: false }, &idle, "sleep", false);
+        assert!(fire && armed.armed);
+        let (next, _) = evaluate_when_done(armed, &busy, "sleep", false);
+        assert!(when_done_called_off(armed, next), "busy again while armed");
+        let (quiet, _) = evaluate_when_done(armed, &idle, "sleep", false);
+        assert!(!when_done_called_off(armed, quiet), "still idle: the countdown stands");
+        assert!(!when_done_called_off(WhenDone::default(), next), "nothing armed, nothing to call off");
     }
 
     #[test]
