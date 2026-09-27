@@ -355,10 +355,7 @@ impl DownloadManager {
                 args.push(browser);
             }
 
-            if let Some(proxy) = crate::proxy_url(&app) {
-                args.push("--proxy".into());
-                args.push(proxy);
-            }
+            args.extend(crate::ytdlp_proxy_args(&app));
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
             let ffmpeg = crate::find_ffmpeg_blocking(&app).await;
@@ -602,7 +599,7 @@ impl DownloadManager {
                 }
 
                 if should_refetch(success, timed_out, info.is_some(), agg.bytes(), &last_error) {
-                    log::info!("download {id}: its lookup didn't work ({last_error}); starting from the URL");
+                    log::info!("download {id}: its lookup didn't work ({}); starting from the URL", crate::errors::redact(&last_error));
                     crate::lookup::forget_info(&app, &url);
                     info = None;
                     continue 'attempt;
@@ -630,7 +627,7 @@ impl DownloadManager {
             if success {
                 log::info!("download {id}: finished");
             } else {
-                log::warn!("download {id}: failed: {last_error}");
+                log::warn!("download {id}: failed: {}", crate::errors::redact(&last_error));
             }
 
             // The move (a copy across volumes), quarantine and ledger are disk

@@ -300,11 +300,53 @@ pub(crate) fn lookup_network_args(app: &AppHandle) -> Vec<String> {
         args.push("--cookies-from-browser".into());
         args.push(browser);
     }
-    if let Some(proxy) = proxy_url(app) {
-        args.push("--proxy".into());
-        args.push(proxy);
-    }
+    args.extend(ytdlp_proxy_args(app));
     args
+}
+
+/// yt-dlp's proxy arguments. A proxy with a user name or password is put in
+/// a config file only this user can read, named with `--config-locations`
+/// (which `--ignore-config` still honours), rather than on the command line,
+/// where any local user could read it with `ps` (REVIEW 2026-09-28).
+pub(crate) fn ytdlp_proxy_args(app: &AppHandle) -> Vec<String> {
+    let Some(proxy) = proxy_url(app) else { return Vec::new() };
+    let has_credentials = url::Url::parse(&proxy).is_ok_and(|u| !u.username().is_empty() || u.password().is_some());
+    let plain = || vec!["--proxy".to_string(), proxy.clone()];
+    if !has_credentials || proxy.contains(['"', '\\', '\n', '\r']) {
+        return plain();
+    }
+    let Some(file) = app.path().app_data_dir().ok().map(|d| d.join("engine").join("proxy.conf")) else {
+        return plain();
+    };
+    match write_private(&file, &format!("--proxy \"{proxy}\"\n")) {
+        Ok(()) => vec!["--config-locations".into(), file.to_string_lossy().into_owned()],
+        Err(e) => {
+            log::warn!("couldn't write the proxy config ({e}); passing it on the command line");
+            plain()
+        }
+    }
+}
+
+/// Write `text` to `path`, readable by this user only.
+fn write_private(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(text.as_bytes())
 }
 
 /// The yt-dlp command for a lookup; a missing engine is its own error code.
@@ -333,7 +375,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         log::warn!(
             "link lookup on {} failed: {}",
             extract_domain(&url),
-            stderr.trim().lines().last().unwrap_or("no output")
+            errors::redact(stderr.trim().lines().last().unwrap_or("no output"))
         );
         return Err(errors::classify_output(&stderr));
     }
@@ -2818,6 +2860,19 @@ mod tests {
         assert!(refuse_network_path(r"\\NAS\media\Films\x.mkv", &picked).is_ok(), "inside a folder the user chose");
         assert!(refuse_network_path(r"\\nas\media2\x.mkv", &picked).is_err(), "a sibling share is not inside it");
         assert!(resolve_torrent_source("file://evil/share/x.torrent", &[]).is_err());
+    }
+
+    // Regression (REVIEW 2026-09-28): proxy credentials sat on yt-dlp's
+    // command line. The file that holds them instead is private.
+    #[cfg(unix)]
+    #[test]
+    fn the_proxy_config_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("prism-proxyconf-{}", std::process::id()));
+        let file = dir.join("engine/proxy.conf");
+        write_private(&file, "--proxy \"http://u:p@h:1\"\n").unwrap();
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

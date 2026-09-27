@@ -924,10 +924,6 @@ pub(crate) fn valid_referer(raw: &str) -> Option<String> {
     (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| u.to_string())
 }
 
-pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
-    client_with(app, None)
-}
-
 /// For URLs a remote site chose (thumbnails in a video's metadata): never
 /// follows a redirect to a loopback, private or link-local address.
 pub(crate) fn client_public_only(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
@@ -959,7 +955,7 @@ pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// `client_for`, sending `referer` with every request.
+/// The direct engine's client, sending `referer` with every request.
 fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
     build_client(app, referer, false)
 }

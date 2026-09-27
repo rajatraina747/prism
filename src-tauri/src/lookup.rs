@@ -188,7 +188,7 @@ pub async fn inspect_url(app: AppHandle, url: String, referer: Option<String>) -
     let (code, stdout, stderr) = crate::run_ytdlp_capture(cmd.args(&args), INSPECT_TIMEOUT_SECS).await?;
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
-        log::warn!("link lookup failed: {}", stderr.trim().lines().last().unwrap_or("no output"));
+        log::warn!("link lookup failed: {}", crate::errors::redact(stderr.trim().lines().last().unwrap_or("no output")));
         return Err(classify_output(&stderr));
     }
     let doc: serde_json::Value = serde_json::from_slice(&stdout)

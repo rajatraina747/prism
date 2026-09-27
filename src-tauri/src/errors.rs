@@ -188,6 +188,8 @@ pub fn redact(text: &str) -> String {
         Regex::new(r#"(?i)[^\s'"]*(?:cookies(?:\.sqlite|\.binarycookies)?|login data|local state|key4\.db)[^\s'"]*"#).unwrap()
     });
     static QUERY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(https?://[^\s?#'"]+)\?[^\s'"]*"#).unwrap());
+    // `scheme://user:password@host`: a proxy's credentials, echoed in an error.
+    static USERINFO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@'"]+@"#).unwrap());
 
     let mut out = text.to_string();
     if let Some(home) = dirs::home_dir().map(|h| h.to_string_lossy().into_owned()) {
@@ -196,6 +198,7 @@ pub fn redact(text: &str) -> String {
         }
     }
     let out = BROWSER_STORE.replace_all(&out, "[browser profile]");
+    let out = USERINFO.replace_all(&out, "$1…@");
     QUERY.replace_all(&out, "$1?…").into_owned()
 }
 
@@ -219,6 +222,16 @@ fn cap_tail(s: &str, max_bytes: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    // Regression (REVIEW 2026-09-28): a proxy's credentials came back in
+    // error text and went to the log as they were.
+    #[test]
+    fn credentials_in_urls_are_redacted() {
+        let out = redact("Unable to connect to proxy socks5://alice:hunter2@proxy.example:1080 (timed out)");
+        assert!(!out.contains("hunter2") && !out.contains("alice"), "{out}");
+        assert!(out.contains("socks5://…@proxy.example:1080"), "{out}");
+    }
+
     use super::*;
 
     fn code_of(raw: &str) -> ErrorCode {
