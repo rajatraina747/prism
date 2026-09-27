@@ -164,6 +164,70 @@ fn recorded_sha_path(binary: &Path) -> PathBuf {
     binary.with_extension("sha256")
 }
 
+/// Beside the managed binary: one SHA-256 over every file in the engine's
+/// folder (2.3.1+). The executable of a onedir build is a small launcher;
+/// the Python that actually runs is in `_internal/`, which the executable's
+/// own hash never covered (REVIEW 2026-09-28 S-6).
+fn recorded_tree_path(binary: &Path) -> PathBuf {
+    binary.with_extension("tree-sha256")
+}
+
+/// Every regular file under `folder`, as paths relative to it, sorted, with
+/// Prism's own records left out.
+fn tree_files(folder: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let mut stack = vec![folder.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                stack.push(entry.path());
+            } else {
+                let rel = entry.path().strip_prefix(folder).map(Path::to_path_buf).unwrap_or_default();
+                let name = rel.to_string_lossy();
+                if !(name.ends_with(".sha256") || name.ends_with(".tree-sha256") || name.ends_with(".version")) {
+                    out.push(rel);
+                }
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// One SHA-256 over a folder's files: each relative path and its own hash.
+/// A symlink is hashed as what it is not, so it can't stand in for a file.
+fn tree_sha256(folder: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for rel in tree_files(folder)? {
+        let path = folder.join(&rel);
+        let kind = if std::fs::symlink_metadata(&path)?.file_type().is_symlink() { "link" } else { "file" };
+        hasher.update(rel.to_string_lossy().replace('\\', "/").as_bytes());
+        hasher.update([0]);
+        hasher.update(kind.as_bytes());
+        hasher.update([0]);
+        hasher.update(sha256_file(&path)?.as_bytes());
+        hasher.update([b'\n']);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+/// A cheap stamp of a folder's files (count, total size, newest change), so
+/// the tree is re-hashed only when something in it changed.
+fn tree_stamp(folder: &Path) -> Option<(usize, u64, Option<std::time::SystemTime>)> {
+    let files = tree_files(folder).ok()?;
+    let mut total = 0;
+    let mut newest = None;
+    for rel in &files {
+        let meta = std::fs::symlink_metadata(folder.join(rel)).ok()?;
+        total += meta.len();
+        newest = newest.max(meta.modified().ok());
+    }
+    Some((files.len(), total, newest))
+}
+
 /// Beside the managed binary: the version `update_ytdlp` installed (2.0+).
 fn recorded_version_path(binary: &Path) -> PathBuf {
     binary.with_extension("version")
@@ -197,28 +261,36 @@ pub(crate) fn sha256_file(path: &Path) -> std::io::Result<String> {
 /// against the file's size and mtime and recomputed only when either changes.
 /// No record (an engine installed before 1.9) counts as unverified.
 fn managed_binary_verified(binary: &Path) -> bool {
-    type Verdict = (PathBuf, u64, Option<std::time::SystemTime>, bool);
+    type Stamp = (usize, u64, Option<std::time::SystemTime>);
+    type Verdict = (PathBuf, u64, Option<std::time::SystemTime>, Option<Stamp>, bool);
     static CACHE: std::sync::Mutex<Option<Verdict>> = std::sync::Mutex::new(None);
 
     let Ok(meta) = std::fs::metadata(binary) else { return false };
     let (len, mtime) = (meta.len(), meta.modified().ok());
+    let read_record = |p: PathBuf| {
+        std::fs::read_to_string(p).ok().map(|s| s.trim().to_ascii_lowercase()).filter(|s| s.len() == 64)
+    };
+    // A onedir engine installed by 2.3.1+ has a record for its whole folder.
+    let tree = read_record(recorded_tree_path(binary)).zip(binary.parent().map(Path::to_path_buf));
+    let stamp = tree.as_ref().and_then(|(_, folder)| tree_stamp(folder));
     if let Ok(guard) = CACHE.lock() {
-        if let Some((p, l, m, ok)) = guard.as_ref() {
-            if p == binary && *l == len && *m == mtime {
+        if let Some((p, l, m, s, ok)) = guard.as_ref() {
+            if p == binary && *l == len && *m == mtime && *s == stamp {
                 return *ok;
             }
         }
     }
-    let ok = std::fs::read_to_string(recorded_sha_path(binary))
-        .ok()
-        .map(|s| s.trim().to_ascii_lowercase())
-        .filter(|s| s.len() == 64)
-        .is_some_and(|expected| sha256_file(binary).is_ok_and(|actual| actual == expected));
+    let exe_ok = read_record(recorded_sha_path(binary)).is_some_and(|expected| sha256_file(binary).is_ok_and(|actual| actual == expected));
+    let tree_ok = match &tree {
+        Some((expected, folder)) => tree_sha256(folder).is_ok_and(|actual| &actual == expected),
+        None => true,
+    };
+    let ok = exe_ok && tree_ok;
     if !ok {
         log::warn!("self-updated yt-dlp failed its integrity check; using the bundled engine");
     }
     if let Ok(mut guard) = CACHE.lock() {
-        *guard = Some((binary.to_path_buf(), len, mtime, ok));
+        *guard = Some((binary.to_path_buf(), len, mtime, stamp, ok));
     }
     ok
 }
@@ -620,6 +692,11 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     let executable_sha = sha256_file(&target).map_err(|e| format!("Failed to record yt-dlp checksum: {e}"))?;
     std::fs::write(recorded_sha_path(&target), &executable_sha)
         .map_err(|e| format!("Failed to record yt-dlp checksum: {}", e))?;
+    // The whole folder, not just its launcher (S-6).
+    if let Some(folder) = target.parent() {
+        let tree = tree_sha256(folder).map_err(|e| format!("Failed to record yt-dlp checksum: {e}"))?;
+        std::fs::write(recorded_tree_path(&target), tree).map_err(|e| format!("Failed to record yt-dlp checksum: {e}"))?;
+    }
     let _ = std::fs::write(recorded_version_path(&target), &version);
     remove_legacy_engine(&app);
     log::info!("yt-dlp engine updated to {version}");
@@ -733,6 +810,27 @@ cccc3333  yt-dlp.exe";
         std::fs::write(recorded_sha_path(&bin), sha256_file(&bin).unwrap()).unwrap();
         std::fs::write(&bin, b"genuine").unwrap();
         assert!(managed_binary_verified(&bin));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // Regression (REVIEW 2026-09-28 S-6): the check covered the launcher
+    // only; the code a onedir engine runs lives in `_internal/`.
+    #[test]
+    fn a_tampered_engine_folder_is_not_trusted() {
+        let dir = std::env::temp_dir().join(format!("prism-engine-tree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("_internal/yt_dlp")).unwrap();
+        let bin = dir.join(YTDLP_NAME);
+        std::fs::write(&bin, b"launcher").unwrap();
+        std::fs::write(dir.join("_internal/yt_dlp/__init__.py"), b"genuine = True").unwrap();
+        std::fs::write(recorded_sha_path(&bin), sha256_file(&bin).unwrap()).unwrap();
+        std::fs::write(recorded_tree_path(&bin), tree_sha256(&dir).unwrap()).unwrap();
+        assert!(managed_binary_verified(&bin));
+        std::fs::write(dir.join("_internal/yt_dlp/__init__.py"), b"genuine = False # evil").unwrap();
+        assert!(!managed_binary_verified(&bin), "changed code in _internal accepted");
+        std::fs::write(dir.join("_internal/yt_dlp/__init__.py"), b"genuine = True").unwrap();
+        std::fs::write(dir.join("_internal/extra.py"), b"x").unwrap();
+        assert!(!managed_binary_verified(&bin), "an added file accepted");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
