@@ -640,13 +640,13 @@ export default function Settings() {
               </SettingGroup>
               <Advanced>
                 <SettingGroup title="Engine (applies when the engine restarts)">
-                  <SettingRow label="DHT" help={HELP.dht} description="Find peers without a tracker. Off = tracker-only">
+                  <SettingRow label="DHT" help={HELP.dht} description={p.proxyUrl ? "Off while a proxy is set: DHT can't go through it" : 'Find peers without a tracker. Off = tracker-only'}>
                     <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                   </SettingRow>
                   <SettingRow label="Local peer discovery" help={HELP.lsd} description="Find peers on your own network">
                     <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
                   </SettingRow>
-                  <SettingRow label="uTP transport" help={HELP.utp} description="Accept and make uTP connections alongside TCP (still maturing in the engine)">
+                  <SettingRow label="uTP transport" help={HELP.utp} description={p.proxyUrl ? "Off while a proxy is set: uTP can't go through it" : 'Accept and make uTP connections alongside TCP (still maturing in the engine)'}>
                     <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
                   </SettingRow>
                   <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections. Always off while a proxy is set">

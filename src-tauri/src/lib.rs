@@ -739,8 +739,12 @@ pub(crate) fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig 
         // UPnP opens a port on the router for inbound peers, which reach the
         // machine directly: with a proxy set it would undo the proxy (M6).
         upnp: torrent_upnp_enabled(app) && proxy_url(app).is_none(),
-        dht: torrent_dht_enabled(app),
-        utp: setting_bool(app, "torrentUtp", false),
+        // DHT and uTP are UDP, which the SOCKS proxy doesn't carry: they
+        // would reach peers directly and show them the real address the
+        // proxy was set to hide (REVIEW 2026-09-28). Local discovery stays:
+        // it only talks to the LAN.
+        dht: torrent_dht_enabled(app) && proxy_url(app).is_none(),
+        utp: setting_bool(app, "torrentUtp", false) && proxy_url(app).is_none(),
         lsd: setting_bool(app, "torrentLsd", true),
         listen_port: setting_u64(app, "torrentListenPort", torrent::DEFAULT_LISTEN_PORT as u64, 1024, 65535) as u16,
         peer_limit: match setting_u64(app, "torrentPeerLimit", 0, 0, 10_000) {
