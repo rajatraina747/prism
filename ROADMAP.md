@@ -19,20 +19,20 @@ what remains open is below. Completed items live in git history.
 
 A ground-up review of 2.3.0, from the code alone. Full findings, file:line citations and the
 competitor comparison are in [docs/REVIEW-2026-09-28.md](docs/REVIEW-2026-09-28.md); IDs below
-are that document's. Not started; Phase 0 waits on Rajat's go-ahead. One commit per item on
+are that document's. Phase 0 done on `roadmap/2.4` (tag `roadmap24-p0`), not released. One commit per item on
 `roadmap/2.4`, each with a regression test at the seam the review names.
 
 ### Phase 0 — 2.3.1 "Never delete what isn't ours"
-- [ ] **D-1 + C-3** Cancel deletes only the files Rust claimed for that id, by exact suffix, to the Trash; `queue_add` validates `destination`; revoke `store_save_queue`.
-- [ ] **D-2** Retry timer carries a generation token.
-- [ ] **D-3** Failed torrents are deleted from the librqbit session.
-- [ ] **D-4** libmpv event callback: no borrow of the freed userdata box.
-- [ ] **S-2** Multi-file torrent never writes into an existing folder it doesn't own.
-- [ ] **C-1** "When done" countdown cancelled when new work arrives.
-- [ ] **D-5** Start action for held (`ready`) items.
-- [ ] **D-6** Statistics no longer double-count on launch.
-- [ ] **D-7** Transfers shortcuts leave buttons and confirm dialogs alone.
-- [ ] **C-10** Extension toolbar button works (`activeTab`).
+- [x] **D-1 + C-3** Cancel deletes only the files Rust claimed for that id, by exact suffix, to the Trash; `queue_add` validates `destination`; revoke `store_save_queue`.
+- [x] **D-2** Retry timer carries a generation token.
+- [x] **D-3** Failed torrents are deleted from the librqbit session.
+- [x] **D-4** libmpv event callback: no borrow of the freed userdata box.
+- [x] **S-2** Multi-file torrent never writes into an existing folder it doesn't own.
+- [x] **C-1** "When done" countdown cancelled when new work arrives.
+- [x] **D-5** Start action for held (`ready`) items.
+- [x] **D-6** Statistics no longer double-count on launch.
+- [x] **D-7** Transfers shortcuts leave buttons and confirm dialogs alone.
+- [x] **C-10** Extension toolbar button works (`activeTab`).
 
 ### Phase 1 — 2.3.2 hardening
 - [ ] **S-3** Windows UNC / `file://host` refused before any filesystem call.
