@@ -26,6 +26,7 @@ import {
   Film, ListMusic,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { publicAsset } from "@/lib/public-asset";
 
 function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
   return (
@@ -738,7 +739,7 @@ export default function Dashboard() {
         className="mt-10 mb-2 flex flex-col items-center gap-2.5 py-5 group animate-fade-in"
         style={{ animationDelay: '220ms' } as React.CSSProperties}
       >
-        <img src="/rainacorp-logo.webp" alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
+        <img src={publicAsset("rainacorp-logo.webp")} alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
         <div className="text-center">
           <p className="text-[11px] font-semibold tracking-wide text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
             A RAINACORP PRODUCT

@@ -21,6 +21,7 @@ import Statistics from "@/pages/Statistics";
 import TermsOfService from "@/pages/TermsOfService";
 import OpenSourceLicenses from "@/pages/OpenSourceLicenses";
 import NotFound from "@/pages/NotFound";
+import { routerBasename } from "@/lib/public-asset";
 
 // Branded splash on the very first launch only — on every later launch the app
 // is ready almost immediately (persistence preloads before render), so a fixed
@@ -68,7 +69,7 @@ const App = () => {
         <FirstRunSplash />
         <TooltipProvider>
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter basename={routerBasename()}>
             <AppProvider>
             <SubscriptionsProvider>
             <AppShell>

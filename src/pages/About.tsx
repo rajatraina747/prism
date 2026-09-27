@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useService } from '@/services/ServiceProvider';
 import { Panel, OutboundLink } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles, Bug } from 'lucide-react';
+import { publicAsset } from "@/lib/public-asset";
 
 export default function About() {
   const service = useService();
@@ -16,7 +17,7 @@ export default function About() {
   return (
     <div className="page-container max-w-lg mx-auto">
       <div className="page-header text-center">
-        <img src="/logo-nobg.webp" alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
+        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
         <h2 className="page-title">Prism</h2>
         <p className="page-subtitle">Premium Video Downloader</p>
         <p className="text-[11px] text-muted-foreground/60 mt-1">

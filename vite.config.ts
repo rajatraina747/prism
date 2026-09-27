@@ -5,8 +5,9 @@ import path from "path";
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 
 export default defineConfig({
-  // Use relative paths so Tauri can load assets from the local filesystem
-  base: isTauri ? "./" : "/",
+  // Use relative paths so Tauri can load assets from the local filesystem.
+  // PAGES_BASE is the GitHub Pages demo's path (/prism/), set by deploy-web.yml.
+  base: isTauri ? "./" : process.env.PAGES_BASE || "/",
   server: {
     host: "::",
     port: 8080,

@@ -22,6 +22,7 @@ import {
   Plus,
   BarChart3,
 } from 'lucide-react';
+import { publicAsset } from "@/lib/public-asset";
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -47,7 +48,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand */}
       <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
-        <img src="/logo-nobg.webp" alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
+        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
         <span className="text-[11px] text-muted-foreground/60">by RainaCorp</span>
       </div>
