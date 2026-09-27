@@ -8,7 +8,7 @@ import { useSettings } from '@/stores/AppProvider';
 import { normalizeSha256 } from '@/stores/checksum';
 import { formatBytes, formatSpeed, formatEta } from '@/services/utils';
 import { PiecesBar } from '@/components/queue/PiecesBar';
-import { ProgressBar } from '@/components/common';
+import { ProgressBar, CommitInput } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -266,14 +266,13 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
             <>
               <Row label="Clip">
                 <span className="inline-flex items-center gap-1">
-                  <input
-                    type="text"
+                  <CommitInput
                     inputMode="numeric"
                     placeholder="from"
                     value={item.settings.clipStart ?? ''}
-                    onChange={(e) => onSetClip(
+                    onCommit={(v) => onSetClip(
                       item.id,
-                      e.target.value || null,
+                      v || null,
                       item.settings.clipEnd ?? null,
                       item.settings.splitChapters ?? false,
                     )}
@@ -281,15 +280,14 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                     className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
                   />
                   <span className="text-muted-foreground">–</span>
-                  <input
-                    type="text"
+                  <CommitInput
                     inputMode="numeric"
                     placeholder="to"
                     value={item.settings.clipEnd ?? ''}
-                    onChange={(e) => onSetClip(
+                    onCommit={(v) => onSetClip(
                       item.id,
                       item.settings.clipStart ?? null,
-                      e.target.value || null,
+                      v || null,
                       item.settings.splitChapters ?? false,
                     )}
                     aria-label="Clip to"

@@ -10,7 +10,7 @@ import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes, generateId, isSameFolder } from '@/services';
 import type { DownloadCategory } from '@/types/models';
 import type { StorageSummary } from '@/services/types';
-import { Panel, ConfirmDialog } from '@/components/common';
+import { Panel, ConfirmDialog, CommitInput } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -394,11 +394,10 @@ function NumberInput({ value, onChange, min, max, step, unit }: {
 function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const a11y = useRowA11y();
   return (
-    <input
-      type="text"
+    <CommitInput
       value={value}
       {...a11y}
-      onChange={e => onChange(e.target.value)}
+      onCommit={onChange}
       placeholder={placeholder}
       spellCheck={false}
       autoComplete="off"
@@ -919,10 +918,9 @@ export default function Settings() {
                             aria-label={`Category ${index + 1} name`}
                             className="w-28 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
                           />
-                          <input
-                            type="text"
+                          <CommitInput
                             value={category.domains.join(', ')}
-                            onChange={e => updateCategory(category.id, { domains: e.target.value.split(',').map(d => d.trim()).filter(Boolean) })}
+                            onCommit={v => updateCategory(category.id, { domains: v.split(',').map(d => d.trim()).filter(Boolean) })}
                             placeholder="youtube.com"
                             spellCheck={false}
                             aria-label={`Category ${index + 1} sites`}

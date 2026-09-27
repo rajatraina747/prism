@@ -11,6 +11,37 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 
+// ── Commit Input ──
+// A text box that hands its value on when you leave it or press Enter, not on
+// every keystroke; Escape puts back what was there. For values something acts
+// on: a list re-parsed per keystroke ate every comma typed into it, a global
+// shortcut was registered (and could grab a key system-wide) for each letter,
+// and a clip range went to Rust and back per keystroke, toasting an error for
+// every half-typed time (REVIEW 2026-09-28 C-11–C-13).
+export function CommitInput({
+  value, onCommit, className, ...rest
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'onBlur' | 'onKeyDown'>) {
+  const [draft, setDraft] = React.useState(value);
+  React.useEffect(() => { setDraft(value); }, [value]);
+  return (
+    <input
+      type="text"
+      {...rest}
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== value) onCommit(draft); }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { setDraft(value); e.stopPropagation(); }
+      }}
+      className={className}
+    />
+  );
+}
+
 // ── Outbound Link ──
 // Every link that leaves the app. A plain <a target="_blank"> does nothing in
 // the webview — wry only opens a new window if the app installs a handler, and
