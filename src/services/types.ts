@@ -288,7 +288,8 @@ export interface IPrismService {
 
 /** The page's handle on Rust's queue: its actions, and its events. */
 export interface RemoteQueue {
-  snapshot(): Promise<DownloadItem[]>;
+  /** The queue, and the number of the last patch it reflects. */
+  snapshot(): Promise<{ items: DownloadItem[]; seq: number }>;
   add(item: DownloadItem): Promise<void>;
   remove(id: string): Promise<void>;
   pause(id: string): Promise<void>;

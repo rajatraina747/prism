@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer, useR
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer, type QueueAction } from '@/stores/queue-reducer';
-import { remoteQueueReducer } from '@/stores/remote-queue';
+import { remoteQueueReducer, patchesAfter, type QueuePatch } from '@/stores/remote-queue';
 import { createThrottledSaver, queueShape } from '@/stores/queue-save';
 import { installAppUpdate } from '@/stores/app-update';
 import { mergeHistory, mergeSettings } from '@/stores/backup';
@@ -456,8 +456,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // now does for what Rust reports.
   useEffect(() => {
     if (!remote) return;
+    // Patches that land before the snapshot wait for it: only the ones newer
+    // than it apply (C-9). Afterwards a patch the snapshot already covered
+    // is dropped too.
+    let snapshotSeq: number | null = null;
+    const early: QueuePatch[] = [];
     const stop = remote.subscribe({
-      changed: patch => dispatchRemote({ type: 'patch', patch }),
+      changed: patch => {
+        if (snapshotSeq === null) { early.push(patch); return; }
+        if (patch.seq !== undefined && patch.seq <= snapshotSeq) return;
+        dispatchRemote({ type: 'patch', patch });
+      },
       archived: entries => {
         // A torrent is listed when it starts seeding and its entry replaced
         // when seeding ends: the same id, the newer entry.
@@ -526,7 +535,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stopRemoved = service.onLibraryRemoved?.(ids => setHistory(prev => prev.filter(h => !ids.includes(h.id))));
     // After listening, so nothing between the two is missed.
     remote.snapshot()
-      .then(items => dispatchRemote({ type: 'snapshot', items }))
+      .then(({ items, seq }) => {
+        snapshotSeq = seq;
+        dispatchRemote({ type: 'snapshot', items });
+        for (const patch of patchesAfter(early, seq)) dispatchRemote({ type: 'patch', patch });
+        early.length = 0;
+      })
       .catch(reportQueueError);
     return () => { stop(); stopRemoved?.(); };
   }, [remote, service]);

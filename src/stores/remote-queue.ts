@@ -7,6 +7,8 @@ import type { DownloadItem, HistoryItem } from '@/types/models';
 /** What `queue-changed` carries: the items that changed (whole), the ones
  * removed, and the new order when it moved. */
 export interface QueuePatch {
+  /** Rust numbers every patch; a snapshot says which one it reflects. */
+  seq?: number;
   items: DownloadItem[];
   removed: string[];
   order?: string[];
@@ -59,4 +61,13 @@ export function remoteQueueReducer(queue: DownloadItem[], action: RemoteQueueAct
     case 'patch':
       return applyQueuePatch(queue, action.patch);
   }
+}
+
+/** The patches that arrived before the snapshot but are newer than it. The
+ * page subscribes first and asks for the snapshot second; the answer can land
+ * after a patch Rust sent later, and a snapshot that simply replaced the
+ * queue then undid that patch — a removed item came back as a stale row
+ * (REVIEW 2026-09-28 C-9). */
+export function patchesAfter(early: QueuePatch[], snapshotSeq: number): QueuePatch[] {
+  return early.filter(p => p.seq === undefined || p.seq > snapshotSeq);
 }

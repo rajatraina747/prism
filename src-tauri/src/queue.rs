@@ -49,6 +49,10 @@ struct Inner {
     changed: HashSet<String>,
     removed: Vec<String>,
     order_changed: bool,
+    /// Number of the last `queue-changed` patch sent. A snapshot says which
+    /// patch it reflects, so the page can drop the ones it already has
+    /// (REVIEW 2026-09-28 C-9).
+    seq: u64,
     save_now: bool,
     save_soon: bool,
     last_save: Option<Instant>,
@@ -813,6 +817,7 @@ fn save_now(app: &AppHandle) {
 
 #[derive(Serialize, Clone)]
 struct Patch {
+    seq: u64,
     items: Vec<Value>,
     removed: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -828,7 +833,8 @@ async fn flush(app: &AppHandle) {
             let items = inner.items.iter().filter(|i| changed.contains(rules::id(i))).map(|i| Value::Object(i.clone())).collect();
             let order = std::mem::take(&mut inner.order_changed)
                 .then(|| inner.items.iter().map(|i| rules::id(i).to_string()).collect());
-            Patch { items, removed: std::mem::take(&mut inner.removed), order }
+            inner.seq += 1;
+            Patch { seq: inner.seq, items, removed: std::mem::take(&mut inner.removed), order }
         });
         let due = inner.save_now || (inner.save_soon && inner.last_save.map_or(true, |t| t.elapsed() >= PROGRESS_SAVE_EVERY));
         let save = due.then(|| {
@@ -911,10 +917,13 @@ fn check_destination(app: &AppHandle, settings: &serde_json::Map<String, Value>)
 }
 
 #[tauri::command]
-pub fn queue_snapshot(app: AppHandle) -> Result<Vec<Value>, String> {
+pub fn queue_snapshot(app: AppHandle) -> Result<Value, String> {
     let state = require(&app)?;
     let inner = state.lock();
-    Ok(inner.items.iter().map(|i| Value::Object(i.clone())).collect())
+    // Changes not yet flushed are in `items` already and come again in patch
+    // `seq + 1`, whole, so applying that one too is harmless.
+    let items: Vec<Value> = inner.items.iter().map(|i| Value::Object(i.clone())).collect();
+    Ok(json!({ "items": items, "seq": inner.seq }))
 }
 
 #[tauri::command]
