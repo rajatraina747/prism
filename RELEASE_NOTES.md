@@ -3,53 +3,78 @@ Release notes for the NEXT tagged release. Edit this BEFORE tagging — the
 Build & Release workflow reads it verbatim as the GitHub release body and the
 in-app updater notes. This comment block is invisible in rendered markdown.
 -->
+
 ## What's New
 
-A security and reliability release, from an independent review of the
-whole app.
+A big release: faster, more honest about what you're getting, and much
+harder to lose work in. It was built from a ground-up review of 2.2.1 and
+tested by hand on Windows before release.
 
-### Safer torrents and watch folders
+### Faster
 
-- **A torrent can no longer overwrite a file that's already there.** A
-  single-file torrent whose name matches a file already in your download
-  folder, or that has a hidden name, now goes into a folder of its own
-  instead of writing over that file.
-- **A `.torrent` found in a watch folder now asks before it starts.** Browsers
-  save `.torrent` files to Downloads without asking, so a web page could
-  otherwise start a torrent on your behalf.
-- **Your home folder itself, system folders and folders programs run from**
-  (such as `/opt/homebrew/bin`) can no longer be download locations. Pick or
-  create a folder inside them instead.
+- **Links are looked up much faster.** The bundled download engine now starts
+  in a fraction of a second instead of about five (macOS and Windows), so a
+  YouTube lookup takes around 3 s instead of 9. Batches of links are looked up
+  four at a time, and a download reuses the lookup made when it was added.
+- **Slow connections no longer hold up a direct download.** When one part of
+  a file is crawling, the rest of it is shared out to the connections that
+  have finished.
 
-### Subscriptions and privacy
+### Quality, audio and subtitles
 
-- **Subscription downloads from other sites no longer use your browser's
-  cookies.** Items on the subscription's own site still do. A feed's links to
-  your local network (a router, `localhost`, `.local` names) are skipped.
-- **With a proxy set,** update checks now go through it, UPnP is switched off,
-  and thumbnails aren't shown, because they would be fetched directly.
-- **Crash reports** (if you turned them on) no longer include your computer's
-  name, and file paths are removed wherever the file lives.
+- **Quality choices say what you'll actually get:** the real codec (H.264,
+  VP9, AV1), frame rate and HDR, instead of "MP4 h264/aac" for everything.
+- **Choose a dubbed audio track,** and pick several subtitle languages; they
+  are embedded in the video.
+- **Playlists and channels** keep each video's own link and the list's real
+  title, and one lookup decides whether a link is a single video or a list.
+  Lists with more than 100 entries open with nothing selected.
+- Sites that don't report a video codec (such as archive.org) now offer their
+  qualities, and links Prism doesn't recognise download as plain files.
 
-### Fixed
+### Keeps working, and keeps your data
 
-- **Split chapters** are now saved next to the video, not in the app's
-  working folder.
-- **Converting the same file twice at once** no longer deletes the first
-  result.
-- **Finishing large downloads** no longer makes the rest of the app stall while
-  files are moved or checked.
-- **A removed torrent's folder no longer reappears.** A torrent that finished
-  before 2.0.1 and was later removed from the Library stayed in the torrent
-  engine's saved session, so every launch re-created its folder in your
-  download location, full of empty files. At launch Prism now drops any saved
-  torrent no queue item refers to. Nothing you downloaded is touched; you can
-  delete an empty folder that was already re-created.
-- A direct download from a server that never says the file's size now stops
-  before your disk fills up.
+- **Closing the window keeps downloads running** in the tray (you can turn
+  this off), and Prism asks before quitting while work is in progress.
+- **The queue and Library now live in a database** that Rust keeps up to date
+  as things happen, so a crash or forced quit no longer loses recent changes.
+  Your existing data is copied in on the first launch and the old files are
+  kept. A backup is made on each clean launch and restored automatically if
+  the database is ever damaged.
+- **"Retries on failure" now works,** and a site that rate-limits you is
+  retried after a proper wait, with a countdown on the row. A site that refuses
+  a download halfway is looked up again instead of failing.
+- **Cancel removes what the download wrote,** including partial files and
+  empty folders.
+- The Library marks files that were moved or deleted outside Prism.
 
-**Updating:** from 1.9.0 or later, use **Settings → Updates**. From 1.8.x or
-earlier, run `brew upgrade --cask rajatraina747/prism/prism-downloader` or download the files below.
+### Torrents, subscriptions and more
+
+- **Torrents have their own limit,** and a stalled or peerless one no longer
+  blocks other downloads. Downloaded torrents appear in the Library, marked
+  Seeding.
+- If another program is using the torrent port, Prism picks another; you can
+  restart the torrent engine from Settings to apply changed settings.
+- **YouTube subscriptions are checked much faster** (three at a time), skip
+  videos you already have, and wait for premieres and live streams to air.
+- Watch folders pick up `.torrent` files only.
+- Direct downloads work through a SOCKS proxy, can send the page they came
+  from, and can use a browser's User-Agent for sites that need one.
+- Thumbnails are kept on your computer (and fetched through your proxy).
+- **Browser extension 1.2:** "Download link in Prism" sends the page the link
+  was on, for sites that check it.
+
+### Windows
+
+- Fixed Play, Open, Move to Recycle Bin and the Missing badge, which failed on
+  Windows because of how file paths were compared.
+- Notifications work again after updating; the old engine file is removed.
+- Windows wording throughout (Recycle Bin, "this computer").
+
+**Updating:** use **Settings → Updates**, or run
+`brew upgrade --cask rajatraina747/prism/prism-downloader`. After updating,
+going back to 2.2.1 would show your queue and Library as they were before the
+update.
 
 ## Install
 
