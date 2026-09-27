@@ -989,6 +989,7 @@ impl TorrentManager {
                 // Fail fast on an engine error (disk full, unrecoverable, …).
                 if matches!(stats.state, TorrentStatsState::Error) {
                     active.lock().await.remove(&id);
+                    leave_session(&session, &handle, &id).await;
                     let msg = stats.error.unwrap_or_else(|| "Torrent failed".to_string());
                     return emit_failure(&app, &id, msg);
                 }
@@ -1022,6 +1023,7 @@ impl TorrentManager {
                 if let Some(limit) = cfg.give_up_after {
                     if peerless_secs >= limit.as_secs() {
                         active.lock().await.remove(&id);
+                        leave_session(&session, &handle, &id).await;
                         return emit_failure(
                             &app,
                             &id,
@@ -1909,6 +1911,15 @@ fn file_breakdown(handle: &ManagedTorrentHandle, file_progress: &[u64]) -> Vec<T
         .unwrap_or_default()
 }
 
+/// Take a torrent that failed out of the session, keeping its files for a
+/// Retry to resume. Left in, it kept announcing and downloading with no row
+/// to show or stop it until the next launch pruned it (REVIEW 2026-09-28 D-3).
+async fn leave_session(session: &Session, handle: &ManagedTorrentHandle, id: &str) {
+    if let Err(e) = session.delete(TorrentIdOrHash::from(handle.id()), false).await {
+        log::warn!("torrent {id}: could not leave the session after failing: {e}");
+    }
+}
+
 fn emit_failure(app: &AppHandle, id: &str, message: String) {
     log::warn!("torrent {id}: failed: {message}");
     crate::finished::emit(
@@ -2438,6 +2449,28 @@ mod tests {
         pause_restored(&second).await;
         assert!(restored[0].is_paused());
         second.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // Regression (REVIEW 2026-09-28 D-3): a failed or given-up torrent stayed
+    // in the session, downloading with no row to show or stop it.
+    #[tokio::test]
+    async fn a_failed_torrent_leaves_the_session() {
+        let dir = std::env::temp_dir().join(format!("prism-d3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("dl")).unwrap();
+        let session = offline_session(&dir).await;
+        let added = session
+            .add_torrent(
+                AddTorrent::from_bytes(single_file_torrent("failed.bin")),
+                Some(AddTorrentOptions { overwrite: true, ..Default::default() }),
+            )
+            .await
+            .expect("add");
+        let AddTorrentResponse::Added(_, handle) = added else { panic!("not added") };
+        leave_session(&session, &handle, "t").await;
+        assert_eq!(session.with_torrents(|t| t.count()), 0, "nothing left running");
+        session.stop().await;
         let _ = std::fs::remove_dir_all(&dir);
     }
 
