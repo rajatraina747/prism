@@ -209,7 +209,7 @@ fn tree_sha256(folder: &Path) -> std::io::Result<String> {
         hasher.update(kind.as_bytes());
         hasher.update([0]);
         hasher.update(sha256_file(&path)?.as_bytes());
-        hasher.update([b'\n']);
+        hasher.update(b"\n");
     }
     Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
 }
