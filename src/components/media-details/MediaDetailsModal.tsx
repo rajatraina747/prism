@@ -2,8 +2,7 @@ import { IS_MAC } from '@/lib/platform';
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
-import { generateId, formatBytes, formatDuration, sanitizeFilename } from '@/services';
-import { DEFAULT_PREFERENCES } from '@/types/models';
+import { formatBytes, formatDuration, sanitizeFilename } from '@/services';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { cn } from '@/lib/utils';
@@ -12,6 +11,7 @@ import {
   Clock, Film, User, ChevronDown, ChevronUp,
   FolderOpen, FileText, Music, Subtitles,
 } from 'lucide-react';
+import { buildItem } from '@/stores/build-item';
 
 const SUBTITLE_LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -86,14 +86,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
 
-    const item: DownloadItem = {
-      id: generateId(),
+    const item = buildItem({
       metadata,
       settings: {
         format: audioOnly ? null : selectedFormat,
         destination: destination ?? preferences.defaultSaveFolder,
         filename,
-        retryCount: DEFAULT_PREFERENCES.defaultRetryCount,
         startImmediately,
         audioOnly,
         downloadSubtitles: downloadSubtitles && (listedSubtitles.length === 0 || subtitleCodes.length > 0),
@@ -104,14 +102,8 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
         audioLanguage: audioLanguage || undefined,
         speedLimit: speedLimitBytes || undefined,
       },
-      status: startImmediately ? 'queued' : 'ready',
-      progress: 0,
-      speed: 0,
-      eta: 0,
-      downloadedBytes: 0,
-      totalBytes: audioOnly ? 10_000_000 : (selectedFormat?.fileSize || 0),
-      retryAttempt: 0,
-    };
+      totalBytes: audioOnly ? undefined : selectedFormat?.fileSize,
+    });
     onAddToQueue(item);
     onClose();
   };

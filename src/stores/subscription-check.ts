@@ -1,5 +1,6 @@
 import type { Subscription, PlaylistEntry, DownloadItem, AppPreferences } from '@/types/models';
-import { generateId, sanitizeFilename, classifyLink, siteKey } from '@/services/utils';
+import { sanitizeFilename, classifyLink, siteKey } from '@/services/utils';
+import { buildItem, linkMetadata } from '@/stores/build-item';
 
 // Pure logic for a subscription check: diff the feed against what we've seen
 // and build queue items for the new entries. IO (parsePlaylist, addToQueue,
@@ -154,28 +155,18 @@ export function entryToDownloadItem(
   prefs: AppPreferences,
 ): DownloadItem {
   const speedLimitBytes = prefs.bandwidthLimit > 0 ? prefs.bandwidthLimit * 1024 * 1024 : 0;
-  return {
-    id: generateId(),
-    metadata: {
-      title: entry.title,
+  return buildItem({
+    metadata: linkMetadata(entry.url, entry.title, extractDomain(entry.url), {
       duration: entry.duration,
       thumbnail: entry.thumbnail,
-      source: {
-        url: entry.url,
-        domain: extractDomain(entry.url),
-        addedAt: new Date().toISOString(),
-      },
-      formats: [],
       uploader: sub.title,
-    },
+    }),
     settings: {
       format: null,
       destination: prefs.defaultSaveFolder,
       // sanitizeFilename keeps unicode titles (CJK, Cyrillic, …) intact — the
       // old \w-only strip reduced them to 'video' and collided on dedupe.
       filename: sanitizeFilename(entry.title),
-      retryCount: prefs.defaultRetryCount,
-      startImmediately: true,
       audioOnly: sub.audioOnly || undefined,
       speedLimit: speedLimitBytes || undefined,
       // A feed's own category wins over the site/engine rules, the same way a
@@ -187,19 +178,12 @@ export function entryToDownloadItem(
       // it) under different URLs; yt-dlp's archive knows it by its id.
       useArchive: true,
     },
-    status: 'queued',
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    downloadedBytes: 0,
-    totalBytes: 500_000_000,
-    retryAttempt: 0,
     // An RSS enclosure can be a magnet or a plain file rather than a page, so
     // the engine is chosen from the URL — with the same rule the Dashboard
     // uses, so a feed link and a pasted link behave identically. Channel feeds
     // classify as 'http' and go to yt-dlp exactly as before.
     kind: classifyLink(entry.url),
-  };
+  });
 }
 
 /** Which fetcher to try first for a feed URL.

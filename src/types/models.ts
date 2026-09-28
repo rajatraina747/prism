@@ -98,10 +98,9 @@ export interface DownloadSettings {
   format: FormatOption | null;
   destination: string;
   filename: string;
-  /** Copied from the setting when queued, and no longer read: the budget is
-   * the current "Retries on failure" setting (stores/retry.ts). Kept because
-   * saved queues carry it. */
-  retryCount: number;
+  /** @deprecated Never read: the budget is the current "Retries on failure"
+   * setting. Items saved before 2.4 carry it; new ones don't (build-item.ts). */
+  retryCount?: number;
   startImmediately: boolean;
   audioOnly?: boolean;
   downloadSubtitles?: boolean;

@@ -13,7 +13,7 @@ import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type FormatOption, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
-import { generateId, formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
+import { formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, directFileName, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { createLimiter } from '@/lib/limit';
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { publicAsset } from "@/lib/public-asset";
+import { buildItem, linkMetadata } from '@/stores/build-item';
 
 function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
   return (
@@ -96,33 +97,11 @@ function buildDirectItem(url: string, destination: string, speedLimit?: number, 
   const referer = referrerFor(url);
   let domain = 'download';
   try { domain = new URL(url).hostname; } catch { /* checked by isDirectFileUrl */ }
-  return {
-    id: generateId(),
-    metadata: {
-      title,
-      duration: 0,
-      thumbnail: '',
-      source: { url, domain, addedAt: new Date().toISOString() },
-      formats: [],
-    },
-    settings: {
-      format: null,
-      destination,
-      filename: title,
-      retryCount: 0,
-      startImmediately: true,
-      speedLimit,
-      ...(referer ? { referer } : {}),
-    },
-    status: 'queued',
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    retryAttempt: 0,
+  return buildItem({
     kind: 'direct',
-  };
+    metadata: linkMetadata(url, title, domain),
+    settings: { format: null, destination, filename: title, speedLimit, ...(referer ? { referer } : {}) },
+  });
 }
 
 /** A YouTube watch URL that also carries a playlist: return both "just this
@@ -159,34 +138,12 @@ function playlistEntryItem(
   entry: PlaylistEntry,
   format: FormatOption | null,
   destination: string,
-  retryCount: number,
   speedLimit: number | undefined,
 ): DownloadItem {
-  return {
-    id: generateId(),
-    metadata: {
-      title: entry.title,
-      duration: entry.duration,
-      thumbnail: entry.thumbnail,
-      source: { url: entry.url, domain: siteKey(entry.url) ?? 'unknown', addedAt: new Date().toISOString() },
-      formats: [],
-    },
-    settings: {
-      format,
-      destination,
-      filename: sanitizeFilename(entry.title),
-      retryCount,
-      startImmediately: true,
-      speedLimit,
-    },
-    status: 'queued',
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    downloadedBytes: 0,
-    totalBytes: 500_000_000,
-    retryAttempt: 0,
-  };
+  return buildItem({
+    metadata: linkMetadata(entry.url, entry.title, siteKey(entry.url) ?? 'unknown', { duration: entry.duration, thumbnail: entry.thumbnail }),
+    settings: { format, destination, filename: sanitizeFilename(entry.title), speedLimit },
+  });
 }
 
 export default function Dashboard() {
@@ -462,7 +419,7 @@ export default function Dashboard() {
               skipped++;
               continue;
             }
-            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined);
+            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, speedLimitBytes || undefined);
             added.push(item);
             addToQueue(item);
           }
@@ -493,25 +450,16 @@ export default function Dashboard() {
           continue;
         }
         const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
-        const item: DownloadItem = {
-          id: generateId(),
+        const item = buildItem({
           metadata,
           settings: {
             format,
             destination: preferences.defaultSaveFolder,
             filename: sanitizeFilename(metadata.title),
-            retryCount: preferences.defaultRetryCount,
-            startImmediately: true,
             speedLimit: speedLimitBytes || undefined,
           },
-          status: 'queued',
-          progress: 0,
-          speed: 0,
-          eta: 0,
-          downloadedBytes: 0,
-          totalBytes: format?.fileSize || 500_000_000,
-          retryAttempt: 0,
-        };
+          totalBytes: format?.fileSize,
+        });
         added.push(item);
         addToQueue(item);
       } catch {
@@ -526,7 +474,7 @@ export default function Dashboard() {
     if (failed > 0) parts.push(`${failed} failed to parse`);
     if (abortBulkRef.current) parts.push('stopped early');
     (failed > 0 ? toast.warning : toast.info)(parts.join(' · '));
-  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, queueItems]);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, selectedPreset, queueItems]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     // The page the link came from, if the extension said (lib/referrers.ts).
@@ -569,14 +517,14 @@ export default function Dashboard() {
     const format = presetToFormat(selectedPreset);
 
     for (const entry of entries) {
-      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, preferences.defaultRetryCount, speedLimitBytes || undefined));
+      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined));
     }
 
     setShowPlaylistModal(false);
     setParsedPlaylist(null);
     toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
     navigate('/queue');
-  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.defaultRetryCount, selectedPreset, navigate]);
+  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, selectedPreset, navigate]);
 
   handleBatchSubmitRef.current = handleBatchSubmit;
 

@@ -1,5 +1,6 @@
 import type { DownloadItem } from '@/types/models';
-import { generateId, torrentDisplayName, sourceKey } from '@/services/utils';
+import { torrentDisplayName, sourceKey } from '@/services/utils';
+import { buildItem, linkMetadata } from '@/stores/build-item';
 
 /** Build a queue item for a magnet/.torrent source. Skips yt-dlp parsing —
  * librqbit resolves the real name/size once peers deliver the metadata. */
@@ -7,32 +8,11 @@ export function buildTorrentItem(url: string, destination: string, selectedFiles
   const title = torrentDisplayName(url);
   let domain = 'torrent';
   try { domain = new URL(url).hostname || 'magnet'; } catch { /* magnet has no host */ }
-  return {
-    id: generateId(),
-    metadata: {
-      title,
-      duration: 0,
-      thumbnail: '',
-      source: { url, domain, addedAt: new Date().toISOString() },
-      formats: [],
-    },
-    settings: {
-      format: null,
-      destination,
-      filename: title,
-      retryCount: 0,
-      startImmediately: true,
-      selectedFiles,
-    },
-    status: 'queued',
-    progress: 0,
-    speed: 0,
-    eta: 0,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    retryAttempt: 0,
+  return buildItem({
     kind: 'torrent',
-  };
+    metadata: linkMetadata(url, title, domain),
+    settings: { format: null, destination, filename: title, selectedFiles },
+  });
 }
 
 /** Queue items for torrents brought over from another client: paused (so a
