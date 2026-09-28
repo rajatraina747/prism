@@ -157,13 +157,16 @@ async fn serve(
     }
 
     let count = end - start + 1;
+    // 206 only for a range that was honoured: an unparseable Range header
+    // gets the whole file, which is a 200 (REVIEW 2026-09-28).
+    let partial = range.is_some_and(|r| r.starts_with("bytes="));
     let body = Body::from_stream(ReaderStream::new(stream.take(count)));
     let mut response = Response::builder()
-        .status(if range.is_some() { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
+        .status(if partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
         .header(header::ACCEPT_RANGES, "bytes")
         .header(header::CONTENT_TYPE, content_type(&name))
         .header(header::CONTENT_LENGTH, count.to_string());
-    if range.is_some() {
+    if partial {
         response = response.header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{len}"));
     }
     match response.body(body) {
@@ -188,7 +191,11 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 /// Only a single range is honoured: multipart ranges buy nothing for playback
 /// and every player Prism can open asks for one at a time.
 fn parse_range(header: Option<&str>, len: u64) -> Option<(u64, u64)> {
-    let last = len.saturating_sub(1);
+    // An empty file has no byte to send; (0, 0) announced one (REVIEW 2026-09-28).
+    if len == 0 {
+        return None;
+    }
+    let last = len - 1;
     let Some(spec) = header.and_then(|h| h.strip_prefix("bytes=")) else {
         return Some((0, last));
     };
@@ -287,6 +294,12 @@ mod tests {
         assert_eq!(parse_range(Some("bytes=-200"), 1000), Some((800, 999)));
         // Only the first range of a multipart request is served.
         assert_eq!(parse_range(Some("bytes=0-99,200-299"), 1000), Some((0, 99)));
+    }
+
+    #[test]
+    fn an_empty_file_has_no_range_to_send() {
+        assert_eq!(parse_range(None, 0), None);
+        assert_eq!(parse_range(Some("bytes=0-"), 0), None);
     }
 
     #[test]

@@ -49,9 +49,23 @@ struct Inner {
     changed: HashSet<String>,
     removed: Vec<String>,
     order_changed: bool,
+    /// Number of the last `queue-changed` patch sent. A snapshot says which
+    /// patch it reflects, so the page can drop the ones it already has
+    /// (REVIEW 2026-09-28 C-9).
+    seq: u64,
     save_now: bool,
     save_soon: bool,
     last_save: Option<Instant>,
+    /// What the next save writes (P-1). Kept apart from `changed`/`removed`,
+    /// which the page's patches drain four times a second.
+    unsaved: HashSet<String>,
+    unsaved_removed: HashSet<String>,
+    unsaved_order: bool,
+    /// Rewrite every row: after loading, and after a save that failed.
+    full_save: bool,
+    /// Items whose torrent file list or piece map changed since the last
+    /// patch. Only these carry them (P-4).
+    files_changed: HashSet<String>,
     /// When each item reached completed/failed/canceled.
     terminal_since: HashMap<String, Instant>,
     when_done: rules::WhenDone,
@@ -68,6 +82,7 @@ impl Inner {
     /// which is saved at once.
     fn touched(&mut self, id: &str, shape: bool) {
         self.changed.insert(id.to_string());
+        self.unsaved.insert(id.to_string());
         if shape {
             self.save_now = true;
         } else {
@@ -75,11 +90,48 @@ impl Inner {
         }
     }
 
+    /// The order moved, or an item joined: every position is saved again.
+    fn reordered(&mut self) {
+        self.order_changed = true;
+        self.unsaved_order = true;
+    }
+
+    /// What the next save writes, clearing it. None when nothing changed.
+    fn take_delta(&mut self) -> Option<crate::store::QueueDelta> {
+        let position = |at: usize| at as i64;
+        if std::mem::take(&mut self.full_save) {
+            self.unsaved.clear();
+            self.unsaved_removed.clear();
+            self.unsaved_order = false;
+            return Some(crate::store::QueueDelta::Full(self.items.iter().map(rules::slim_for_saving).collect()));
+        }
+        if self.unsaved.is_empty() && self.unsaved_removed.is_empty() && !self.unsaved_order {
+            return None;
+        }
+        let unsaved = std::mem::take(&mut self.unsaved);
+        let upsert = self
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| unsaved.contains(rules::id(i)))
+            .map(|(at, i)| (rules::id(i).to_string(), position(at), rules::slim_for_saving(i)))
+            .collect();
+        let positions = std::mem::take(&mut self.unsaved_order)
+            .then(|| self.items.iter().enumerate().map(|(at, i)| (rules::id(i).to_string(), position(at))).collect());
+        Some(crate::store::QueueDelta::Changes {
+            upsert,
+            remove: std::mem::take(&mut self.unsaved_removed).into_iter().collect(),
+            positions,
+        })
+    }
+
     fn remove(&mut self, id: &str) -> Option<Item> {
         let at = self.items.iter().position(|i| rules::id(i) == id)?;
         let item = self.items.remove(at);
         self.removed.push(id.to_string());
         self.changed.remove(id);
+        self.unsaved.remove(id);
+        self.unsaved_removed.insert(id.to_string());
         self.terminal_since.remove(id);
         self.save_now = true;
         Some(item)
@@ -177,6 +229,7 @@ pub fn start(app: &AppHandle) {
         let mut inner = state.lock();
         inner.items = items;
         inner.save_now = true;
+        inner.full_save = true;
     }
     state.started.store(true, Ordering::SeqCst);
     log::info!("queue: loaded {} item(s)", state.lock().items.len());
@@ -387,11 +440,34 @@ fn start_engine(app: &AppHandle, item: Item, quiet_hours_limit: Option<u64>) {
                 .map_err(|e| (e, None))
             }
         };
-        if let Err((message, code)) = result {
-            log::warn!("queue: {id} didn't start: {message}");
-            on_failure(&app, &id, &message, code.as_deref(), None);
+        match result {
+            Err((message, code)) => {
+                log::warn!("queue: {id} didn't start: {message}");
+                on_failure(&app, &id, &message, code.as_deref(), None);
+            }
+            // The engine holds its own ticket once its start call returns, so
+            // a stop from here on reaches it. One that came earlier — while the
+            // start checked the folder and disk space — found nothing to stop,
+            // and the engine ran on for a paused or cancelled item (REVIEW
+            // 2026-09-28 C-2). Look again now.
+            Ok(()) if stopped_while_starting(&app, &id) => {
+                log::info!("queue: {id} was stopped while it started");
+                stop_engine(&app, &id).await;
+            }
+            Ok(()) => {}
         }
     });
+}
+
+/// Whether the user paused, cancelled or removed `id` after the queue
+/// started it. Queued isn't: that is a resume, with a new start on its way.
+fn stopped_while_starting(app: &AppHandle, id: &str) -> bool {
+    let Some(state) = manager(app) else { return false };
+    let mut inner = state.lock();
+    match inner.find(id).map(|i| &*i) {
+        Some(item) => rules::was_stopped(item),
+        None => true,
+    }
 }
 
 /// Where Rust keeps the `-o` template a video item's run actually claimed
@@ -444,7 +520,8 @@ async fn discard_engine(app: &AppHandle, id: &str, item: Option<Item>) {
         let dest = rules::setting_str(i, "destination").unwrap_or("~/Downloads/Prism").to_string();
         let url = rules::source_url(i).to_string();
         if let Ok(dest) = crate::validate_download_path(&dest, &crate::picked_dirs(app)) {
-            let _ = tauri::async_runtime::spawn_blocking(move || crate::torrent::discard_stopped_magnet(&dest, &url)).await;
+            let cfg = crate::torrent_session_config(app);
+            app.state::<crate::torrent::TorrentManager>().discard_stopped(app, &dest, &url, &cfg).await;
         }
     }
     // (yt-dlp items are kind "http", the default; direct links are "direct".)
@@ -475,14 +552,23 @@ async fn stop_engine(app: &AppHandle, id: &str) {
 
 // ── What engines report ──────────────────────────────────────────────────
 
-/// Engines emit progress through here: to the page, as before, and to the
-/// queue.
+/// Engines emit progress through here, into the queue; the page hears it in
+/// the queue's patches. (A per-item `download-progress-{id}` event went out
+/// too, serialised a second time, and nothing on the desktop listened to it:
+/// REVIEW 2026-09-28 P-5.)
 pub fn emit_progress<T: Serialize>(app: &AppHandle, id: &str, payload: &T) {
-    let _ = app.emit(&format!("download-progress-{id}"), payload);
     let Some(state) = manager(app) else { return };
     let Ok(value) = serde_json::to_value(payload) else { return };
     let (data, seeding) = rules::progress_fields(&value);
     let mut inner = state.lock();
+    // The torrent poll resends the list every few seconds; only a different
+    // one counts (a seeding torrent's never changes).
+    let files_differ = inner.find(id).is_some_and(|item| {
+        ["files", "pieces"].iter().any(|k| data.get(*k).is_some_and(|new| item.get(*k) != Some(new)))
+    });
+    if files_differ {
+        inner.files_changed.insert(id.to_string());
+    }
     let Some(item) = inner.find(id) else { return };
     let was = rules::status(item).to_string();
     if rules::apply_progress(item, &data, seeding) {
@@ -761,7 +847,11 @@ async fn archive_due(app: &AppHandle) {
     {
         let mut inner = state.lock();
         for item in &due {
-            inner.remove(rules::id(item));
+            // Still finished: a Retry during the Library write restarted it,
+            // and removing it then left its engine running with no row.
+            if inner.items.iter().any(|i| rules::id(i) == rules::id(item) && rules::is_terminal(i)) {
+                inner.remove(rules::id(item));
+            }
         }
     }
     let _ = app.emit("queue-archived", entries);
@@ -772,23 +862,45 @@ async fn archive_due(app: &AppHandle) {
 /// Save the queue now, not at the next flush: a completion that isn't on
 /// disk when Prism is quit (or killed) would download again next launch —
 /// the bug the old finished journal existed for (REVIEW 2026-09-23 B-1).
+/// Write whatever is unsaved, on this thread. For quitting.
+pub fn save_on_exit(app: &AppHandle) {
+    persist(app);
+}
+
 fn save_now(app: &AppHandle) {
+    // On the blocking pool, not the async worker that reported the
+    // completion: a playlist finishing in a burst wrote the database N times
+    // back to back on those workers (REVIEW 2026-09-28 P-2).
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || persist(&app));
+}
+
+/// Write what changed since the last save. One at a time, and the changes
+/// are taken inside that turn, so saves land in the order they were taken:
+/// an older delta can never be written over a newer one. Blocking.
+fn persist(app: &AppHandle) {
+    static SAVING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _turn = SAVING.lock().unwrap_or_else(|p| p.into_inner());
     let Some(state) = manager(app) else { return };
-    let items: Vec<Value> = {
+    let delta = {
         let mut inner = state.lock();
         inner.save_now = false;
         inner.save_soon = false;
         inner.last_save = Some(Instant::now());
-        inner.items.iter().map(rules::slim_for_saving).collect()
+        inner.take_delta()
     };
-    if let Err(e) = crate::store::save_queue(app, &items) {
-        log::warn!("queue: couldn't save a completion at once ({e}); the next flush tries again");
-        state.lock().save_now = true;
+    let Some(delta) = delta else { return };
+    if let Err(e) = crate::store::save_queue_delta(app, &delta) {
+        log::warn!("queue: save failed ({e}); will write everything next time");
+        let mut inner = state.lock();
+        inner.full_save = true;
+        inner.save_now = true;
     }
 }
 
 #[derive(Serialize, Clone)]
 struct Patch {
+    seq: u64,
     items: Vec<Value>,
     removed: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -801,32 +913,38 @@ async fn flush(app: &AppHandle) {
         let mut inner = state.lock();
         let patch = (!inner.changed.is_empty() || !inner.removed.is_empty() || inner.order_changed).then(|| {
             let changed = std::mem::take(&mut inner.changed);
-            let items = inner.items.iter().filter(|i| changed.contains(rules::id(i))).map(|i| Value::Object(i.clone())).collect();
+            let files_changed = std::mem::take(&mut inner.files_changed);
+            // A torrent's file list and piece map go only when they changed:
+            // with thousands of files they were hundreds of KB, sent with
+            // every speed update, once a second (REVIEW 2026-09-28 P-4). The
+            // page keeps the copy it has when a patch leaves them out.
+            let items = inner
+                .items
+                .iter()
+                .filter(|i| changed.contains(rules::id(i)))
+                .map(|i| {
+                    let mut item = i.clone();
+                    if !files_changed.contains(rules::id(i)) {
+                        item.remove("files");
+                        item.remove("pieces");
+                    }
+                    Value::Object(item)
+                })
+                .collect();
             let order = std::mem::take(&mut inner.order_changed)
                 .then(|| inner.items.iter().map(|i| rules::id(i).to_string()).collect());
-            Patch { items, removed: std::mem::take(&mut inner.removed), order }
+            inner.seq += 1;
+            Patch { seq: inner.seq, items, removed: std::mem::take(&mut inner.removed), order }
         });
         let due = inner.save_now || (inner.save_soon && inner.last_save.map_or(true, |t| t.elapsed() >= PROGRESS_SAVE_EVERY));
-        let save = due.then(|| {
-            inner.save_now = false;
-            inner.save_soon = false;
-            inner.last_save = Some(Instant::now());
-            inner.items.iter().map(rules::slim_for_saving).collect::<Vec<Value>>()
-        });
-        (patch, save)
+        (patch, due)
     };
     if let Some(patch) = patch {
         let _ = app.emit("queue-changed", patch);
     }
-    if let Some(items) = save {
+    if save {
         let handle = app.clone();
-        let saved = tauri::async_runtime::spawn_blocking(move || crate::store::save_queue(&handle, &items)).await;
-        if !matches!(saved, Ok(Ok(()))) {
-            log::warn!("queue: save failed; will try again");
-            if let Some(state) = manager(app) {
-                state.lock().save_now = true;
-            }
-        }
+        let _ = tauri::async_runtime::spawn_blocking(move || persist(&handle)).await;
     }
 }
 
@@ -852,7 +970,7 @@ fn start_when_done(app: &AppHandle, action: String) {
 }
 
 #[tauri::command]
-pub fn when_done_cancel(app: AppHandle) {
+pub async fn when_done_cancel(app: AppHandle) {
     if let Some(state) = manager(&app) {
         state.when_done_generation.fetch_add(1, Ordering::SeqCst);
         log::info!("when-done: cancelled");
@@ -860,6 +978,10 @@ pub fn when_done_cancel(app: AppHandle) {
 }
 
 // ── Commands (the page's actions) ────────────────────────────────────────
+//
+// All async: a synchronous Tauri command runs on the main thread, and these
+// each run a scheduling pass — adding a 500-video playlist did 500 of them on
+// the thread that draws the window (REVIEW 2026-09-28 P-3).
 
 fn require(app: &AppHandle) -> Result<tauri::State<'_, QueueManager>, String> {
     manager(app).ok_or_else(|| "The queue isn't ready yet".to_string())
@@ -887,14 +1009,17 @@ fn check_destination(app: &AppHandle, settings: &serde_json::Map<String, Value>)
 }
 
 #[tauri::command]
-pub fn queue_snapshot(app: AppHandle) -> Result<Vec<Value>, String> {
+pub async fn queue_snapshot(app: AppHandle) -> Result<Value, String> {
     let state = require(&app)?;
     let inner = state.lock();
-    Ok(inner.items.iter().map(|i| Value::Object(i.clone())).collect())
+    // Changes not yet flushed are in `items` already and come again in patch
+    // `seq + 1`, whole, so applying that one too is harmless.
+    let items: Vec<Value> = inner.items.iter().map(|i| Value::Object(i.clone())).collect();
+    Ok(json!({ "items": items, "seq": inner.seq }))
 }
 
 #[tauri::command]
-pub fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
+pub async fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
     let mut item = item.as_object().cloned().ok_or("Not a queue item")?;
     if rules::id(&item).is_empty() {
         return Err("A queue item needs an id".into());
@@ -913,7 +1038,7 @@ pub fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
             return Ok(());
         }
         inner.items.push(item);
-        inner.order_changed = true;
+        inner.reordered();
         inner.touched(&id, true);
     }
     tick(&app);
@@ -1048,7 +1173,7 @@ pub async fn queue_resume_all(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
+pub async fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
     let state = require(&app)?;
     let mut inner = state.lock();
     let done: Vec<String> = inner.items.iter().filter(|i| rules::status(i) == "completed").map(|i| rules::id(i).to_string()).collect();
@@ -1059,7 +1184,7 @@ pub fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), String> {
+pub async fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), String> {
     let state = require(&app)?;
     let mut inner = state.lock();
     if from >= inner.items.len() {
@@ -1068,7 +1193,7 @@ pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), Strin
     let item = inner.items.remove(from);
     let to = to.min(inner.items.len());
     inner.items.insert(to, item);
-    inner.order_changed = true;
+    inner.reordered();
     inner.save_now = true;
     drop(inner);
     tick(&app);
@@ -1080,7 +1205,7 @@ pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), Strin
 /// is still in `only_if` (when given). A download that started meanwhile
 /// keeps what it started with.
 #[tauri::command]
-pub fn queue_set_settings(app: AppHandle, id: String, settings: Value, only_if: Option<String>) -> Result<bool, String> {
+pub async fn queue_set_settings(app: AppHandle, id: String, settings: Value, only_if: Option<String>) -> Result<bool, String> {
     let Some(fields) = settings.as_object() else {
         return Err("Settings must be an object".into());
     };

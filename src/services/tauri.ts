@@ -126,7 +126,7 @@ function templateVarsFor(item: DownloadItem): TemplateVars {
 
 /** Rust's queue (src-tauri/src/queue.rs), as the page sees it. */
 const rustQueue: RemoteQueue = {
-  snapshot: () => invoke<DownloadItem[]>('queue_snapshot'),
+  snapshot: () => invoke<{ items: DownloadItem[]; seq: number }>('queue_snapshot'),
   add: item => invoke('queue_add', { item }),
   remove: id => invoke('queue_remove', { id }),
   pause: id => invoke('queue_pause', { id }),

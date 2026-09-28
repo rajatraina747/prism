@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useSettings, useHistory, useQueue } from '@/stores/AppProvider';
+import { useSettings, useHistory, useQueue, useQueueActions } from '@/stores/AppProvider';
 import { importedTorrentItems } from '@/stores/torrent-item';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { buildBackup, parseBackup, describeImport, type PrismBackup } from '@/stores/backup';
@@ -10,7 +10,7 @@ import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes, generateId, isSameFolder } from '@/services';
 import type { DownloadCategory } from '@/types/models';
 import type { StorageSummary } from '@/services/types';
-import { Panel, ConfirmDialog } from '@/components/common';
+import { Panel, ConfirmDialog, CommitInput } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -99,7 +99,7 @@ function ClientImportRow() {
 
 /** Apply the engine settings now rather than at the next launch. */
 function RestartTorrentEngineRow() {
-  const { restartTorrentEngine } = useQueue();
+  const { restartTorrentEngine } = useQueueActions();
   const [busy, setBusy] = React.useState(false);
   const restart = async () => {
     setBusy(true);
@@ -394,11 +394,10 @@ function NumberInput({ value, onChange, min, max, step, unit }: {
 function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const a11y = useRowA11y();
   return (
-    <input
-      type="text"
+    <CommitInput
       value={value}
       {...a11y}
-      onChange={e => onChange(e.target.value)}
+      onCommit={onChange}
       placeholder={placeholder}
       spellCheck={false}
       autoComplete="off"
@@ -641,13 +640,13 @@ export default function Settings() {
               </SettingGroup>
               <Advanced>
                 <SettingGroup title="Engine (applies when the engine restarts)">
-                  <SettingRow label="DHT" help={HELP.dht} description="Find peers without a tracker. Off = tracker-only">
+                  <SettingRow label="DHT" help={HELP.dht} description={p.proxyUrl ? "Off while a proxy is set: DHT can't go through it" : 'Find peers without a tracker. Off = tracker-only'}>
                     <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                   </SettingRow>
                   <SettingRow label="Local peer discovery" help={HELP.lsd} description="Find peers on your own network">
                     <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
                   </SettingRow>
-                  <SettingRow label="uTP transport" help={HELP.utp} description="Accept and make uTP connections alongside TCP (still maturing in the engine)">
+                  <SettingRow label="uTP transport" help={HELP.utp} description={p.proxyUrl ? "Off while a proxy is set: uTP can't go through it" : 'Accept and make uTP connections alongside TCP (still maturing in the engine)'}>
                     <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
                   </SettingRow>
                   <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections. Always off while a proxy is set">
@@ -919,10 +918,9 @@ export default function Settings() {
                             aria-label={`Category ${index + 1} name`}
                             className="w-28 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
                           />
-                          <input
-                            type="text"
+                          <CommitInput
                             value={category.domains.join(', ')}
-                            onChange={e => updateCategory(category.id, { domains: e.target.value.split(',').map(d => d.trim()).filter(Boolean) })}
+                            onCommit={v => updateCategory(category.id, { domains: v.split(',').map(d => d.trim()).filter(Boolean) })}
                             placeholder="youtube.com"
                             spellCheck={false}
                             aria-label={`Category ${index + 1} sites`}

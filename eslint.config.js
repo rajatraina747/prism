@@ -26,7 +26,7 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", {
         allowConstantExport: true,
         allowExportNames: [
-          "useQueue", "useHistory", "useSettings", "useStats", "useSubscriptions", "useService",
+          "useQueue", "useQueueActions", "useHistory", "useSettings", "useStats", "useSubscriptions", "useService",
           "useMinuteClock", "MOD_KEY", "buttonVariants", "toast",
         ],
       }],

@@ -167,8 +167,20 @@ pub(crate) fn with_db<T>(app: &AppHandle, f: impl FnOnce(&mut Connection) -> Res
         let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
         import_json_once(&mut conn, &dir).map_err(|e| format!("Couldn't copy the saved data in: {e}"))?;
         match recovered {
-            // A clean open: this is the state worth falling back to.
-            None => refresh_backup(&conn, &path),
+            // A clean open: this is the state worth falling back to. Copied
+            // on a thread of its own, through its own read-only connection:
+            // the first open happens during setup on the main thread, and the
+            // copy grows with the Library, which has no cap (REVIEW
+            // 2026-09-28 P-6). WAL lets it read while the app writes.
+            None => {
+                let path = path.clone();
+                let _ = std::thread::Builder::new().name("prism-db-backup".into()).spawn(move || {
+                    match Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) {
+                        Ok(reader) => refresh_backup(&reader, &path),
+                        Err(e) => log::warn!("store: couldn't open the database to back it up: {e}"),
+                    }
+                });
+            }
             Some(r) => *store.recovered.lock().unwrap_or_else(|p| p.into_inner()) = Some(r),
         }
         *guard = Some(conn);
@@ -256,13 +268,51 @@ fn load_doc(conn: &Connection, name: &str) -> rusqlite::Result<Option<Value>> {
     Ok(text.and_then(|t| serde_json::from_str(&t).ok()))
 }
 
-/// Replace the saved queue (the queue manager's save).
-pub(crate) fn save_queue(app: &AppHandle, items: &[Value]) -> Result<(), String> {
+/// What the queue manager saves: every row (after loading, or after a save
+/// failed), or only what changed. Every save used to delete the table and
+/// insert every item again — every two seconds while anything downloaded,
+/// megabytes for a long playlist (REVIEW 2026-09-28 P-1).
+pub(crate) enum QueueDelta {
+    Full(Vec<Value>),
+    Changes {
+        /// (id, position, item)
+        upsert: Vec<(String, i64, Value)>,
+        remove: Vec<String>,
+        /// Every (id, position), when the order moved or an item joined.
+        positions: Option<Vec<(String, i64)>>,
+    },
+}
+
+/// Save the queue (the queue manager's save).
+pub(crate) fn save_queue_delta(app: &AppHandle, delta: &QueueDelta) -> Result<(), String> {
     with_db(app, |conn| {
         let tx = conn.transaction().map_err(sql_err)?;
-        write_queue(&tx, items).map_err(sql_err)?;
+        apply_queue_delta(&tx, delta).map_err(sql_err)?;
         tx.commit().map_err(sql_err)
     })
+}
+
+fn apply_queue_delta(tx: &rusqlite::Transaction, delta: &QueueDelta) -> rusqlite::Result<()> {
+    match delta {
+        QueueDelta::Full(items) => write_queue(tx, items),
+        QueueDelta::Changes { upsert, remove, positions } => {
+            let mut gone = tx.prepare("DELETE FROM queue WHERE id = ?1")?;
+            for id in remove {
+                gone.execute(params![id])?;
+            }
+            let mut put = tx.prepare("INSERT OR REPLACE INTO queue (id, position, data) VALUES (?1, ?2, ?3)")?;
+            for (id, position, item) in upsert {
+                put.execute(params![id, position, item.to_string()])?;
+            }
+            if let Some(positions) = positions {
+                let mut place = tx.prepare("UPDATE queue SET position = ?2 WHERE id = ?1")?;
+                for (id, position) in positions {
+                    place.execute(params![id, position])?;
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Add finished items to the Library (the queue manager's archive).
@@ -370,6 +420,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    // P-6: the startup backup now runs through a read-only connection.
+    #[test]
+    fn a_read_only_connection_can_write_the_backup() {
+        let dir = tmp("robackup");
+        let path = dir.join("prism.db");
+        let conn = open_at(&path).unwrap();
+        conn.execute("INSERT INTO queue (id, position, data) VALUES ('a', 0, '{}')", []).unwrap();
+        let reader = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        refresh_backup(&reader, &path);
+        let copy = Connection::open(backup_path(&path)).unwrap();
+        let n: i64 = copy.query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // REVIEW 2026-09-28 P-1: saves write only what changed, and the queue
+    // loads back the same, in the same order.
+    #[test]
+    fn a_saved_delta_loads_back_as_the_queue() {
+        let dir = tmp("delta");
+        let mut conn = open_at(&dir.join("prism.db")).unwrap();
+        let apply = |conn: &mut Connection, delta: QueueDelta| {
+            let tx = conn.transaction().unwrap();
+            apply_queue_delta(&tx, &delta).unwrap();
+            tx.commit().unwrap();
+        };
+        let ids = |conn: &Connection| load_queue(conn).unwrap().iter().map(|v| v["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        apply(&mut conn, QueueDelta::Full(vec![json!({"id": "a", "p": 0}), json!({"id": "b", "p": 0}), json!({"id": "c", "p": 0})]));
+        // b progresses, a leaves, d joins at the end (every position rewritten).
+        apply(&mut conn, QueueDelta::Changes {
+            upsert: vec![("b".into(), 0, json!({"id": "b", "p": 50})), ("d".into(), 2, json!({"id": "d", "p": 0}))],
+            remove: vec!["a".into()],
+            positions: Some(vec![("b".into(), 0), ("c".into(), 1), ("d".into(), 2)]),
+        });
+        assert_eq!(ids(&conn), ["b", "c", "d"]);
+        assert_eq!(load_queue(&conn).unwrap()[0]["p"], 50);
+        // Progress alone: one row, order untouched.
+        apply(&mut conn, QueueDelta::Changes { upsert: vec![("c".into(), 1, json!({"id": "c", "p": 9}))], remove: vec![], positions: None });
+        assert_eq!(ids(&conn), ["b", "c", "d"]);
+        assert_eq!(load_queue(&conn).unwrap()[1]["p"], 9);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

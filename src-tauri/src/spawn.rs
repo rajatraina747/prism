@@ -262,8 +262,24 @@ impl Child {
                 }
             });
         }
+        // Windows has no SIGTERM to offer, and needs none since 2.3: its
+        // onedir yt-dlp unpacks nothing into `_MEI*`, so there is nothing to
+        // tidy. The job ends at once; `taskkill`, for anything forked before
+        // the job took hold, is a process Prism waits on, so it runs on a
+        // thread of its own rather than the caller's (an async worker,
+        // sometimes holding the downloads lock — REVIEW 2026-09-28 C-7).
         #[cfg(windows)]
-        self.force_kill();
+        {
+            if let Some(job) = self.job {
+                job::terminate(job);
+            }
+            let (pid, exited) = (self.pid, self.exited.clone());
+            let _ = std::thread::Builder::new().name("prism-kill-tree".into()).spawn(move || {
+                if !exited.load(Ordering::SeqCst) {
+                    crate::proc::kill_tree(pid);
+                }
+            });
+        }
     }
 
     /// Kill the run outright, now.

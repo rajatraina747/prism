@@ -6,35 +6,52 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-A safety release. Every fix here came out of a ground-up review of 2.3.0.
+Hardening and speed, continuing from the review behind 2.3.1.
 
-### Cancel never touches files that aren't the download's own
+### Safer
 
-- **Cancelling a download could delete a different file.** Prism looked for
-  files that merely *started* with the download's name, so cancelling
-  "Episode 1" could delete a finished "Episode 1.5 Special.mp4" beside it. A
-  cancel now removes only the files that download wrote, matched exactly.
-- Leftover partial pieces are deleted. Anything that could be a finished file
-  goes to the Trash instead, so a mistake there can be undone.
-- **A torrent no longer writes into a folder it doesn't own.** A second pack
-  with the same name as one you already have (a "Season 1", say) now gets a
-  folder of its own instead of overwriting the first.
+- **Cancelling a paused or stopped torrent now removes what it downloaded**,
+  as cancelling a running one always did. It never touches a download that
+  already finished.
+- **Undo after Cancel resumes the download where it stopped.** Before, the
+  download started again from nothing.
+- **A pause pressed just as a download starts now takes effect.** Before, the
+  download could carry on regardless, and resuming it made a second copy.
+- **Direct downloads survive a crash or power cut without damage.** Resuming
+  never keeps parts of the file that were never written to disk.
+- A download that restarts after failing on a server without resume support
+  reuses its partial file instead of leaving it behind.
+- Prism no longer keeps what you copy to the clipboard, only a fingerprint
+  that tells a link it has already seen.
+- With a proxy set, DHT and uTP are turned off, because they can't go
+  through it and would show peers your real address. Settings says so.
+- A proxy password is no longer visible to other programs on the computer,
+  or written to the log.
+- A global shortcut now needs Ctrl, Alt or Cmd, so it can't take an
+  ordinary key away from every other app.
+- On Windows, Prism no longer looks at network paths it was handed unless
+  they are inside a folder you chose.
+
+### Faster
+
+- **The queue is saved far more cheaply:** only what changed is written,
+  rather than the whole list every two seconds.
+- **Large torrents no longer slow the window down:** their file lists are
+  sent to the window only when they change.
+- **Transfers stays smooth with many downloads:** rows redraw only when their
+  own download changes.
+- **Pages open on demand, and launch no longer waits on the database
+  backup.**
+- **Editing Settings no longer makes every subscription check itself 15
+  seconds later.**
 
 ### Fixes
 
-- **Sleep or shut down "when everything finishes" is called off** if you add
-  something during the one-minute countdown. Before, the Mac could go to
-  sleep with a download running.
-- **Downloads added with "Start immediately" turned off can now be started**
-  (Start on the row, in its menu, or with Resume). Before, nothing could start
-  them, and one of them stopped "when everything finishes" from ever happening.
-- Pausing and resuming a download while it waited to retry could start a
-  second copy of it. Fixed.
-- A torrent that failed or hit the "give up" limit kept downloading in the
-  background with no row to stop it. It now stops.
-- Statistics no longer grow each time Prism starts. Totals already counted
-  twice stay as they are.
-- On Transfers, Enter and Space work on the focused button again, and do
-  nothing behind a confirmation dialog.
-- Fixed a crash that could happen when closing the player.
-- **Browser extension 1.2.1:** the toolbar button works again.
+- Settings fields that something acts on (category sites, shortcuts, clip
+  times) take effect when you leave the field or press Enter. Typed commas
+  in a category's sites no longer disappear.
+- The link confirmation shows which page a link came from.
+- The details panel can be resized with the keyboard, and resizing it no
+  longer saves the setting on every mouse movement.
+- Names too long for the disk (such as long Japanese titles), and Windows'
+  reserved names such as CON, are handled.

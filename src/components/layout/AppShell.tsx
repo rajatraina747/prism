@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
+import { useQueue, useQueueActions, useHistory, useSettings } from '@/stores/AppProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
@@ -227,7 +227,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Global hotkeys. Rust owns the registration (see src-tauri/src/shortcuts.rs)
   // and tells us which one fired. "Show Prism" never arrives here — raising a
   // hidden window is Rust's job.
-  const { pauseAll } = useQueue();
+  const { pauseAll } = useQueueActions();
   // Compared by value: `preferences.shortcuts` is a fresh object whenever
   // settings are saved, and re-registering system-wide keys on every render
   // would be a lot of churn for nothing.

@@ -188,7 +188,7 @@ pub async fn inspect_url(app: AppHandle, url: String, referer: Option<String>) -
     let (code, stdout, stderr) = crate::run_ytdlp_capture(cmd.args(&args), INSPECT_TIMEOUT_SECS).await?;
     if code != Some(0) {
         let stderr = String::from_utf8_lossy(&stderr);
-        log::warn!("link lookup failed: {}", stderr.trim().lines().last().unwrap_or("no output"));
+        log::warn!("link lookup failed: {}", crate::errors::redact(stderr.trim().lines().last().unwrap_or("no output")));
         return Err(classify_output(&stderr));
     }
     let doc: serde_json::Value = serde_json::from_slice(&stdout)
@@ -199,13 +199,35 @@ pub async fn inspect_url(app: AppHandle, url: String, referer: Option<String>) -
         let page = metadata.source.url.clone();
         let app = app.clone();
         let original = url.clone();
-        tauri::async_runtime::spawn_blocking(move || remember_info(&app, &[&original, &page], &stdout));
+        // Also under the page URL the site reports, so a download started
+        // from that URL reuses it — but only when it is on the same site. A
+        // page could name any URL there, and a later download of that URL
+        // would run with this site's formats and links (REVIEW 2026-09-28).
+        let same_site = same_host(&original, &page);
+        tauri::async_runtime::spawn_blocking(move || {
+            let keys: Vec<&str> = if same_site { vec![&original, &page] } else { vec![&original] };
+            remember_info(&app, &keys, &stdout)
+        });
     }
     Ok(inspected)
 }
 
+/// Whether two URLs name the same host (ignoring a leading `www.`).
+fn same_host(a: &str, b: &str) -> bool {
+    let host = |u: &str| url::Url::parse(u).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_ascii_lowercase()));
+    matches!((host(a), host(b)), (Some(x), Some(y)) if x == y)
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_lookup_is_filed_under_another_url_only_on_the_same_site() {
+        assert!(same_host("https://youtu.be/x", "https://youtu.be/x?t=1"));
+        assert!(same_host("https://www.vimeo.com/1", "https://vimeo.com/1"));
+        assert!(!same_host("https://evil.example/v", "https://www.youtube.com/watch?v=abc"));
+    }
+
     use super::*;
     use serde_json::json;
 

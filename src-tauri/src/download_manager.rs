@@ -355,10 +355,7 @@ impl DownloadManager {
                 args.push(browser);
             }
 
-            if let Some(proxy) = crate::proxy_url(&app) {
-                args.push("--proxy".into());
-                args.push(proxy);
-            }
+            args.extend(crate::ytdlp_proxy_args(&app));
 
             // Tell yt-dlp where ffmpeg is — Finder-launched apps may not have it in PATH
             let ffmpeg = crate::find_ffmpeg_blocking(&app).await;
@@ -602,7 +599,7 @@ impl DownloadManager {
                 }
 
                 if should_refetch(success, timed_out, info.is_some(), agg.bytes(), &last_error) {
-                    log::info!("download {id}: its lookup didn't work ({last_error}); starting from the URL");
+                    log::info!("download {id}: its lookup didn't work ({}); starting from the URL", crate::errors::redact(&last_error));
                     crate::lookup::forget_info(&app, &url);
                     info = None;
                     continue 'attempt;
@@ -630,7 +627,7 @@ impl DownloadManager {
             if success {
                 log::info!("download {id}: finished");
             } else {
-                log::warn!("download {id}: failed: {last_error}");
+                log::warn!("download {id}: failed: {}", crate::errors::redact(&last_error));
             }
 
             // The move (a copy across volumes), quarantine and ledger are disk
@@ -642,7 +639,7 @@ impl DownloadManager {
                     // "Move completed to" runs before completion is reported, so
                     // the Library records where the file actually ended up.
                     reported
-                        .filter(|path| std::path::Path::new(path).is_file())
+                        .filter(|path| std::path::Path::new(path).is_file() && is_own_output(path, &output_path, run_started))
                         .or_else(|| find_output_file(&output_path))
                         .map(|path| {
                             let moved = match &move_root {
@@ -900,6 +897,27 @@ fn parse_progress(line: &str, id: &str) -> Option<DownloadProgress> {
 /// Prefix of the stdout line yt-dlp prints with the finished file's path.
 const PATH_MARKER: &str = "PRISM:PATH=";
 
+/// Whether a reported path is this run's own file: in the template's folder
+/// and written since the run began. The report is read from stdout, where
+/// yt-dlp also prints what sites say; a line that only looked like the report
+/// must not choose which file is moved, flagged and recorded as downloaded
+/// (REVIEW 2026-09-28). Not matched on the name: on Windows yt-dlp rewrites
+/// characters (`:` → `：`), which is why the report exists at all (B-7).
+fn is_own_output(path: &str, template: &str, since: std::time::SystemTime) -> bool {
+    let path = std::path::Path::new(path);
+    let base = template_file(template, "");
+    let canonical = |p: &std::path::Path| p.canonicalize().ok();
+    let same_folder = match (path.parent().and_then(canonical), std::path::Path::new(&base).parent().and_then(canonical)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    };
+    // File times can be coarse (2 s on FAT).
+    let recent = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t + std::time::Duration::from_secs(2) >= since);
+    same_folder && recent
+}
+
 /// The path in a `PRISM:PATH=…` line. Only the line ending is trimmed: a
 /// file name may start or end with spaces.
 fn reported_path(line: &str) -> Option<&str> {
@@ -1134,6 +1152,27 @@ mod tests {
         assert!(!should_refetch(false, false, false, 0, refused), "already from the URL: only once");
         assert!(!should_refetch(false, true, true, 0, refused), "a stall is not a refusal");
         assert!(!should_refetch(true, false, true, 0, ""), "it worked");
+    }
+
+    // Regression (REVIEW 2026-09-28): a stdout line that looked like the
+    // report could name any file.
+    #[test]
+    fn a_reported_path_must_be_this_runs_own_file() {
+        let dir = std::env::temp_dir().join(format!("prism-reported-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("elsewhere")).unwrap();
+        for f in ["Talk.mp4", "Talk - 001 Intro.mp4", "Q＆A： part.mp4", "elsewhere/Talk.mp4"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let template = format!("{}/Talk.%(ext)s", dir.to_string_lossy());
+        let since = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        let own = |f: &str, since| is_own_output(&dir.join(f).to_string_lossy(), &template, since);
+        assert!(own("Talk.mp4", since) && own("Talk - 001 Intro.mp4", since));
+        assert!(own("Q＆A： part.mp4", since), "a name yt-dlp rewrote is still its own");
+        assert!(!own("elsewhere/Talk.mp4", since), "another folder");
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        assert!(!own("Talk.mp4", later), "a file from before the run");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -300,11 +300,53 @@ pub(crate) fn lookup_network_args(app: &AppHandle) -> Vec<String> {
         args.push("--cookies-from-browser".into());
         args.push(browser);
     }
-    if let Some(proxy) = proxy_url(app) {
-        args.push("--proxy".into());
-        args.push(proxy);
-    }
+    args.extend(ytdlp_proxy_args(app));
     args
+}
+
+/// yt-dlp's proxy arguments. A proxy with a user name or password is put in
+/// a config file only this user can read, named with `--config-locations`
+/// (which `--ignore-config` still honours), rather than on the command line,
+/// where any local user could read it with `ps` (REVIEW 2026-09-28).
+pub(crate) fn ytdlp_proxy_args(app: &AppHandle) -> Vec<String> {
+    let Some(proxy) = proxy_url(app) else { return Vec::new() };
+    let has_credentials = url::Url::parse(&proxy).is_ok_and(|u| !u.username().is_empty() || u.password().is_some());
+    let plain = || vec!["--proxy".to_string(), proxy.clone()];
+    if !has_credentials || proxy.contains(['"', '\\', '\n', '\r']) {
+        return plain();
+    }
+    let Some(file) = app.path().app_data_dir().ok().map(|d| d.join("engine").join("proxy.conf")) else {
+        return plain();
+    };
+    match write_private(&file, &format!("--proxy \"{proxy}\"\n")) {
+        Ok(()) => vec!["--config-locations".into(), file.to_string_lossy().into_owned()],
+        Err(e) => {
+            log::warn!("couldn't write the proxy config ({e}); passing it on the command line");
+            plain()
+        }
+    }
+}
+
+/// Write `text` to `path`, readable by this user only.
+fn write_private(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(text.as_bytes())
 }
 
 /// The yt-dlp command for a lookup; a missing engine is its own error code.
@@ -333,7 +375,7 @@ async fn parse_url(app: AppHandle, url: String) -> Result<MediaMetadata, errors:
         log::warn!(
             "link lookup on {} failed: {}",
             extract_domain(&url),
-            stderr.trim().lines().last().unwrap_or("no output")
+            errors::redact(stderr.trim().lines().last().unwrap_or("no output"))
         );
         return Err(errors::classify_output(&stderr));
     }
@@ -516,6 +558,9 @@ async fn start_download(
         }
         _ => output_path,
     };
+    if !only_ext_field(&output_path) {
+        return Err("Invalid download path".into());
+    }
     let expanded_path = validate_download_path(&output_path, &picked_dirs(&app))?;
     // Auto-numbering against disk + other active downloads happens inside the
     // manager, atomically with reserving the template (two adds of the same
@@ -594,6 +639,15 @@ fn partial_bytes(template: &str) -> u64 {
 
 /// yt-dlp's `-o` template for `dir`, named by a file name template: its
 /// subfolders kept, `%` escaped (yt-dlp would expand it), `.%(ext)s` appended.
+/// Whether a yt-dlp `-o` path's only template field is the trailing
+/// `.%(ext)s` (`%%` is a literal `%`). Any other field is expanded by yt-dlp
+/// after the path was validated here — `%(title)s` names a folder the check
+/// never saw (REVIEW 2026-09-28).
+fn only_ext_field(path: &str) -> bool {
+    let body = path.strip_suffix(".%(ext)s").unwrap_or(path);
+    !body.replace("%%", "").contains('%')
+}
+
 pub(crate) fn templated_output_path(dir: &str, template: &str, vars: &template::TemplateVars) -> Result<String, String> {
     let rel = template::render(template, vars).map_err(|e| format!("File name template: {e}"))?;
     let rel = rel.to_string_lossy().replace('\\', "/").replace('%', "%%");
@@ -689,7 +743,7 @@ fn is_torrent_file_arg(arg: &str) -> bool {
 
 /// Session-wide torrent engine settings, each read through its whitelisting
 /// accessor. Applied when the engine starts (next launch after a change).
-fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
+pub(crate) fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
     let app_data = app.path().app_data_dir().ok();
     torrent::SessionConfig {
         socks_proxy: proxy_url(app),
@@ -697,8 +751,12 @@ fn torrent_session_config(app: &AppHandle) -> torrent::SessionConfig {
         // UPnP opens a port on the router for inbound peers, which reach the
         // machine directly: with a proxy set it would undo the proxy (M6).
         upnp: torrent_upnp_enabled(app) && proxy_url(app).is_none(),
-        dht: torrent_dht_enabled(app),
-        utp: setting_bool(app, "torrentUtp", false),
+        // DHT and uTP are UDP, which the SOCKS proxy doesn't carry: they
+        // would reach peers directly and show them the real address the
+        // proxy was set to hide (REVIEW 2026-09-28). Local discovery stays:
+        // it only talks to the LAN.
+        dht: torrent_dht_enabled(app) && proxy_url(app).is_none(),
+        utp: setting_bool(app, "torrentUtp", false) && proxy_url(app).is_none(),
         lsd: setting_bool(app, "torrentLsd", true),
         listen_port: setting_u64(app, "torrentListenPort", torrent::DEFAULT_LISTEN_PORT as u64, 1024, 65535) as u16,
         peer_limit: match setting_u64(app, "torrentPeerLimit", 0, 0, 10_000) {
@@ -905,6 +963,10 @@ fn resolve_torrent_source(raw: &str, extra_roots: &[PathBuf]) -> Result<torrent:
         return match u.scheme() {
             "magnet" | "http" | "https" => Ok(torrent::TorrentSource::Url(s.to_string())),
             "file" => {
+                // `file://host/share/x.torrent` is a network path (S-3).
+                if u.host_str().is_some_and(|h| !h.is_empty() && !h.eq_ignore_ascii_case("localhost")) {
+                    return Err("Torrent files on another computer can't be opened directly: copy it here first".into());
+                }
                 let p = u
                     .to_file_path()
                     .map_err(|_| "Invalid torrent file path".to_string())?;
@@ -998,6 +1060,7 @@ pub(crate) fn validate_open_path(
     extra_roots: &[PathBuf],
 ) -> Result<String, String> {
     let expanded = expand_tilde(path);
+    refuse_network_path(&expanded, extra_roots)?;
     let p = std::path::Path::new(&expanded);
     let kind_ok = p.is_file() || (allow_dir && p.is_dir());
     if !p.is_absolute() || !kind_ok {
@@ -1523,14 +1586,28 @@ fn read_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
 /// a few KB) and parsed only when its bytes differ from the cached copy. Size
 /// and modification time were not enough: a same-length edit (`safari` →
 /// `chrome`) within one mtime tick was read stale (REVIEW 2026-09-26 L7).
+///
+/// A copy read in the last `SETTINGS_FRESH` is used without touching the disk
+/// at all: one scheduling pass reads about seventeen settings, and every
+/// queue command runs one, so a 500-item add read the file thousands of
+/// times (REVIEW 2026-09-28 P-3). A change still applies within that window.
 fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json::Value>> {
-    type Snapshot = (PathBuf, Vec<u8>, std::sync::Arc<serde_json::Value>);
+    const SETTINGS_FRESH: std::time::Duration = std::time::Duration::from_millis(250);
+    type Snapshot = (PathBuf, Vec<u8>, std::sync::Arc<serde_json::Value>, std::time::Instant);
     static CACHE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
 
-    let bytes = std::fs::read(path).ok()?;
     if let Ok(guard) = CACHE.lock() {
-        if let Some((p, b, value)) = guard.as_ref() {
+        if let Some((p, _, value, read_at)) = guard.as_ref() {
+            if p == path && read_at.elapsed() < SETTINGS_FRESH {
+                return Some(value.clone());
+            }
+        }
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if let Ok(mut guard) = CACHE.lock() {
+        if let Some((p, b, value, read_at)) = guard.as_mut() {
             if p == path && *b == bytes {
+                *read_at = std::time::Instant::now();
                 return Some(value.clone());
             }
         }
@@ -1538,7 +1615,7 @@ fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json
     let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     let value = std::sync::Arc::new(value);
     if let Ok(mut guard) = CACHE.lock() {
-        *guard = Some((path.to_path_buf(), bytes, value.clone()));
+        *guard = Some((path.to_path_buf(), bytes, value.clone(), std::time::Instant::now()));
     }
     Some(value)
 }
@@ -1851,6 +1928,7 @@ fn denied_subtree(resolved: &std::path::Path, home: &std::path::Path) -> Option<
 /// Validate that a download path doesn't escape allowed directories via traversal.
 pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Result<String, String> {
     let expanded = expand_tilde(path);
+    refuse_network_path(&expanded, extra_roots)?;
     let path_buf = PathBuf::from(&expanded);
 
     if !path_buf.is_absolute() {
@@ -1891,6 +1969,42 @@ pub(crate) fn validate_download_path(path: &str, extra_roots: &[PathBuf]) -> Res
     }
 
     Ok(expanded)
+}
+
+/// Refuse a network or device path before anything touches it, unless it is
+/// inside a folder the user picked (a NAS chosen in the folder dialog). On
+/// Windows even `exists()` on `\\server\share\x` opens an SMB connection
+/// that sends the user's login hash to that server, so a later "outside the
+/// allowed folders" answer came too late (REVIEW 2026-09-28 S-3). Decided on
+/// the string alone.
+pub(crate) fn refuse_network_path(path: &str, picked: &[PathBuf]) -> Result<(), String> {
+    let Some(share) = network_location(path) else { return Ok(()) };
+    let inside_picked = picked
+        .iter()
+        .filter_map(|r| network_location(&r.to_string_lossy()))
+        .any(|root| share == root || share.starts_with(&format!("{}\\", root.trim_end_matches('\\'))));
+    if inside_picked {
+        Ok(())
+    } else {
+        log::warn!("refused network path {path}");
+        Err("Prism only uses network folders you have chosen in Settings".into())
+    }
+}
+
+/// `path` as `\\server\share\…` (lower case, backslashes) when it names a
+/// network location or a device, else None. `\\?\C:\…` is a local drive;
+/// `\\?\UNC\…` is the long form of a share; any other `\\?\` or `\\.\`
+/// path is a device namespace, never allowed.
+fn network_location(path: &str) -> Option<String> {
+    let p = path.trim().replace('/', "\\").to_ascii_lowercase();
+    if let Some(rest) = p.strip_prefix("\\\\?\\unc\\") {
+        return Some(format!("\\\\{rest}"));
+    }
+    if let Some(rest) = p.strip_prefix("\\\\?\\") {
+        let local_drive = rest.len() >= 2 && rest.as_bytes()[0].is_ascii_alphabetic() && rest.as_bytes()[1] == b':';
+        return (!local_drive).then_some(p);
+    }
+    p.starts_with("\\\\").then_some(p)
 }
 
 const HOME_ITSELF: &str =
@@ -2637,6 +2751,9 @@ pub fn run() {
                 convert::kill_all();
                 // Ledger saves are batched; write what's waiting (M3).
                 ledger::flush(app);
+                // The queue's last few seconds of progress, now that a save
+                // writes only what changed (P-1).
+                queue::save_on_exit(app);
             }
         });
 }
@@ -2759,6 +2876,46 @@ mod tests {
 
     /// The refusals are what matter here. Nothing is actually trashed: a test
     /// that threw real files away to prove it could would be a bad trade.
+    // Regression (REVIEW 2026-09-28 S-3): on Windows, touching
+    // `\\server\share` sends the user's login hash to that server, and the
+    // checks touched it before refusing it.
+    #[test]
+    fn network_paths_are_refused_before_anything_touches_them() {
+        for p in [r"\\evil\share\x.mp4", "//evil/share/x", r"\\?\UNC\evil\share\x", r"\\.\pipe\x", r"\\?\GLOBALROOT\Device\Mup\evil\x"] {
+            assert!(refuse_network_path(p, &[]).is_err(), "{p}");
+            assert!(validate_open_path(p, true, &[]).is_err(), "{p}");
+            assert!(validate_download_path(p, &[]).is_err(), "{p}");
+        }
+        for p in [r"C:\Users\me\Downloads\x.mp4", r"\\?\C:\Users\me\x", "/Users/me/Downloads/x"] {
+            assert!(refuse_network_path(p, &[]).is_ok(), "{p}");
+        }
+        let picked = [PathBuf::from(r"\\?\UNC\nas\Media")];
+        assert!(refuse_network_path(r"\\NAS\media\Films\x.mkv", &picked).is_ok(), "inside a folder the user chose");
+        assert!(refuse_network_path(r"\\nas\media2\x.mkv", &picked).is_err(), "a sibling share is not inside it");
+        assert!(resolve_torrent_source("file://evil/share/x.torrent", &[]).is_err());
+    }
+
+    // Regression (REVIEW 2026-09-28): proxy credentials sat on yt-dlp's
+    // command line. The file that holds them instead is private.
+    #[cfg(unix)]
+    #[test]
+    fn the_proxy_config_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("prism-proxyconf-{}", std::process::id()));
+        let file = dir.join("engine/proxy.conf");
+        write_private(&file, "--proxy \"http://u:p@h:1\"\n").unwrap();
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_output_path_carries_no_template_fields_but_its_extension() {
+        assert!(only_ext_field("/dl/Talk.%(ext)s"));
+        assert!(only_ext_field("/dl/100%% Music/Talk.%(ext)s"), "an escaped percent is a literal");
+        assert!(!only_ext_field("/dl/%(uploader)s/Talk.%(ext)s"));
+        assert!(!only_ext_field("/dl/%(title|/etc)s.%(ext)s"));
+    }
+
     #[test]
     fn trashable_paths_refuses_what_it_should() {
         assert!(trashable_paths(&[], &[], &[]).is_err(), "an empty request is a mistake, not a no-op");
@@ -3386,7 +3543,8 @@ mod tests {
     }
 
     // Regression (REVIEW 2026-09-26 L7): an edit that keeps the file's size
-    // is seen at once, whatever the modification time says.
+    // is seen, whatever the modification time says — within the cache's
+    // quarter-second freshness window (REVIEW 2026-09-28 P-3), no later.
     #[test]
     fn a_same_length_settings_edit_is_not_read_stale() {
         let dir = std::env::temp_dir().join(format!("prism-settings-{}", std::process::id()));
@@ -3397,6 +3555,7 @@ mod tests {
         assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "safari");
         std::fs::write(&path, r#"{"cookiesFromBrowser":"chrome"}"#).unwrap();
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
         assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "chrome");
         let _ = std::fs::remove_dir_all(&dir);
     }

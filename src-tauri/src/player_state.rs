@@ -116,6 +116,11 @@ pub fn worth_remembering(position: f64, duration: f64) -> bool {
 /// Write the entry to the front of the list, dropping any earlier entry for
 /// the same key, and cap the file. `None` removes the key instead.
 pub fn write_entry(file: &Path, key: &str, entry: Option<Entry>) -> std::io::Result<()> {
+    // One save at a time: two at once each read the old list and the second
+    // rename dropped the first's entry — and they shared one .tmp name
+    // (REVIEW 2026-09-28).
+    static SAVING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = SAVING.lock().unwrap_or_else(|p| p.into_inner());
     let mut entries = read_entries(file);
     entries.retain(|e| e.key != key);
     if let Some(entry) = entry {

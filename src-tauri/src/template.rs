@@ -112,8 +112,16 @@ pub fn render(template: &str, vars: &TemplateVars) -> Result<PathBuf, TemplateEr
             Piece::Token(name, format) => text.push_str(&value(name, format, vars)),
         }
     }
+    // Too deep: middle folders go, never the last part — that is the file's
+    // own name (it used to be the title that was dropped: REVIEW 2026-09-28).
+    let mut parts: Vec<String> = text.split(['/', '\\']).map(clean_component).filter(|c| !c.is_empty()).collect();
+    if parts.len() > MAX_DEPTH {
+        let last = parts.pop().unwrap_or_default();
+        parts.truncate(MAX_DEPTH - 1);
+        parts.push(last);
+    }
     let mut path = PathBuf::new();
-    for component in text.split(['/', '\\']).map(clean_component).filter(|c| !c.is_empty()).take(MAX_DEPTH) {
+    for component in parts {
         path.push(component);
     }
     if path.as_os_str().is_empty() {
@@ -172,7 +180,7 @@ fn clean_component(raw: &str) -> String {
         .map(|c| if RESERVED.contains(&c) || c.is_control() { '_' } else { c })
         .collect();
     let trimmed = cleaned.trim().trim_start_matches('.').trim_end_matches(['.', ' ']).trim();
-    let mut out: String = trimmed.chars().take(MAX_COMPONENT).collect();
+    let mut out = cap_bytes(trimmed, MAX_COMPONENT);
     out = out.trim_end_matches(['.', ' ']).to_string();
     if is_windows_device_name(&out) {
         out.insert(0, '_');
@@ -180,8 +188,22 @@ fn clean_component(raw: &str) -> String {
     out
 }
 
+/// At most `max` bytes of `s`, cut on a character boundary. File systems
+/// limit names in bytes (255), and a 200-character cap let a title in
+/// Japanese or emoji run to 600+: "file name too long" (REVIEW 2026-09-28).
+pub(crate) fn cap_bytes(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
 /// `CON`, `nul.txt`, `COM1`, `lpt9.log`… are unusable file names on Windows.
-fn is_windows_device_name(name: &str) -> bool {
+pub(crate) fn is_windows_device_name(name: &str) -> bool {
     let stem = name.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
     match stem.as_str() {
         "CON" | "PRN" | "AUX" | "NUL" => true,
@@ -263,6 +285,11 @@ mod tests {
         assert_eq!(rendered("{title}", &hidden), "bashrc");
         let long = TemplateVars { title: Some("x".repeat(500)), ..vars() };
         assert_eq!(rendered("{title}", &long).chars().count(), MAX_COMPONENT);
+        // Capped in bytes: file systems count bytes, and a CJK character is 3.
+        let wide = TemplateVars { title: Some("日本語".repeat(100)), ..vars() };
+        let name = rendered("{title}", &wide);
+        assert!(name.len() <= MAX_COMPONENT, "{} bytes", name.len());
+        assert!(name.starts_with("日本語"));
     }
 
     #[test]
@@ -292,6 +319,8 @@ mod tests {
     #[test]
     fn caps_folder_depth() {
         let template = (0..20).map(|i| format!("d{i}")).collect::<Vec<_>>().join("/") + "/{title}";
-        assert_eq!(render(&template, &vars()).unwrap().components().count(), MAX_DEPTH);
+        let path = render(&template, &vars()).unwrap();
+        assert_eq!(path.components().count(), MAX_DEPTH);
+        assert!(path.ends_with("Never Gonna Give You Up"), "the file's own name is kept: {}", path.display());
     }
 }

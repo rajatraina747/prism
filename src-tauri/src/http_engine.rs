@@ -32,6 +32,9 @@ use crate::errors::{ErrorCode, PrismError};
 const DEFAULT_CONNECTIONS: usize = 4;
 /// Below this per-connection share, extra connections cost more than they win.
 const MIN_SEGMENT: u64 = 4 * 1024 * 1024;
+/// A segment's written bytes count as done only after they have been handed
+/// to the OS, at most this many at a time (see `ranged`).
+const PUBLISH_EVERY: u64 = 4 * 1024 * 1024;
 /// Consecutive failures one connection survives before the download fails.
 const SEGMENT_RETRIES: u32 = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -225,7 +228,10 @@ pub(crate) async fn transfer(client: &reqwest::Client, job: &Job, t: &Transfer) 
     loop {
         let result = match job.size {
             Some(size) if job.ranges && size > 0 => ranged(client, job, t, &part, &state_path, size, fresh).await,
-            _ => single_stream(client, job, t, &part).await,
+            _ => {
+                claim_single_stream(&state_path, job).await;
+                single_stream(client, job, t, &part).await
+            }
         };
         match result {
             Ok(()) => break,
@@ -281,7 +287,14 @@ struct Segment {
     /// Inclusive. Can move down while running: a free connection may take
     /// over the second half (`next_segment`).
     end: u64,
+    /// Bytes written *and handed to the OS* — what the saved state may claim
+    /// (C-5).
     done: u64,
+    /// Bytes written so far, flushed or not: where the connection really is.
+    /// Splitting goes by this, so a new connection starts where the old one
+    /// will actually stop, not up to `PUBLISH_EVERY` behind it. Not saved.
+    #[serde(skip, default)]
+    reached: u64,
     /// A connection is working on it (not saved: nothing is, after a restart).
     #[serde(skip, default)]
     busy: bool,
@@ -312,7 +325,7 @@ fn plan_segments(size: u64, connections: usize) -> Vec<Segment> {
         .map(|i| {
             let start = i * share;
             let end = if i + 1 == count { size - 1 } else { start + share - 1 };
-            Segment { start, end, done: 0, busy: false }
+            Segment { start, end, done: 0, reached: 0, busy: false }
         })
         .collect()
 }
@@ -330,16 +343,16 @@ fn next_segment(segments: &mut Vec<Segment>) -> Option<usize> {
         .iter()
         .enumerate()
         .filter(|(_, s)| !s.finished())
-        .map(|(i, s)| (i, s.len() - s.done))
+        .map(|(i, s)| (i, s.len().saturating_sub(s.done.max(s.reached))))
         .max_by_key(|&(_, left)| left)?;
     if remaining < 2 * MIN_SEGMENT {
         return None;
     }
-    let from = segments[victim].start + segments[victim].done;
+    let from = segments[victim].start + segments[victim].done.max(segments[victim].reached);
     let split = from + remaining / 2;
     let end = segments[victim].end;
     segments[victim].end = split - 1;
-    segments.push(Segment { start: split, end, done: 0, busy: true });
+    segments.push(Segment { start: split, end, done: 0, reached: 0, busy: true });
     Some(segments.len() - 1)
 }
 
@@ -397,6 +410,13 @@ async fn save_state(state_path: &Path, job: &Job, size: u64, segments: &[Segment
         segments,
     };
     let Ok(text) = serde_json::to_string(&state) else { return };
+    // Every byte the state counts reached the OS before this snapshot (see
+    // `ranged`); make it reach the disk before the state says so (C-5).
+    if let Ok(file) = tokio::fs::OpenOptions::new().write(true).open(&part).await {
+        if file.sync_data().await.is_err() {
+            return;
+        }
+    }
     let tmp = with_suffix(state_path, ".tmp");
     if tokio::fs::write(&tmp, text).await.is_ok() {
         let _ = tokio::fs::rename(&tmp, state_path).await;
@@ -603,16 +623,33 @@ async fn fetch_range(
     file.seek(SeekFrom::Start(from)).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
 
     let mut position = from;
+    // Bytes written but not yet counted in `done`. The saved state is what a
+    // resume trusts, so it may only count bytes the OS has: tokio's
+    // `write_all` returns once a chunk is buffered, and a crash then left the
+    // state claiming bytes the (preallocated) file held as zeros — resumed as
+    // zeros, unnoticed without a checksum (REVIEW 2026-09-28 C-5). Counted
+    // after a flush; `save_state` syncs the file before it writes the state.
+    let mut unpublished = 0u64;
+    let publish = |bytes: u64| {
+        if let Ok(mut s) = segments.lock() {
+            let len = s[index].len();
+            s[index].done = (s[index].done + bytes).min(len);
+        }
+    };
     // The end is read afresh for every chunk: another connection may have
     // taken over the second half of this segment (`next_segment`).
     let current_end = || segments.lock().map(|s| s[index].end).unwrap_or(seg.end);
     while position <= current_end() {
         if t.cancel.load(Ordering::Relaxed) {
-            let _ = file.flush().await;
+            if file.flush().await.is_ok() {
+                publish(unpublished);
+            }
             return Err(Attempt::Cancelled);
         }
         let Some(chunk) = resp.chunk().await.map_err(|e| Attempt::Retry(network_error(&e)))? else {
-            let _ = file.flush().await;
+            if file.flush().await.is_ok() {
+                publish(unpublished);
+            }
             return Err(Attempt::Retry(PrismError::new(ErrorCode::Network, "The connection closed early")));
         };
         let end = current_end();
@@ -626,16 +663,38 @@ async fn fetch_range(
         t.global.acquire(n).await;
         file.write_all(&chunk).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
         position += n;
+        unpublished += n;
         if let Ok(mut s) = segments.lock() {
-            s[index].done += n;
+            s[index].reached = position - s[index].start;
+        }
+        if unpublished >= PUBLISH_EVERY {
+            file.flush().await.map_err(|e| Attempt::Fatal(io_error(e)))?;
+            publish(unpublished);
+            unpublished = 0;
         }
         t.downloaded.fetch_add(n, Ordering::Relaxed);
     }
     file.flush().await.map_err(|e| Attempt::Fatal(io_error(e)))?;
+    publish(unpublished);
     Ok(())
 }
 
 /// No ranges (or no size): one connection from the start; a failure restarts it.
+/// A single-stream download can't resume (it restarts from byte 0), so it
+/// saved no state — and without one, a retry after a failure or a relaunch
+/// didn't recognise its own `.prismpart`: it chose `name (1)` and left the old
+/// part file, possibly many GB, behind for good (REVIEW 2026-09-28 C-6). A
+/// state naming only the source lets `choose_destination` hand the same path
+/// back; it has no segments and no validator, so nothing ever resumes from it.
+async fn claim_single_stream(state_path: &Path, job: &Job) {
+    let state = PartState { source: job.source.clone(), size: 0, validator: None, segments: Vec::new() };
+    let Ok(text) = serde_json::to_string(&state) else { return };
+    let tmp = with_suffix(state_path, ".tmp");
+    if tokio::fs::write(&tmp, text).await.is_ok() {
+        let _ = tokio::fs::rename(&tmp, state_path).await;
+    }
+}
+
 async fn single_stream(client: &reqwest::Client, job: &Job, t: &Transfer, part: &Path) -> Result<(), Stop> {
     let mut failures = 0u32;
     loop {
@@ -875,12 +934,43 @@ pub(crate) fn valid_referer(raw: &str) -> Option<String> {
     (matches!(u.scheme(), "http" | "https") && u.host_str().is_some()).then(|| u.to_string())
 }
 
-pub(crate) fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
-    client_with(app, None)
+/// For URLs a remote site chose (thumbnails in a video's metadata): never
+/// follows a redirect to a loopback, private or link-local address.
+pub(crate) fn client_public_only(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
+    build_client(app, None, true)
 }
 
-/// `client_for`, sending `referer` with every request.
+/// Whether `ip` is an address on the public internet: not this machine, the
+/// LAN, link-local (cloud metadata lives at 169.254.169.254), carrier NAT,
+/// or unique-local IPv6.
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, ..] = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || (a == 100 && (64..128).contains(&b)))
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            let first = v6.segments()[0];
+            !(v6.is_loopback() || v6.is_unspecified() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+/// The direct engine's client, sending `referer` with every request.
 fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
+    build_client(app, referer, false)
+}
+
+fn build_client(app: &AppHandle, referer: Option<&str>, public_only: bool) -> Result<reqwest::Client, PrismError> {
     let agent = if crate::setting_bool(app, "browserUserAgent", true) {
         BROWSER_USER_AGENT
     } else {
@@ -890,7 +980,22 @@ fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client
         .user_agent(agent)
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(READ_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(10));
+        .redirect(if public_only {
+            reqwest::redirect::Policy::custom(|attempt| {
+                let private = attempt.url().host().is_some_and(|h| match h {
+                    url::Host::Ipv4(ip) => !is_public_ip(IpAddr::V4(ip)),
+                    url::Host::Ipv6(ip) => !is_public_ip(IpAddr::V6(ip)),
+                    url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
+                });
+                if private || attempt.previous().len() >= 10 {
+                    attempt.stop()
+                } else {
+                    attempt.follow()
+                }
+            })
+        } else {
+            reqwest::redirect::Policy::limited(10)
+        });
     if crate::force_ipv4(app) {
         builder = builder.local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     }
@@ -1220,7 +1325,7 @@ mod tests {
             source: "https://a/big.iso".into(),
             size: 1000,
             validator: Some("\"v1\"".into()),
-            segments: vec![Segment { start: 0, end: 499, done: 500, busy: false }, Segment { start: 500, end: 999, done: 400, busy: false }],
+            segments: vec![Segment { start: 0, end: 499, done: 500, reached: 0, busy: false }, Segment { start: 500, end: 999, done: 400, reached: 0, busy: false }],
         };
         std::fs::write(with_suffix(&dest, STATE_SUFFIX), serde_json::to_string(&state).unwrap()).unwrap();
         assert_eq!(still_needed(1000, &dest, "https://a/big.iso"), 100);
@@ -1232,7 +1337,7 @@ mod tests {
     const MIB: u64 = 1024 * 1024;
 
     fn seg(start: u64, end: u64, done: u64, busy: bool) -> Segment {
-        Segment { start, end, done, busy }
+        Segment { start, end, done, reached: 0, busy }
     }
 
     // R5.2: a free connection takes the second half of the biggest remainder.
@@ -1295,7 +1400,7 @@ mod tests {
         for pair in plan.windows(2) {
             assert_eq!(pair[0].end + 1, pair[1].start);
         }
-        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0, busy: false }]);
+        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0, reached: 0, busy: false }]);
         assert_eq!(plan_segments(64 * 1024 * 1024, 4).len(), 4);
     }
 
@@ -1681,6 +1786,29 @@ mod tests {
         assert_eq!(choose_destination(&wanted, b, Some(&second), std::slice::from_ref(&wanted)), second);
         // A previous path that doesn't belong to this name is ignored.
         assert_eq!(choose_destination(&wanted, b, Some(&tmp.0.join("other")), std::slice::from_ref(&wanted)), second);
+    }
+
+    // Regression (REVIEW 2026-09-28 C-6): a single-stream download's retry
+    // didn't know its own `.prismpart`, chose `name (1)` and orphaned it.
+    #[test]
+    fn a_single_stream_retry_reuses_its_own_part_file() {
+        let tmp = TempDir::new("single");
+        let wanted = tmp.0.join("stream.bin");
+        let source = "https://a.example/stream";
+        let job = Job {
+            source: source.into(),
+            url: source.into(),
+            dest: wanted.clone(),
+            size: None,
+            ranges: false,
+            validator: None,
+            sha256: None,
+            connections: 1,
+        };
+        tauri::async_runtime::block_on(claim_single_stream(&with_suffix(&wanted, STATE_SUFFIX), &job));
+        std::fs::write(with_suffix(&wanted, PART_SUFFIX), b"half").unwrap();
+        assert_eq!(choose_destination(&wanted, source, None, &[]), wanted, "its own part file, not a new name");
+        assert_eq!(choose_destination(&wanted, "https://b.example/other", None, &[]), tmp.0.join("stream (1).bin"));
     }
 
     #[test]

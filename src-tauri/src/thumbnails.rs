@@ -66,6 +66,29 @@ fn prune(dir: &Path) {
     }
 }
 
+/// Whether `url` names a public internet address. `resolve`: look the name
+/// up too (without a proxy, where Prism's own lookup is what connects).
+async fn public_destination(url: &url::Url, resolve: bool) -> bool {
+    use crate::http_engine::is_public_ip;
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => is_public_ip(ip.into()),
+        Some(url::Host::Ipv6(ip)) => is_public_ip(ip.into()),
+        Some(url::Host::Domain(name)) if name.eq_ignore_ascii_case("localhost") => false,
+        Some(url::Host::Domain(name)) if resolve => {
+            let port = url.port_or_known_default().unwrap_or(443);
+            match tokio::net::lookup_host((name, port)).await {
+                Ok(addrs) => {
+                    let addrs: Vec<_> = addrs.collect();
+                    !addrs.is_empty() && addrs.iter().all(|a| is_public_ip(a.ip()))
+                }
+                Err(_) => false,
+            }
+        }
+        Some(url::Host::Domain(_)) => true,
+        None => false,
+    }
+}
+
 /// The local path of the thumbnail at `url`, fetching and keeping it the
 /// first time.
 #[tauri::command]
@@ -80,7 +103,13 @@ pub async fn cache_thumbnail(app: AppHandle, url: String) -> Result<String, Stri
         return Ok(path.to_string_lossy().into_owned());
     }
 
-    let client = crate::http_engine::client_for(&app).map_err(|e| e.summary)?;
+    // The URL comes from a site's metadata, not the user: don't let it point
+    // Prism at this machine or the LAN (REVIEW 2026-09-28, SSRF). Behind a
+    // proxy the proxy resolves names, so only literal addresses are checked.
+    if !public_destination(&parsed, crate::proxy_url(&app).is_none()).await {
+        return Err("Thumbnail: not a public address".into());
+    }
+    let client = crate::http_engine::client_public_only(&app).map_err(|e| e.summary)?;
     let mut resp = client.get(parsed.as_str()).send().await.map_err(|e| format!("Thumbnail: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Thumbnail: HTTP {}", resp.status()));
@@ -117,6 +146,20 @@ pub async fn cache_thumbnail(app: AppHandle, url: String) -> Result<String, Stri
 
 #[cfg(test)]
 mod tests {
+
+    // Regression (REVIEW 2026-09-28, SSRF): a thumbnail URL from a site's
+    // metadata could point Prism at this machine or the LAN.
+    #[test]
+    fn only_public_addresses_are_fetched() {
+        let public = |u: &str| tauri::async_runtime::block_on(public_destination(&url::Url::parse(u).unwrap(), false));
+        for u in ["http://127.0.0.1/x.jpg", "http://localhost/x.jpg", "http://192.168.1.1/x.jpg", "http://169.254.169.254/latest", "http://[::1]/x", "http://[fd00::1]/x", "http://100.64.0.1/x", "http://[::ffff:10.0.0.1]/x"] {
+            assert!(!public(u), "{u}");
+        }
+        for u in ["https://i.ytimg.com/vi/x/hq.jpg", "http://8.8.8.8/x.jpg", "http://[2606:4700::1111]/x"] {
+            assert!(public(u), "{u}");
+        }
+    }
+
     use super::*;
 
     #[test]

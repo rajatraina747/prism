@@ -313,8 +313,16 @@ async fn ensure_session(
     limits: LimitsConfig,
     cfg: SessionConfig,
 ) -> anyhow::Result<Arc<Session>> {
-    let mut guard = slot.lock().await;
-    if let Some((s, _)) = guard.as_ref() {
+    if let Some((s, _)) = slot.lock().await.as_ref() {
+        return Ok(s.clone());
+    }
+    // One start at a time (two would fight over the listen port), but the
+    // slot itself isn't held while it runs: binding, the blocklist fetch and
+    // restoring the saved session can take a while, and pause, resume, rate
+    // limits and the stream server all wait on the slot (REVIEW 2026-09-28 P-7).
+    static STARTING: Mutex<()> = Mutex::const_new(());
+    let _starting = STARTING.lock().await;
+    if let Some((s, _)) = slot.lock().await.as_ref() {
         return Ok(s.clone());
     }
     // The saved queue (store.rs), read once at engine start to drop persisted
@@ -334,7 +342,7 @@ async fn ensure_session(
     let session = start_session(default_dir, limits, &cfg).await?;
     pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
-    *guard = Some((session.clone(), api));
+    *slot.lock().await = Some((session.clone(), api));
     spawn_session_stats(app.clone(), session.clone(), slot.clone(), active.clone(), cfg);
     Ok(session)
 }
@@ -1389,8 +1397,85 @@ impl TorrentManager {
                 }
                 true
             }
-            None => false,
+            None => {
+                // Nothing running and no start on its way to read the mark:
+                // left in place, the marks piled up forever (C-4).
+                if !crate::jobs::is_pending(id) {
+                    take_discard(id);
+                }
+                false
+            }
         }
+    }
+
+    /// Cancel of a torrent that isn't running — paused, or stopped before a
+    /// restart — deletes what it downloaded too. Before, only a running one's
+    /// data went, and a stopped one's stayed on disk (REVIEW 2026-09-28 C-4).
+    /// Only this torrent's own files go, found from its metainfo, and only
+    /// where they can be proven its own; anything uncertain is left alone.
+    pub async fn discard_stopped(&self, app: &AppHandle, destination: &str, url: &str, cfg: &SessionConfig) {
+        let Some(hash) = source_info_hash(url) else { return };
+        // Restored by the session at launch and still in it, paused.
+        if let Some(session) = self.session().await {
+            let managed = session.with_torrents(|mut t| {
+                Iterator::find(&mut t, |(_, h)| h.info_hash().as_string() == hash).map(|(id, _)| id)
+            });
+            if let Some(managed) = managed {
+                let running = self.active.lock().await.values().any(|e| e.handle.id() == managed);
+                if !running {
+                    let _ = session.delete(TorrentIdOrHash::from(managed), true).await;
+                }
+            }
+        }
+        let bytes = cfg
+            .torrent_cache_dir
+            .as_deref()
+            .and_then(|dir| std::fs::read(dir.join(format!("{hash}.torrent"))).ok());
+        let (dest, url, claims, app) = (crate::expand_tilde(destination), url.to_string(), cfg.claims_file.clone(), app.clone());
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            // Never what an earlier item finished: the same torrent downloaded
+            // before, into the same place.
+            let finished = |p: &Path| crate::ledger::is_finished_download(&app, p);
+            if let Some(bytes) = bytes {
+                discard_stopped_files(&dest, &hash, &bytes, claims.as_deref(), &finished);
+            }
+            discard_stopped_magnet(&dest, &url);
+        })
+        .await;
+    }
+}
+
+/// Delete a stopped torrent's own files. A multi-file torrent's folder is
+/// used only if it holds nothing but this torrent's files; a single file only
+/// if the claims record says this info hash wrote it. Blocking.
+fn discard_stopped_files(dest: &str, hash: &str, bytes: &[u8], claims: Option<&Path>, finished: &dyn Fn(&Path) -> bool) {
+    let files = torrent_files(bytes);
+    match parse_layout(bytes) {
+        Some(TorrentLayout::MultiFile { .. }) => {
+            let named = effective_output_dir(dest, Some(bytes), "torrent");
+            let short = &hash[..hash.len().min(8)];
+            for dir in [named.clone(), format!("{named} [{short}]")] {
+                let dir = PathBuf::from(dir);
+                let any_finished = finished(&dir) || files.iter().any(|(rel, _)| finished(&dir.join(rel)));
+                if dir.is_dir() && holds_only(&dir, &files) && !any_finished {
+                    let doomed: Vec<PathBuf> = files.iter().map(|(rel, _)| dir.join(rel)).filter(|p| p.is_file()).collect();
+                    crate::postprocess::remove_files(&doomed);
+                    crate::postprocess::remove_empty_tree(&dir);
+                }
+            }
+        }
+        Some(TorrentLayout::SingleFile { file: Some(file), .. }) => {
+            let Some(claims) = claims else { return };
+            let stem = file.file_name().map(|n| safe_folder_name(&n.to_string_lossy())).unwrap_or_default();
+            let own = Path::new(dest).join(format!("{stem} [{}]", &hash[..hash.len().min(8)]));
+            for target in [Path::new(dest).join(&file), own.join(&file)] {
+                if claimed_by(claims, &target).as_deref() == Some(hash) && target.is_file() && !finished(&target) {
+                    crate::postprocess::remove_files(std::slice::from_ref(&target));
+                }
+            }
+            crate::postprocess::remove_empty_tree(&own);
+        }
+        _ => {}
     }
 }
 
@@ -2018,7 +2103,13 @@ pub(crate) fn safe_folder_name(raw: &str) -> String {
         .map(|c| if BAD.contains(&c) || c.is_control() { '_' } else { c })
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').trim();
-    trimmed.chars().take(200).collect()
+    // In bytes, not characters (a 200-character CJK name is 600 bytes), and
+    // never a name Windows reserves for a device (REVIEW 2026-09-28).
+    let mut out = crate::template::cap_bytes(trimmed, 200).trim_end_matches(['.', ' ']).to_string();
+    if crate::template::is_windows_device_name(&out) {
+        out.insert(0, '_');
+    }
+    out
 }
 
 /// Where a single-file torrent's file goes: the destination itself, as every
@@ -2285,6 +2376,35 @@ mod tests {
         b
     }
 
+    // Regression (REVIEW 2026-09-28 C-4): cancelling a stopped torrent left
+    // its data. Only its own files go, and never a finished download's.
+    #[test]
+    fn a_stopped_torrent_discards_only_its_own_files() {
+        let dest = std::env::temp_dir().join(format!("prism-c4-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        let bytes = multi_file_torrent("Pack", &["a.bin", "b.bin"]);
+        let hash = crate::torrent_identity(&bytes).unwrap().0;
+        let d = dest.to_string_lossy().into_owned();
+        let never = |_: &Path| false;
+
+        std::fs::create_dir_all(dest.join("Pack")).unwrap();
+        std::fs::write(dest.join("Pack/a.bin"), b"xx").unwrap();
+        discard_stopped_files(&d, &hash, &bytes, None, &never);
+        assert!(!dest.join("Pack").exists(), "its partial files and folder go");
+
+        std::fs::create_dir_all(dest.join("Pack")).unwrap();
+        std::fs::write(dest.join("Pack/a.bin"), b"xx").unwrap();
+        std::fs::write(dest.join("Pack/notes.txt"), b"mine").unwrap();
+        discard_stopped_files(&d, &hash, &bytes, None, &never);
+        assert!(dest.join("Pack/notes.txt").exists() && dest.join("Pack/a.bin").exists(), "a folder that isn't only its own is left alone");
+        std::fs::remove_file(dest.join("Pack/notes.txt")).unwrap();
+
+        let finished = |p: &Path| p.ends_with("Pack/a.bin");
+        discard_stopped_files(&d, &hash, &bytes, None, &finished);
+        assert!(dest.join("Pack/a.bin").exists(), "an earlier item's finished download stays");
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
     /// `dest` joined with one component, in this platform's separator (what
     /// `effective_output_dir` produces: `\` on Windows).
     fn under(dest: &str, name: &str) -> String {
@@ -2394,6 +2514,16 @@ mod tests {
         assert_eq!(safe_folder_name("con\u{0}trol"), "con_trol");
         assert_eq!(safe_folder_name("..").len(), 0);
         assert_eq!(safe_folder_name(&"x".repeat(500)).len(), 200);
+    }
+
+    // Regression (REVIEW 2026-09-28): a torrent's (untrusted) name could be
+    // a Windows device name, or 600 bytes of CJK under a 200-character cap.
+    #[test]
+    fn folder_names_every_platform_can_store() {
+        assert_eq!(safe_folder_name("CON"), "_CON");
+        assert_eq!(safe_folder_name("nul.txt"), "_nul.txt");
+        let wide = safe_folder_name(&"日本語".repeat(100));
+        assert!(wide.len() <= 200 && wide.starts_with("日本語"), "{} bytes", wide.len());
     }
 
     #[test]

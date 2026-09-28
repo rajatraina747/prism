@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Runtime};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 /// Action names. These cross to the frontend as the event payload and must
 /// match `ShortcutAction` in src/types/models.ts.
@@ -74,6 +74,16 @@ pub(crate) fn parse_bindings(
                 "\"{accelerator}\" isn't a shortcut Prism understands — try something like CmdOrCtrl+Shift+V"
             )
         })?;
+        // A plain key (or Shift+key) would be taken from every app while
+        // Prism runs — typing "a" anywhere would pause everything (REVIEW
+        // 2026-09-28). Function keys are fine on their own.
+        let guarded = shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER | Modifiers::META);
+        let function_key = format!("{:?}", shortcut.key).strip_prefix('F').is_some_and(|n| n.parse::<u8>().is_ok());
+        if !guarded && !function_key {
+            return Err(format!(
+                "\"{accelerator}\" needs Ctrl, Alt or Cmd too: on its own it would take that key from every other app"
+            ));
+        }
         if let Some((taken, _)) = out.iter().find(|(_, other)| other.id() == shortcut.id()) {
             return Err(format!(
                 "\"{accelerator}\" is already assigned to another Prism shortcut ({taken})"
@@ -200,6 +210,17 @@ mod tests {
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].0, ADD_FROM_CLIPBOARD);
         assert_eq!(bindings[1].0, PAUSE_ALL);
+    }
+
+    // Regression (REVIEW 2026-09-28): a single letter could be registered
+    // system-wide, taking it from every other app.
+    #[test]
+    fn a_shortcut_needs_ctrl_alt_or_cmd_unless_it_is_a_function_key() {
+        for bare in ["A", "Shift+A", "Space"] {
+            let err = parse_bindings(&set(bare, "", "")).unwrap_err();
+            assert!(err.contains("needs Ctrl, Alt or Cmd"), "{bare}: {err}");
+        }
+        assert!(parse_bindings(&set("F13", "Alt+P", "CmdOrCtrl+Period")).is_ok());
     }
 
     #[test]

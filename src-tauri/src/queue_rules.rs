@@ -255,6 +255,12 @@ pub fn retry(item: &mut Item) -> bool {
     true
 }
 
+/// Stopped by the user while its engine was starting: paused, cancelled, or
+/// held (C-2).
+pub fn was_stopped(item: &Item) -> bool {
+    is(item, &["paused", "canceled", "ready"])
+}
+
 pub fn is_terminal(item: &Item) -> bool {
     is(item, &["completed", "failed", "canceled"])
 }
@@ -1001,6 +1007,23 @@ mod tests {
         assert!(resume(&mut held));
         assert_eq!(status(&held), "queued");
         assert!(is_busy(&held, false));
+    }
+
+    // Regression (REVIEW 2026-09-28 C-2): a pause during start-up.
+    #[test]
+    fn a_pause_during_start_up_is_caught_after_the_start() {
+        let mut it = item("s", "downloading", json!({}));
+        assert!(!was_stopped(&it), "still wanted");
+        pause(&mut it);
+        assert!(was_stopped(&it));
+        resume(&mut it);
+        assert!(!was_stopped(&it), "queued again: a resume, with its own start coming");
+        let mut gone = item("s", "downloading", json!({}));
+        cancel(&mut gone);
+        assert!(was_stopped(&gone));
+        let mut done = item("s", "downloading", json!({}));
+        complete(&mut done, &Finish::default());
+        assert!(!was_stopped(&done), "finished before the start returned: nothing to stop");
     }
 
     #[test]

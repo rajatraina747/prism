@@ -8,7 +8,7 @@ import { useSettings } from '@/stores/AppProvider';
 import { normalizeSha256 } from '@/stores/checksum';
 import { formatBytes, formatSpeed, formatEta } from '@/services/utils';
 import { PiecesBar } from '@/components/queue/PiecesBar';
-import { ProgressBar } from '@/components/common';
+import { ProgressBar, CommitInput } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -58,17 +58,26 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
     if (!isTorrent && (tab === 'files' || tab === 'peers' || tab === 'trackers')) setTab('general');
   }, [isTorrent, tab]);
 
-  // Drag-to-resize from the top edge.
-  const dragging = React.useRef<{ startY: number; startH: number } | null>(null);
+  // Drag-to-resize from the top edge. The height is local while dragging
+  // and saved once, on release: saving it per mouse move re-rendered every
+  // settings consumer in the app and queued a settings.json write each time
+  // (REVIEW 2026-09-28).
+  const [liveHeight, setLiveHeight] = React.useState<number | null>(null);
+  const shown = liveHeight ?? height;
+  const clampH = (h: number) => Math.min(MAX_H, Math.max(MIN_H, h));
+  const dragging = React.useRef<{ startY: number; startH: number; last: number } | null>(null);
   const onHandleDown = (e: React.MouseEvent) => {
-    dragging.current = { startY: e.clientY, startH: height };
+    dragging.current = { startY: e.clientY, startH: height, last: height };
     const move = (ev: MouseEvent) => {
       if (!dragging.current) return;
-      const next = Math.min(MAX_H, Math.max(MIN_H, dragging.current.startH + (dragging.current.startY - ev.clientY)));
-      onHeightChange(next);
+      const next = clampH(dragging.current.startH + (dragging.current.startY - ev.clientY));
+      dragging.current.last = next;
+      setLiveHeight(next);
     };
     const up = () => {
+      if (dragging.current && dragging.current.last !== height) onHeightChange(dragging.current.last);
       dragging.current = null;
+      setLiveHeight(null);
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
@@ -83,13 +92,21 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
     <section
       aria-label="Transfer details"
       className="mt-3 glass-strong rounded-xl flex flex-col animate-fade-in"
-      style={{ height }}
+      style={{ height: shown }}
     >
       <div
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize details panel"
+        aria-valuenow={shown}
+        aria-valuemin={MIN_H}
+        aria-valuemax={MAX_H}
+        tabIndex={0}
         onMouseDown={onHandleDown}
+        onKeyDown={(e) => {
+          const step = e.key === 'ArrowUp' ? 20 : e.key === 'ArrowDown' ? -20 : 0;
+          if (step) { e.preventDefault(); e.stopPropagation(); onHeightChange(clampH(height + step)); }
+        }}
         className="h-2 -mt-1 cursor-row-resize flex items-center justify-center group"
       >
         <div className="w-10 h-0.5 rounded-full bg-border group-hover:bg-primary/60 transition-colors" />
@@ -266,14 +283,13 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
             <>
               <Row label="Clip">
                 <span className="inline-flex items-center gap-1">
-                  <input
-                    type="text"
+                  <CommitInput
                     inputMode="numeric"
                     placeholder="from"
                     value={item.settings.clipStart ?? ''}
-                    onChange={(e) => onSetClip(
+                    onCommit={(v) => onSetClip(
                       item.id,
-                      e.target.value || null,
+                      v || null,
                       item.settings.clipEnd ?? null,
                       item.settings.splitChapters ?? false,
                     )}
@@ -281,15 +297,14 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                     className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
                   />
                   <span className="text-muted-foreground">–</span>
-                  <input
-                    type="text"
+                  <CommitInput
                     inputMode="numeric"
                     placeholder="to"
                     value={item.settings.clipEnd ?? ''}
-                    onChange={(e) => onSetClip(
+                    onCommit={(v) => onSetClip(
                       item.id,
                       item.settings.clipStart ?? null,
-                      e.target.value || null,
+                      v || null,
                       item.settings.splitChapters ?? false,
                     )}
                     aria-label="Clip to"

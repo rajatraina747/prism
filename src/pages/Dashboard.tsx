@@ -817,6 +817,13 @@ export default function Dashboard() {
               <p className="max-h-24 overflow-auto rounded-md bg-secondary/60 px-2.5 py-2 font-mono text-[11px] text-muted-foreground break-all">
                 {pendingExternalLink}
               </p>
+              {referrerFor(pendingExternalLink) && (
+                // Sent as the Referer with this download: the page said it came
+                // from here, so show it (REVIEW 2026-09-28).
+                <p className="text-[11px] text-muted-foreground truncate">
+                  From the page: {referrerFor(pendingExternalLink)}
+                </p>
+              )}
               {externalLinks.length > 1 && (
                 <p className="text-[11px] text-muted-foreground">{externalLinks.length - 1} more waiting</p>
               )}

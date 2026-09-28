@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { useQueue, useHistory, useSettings } from '@/stores/AppProvider';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
@@ -21,19 +21,25 @@ import type { TransfersFilter, TransfersSort } from '@/types/models';
 
 export default function Queue() {
   const {
-    items, addToQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
+    items, pauseDownload, resumeDownload, cancelDownload, retryDownload, removeFromQueue,
     startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData,
     moveToTop, moveToBottom,
   } = useQueue();
-  const { removeFromHistory } = useHistory();
   const { preferences, updatePreference } = useSettings();
   const service = useService();
 
   // Cancel is a single click on a possibly hours-old download — no confirm
   // dialog, but a few seconds to undo, and undoing picks the download up where
   // it stopped instead of starting it again.
+  // The row callbacks read the queue through this ref rather than closing
+  // over it: `items` changes on every progress tick, and a callback that
+  // changed with it broke every row's memo, so the whole list re-rendered
+  // several times a second (REVIEW 2026-09-28 P-8). Assigned below, each render.
+  const latest = useRef({ items, visibleItems: [] as typeof items, orderedIds: [] as string[], anchor: null as string | null, selected: new Set<string>() });
+  latest.current.items = items;
+
   const cancelWithUndo = useCallback((id: string) => {
-    const item = items.find(i => i.id === id);
+    const item = latest.current.items.find(i => i.id === id);
     if (item?.status === 'seeding') {
       // Ending a seed is finishing, not cancelling: there is nothing to undo.
       cancelDownload(id);
@@ -41,46 +47,30 @@ export default function Queue() {
     }
     const title = item?.metadata.title ?? 'download';
 
-    // A torrent is paused for the length of the toast rather than cancelled
-    // outright: the engine keeps its handle, so undoing is instant and costs
-    // no re-check. The real cancel happens when the toast goes. The wording
-    // says "Canceling" because the row will read Paused until then.
-    if (item?.kind === 'torrent') {
-      let undone = false;
-      const finish = () => { if (!undone) cancelDownload(id); };
-      pauseDownload(id);
-      toast(`Canceling: ${title}`, {
-        action: {
-          label: 'Undo',
-          // Clicking the action also dismisses the toast, so the flag is what
-          // stops the dismissal handler cancelling what was just resumed.
-          onClick: () => { undone = true; resumeDownload(id); },
-        },
-        onAutoClose: finish,
-        onDismiss: finish,
-        duration: 6000,
-      });
-      return;
-    }
-
-    // yt-dlp and direct downloads keep their partial file when cancelled, and
-    // both engines resume from it (--continue, and the .prismpart state file).
-    // So the counters carry over: zeroing them showed a restart that was never
-    // going to happen.
-    cancelDownload(id);
-    toast(`Canceled: ${title}`, {
+    // Paused for the length of the toast rather than cancelled outright, and
+    // cancelled when the toast goes. A cancel deletes what the download wrote,
+    // so this is the only undo that gets it back: Undo resumes from where it
+    // stopped. Every kind works this way now. Undoing a yt-dlp or direct
+    // download used to remove the cancelled item and add it again under the
+    // same id — two calls the queue could take in either order, the second
+    // dropping the first — and restart it from nothing (REVIEW 2026-09-28
+    // C-8). The wording says "Canceling" because the row reads Paused until then.
+    const wasRunning = item?.status === 'downloading' || item?.status === 'queued';
+    let undone = false;
+    const finish = () => { if (!undone) cancelDownload(id); };
+    if (wasRunning) pauseDownload(id);
+    toast(`Canceling: ${title}`, {
       action: {
         label: 'Undo',
-        onClick: () => {
-          if (!item) return;
-          removeFromQueue(id);
-          removeFromHistory(id);
-          addToQueue({ ...item, status: 'queued', speed: 0, eta: 0, error: undefined });
-        },
+        // Clicking the action also dismisses the toast, so the flag is what
+        // stops the dismissal handler cancelling what was just resumed.
+        onClick: () => { undone = true; if (wasRunning) resumeDownload(id); },
       },
+      onAutoClose: finish,
+      onDismiss: finish,
       duration: 6000,
     });
-  }, [items, cancelDownload, pauseDownload, resumeDownload, removeFromQueue, removeFromHistory, addToQueue]);
+  }, [cancelDownload, pauseDownload, resumeDownload]);
 
   const [search, setSearch] = useState('');
   // Kept local, like the search box: a filter you can't see the effect of is
@@ -115,13 +105,16 @@ export default function Queue() {
   // Reorder only under "Added" order with no search: any other view maps
   // visible indexes onto a different order than the queue's.
   const canReorder = sort === 'added' && !search && filter === 'all' && !activeCategory && !activeLabel;
+  latest.current.visibleItems = visibleItems;
+  latest.current.orderedIds = orderedIds;
   const reorderVisible = useCallback((fromIndex: number, toIndex: number) => {
+    const { items, visibleItems } = latest.current;
     const fromId = visibleItems[fromIndex]?.id;
     const toId = visibleItems[toIndex]?.id;
     const from = items.findIndex(i => i.id === fromId);
     const to = items.findIndex(i => i.id === toId);
     if (from !== -1 && to !== -1) reorderQueue(from, to);
-  }, [items, visibleItems, reorderQueue]);
+  }, [reorderQueue]);
 
   // Selection + detail panel.
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -129,13 +122,17 @@ export default function Queue() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  latest.current.anchor = anchor;
+  latest.current.selected = selected;
+  // Worked out here, not inside a state updater: an updater must be pure,
+  // and this one set the anchor too (run twice under StrictMode).
   const onSelect = useCallback((id: string, mods: SelectMods) => {
-    setSelected(cur => {
-      const next = nextSelection(cur, anchor, orderedIds, id, mods);
-      setAnchor(next.anchor);
-      return next.selection;
-    });
-  }, [anchor, orderedIds]);
+    const { selected, anchor, orderedIds } = latest.current;
+    const next = nextSelection(selected, anchor, orderedIds, id, mods);
+    setSelected(next.selection);
+    setAnchor(next.anchor);
+  }, []);
+  const openDetails = useCallback((id: string) => { setSelected(new Set([id])); setAnchor(id); setDetailsOpen(true); }, []);
   const selectedItems = useMemo(() => visibleItems.filter(i => selected.has(i.id)), [visibleItems, selected]);
   const detailItem = selectedItems.length === 1 ? selectedItems[0] : null;
 
@@ -149,11 +146,11 @@ export default function Queue() {
   }, []);
 
   const showInFolder = useCallback((id: string) => {
-    const item = items.find(i => i.id === id);
+    const item = latest.current.items.find(i => i.id === id);
     if (!item) return;
     service.showInFolder(item.filePath ?? item.settings.destination ?? '~/Downloads/Prism')
       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)));
-  }, [items, service]);
+  }, [service]);
 
   const forSelection = useCallback((fn: (id: string) => void) => selectedItems.forEach(i => fn(i.id)), [selectedItems]);
 
@@ -353,11 +350,11 @@ export default function Queue() {
               onUpdateFiles={updateTorrentFiles}
               onReannounce={reannounceTorrent}
               onRecheck={recheckTorrent}
-              onRemoveWithData={(id) => setConfirmDelete(id)}
+              onRemoveWithData={setConfirmDelete}
               onMoveTop={canReorder ? moveToTop : undefined}
               onMoveBottom={canReorder ? moveToBottom : undefined}
               onShowInFolder={showInFolder}
-              onOpenDetails={(id) => { setSelected(new Set([id])); setAnchor(id); setDetailsOpen(true); }}
+              onOpenDetails={openDetails}
             />
           </TabsContent>
         )}

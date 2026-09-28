@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useHistory, useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
 import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
@@ -78,7 +78,7 @@ function statusIcon(status: string) {
  * windowed — only the rows near the viewport are mounted. */
 export default function Library() {
   const { items, removeFromHistory, restoreHistory, clearHistory } = useHistory();
-  const { addToQueue } = useQueue();
+  const { addToQueue } = useQueueActions();
   const { preferences, updatePreference } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
@@ -138,15 +138,28 @@ export default function Library() {
   // Rows whose file has been moved or deleted outside Prism, checked when
   // the Library opens and whenever it changes.
   const [missing, setMissing] = useState<Set<string>>(() => new Set());
+  // Keyed on the files themselves, not the list object: every Library change
+  // (a label, a removal) sent up to 5,000 paths to be checked again, even
+  // when none of them changed. Debounced so a burst of finishes is one check
+  // (REVIEW 2026-09-28 P-11).
+  const withFiles = useMemo(
+    () => items.filter(i => i.status === 'completed' && i.filePath).slice(0, 5000),
+    [items],
+  );
+  const filesKey = useMemo(() => withFiles.map(i => `${i.id}\u0000${i.filePath}`).join('\n'), [withFiles]);
+  const withFilesRef = useRef(withFiles);
+  withFilesRef.current = withFiles;
   useEffect(() => {
-    const withFiles = items.filter(i => i.status === 'completed' && i.filePath).slice(0, 5000);
-    if (withFiles.length === 0) { setMissing(new Set()); return; }
+    const rows = withFilesRef.current;
+    if (rows.length === 0) { setMissing(new Set()); return; }
     let live = true;
-    service.missingFiles(withFiles.map(i => i.filePath!))
-      .then(flags => { if (live) setMissing(new Set(withFiles.filter((_, n) => flags[n]).map(i => i.id))); })
-      .catch(() => { /* a convenience: rows just don't say */ });
-    return () => { live = false; };
-  }, [items, service]);
+    const timer = setTimeout(() => {
+      service.missingFiles(rows.map(i => i.filePath!))
+        .then(flags => { if (live) setMissing(new Set(rows.filter((_, n) => flags[n]).map(i => i.id))); })
+        .catch(() => { /* a convenience: rows just don't say */ });
+    }, 500);
+    return () => { live = false; clearTimeout(timer); };
+  }, [filesKey, service]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return inTab.filter(i =>

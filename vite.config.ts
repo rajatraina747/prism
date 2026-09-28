@@ -26,6 +26,9 @@ export default defineConfig({
     // Tauri uses Chromium on Windows/Linux and WebKit on macOS
     target: isTauri ? "safari14" : "modules",
   },
-  // Env vars prefixed with TAURI_ are exposed to the frontend
-  envPrefix: ["VITE_", "TAURI_"],
+  // Only VITE_ variables reach the page. TAURI_ was here too, which would
+  // have inlined TAURI_SIGNING_PRIVATE_KEY (set in the release build's
+  // environment) into the bundle the moment any code read import.meta.env
+  // whole (REVIEW 2026-09-28). The page reads no TAURI_ variable.
+  envPrefix: ["VITE_"],
 });

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useReducer, useR
 import type { DownloadItem, HistoryItem, AppPreferences, DownloadError, DownloadCategory, PostCompletionAction } from '@/types/models';
 import { DEFAULT_PREFERENCES } from '@/types/models';
 import { queueReducer, type QueueAction } from '@/stores/queue-reducer';
-import { remoteQueueReducer } from '@/stores/remote-queue';
+import { remoteQueueReducer, patchesAfter, type QueuePatch } from '@/stores/remote-queue';
 import { createThrottledSaver, queueShape } from '@/stores/queue-save';
 import { installAppUpdate } from '@/stores/app-update';
 import { mergeHistory, mergeSettings } from '@/stores/backup';
@@ -114,6 +114,10 @@ interface StatsValue {
 
 // ── Contexts ──
 const QueueContext = createContext<QueueActions | null>(null);
+/** The queue's actions without its items: these keep their identity, so a
+ * component that only acts on the queue doesn't re-render on every progress
+ * update (REVIEW 2026-09-28 P-9). */
+const QueueActionsContext = createContext<Omit<QueueActions, 'items'> | null>(null);
 const HistoryContext = createContext<HistoryActions | null>(null);
 const SettingsContext = createContext<SettingsActions | null>(null);
 const StatsContext = createContext<StatsValue | null>(null);
@@ -121,6 +125,14 @@ const StatsContext = createContext<StatsValue | null>(null);
 export function useQueue() {
   const ctx = useContext(QueueContext);
   if (!ctx) throw new Error('useQueue must be used within AppProvider');
+  return ctx;
+}
+
+/** The queue's actions only. Prefer this to `useQueue` wherever the items
+ * aren't read. */
+export function useQueueActions() {
+  const ctx = useContext(QueueActionsContext);
+  if (!ctx) throw new Error('useQueueActions must be used within AppProvider');
   return ctx;
 }
 
@@ -456,8 +468,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // now does for what Rust reports.
   useEffect(() => {
     if (!remote) return;
+    // Patches that land before the snapshot wait for it: only the ones newer
+    // than it apply (C-9). Afterwards a patch the snapshot already covered
+    // is dropped too.
+    let snapshotSeq: number | null = null;
+    const early: QueuePatch[] = [];
     const stop = remote.subscribe({
-      changed: patch => dispatchRemote({ type: 'patch', patch }),
+      changed: patch => {
+        if (snapshotSeq === null) { early.push(patch); return; }
+        if (patch.seq !== undefined && patch.seq <= snapshotSeq) return;
+        dispatchRemote({ type: 'patch', patch });
+      },
       archived: entries => {
         // A torrent is listed when it starts seeding and its entry replaced
         // when seeding ends: the same id, the newer entry.
@@ -526,7 +547,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stopRemoved = service.onLibraryRemoved?.(ids => setHistory(prev => prev.filter(h => !ids.includes(h.id))));
     // After listening, so nothing between the two is missed.
     remote.snapshot()
-      .then(items => dispatchRemote({ type: 'snapshot', items }))
+      .then(({ items, seq }) => {
+        snapshotSeq = seq;
+        dispatchRemote({ type: 'snapshot', items });
+        for (const patch of patchesAfter(early, seq)) dispatchRemote({ type: 'patch', patch });
+        early.length = 0;
+      })
       .catch(reportQueueError);
     return () => { stop(); stopRemoved?.(); };
   }, [remote, service]);
@@ -970,6 +996,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({ preferences: settings, updatePreference, resetToDefaults, importSettings }),
     [settings, updatePreference, resetToDefaults, importSettings],
   );
+  const queueActions = useMemo(
+    () => ({ addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
+    [addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
+  );
   const queueValue = useMemo(
     () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
     [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
@@ -982,6 +1012,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={settingsValue}>
+      <QueueActionsContext.Provider value={queueActions}>
       <QueueContext.Provider value={queueValue}>
         <HistoryContext.Provider value={historyValue}>
           <StatsContext.Provider value={statsValue}>
@@ -989,6 +1020,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           </StatsContext.Provider>
         </HistoryContext.Provider>
       </QueueContext.Provider>
+      </QueueActionsContext.Provider>
     </SettingsContext.Provider>
   );
 }
