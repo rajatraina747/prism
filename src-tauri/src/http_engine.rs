@@ -287,7 +287,14 @@ struct Segment {
     /// Inclusive. Can move down while running: a free connection may take
     /// over the second half (`next_segment`).
     end: u64,
+    /// Bytes written *and handed to the OS* — what the saved state may claim
+    /// (C-5).
     done: u64,
+    /// Bytes written so far, flushed or not: where the connection really is.
+    /// Splitting goes by this, so a new connection starts where the old one
+    /// will actually stop, not up to `PUBLISH_EVERY` behind it. Not saved.
+    #[serde(skip, default)]
+    reached: u64,
     /// A connection is working on it (not saved: nothing is, after a restart).
     #[serde(skip, default)]
     busy: bool,
@@ -318,7 +325,7 @@ fn plan_segments(size: u64, connections: usize) -> Vec<Segment> {
         .map(|i| {
             let start = i * share;
             let end = if i + 1 == count { size - 1 } else { start + share - 1 };
-            Segment { start, end, done: 0, busy: false }
+            Segment { start, end, done: 0, reached: 0, busy: false }
         })
         .collect()
 }
@@ -336,16 +343,16 @@ fn next_segment(segments: &mut Vec<Segment>) -> Option<usize> {
         .iter()
         .enumerate()
         .filter(|(_, s)| !s.finished())
-        .map(|(i, s)| (i, s.len() - s.done))
+        .map(|(i, s)| (i, s.len().saturating_sub(s.done.max(s.reached))))
         .max_by_key(|&(_, left)| left)?;
     if remaining < 2 * MIN_SEGMENT {
         return None;
     }
-    let from = segments[victim].start + segments[victim].done;
+    let from = segments[victim].start + segments[victim].done.max(segments[victim].reached);
     let split = from + remaining / 2;
     let end = segments[victim].end;
     segments[victim].end = split - 1;
-    segments.push(Segment { start: split, end, done: 0, busy: true });
+    segments.push(Segment { start: split, end, done: 0, reached: 0, busy: true });
     Some(segments.len() - 1)
 }
 
@@ -657,6 +664,9 @@ async fn fetch_range(
         file.write_all(&chunk).await.map_err(|e| Attempt::Fatal(io_error(e)))?;
         position += n;
         unpublished += n;
+        if let Ok(mut s) = segments.lock() {
+            s[index].reached = position - s[index].start;
+        }
         if unpublished >= PUBLISH_EVERY {
             file.flush().await.map_err(|e| Attempt::Fatal(io_error(e)))?;
             publish(unpublished);
@@ -1315,7 +1325,7 @@ mod tests {
             source: "https://a/big.iso".into(),
             size: 1000,
             validator: Some("\"v1\"".into()),
-            segments: vec![Segment { start: 0, end: 499, done: 500, busy: false }, Segment { start: 500, end: 999, done: 400, busy: false }],
+            segments: vec![Segment { start: 0, end: 499, done: 500, reached: 0, busy: false }, Segment { start: 500, end: 999, done: 400, reached: 0, busy: false }],
         };
         std::fs::write(with_suffix(&dest, STATE_SUFFIX), serde_json::to_string(&state).unwrap()).unwrap();
         assert_eq!(still_needed(1000, &dest, "https://a/big.iso"), 100);
@@ -1327,7 +1337,7 @@ mod tests {
     const MIB: u64 = 1024 * 1024;
 
     fn seg(start: u64, end: u64, done: u64, busy: bool) -> Segment {
-        Segment { start, end, done, busy }
+        Segment { start, end, done, reached: 0, busy }
     }
 
     // R5.2: a free connection takes the second half of the biggest remainder.
@@ -1390,7 +1400,7 @@ mod tests {
         for pair in plan.windows(2) {
             assert_eq!(pair[0].end + 1, pair[1].start);
         }
-        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0, busy: false }]);
+        assert_eq!(plan_segments(100, 4), vec![Segment { start: 0, end: 99, done: 0, reached: 0, busy: false }]);
         assert_eq!(plan_segments(64 * 1024 * 1024, 4).len(), 4);
     }
 
