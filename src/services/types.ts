@@ -140,7 +140,6 @@ export interface IPrismService {
     onComplete: CompletionCallback,
   ): () => void;
 
-  pauseDownload(id: string): Promise<void>;
   cancelDownload(id: string): Promise<void>;
   /** Torrent-only: pause/resume in place. The engine keeps the torrent in its
    * session, so resuming needs no re-add and no hash re-check. Rejects if the

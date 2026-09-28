@@ -196,10 +196,6 @@ export class MockPrismService implements IPrismService {
     return () => clearInterval(interval);
   }
 
-  async pauseDownload(_id: string): Promise<void> {
-    // Mock: no-op — pausing is handled by clearing the interval in AppProvider
-  }
-
   async cancelDownload(_id: string): Promise<void> {
     // Mock: no-op — cancellation is handled by clearing the interval in AppProvider
   }

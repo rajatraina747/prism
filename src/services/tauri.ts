@@ -385,10 +385,6 @@ export class TauriPrismService implements IPrismService {
     };
   }
 
-  async pauseDownload(_id: string): Promise<void> {
-    // yt-dlp doesn't support true pause; cancel and track bytes for resume
-    await this.cancelDownload(_id);
-  }
 
   async cancelDownload(id: string): Promise<void> {
     // The caller doesn't track which engine owns the id, so signal all three.

@@ -157,8 +157,8 @@ export default function Statistics() {
       )}
 
       <p className="text-[10px] text-muted-foreground mt-4 px-1">
-        These counters are kept separately from the Library, which only remembers the most recent
-        2,000 downloads — so the totals above reach further back than the list does.
+        These counters are kept separately from the Library, so removing entries from the Library
+        doesn't change the totals above.
       </p>
     </div>
   );
