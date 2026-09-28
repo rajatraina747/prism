@@ -1,6 +1,7 @@
 import type { MediaMetadata, FormatOption, DownloadItem, HistoryItem, AppPreferences, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
+import type { IPrismService, RemoteQueue, ProgressCallback, CompletionCallback, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset } from './types';
 import { generateId } from './utils';
+import { MockQueue } from './mock-queue';
 
 // ── Mock Data ──
 
@@ -60,6 +61,12 @@ const STORAGE_KEYS = {
 
 export class MockPrismService implements IPrismService {
   readonly isDemo = true;
+  // The demo's queue, shaped like Rust's (mock-queue.ts). Made on first use:
+  // it reads `persistence`, which is set up after the fields above.
+  private _queue?: MockQueue;
+  get queue(): RemoteQueue {
+    return (this._queue ??= new MockQueue(this));
+  }
   async restartTorrentEngine(): Promise<number> {
     return 0;
   }

@@ -12,9 +12,9 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import type { MediaMetadata, DownloadItem, HistoryItem, AppPreferences, DiagnosticsEntry, PlaylistInfo, InspectResult, Subscription, TorrentFileEntry, TorrentPeer, TorrentDetails, SessionStats, WhenDoneAction, GlobalShortcuts, ShortcutAction } from '@/types/models';
-import type { IPrismService, ProgressCallback, CompletionCallback, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, ConvertPreset, RemoteQueue } from './types';
+import type { IPrismService, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProbe, TemplateVars, StorageSummary, ContentMatch, RemoteQueue } from './types';
 import type { QueuePatch, ArchivedEntry, QueueNotice } from '@/stores/remote-queue';
-import { sanitizeFilename, ytdlpLiteral, isTorrentUrl, parsePrismDeepLink } from './utils';
+import { isTorrentUrl, parsePrismDeepLink } from './utils';
 import { createWriteQueue } from '@/lib/write-queue';
 
 // Persistence file names (stored in app data directory). The webview's fs
@@ -110,20 +110,6 @@ function readLaunchLinks(): Promise<string[]> {
   return launchLinksPromise;
 }
 
-/** What a file name template can use for this item (template.rs). */
-function templateVarsFor(item: DownloadItem): TemplateVars {
-  return {
-    // A name typed in the details dialog wins over the site's title. Stored
-    // names are escaped for yt-dlp (% → %%); the template wants the raw text.
-    title: (item.settings.filename || item.metadata.title || '').replace(/%%/g, '%'),
-    uploader: item.metadata.uploader,
-    site: item.metadata.source.domain,
-    resolution: item.settings.format?.resolution,
-    // Sites don't report an upload date here; {date} is the day it was added.
-    date: item.metadata.source.addedAt,
-  };
-}
-
 /** Rust's queue (src-tauri/src/queue.rs), as the page sees it. */
 const rustQueue: RemoteQueue = {
   snapshot: () => invoke<{ items: DownloadItem[]; seq: number }>('queue_snapshot'),
@@ -180,10 +166,6 @@ export class TauriPrismService implements IPrismService {
     return invoke<MediaMetadata>('parse_url', { url });
   }
 
-  async restartTorrentEngine(): Promise<number> {
-    return invoke<number>('restart_torrent_engine');
-  }
-
   async missingFiles(paths: string[]): Promise<boolean[]> {
     return invoke<boolean[]>('missing_files', { paths });
   }
@@ -200,236 +182,12 @@ export class TauriPrismService implements IPrismService {
     return invoke<TorrentFileEntry[]>('parse_torrent', { magnet, outputPath: dest });
   }
 
-  startDownload(
-    item: DownloadItem,
-    onProgress: ProgressCallback,
-    onComplete: CompletionCallback,
-  ): () => void {
-    let progressUnlisten: UnlistenFn | null = null;
-    let completeUnlisten: UnlistenFn | null = null;
-    let cancelled = false;
-
-    const isTorrent = item.kind === 'torrent';
-
-    const setup = async () => {
-      // The torrent engine emits the same event with extra swarm fields; HTTP
-      // downloads simply leave them undefined.
-      progressUnlisten = await listen<{
-        id: string;
-        downloaded_bytes: number;
-        total_bytes: number;
-        progress: number;
-        speed: number;
-        eta: number;
-        stage?: 'processing';
-        upload_speed?: number;
-        peers?: number;
-        peers_seen?: number;
-        peers_connecting?: number;
-        ratio?: number;
-        seeding?: boolean;
-        files?: { name: string; size: number; progress: number }[];
-        uploaded_bytes?: number;
-        peerless_secs?: number;
-        pieces?: number[];
-      }>(`download-progress-${item.id}`, (event) => {
-        if (cancelled) return;
-        const p = event.payload;
-        onProgress({
-          downloadedBytes: p.downloaded_bytes,
-          totalBytes: p.total_bytes,
-          progress: p.progress,
-          speed: p.speed,
-          eta: p.eta,
-          // Deliberately present even when undefined: clears a stale stage.
-          stage: p.stage,
-          uploadSpeed: p.upload_speed,
-          peers: p.peers,
-          peersSeen: p.peers_seen,
-          peersConnecting: p.peers_connecting,
-          ratio: p.ratio,
-          seeding: p.seeding,
-          uploadedBytes: p.uploaded_bytes,
-          peerlessSecs: p.peerless_secs,
-          // Only present on periodic ticks; omit the keys otherwise so the
-          // reducer keeps the last file list / pieces map instead of clearing it.
-          ...(p.files !== undefined ? { files: p.files } : {}),
-          ...(p.pieces !== undefined ? { pieces: p.pieces } : {}),
-        });
-      });
-
-      completeUnlisten = await listen<{
-        id: string;
-        success: boolean;
-        error: import('@/services/errors').EngineError | string | null;
-        file_path: string | null;
-        file_size: number | null;
-        actual_height?: number | null;
-        output_folder?: string | null;
-      }>(`download-complete-${item.id}`, (event) => {
-        if (cancelled) return;
-        cleanup();
-        onComplete(
-          event.payload.success,
-          event.payload.error ?? undefined,
-          event.payload.file_path ?? undefined,
-          event.payload.file_size ?? undefined,
-          event.payload.actual_height ?? undefined,
-          event.payload.output_folder ?? undefined,
-        );
-      });
-
-      // Stopped while the listeners were being set up: the cancel's cleanup
-      // ran before they existed, so drop them now, and don't start at all
-      // (REVIEW 2026-09-23 B-5). A stop after this point reaches the engine,
-      // which checks for one before it registers the job.
-      if (cancelled) {
-        cleanup();
-        return;
-      }
-
-      const dest = item.settings.destination || '~/Downloads/Prism';
-
-      if (isTorrent) {
-        // Torrents download into the destination *directory*; librqbit names the
-        // files from the torrent metadata. The magnet/.torrent URL is the source.
-        await invoke('start_torrent', {
-          id: item.id,
-          magnet: item.metadata.source.url,
-          outputPath: dest,
-          onlyFiles: item.settings.selectedFiles ?? null,
-          // Per-item cap (quiet-hours override flows in via effectiveItem);
-          // applies on top of the session-wide limit.
-          speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
-        });
-        return;
-      }
-
-      if (item.kind === 'convert') {
-        // Not a download: the source is a file already on disk, named by the
-        // item's source URL. It reports through the same events as everything
-        // above, so the listeners set up here need no special case.
-        await invoke('convert_file', {
-          id: item.id,
-          input: item.metadata.source.url,
-          preset: item.settings.convertPreset ?? 'mp4-h264',
-          durationSecs: item.metadata.duration || 0,
-        });
-        return;
-      }
-
-      if (item.kind === 'direct') {
-        // The engine resumes an unfinished file of the same name in `dest`.
-        await invoke('start_http_download', {
-          id: item.id,
-          url: item.metadata.source.url,
-          outputDir: dest,
-          filename: item.settings.filename || null,
-          sha256: item.settings.sha256 ?? null,
-          speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
-          filenameTemplate: item.settings.filenameTemplate ?? null,
-          templateVars: templateVarsFor(item),
-          referer: item.settings.referer ?? null,
-        });
-        return;
-      }
-
-      // Use %(ext)s template so yt-dlp can download video+audio separately
-      // then merge them. --merge-output-format mp4 ensures final output is .mp4
-      const filename = sanitizeFilename(item.settings.filename || item.metadata.title || 'video');
-      // `%` is literal in both, and yt-dlp would expand it: escape it here,
-      // once (the name comes back from sanitizeFilename unescaped).
-      const outputPath = `${ytdlpLiteral(dest)}/${ytdlpLiteral(filename)}.%(ext)s`;
-
-      await invoke('start_download', {
-        id: item.id,
-        url: item.metadata.source.url,
-        outputPath,
-        formatId: item.settings.audioOnly ? null : (item.settings.format?.id ?? null),
-        audioOnly: item.settings.audioOnly ?? false,
-        downloadSubtitles: item.settings.downloadSubtitles ?? false,
-        subtitleLanguage: item.settings.subtitleLanguage ?? null,
-        audioLanguage: item.settings.audioLanguage ?? null,
-        embedSubtitles: item.settings.embedSubtitles ?? false,
-        useArchive: item.settings.useArchive ?? false,
-        referer: item.settings.referer ?? null,
-        speedLimit: item.settings.speedLimit ? item.settings.speedLimit : null,
-        expectedSize: item.settings.format?.fileSize || null,
-        clipStart: item.settings.clipStart ?? null,
-        clipEnd: item.settings.clipEnd ?? null,
-        splitChapters: item.settings.splitChapters ?? false,
-        useCookies: !item.settings.noCookies,
-        // With a template, Rust builds the output path itself from these.
-        outputDir: dest,
-        filenameTemplate: item.settings.filenameTemplate ?? null,
-        templateVars: templateVarsFor(item),
-      });
-    };
-
-    const cleanup = () => {
-      progressUnlisten?.();
-      completeUnlisten?.();
-      progressUnlisten = null;
-      completeUnlisten = null;
-    };
-
-    setup().catch((err) => {
-      cleanup();
-      onComplete(false, String(err));
-    });
-
-    // Return cancel function
-    return () => {
-      cancelled = true;
-      cleanup();
-    };
-  }
-
-
-  async cancelDownload(id: string): Promise<void> {
-    // The caller doesn't track which engine owns the id, so signal all three.
-    // Each is a no-op for an id it doesn't own.
-    await Promise.all([
-      invoke('cancel_download', { id }).catch(() => {}),
-      invoke('cancel_torrent', { id }).catch(() => {}),
-      invoke('cancel_http_download', { id }).catch(() => {}),
-      // A conversion is spawned outside the three download engines, so it
-      // needs signalling too — otherwise ffmpeg keeps running with nothing
-      // in the UI left pointing at it.
-      invoke('cancel_convert', { id }).catch(() => {}),
-    ]);
-  }
-
-  async pauseTorrent(id: string): Promise<void> {
-    await invoke('pause_torrent', { id });
-  }
-
-  async resumeTorrent(id: string): Promise<void> {
-    await invoke('resume_torrent', { id });
-  }
-
-  async updateTorrentFiles(id: string, onlyFiles: number[]): Promise<void> {
-    await invoke('update_torrent_files', { id, onlyFiles });
-  }
-
-  async setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void> {
-    await invoke('set_torrent_rate_limit', { downloadBps: downloadBps ?? null, uploadBps: uploadBps ?? null });
-  }
-
-  async setDirectRateLimit(bytesPerSecond: number | null): Promise<void> {
-    await invoke('set_http_rate_limit', { bytesPerSecond: bytesPerSecond ?? 0 });
-  }
-
   async reannounceTorrent(id: string): Promise<void> {
     await invoke('reannounce_torrent', { id });
   }
 
   async recheckTorrent(id: string): Promise<void> {
     await invoke('recheck_torrent', { id });
-  }
-
-  async removeTorrentData(id: string): Promise<void> {
-    await invoke('cancel_torrent', { id, deleteFiles: true });
   }
 
   async getTorrentPeers(id: string): Promise<TorrentPeer[]> {
@@ -671,10 +429,6 @@ export class TauriPrismService implements IPrismService {
 
   async indexDownload(path: string, title: string): Promise<ContentMatch | null> {
     return invoke<ContentMatch | null>('index_download', { path, title });
-  }
-
-  async convertFile(id: string, input: string, preset: ConvertPreset, durationSecs: number): Promise<void> {
-    return invoke('convert_file', { id, input, preset, durationSecs });
   }
 
   onMenuAction(handler: (action: string) => void): () => void {
