@@ -176,6 +176,14 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
+      # macOS is the primary platform — the player, the Vulkan driver hook,
+      # quarantine flags and the objc window code only exist there — and its
+      # tests never ran in CI (REVIEW 2026-09-28).
+      - name: Rust tests (macOS)
+        if: matrix.platform == 'macos'
+        working-directory: src-tauri
+        run: cargo test --lib
+
   # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
   audit:
     runs-on: ubuntu-latest
