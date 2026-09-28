@@ -941,7 +941,7 @@ fn start_when_done(app: &AppHandle, action: String) {
 }
 
 #[tauri::command]
-pub fn when_done_cancel(app: AppHandle) {
+pub async fn when_done_cancel(app: AppHandle) {
     if let Some(state) = manager(&app) {
         state.when_done_generation.fetch_add(1, Ordering::SeqCst);
         log::info!("when-done: cancelled");
@@ -949,6 +949,10 @@ pub fn when_done_cancel(app: AppHandle) {
 }
 
 // ── Commands (the page's actions) ────────────────────────────────────────
+//
+// All async: a synchronous Tauri command runs on the main thread, and these
+// each run a scheduling pass — adding a 500-video playlist did 500 of them on
+// the thread that draws the window (REVIEW 2026-09-28 P-3).
 
 fn require(app: &AppHandle) -> Result<tauri::State<'_, QueueManager>, String> {
     manager(app).ok_or_else(|| "The queue isn't ready yet".to_string())
@@ -976,7 +980,7 @@ fn check_destination(app: &AppHandle, settings: &serde_json::Map<String, Value>)
 }
 
 #[tauri::command]
-pub fn queue_snapshot(app: AppHandle) -> Result<Value, String> {
+pub async fn queue_snapshot(app: AppHandle) -> Result<Value, String> {
     let state = require(&app)?;
     let inner = state.lock();
     // Changes not yet flushed are in `items` already and come again in patch
@@ -986,7 +990,7 @@ pub fn queue_snapshot(app: AppHandle) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
+pub async fn queue_add(app: AppHandle, item: Value) -> Result<(), String> {
     let mut item = item.as_object().cloned().ok_or("Not a queue item")?;
     if rules::id(&item).is_empty() {
         return Err("A queue item needs an id".into());
@@ -1140,7 +1144,7 @@ pub async fn queue_resume_all(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
+pub async fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
     let state = require(&app)?;
     let mut inner = state.lock();
     let done: Vec<String> = inner.items.iter().filter(|i| rules::status(i) == "completed").map(|i| rules::id(i).to_string()).collect();
@@ -1151,7 +1155,7 @@ pub fn queue_clear_completed(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), String> {
+pub async fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), String> {
     let state = require(&app)?;
     let mut inner = state.lock();
     if from >= inner.items.len() {
@@ -1172,7 +1176,7 @@ pub fn queue_reorder(app: AppHandle, from: usize, to: usize) -> Result<(), Strin
 /// is still in `only_if` (when given). A download that started meanwhile
 /// keeps what it started with.
 #[tauri::command]
-pub fn queue_set_settings(app: AppHandle, id: String, settings: Value, only_if: Option<String>) -> Result<bool, String> {
+pub async fn queue_set_settings(app: AppHandle, id: String, settings: Value, only_if: Option<String>) -> Result<bool, String> {
     let Some(fields) = settings.as_object() else {
         return Err("Settings must be an object".into());
     };

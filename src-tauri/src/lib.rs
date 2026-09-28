@@ -1586,14 +1586,28 @@ fn read_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
 /// a few KB) and parsed only when its bytes differ from the cached copy. Size
 /// and modification time were not enough: a same-length edit (`safari` →
 /// `chrome`) within one mtime tick was read stale (REVIEW 2026-09-26 L7).
+///
+/// A copy read in the last `SETTINGS_FRESH` is used without touching the disk
+/// at all: one scheduling pass reads about seventeen settings, and every
+/// queue command runs one, so a 500-item add read the file thousands of
+/// times (REVIEW 2026-09-28 P-3). A change still applies within that window.
 fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json::Value>> {
-    type Snapshot = (PathBuf, Vec<u8>, std::sync::Arc<serde_json::Value>);
+    const SETTINGS_FRESH: std::time::Duration = std::time::Duration::from_millis(250);
+    type Snapshot = (PathBuf, Vec<u8>, std::sync::Arc<serde_json::Value>, std::time::Instant);
     static CACHE: std::sync::Mutex<Option<Snapshot>> = std::sync::Mutex::new(None);
 
-    let bytes = std::fs::read(path).ok()?;
     if let Ok(guard) = CACHE.lock() {
-        if let Some((p, b, value)) = guard.as_ref() {
+        if let Some((p, _, value, read_at)) = guard.as_ref() {
+            if p == path && read_at.elapsed() < SETTINGS_FRESH {
+                return Some(value.clone());
+            }
+        }
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if let Ok(mut guard) = CACHE.lock() {
+        if let Some((p, b, value, read_at)) = guard.as_mut() {
             if p == path && *b == bytes {
+                *read_at = std::time::Instant::now();
                 return Some(value.clone());
             }
         }
@@ -1601,7 +1615,7 @@ fn settings_snapshot(path: &std::path::Path) -> Option<std::sync::Arc<serde_json
     let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
     let value = std::sync::Arc::new(value);
     if let Ok(mut guard) = CACHE.lock() {
-        *guard = Some((path.to_path_buf(), bytes, value.clone()));
+        *guard = Some((path.to_path_buf(), bytes, value.clone(), std::time::Instant::now()));
     }
     Some(value)
 }
@@ -3529,7 +3543,8 @@ mod tests {
     }
 
     // Regression (REVIEW 2026-09-26 L7): an edit that keeps the file's size
-    // is seen at once, whatever the modification time says.
+    // is seen, whatever the modification time says — within the cache's
+    // quarter-second freshness window (REVIEW 2026-09-28 P-3), no later.
     #[test]
     fn a_same_length_settings_edit_is_not_read_stale() {
         let dir = std::env::temp_dir().join(format!("prism-settings-{}", std::process::id()));
@@ -3540,6 +3555,7 @@ mod tests {
         assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "safari");
         std::fs::write(&path, r#"{"cookiesFromBrowser":"chrome"}"#).unwrap();
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
         assert_eq!(settings_snapshot(&path).unwrap()["cookiesFromBrowser"], "chrome");
         let _ = std::fs::remove_dir_all(&dir);
     }
