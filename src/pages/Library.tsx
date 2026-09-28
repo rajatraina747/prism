@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { useHistory, useQueue, useSettings } from '@/stores/AppProvider';
+import { useHistory, useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
 import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
@@ -78,7 +78,7 @@ function statusIcon(status: string) {
  * windowed — only the rows near the viewport are mounted. */
 export default function Library() {
   const { items, removeFromHistory, restoreHistory, clearHistory } = useHistory();
-  const { addToQueue } = useQueue();
+  const { addToQueue } = useQueueActions();
   const { preferences, updatePreference } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');

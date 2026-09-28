@@ -114,6 +114,10 @@ interface StatsValue {
 
 // ── Contexts ──
 const QueueContext = createContext<QueueActions | null>(null);
+/** The queue's actions without its items: these keep their identity, so a
+ * component that only acts on the queue doesn't re-render on every progress
+ * update (REVIEW 2026-09-28 P-9). */
+const QueueActionsContext = createContext<Omit<QueueActions, 'items'> | null>(null);
 const HistoryContext = createContext<HistoryActions | null>(null);
 const SettingsContext = createContext<SettingsActions | null>(null);
 const StatsContext = createContext<StatsValue | null>(null);
@@ -121,6 +125,14 @@ const StatsContext = createContext<StatsValue | null>(null);
 export function useQueue() {
   const ctx = useContext(QueueContext);
   if (!ctx) throw new Error('useQueue must be used within AppProvider');
+  return ctx;
+}
+
+/** The queue's actions only. Prefer this to `useQueue` wherever the items
+ * aren't read. */
+export function useQueueActions() {
+  const ctx = useContext(QueueActionsContext);
+  if (!ctx) throw new Error('useQueueActions must be used within AppProvider');
   return ctx;
 }
 
@@ -984,6 +996,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({ preferences: settings, updatePreference, resetToDefaults, importSettings }),
     [settings, updatePreference, resetToDefaults, importSettings],
   );
+  const queueActions = useMemo(
+    () => ({ addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
+    [addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
+  );
   const queueValue = useMemo(
     () => ({ items: queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine }),
     [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
@@ -996,6 +1012,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <SettingsContext.Provider value={settingsValue}>
+      <QueueActionsContext.Provider value={queueActions}>
       <QueueContext.Provider value={queueValue}>
         <HistoryContext.Provider value={historyValue}>
           <StatsContext.Provider value={statsValue}>
@@ -1003,6 +1020,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           </StatsContext.Provider>
         </HistoryContext.Provider>
       </QueueContext.Provider>
+      </QueueActionsContext.Provider>
     </SettingsContext.Provider>
   );
 }

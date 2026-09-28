@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useSettings, useHistory, useQueue } from '@/stores/AppProvider';
+import { useSettings, useHistory, useQueue, useQueueActions } from '@/stores/AppProvider';
 import { importedTorrentItems } from '@/stores/torrent-item';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { buildBackup, parseBackup, describeImport, type PrismBackup } from '@/stores/backup';
@@ -99,7 +99,7 @@ function ClientImportRow() {
 
 /** Apply the engine settings now rather than at the next launch. */
 function RestartTorrentEngineRow() {
-  const { restartTorrentEngine } = useQueue();
+  const { restartTorrentEngine } = useQueueActions();
   const [busy, setBusy] = React.useState(false);
   const restart = async () => {
     setBusy(true);

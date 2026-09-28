@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import type { Subscription, PlaylistInfo } from '@/types/models';
 import { diffFeed, entryToDownloadItem, feedEntryAllowed, likelyFeedType, feedShowsNothingNew, youtubeVideoId } from '@/stores/subscription-check';
 import { createLimiter } from '@/lib/limit';
-import { useQueue, useSettings } from '@/stores/AppProvider';
+import { useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { mergeSubscriptions } from '@/stores/backup';
 import { generateId } from '@/services/utils';
@@ -44,7 +44,7 @@ export function useSubscriptions() {
 
 export function SubscriptionsProvider({ children }: { children: ReactNode }) {
   const service = useService();
-  const { addToQueue } = useQueue();
+  const { addToQueue } = useQueueActions();
   const { preferences } = useSettings();
 
   const [subs, setSubs] = useState<Subscription[]>(() => service.persistence.loadSubscriptions());
@@ -147,16 +147,22 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
   }, [fetchFeed, addToQueue, service]);
 
   // Scheduler: one check shortly after launch, then on the configured interval.
+  // It calls the latest runCheck through a ref: runCheck changes whenever the
+  // categories or file name template do, and keying the timers on it re-armed
+  // them on every keystroke in Settings — a full check of every feed fifteen
+  // seconds after each edit (REVIEW 2026-09-28 P-10).
+  const runCheckRef = useRef(runCheck);
+  runCheckRef.current = runCheck;
   useEffect(() => {
     if (subs.length === 0) return;
     const intervalMs = Math.max(5, preferences.subscriptionCheckIntervalMinutes) * 60_000;
-    const startup = setTimeout(() => runCheck(), 15_000);
-    const interval = setInterval(() => runCheck(), intervalMs);
+    const startup = setTimeout(() => runCheckRef.current(), 15_000);
+    const interval = setInterval(() => runCheckRef.current(), intervalMs);
     return () => {
       clearTimeout(startup);
       clearInterval(interval);
     };
-  }, [subs.length, preferences.subscriptionCheckIntervalMinutes, runCheck]);
+  }, [subs.length, preferences.subscriptionCheckIntervalMinutes]);
 
   const addSubscription = useCallback(async (url: string): Promise<Subscription> => {
     if (subsRef.current.some(s => s.url === url)) {
@@ -227,8 +233,13 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
 
   const checkNow = useCallback((id?: string) => runCheck(id), [runCheck]);
 
+  // Memoised: a new object every render re-rendered every consumer (P-9).
+  const value = useMemo(
+    () => ({ items: subs, addSubscription, removeSubscription, restoreSubscription, importSubscriptions, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking }),
+    [subs, addSubscription, removeSubscription, restoreSubscription, importSubscriptions, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking],
+  );
   return (
-    <SubscriptionsContext.Provider value={{ items: subs, addSubscription, removeSubscription, restoreSubscription, importSubscriptions, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking }}>
+    <SubscriptionsContext.Provider value={value}>
       {children}
     </SubscriptionsContext.Provider>
   );
