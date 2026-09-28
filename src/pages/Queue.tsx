@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
@@ -31,8 +31,15 @@ export default function Queue() {
   // Cancel is a single click on a possibly hours-old download — no confirm
   // dialog, but a few seconds to undo, and undoing picks the download up where
   // it stopped instead of starting it again.
+  // The row callbacks read the queue through this ref rather than closing
+  // over it: `items` changes on every progress tick, and a callback that
+  // changed with it broke every row's memo, so the whole list re-rendered
+  // several times a second (REVIEW 2026-09-28 P-8). Assigned below, each render.
+  const latest = useRef({ items, visibleItems: [] as typeof items, orderedIds: [] as string[], anchor: null as string | null, selected: new Set<string>() });
+  latest.current.items = items;
+
   const cancelWithUndo = useCallback((id: string) => {
-    const item = items.find(i => i.id === id);
+    const item = latest.current.items.find(i => i.id === id);
     if (item?.status === 'seeding') {
       // Ending a seed is finishing, not cancelling: there is nothing to undo.
       cancelDownload(id);
@@ -63,7 +70,7 @@ export default function Queue() {
       onDismiss: finish,
       duration: 6000,
     });
-  }, [items, cancelDownload, pauseDownload, resumeDownload]);
+  }, [cancelDownload, pauseDownload, resumeDownload]);
 
   const [search, setSearch] = useState('');
   // Kept local, like the search box: a filter you can't see the effect of is
@@ -98,13 +105,16 @@ export default function Queue() {
   // Reorder only under "Added" order with no search: any other view maps
   // visible indexes onto a different order than the queue's.
   const canReorder = sort === 'added' && !search && filter === 'all' && !activeCategory && !activeLabel;
+  latest.current.visibleItems = visibleItems;
+  latest.current.orderedIds = orderedIds;
   const reorderVisible = useCallback((fromIndex: number, toIndex: number) => {
+    const { items, visibleItems } = latest.current;
     const fromId = visibleItems[fromIndex]?.id;
     const toId = visibleItems[toIndex]?.id;
     const from = items.findIndex(i => i.id === fromId);
     const to = items.findIndex(i => i.id === toId);
     if (from !== -1 && to !== -1) reorderQueue(from, to);
-  }, [items, visibleItems, reorderQueue]);
+  }, [reorderQueue]);
 
   // Selection + detail panel.
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -112,13 +122,17 @@ export default function Queue() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  latest.current.anchor = anchor;
+  latest.current.selected = selected;
+  // Worked out here, not inside a state updater: an updater must be pure,
+  // and this one set the anchor too (run twice under StrictMode).
   const onSelect = useCallback((id: string, mods: SelectMods) => {
-    setSelected(cur => {
-      const next = nextSelection(cur, anchor, orderedIds, id, mods);
-      setAnchor(next.anchor);
-      return next.selection;
-    });
-  }, [anchor, orderedIds]);
+    const { selected, anchor, orderedIds } = latest.current;
+    const next = nextSelection(selected, anchor, orderedIds, id, mods);
+    setSelected(next.selection);
+    setAnchor(next.anchor);
+  }, []);
+  const openDetails = useCallback((id: string) => { setSelected(new Set([id])); setAnchor(id); setDetailsOpen(true); }, []);
   const selectedItems = useMemo(() => visibleItems.filter(i => selected.has(i.id)), [visibleItems, selected]);
   const detailItem = selectedItems.length === 1 ? selectedItems[0] : null;
 
@@ -132,11 +146,11 @@ export default function Queue() {
   }, []);
 
   const showInFolder = useCallback((id: string) => {
-    const item = items.find(i => i.id === id);
+    const item = latest.current.items.find(i => i.id === id);
     if (!item) return;
     service.showInFolder(item.filePath ?? item.settings.destination ?? '~/Downloads/Prism')
       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)));
-  }, [items, service]);
+  }, [service]);
 
   const forSelection = useCallback((fn: (id: string) => void) => selectedItems.forEach(i => fn(i.id)), [selectedItems]);
 
@@ -336,11 +350,11 @@ export default function Queue() {
               onUpdateFiles={updateTorrentFiles}
               onReannounce={reannounceTorrent}
               onRecheck={recheckTorrent}
-              onRemoveWithData={(id) => setConfirmDelete(id)}
+              onRemoveWithData={setConfirmDelete}
               onMoveTop={canReorder ? moveToTop : undefined}
               onMoveBottom={canReorder ? moveToBottom : undefined}
               onShowInFolder={showInFolder}
-              onOpenDetails={(id) => { setSelected(new Set([id])); setAnchor(id); setDetailsOpen(true); }}
+              onOpenDetails={openDetails}
             />
           </TabsContent>
         )}
