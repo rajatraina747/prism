@@ -256,13 +256,51 @@ fn load_doc(conn: &Connection, name: &str) -> rusqlite::Result<Option<Value>> {
     Ok(text.and_then(|t| serde_json::from_str(&t).ok()))
 }
 
-/// Replace the saved queue (the queue manager's save).
-pub(crate) fn save_queue(app: &AppHandle, items: &[Value]) -> Result<(), String> {
+/// What the queue manager saves: every row (after loading, or after a save
+/// failed), or only what changed. Every save used to delete the table and
+/// insert every item again — every two seconds while anything downloaded,
+/// megabytes for a long playlist (REVIEW 2026-09-28 P-1).
+pub(crate) enum QueueDelta {
+    Full(Vec<Value>),
+    Changes {
+        /// (id, position, item)
+        upsert: Vec<(String, i64, Value)>,
+        remove: Vec<String>,
+        /// Every (id, position), when the order moved or an item joined.
+        positions: Option<Vec<(String, i64)>>,
+    },
+}
+
+/// Save the queue (the queue manager's save).
+pub(crate) fn save_queue_delta(app: &AppHandle, delta: &QueueDelta) -> Result<(), String> {
     with_db(app, |conn| {
         let tx = conn.transaction().map_err(sql_err)?;
-        write_queue(&tx, items).map_err(sql_err)?;
+        apply_queue_delta(&tx, delta).map_err(sql_err)?;
         tx.commit().map_err(sql_err)
     })
+}
+
+fn apply_queue_delta(tx: &rusqlite::Transaction, delta: &QueueDelta) -> rusqlite::Result<()> {
+    match delta {
+        QueueDelta::Full(items) => write_queue(tx, items),
+        QueueDelta::Changes { upsert, remove, positions } => {
+            let mut gone = tx.prepare("DELETE FROM queue WHERE id = ?1")?;
+            for id in remove {
+                gone.execute(params![id])?;
+            }
+            let mut put = tx.prepare("INSERT OR REPLACE INTO queue (id, position, data) VALUES (?1, ?2, ?3)")?;
+            for (id, position, item) in upsert {
+                put.execute(params![id, position, item.to_string()])?;
+            }
+            if let Some(positions) = positions {
+                let mut place = tx.prepare("UPDATE queue SET position = ?2 WHERE id = ?1")?;
+                for (id, position) in positions {
+                    place.execute(params![id, position])?;
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Add finished items to the Library (the queue manager's archive).
@@ -370,6 +408,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    // REVIEW 2026-09-28 P-1: saves write only what changed, and the queue
+    // loads back the same, in the same order.
+    #[test]
+    fn a_saved_delta_loads_back_as_the_queue() {
+        let dir = tmp("delta");
+        let mut conn = open_at(&dir.join("prism.db")).unwrap();
+        let apply = |conn: &mut Connection, delta: QueueDelta| {
+            let tx = conn.transaction().unwrap();
+            apply_queue_delta(&tx, &delta).unwrap();
+            tx.commit().unwrap();
+        };
+        let ids = |conn: &Connection| load_queue(conn).unwrap().iter().map(|v| v["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        apply(&mut conn, QueueDelta::Full(vec![json!({"id": "a", "p": 0}), json!({"id": "b", "p": 0}), json!({"id": "c", "p": 0})]));
+        // b progresses, a leaves, d joins at the end (every position rewritten).
+        apply(&mut conn, QueueDelta::Changes {
+            upsert: vec![("b".into(), 0, json!({"id": "b", "p": 50})), ("d".into(), 2, json!({"id": "d", "p": 0}))],
+            remove: vec!["a".into()],
+            positions: Some(vec![("b".into(), 0), ("c".into(), 1), ("d".into(), 2)]),
+        });
+        assert_eq!(ids(&conn), ["b", "c", "d"]);
+        assert_eq!(load_queue(&conn).unwrap()[0]["p"], 50);
+        // Progress alone: one row, order untouched.
+        apply(&mut conn, QueueDelta::Changes { upsert: vec![("c".into(), 1, json!({"id": "c", "p": 9}))], remove: vec![], positions: None });
+        assert_eq!(ids(&conn), ["b", "c", "d"]);
+        assert_eq!(load_queue(&conn).unwrap()[1]["p"], 9);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -2737,6 +2737,9 @@ pub fn run() {
                 convert::kill_all();
                 // Ledger saves are batched; write what's waiting (M3).
                 ledger::flush(app);
+                // The queue's last few seconds of progress, now that a save
+                // writes only what changed (P-1).
+                queue::save_on_exit(app);
             }
         });
 }
