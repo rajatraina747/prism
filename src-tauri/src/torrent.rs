@@ -2567,6 +2567,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dest);
     }
 
+    /// The tests that bind a port and then expect it free (or taken) take
+    /// turns: run in parallel, one released an ephemeral port and the other
+    /// was handed it at once (Windows CI, 2026-09-28).
+    static PORT_TESTS: Mutex<()> = Mutex::const_new(());
+
     // A session with no network at all, persisting into `dir`.
     async fn offline_session(dir: &std::path::Path) -> Arc<Session> {
         Session::new_with_opts(
@@ -2587,6 +2592,7 @@ mod tests {
     // torrent could start.
     #[tokio::test]
     async fn a_taken_listen_port_falls_back_to_a_free_one() {
+        let _ports = PORT_TESTS.lock().await;
         let dir = std::env::temp_dir().join(format!("prism-listen-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -2629,6 +2635,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_port_held_on_one_address_counts_as_taken() {
+        let _ports = PORT_TESTS.blocking_lock();
         let other_app = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = other_app.local_addr().unwrap().port();
         assert!(port_in_use_elsewhere(port), "held on 127.0.0.1 only");
@@ -2640,6 +2647,7 @@ mod tests {
     // port — the old listener must really have let go of it.
     #[tokio::test]
     async fn a_stopped_session_frees_its_port_for_the_next() {
+        let _ports = PORT_TESTS.lock().await;
         let dir = std::env::temp_dir().join(format!("prism-restart-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
