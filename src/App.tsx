@@ -11,16 +11,20 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/SplashScreen";
 import Dashboard from "@/pages/Dashboard";
-import Queue from "@/pages/Queue";
-import Subscriptions from "@/pages/Subscriptions";
-import Library from "@/pages/Library";
-import Settings from "@/pages/Settings";
-import About from "@/pages/About";
-import PrivacyPolicy from "@/pages/PrivacyPolicy";
-import Statistics from "@/pages/Statistics";
-import TermsOfService from "@/pages/TermsOfService";
-import OpenSourceLicenses from "@/pages/OpenSourceLicenses";
 import NotFound from "@/pages/NotFound";
+
+// The first screen is in the main bundle; every other page loads when it is
+// first opened. All of them were one 686 KB chunk parsed at launch, the legal
+// pages and the 1,267-line Settings included (REVIEW 2026-09-28 P-12).
+const Queue = lazy(() => import("@/pages/Queue"));
+const Subscriptions = lazy(() => import("@/pages/Subscriptions"));
+const Library = lazy(() => import("@/pages/Library"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const About = lazy(() => import("@/pages/About"));
+const PrivacyPolicy = lazy(() => import("@/pages/PrivacyPolicy"));
+const Statistics = lazy(() => import("@/pages/Statistics"));
+const TermsOfService = lazy(() => import("@/pages/TermsOfService"));
+const OpenSourceLicenses = lazy(() => import("@/pages/OpenSourceLicenses"));
 import { routerBasename } from "@/lib/public-asset";
 
 // Branded splash on the very first launch only — on every later launch the app
@@ -74,6 +78,7 @@ const App = () => {
             <SubscriptionsProvider>
             <AppShell>
               <ErrorBoundary>
+              <Suspense fallback={null}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/queue" element={<Queue />} />
@@ -91,6 +96,7 @@ const App = () => {
                 <Route path="/licenses" element={<OpenSourceLicenses />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
               </ErrorBoundary>
             </AppShell>
             </SubscriptionsProvider>
