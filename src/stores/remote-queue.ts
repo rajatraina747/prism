@@ -41,7 +41,17 @@ export type RemoteQueueAction =
 export function applyQueuePatch(queue: DownloadItem[], patch: QueuePatch): DownloadItem[] {
   const removed = new Set(patch.removed);
   const changed = new Map(patch.items.map(i => [i.id, i]));
-  let next = queue.filter(i => !removed.has(i.id)).map(i => changed.get(i.id) ?? i);
+  // Rust sends a torrent's file list and piece map only when they change
+  // (REVIEW 2026-09-28 P-4): a patch without them keeps the ones we have.
+  const merged = (old: DownloadItem, incoming: DownloadItem): DownloadItem => ({
+    ...incoming,
+    ...(!('files' in incoming) && old.files ? { files: old.files } : {}),
+    ...(!('pieces' in incoming) && old.pieces ? { pieces: old.pieces } : {}),
+  });
+  let next = queue.filter(i => !removed.has(i.id)).map(i => {
+    const incoming = changed.get(i.id);
+    return incoming ? merged(i, incoming) : i;
+  });
   // Items new to the page (added, or changed before it saw them).
   const known = new Set(next.map(i => i.id));
   for (const item of patch.items) {

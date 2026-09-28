@@ -21,3 +21,15 @@ describe('patchesAfter', () => {
     expect(queue.map(i => i.id)).toEqual(['a', 'c']);
   });
 });
+
+// REVIEW 2026-09-28 P-4: a patch leaves out an unchanged file list.
+describe('applyQueuePatch and file lists', () => {
+  it('keeps the file list and piece map a patch left out', () => {
+    const files = [{ name: 'a.mkv', size: 1, progress: 50, selected: true }];
+    const before = [{ ...item('t', 'downloading'), files, pieces: [1, 0] } as unknown as DownloadItem];
+    const after = applyQueuePatch(before, { items: [{ ...item('t', 'downloading'), speed: 9 } as DownloadItem], removed: [] });
+    expect(after[0].files).toBe(files);
+    expect(after[0].pieces).toEqual([1, 0]);
+    expect(after[0].speed).toBe(9);
+  });
+});

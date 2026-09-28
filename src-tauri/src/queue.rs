@@ -63,6 +63,9 @@ struct Inner {
     unsaved_order: bool,
     /// Rewrite every row: after loading, and after a save that failed.
     full_save: bool,
+    /// Items whose torrent file list or piece map changed since the last
+    /// patch. Only these carry them (P-4).
+    files_changed: HashSet<String>,
     /// When each item reached completed/failed/canceled.
     terminal_since: HashMap<String, Instant>,
     when_done: rules::WhenDone,
@@ -549,14 +552,23 @@ async fn stop_engine(app: &AppHandle, id: &str) {
 
 // ── What engines report ──────────────────────────────────────────────────
 
-/// Engines emit progress through here: to the page, as before, and to the
-/// queue.
+/// Engines emit progress through here, into the queue; the page hears it in
+/// the queue's patches. (A per-item `download-progress-{id}` event went out
+/// too, serialised a second time, and nothing on the desktop listened to it:
+/// REVIEW 2026-09-28 P-5.)
 pub fn emit_progress<T: Serialize>(app: &AppHandle, id: &str, payload: &T) {
-    let _ = app.emit(&format!("download-progress-{id}"), payload);
     let Some(state) = manager(app) else { return };
     let Ok(value) = serde_json::to_value(payload) else { return };
     let (data, seeding) = rules::progress_fields(&value);
     let mut inner = state.lock();
+    // The torrent poll resends the list every few seconds; only a different
+    // one counts (a seeding torrent's never changes).
+    let files_differ = inner.find(id).is_some_and(|item| {
+        ["files", "pieces"].iter().any(|k| data.get(*k).is_some_and(|new| item.get(*k) != Some(new)))
+    });
+    if files_differ {
+        inner.files_changed.insert(id.to_string());
+    }
     let Some(item) = inner.find(id) else { return };
     let was = rules::status(item).to_string();
     if rules::apply_progress(item, &data, seeding) {
@@ -901,7 +913,24 @@ async fn flush(app: &AppHandle) {
         let mut inner = state.lock();
         let patch = (!inner.changed.is_empty() || !inner.removed.is_empty() || inner.order_changed).then(|| {
             let changed = std::mem::take(&mut inner.changed);
-            let items = inner.items.iter().filter(|i| changed.contains(rules::id(i))).map(|i| Value::Object(i.clone())).collect();
+            let files_changed = std::mem::take(&mut inner.files_changed);
+            // A torrent's file list and piece map go only when they changed:
+            // with thousands of files they were hundreds of KB, sent with
+            // every speed update, once a second (REVIEW 2026-09-28 P-4). The
+            // page keeps the copy it has when a patch leaves them out.
+            let items = inner
+                .items
+                .iter()
+                .filter(|i| changed.contains(rules::id(i)))
+                .map(|i| {
+                    let mut item = i.clone();
+                    if !files_changed.contains(rules::id(i)) {
+                        item.remove("files");
+                        item.remove("pieces");
+                    }
+                    Value::Object(item)
+                })
+                .collect();
             let order = std::mem::take(&mut inner.order_changed)
                 .then(|| inner.items.iter().map(|i| rules::id(i).to_string()).collect());
             inner.seq += 1;
