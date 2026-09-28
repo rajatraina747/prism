@@ -124,18 +124,21 @@ impl Ledger {
             name: Option<String>,
         }
         let is_plain_file = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file());
+        // The page writes `/`; Windows doesn't parse `/` inside a verbatim
+        // `\\?\C:\…` path, so the file would never be found there.
+        let native = |p: String| if cfg!(windows) { p.replace('/', "\\") } else { p };
         let items: Vec<Item> = serde_json::from_str(history_json).unwrap_or_default();
         for item in items {
-            if let Some(file) = item.file_path.as_deref().map(crate::expand_tilde) {
+            if let Some(file) = item.file_path.as_deref().map(crate::expand_tilde).map(native) {
                 if is_plain_file(Path::new(&file)) {
                     self.record(Path::new(&file));
                 }
             }
-            let (Some(folder), Some(files)) = (item.output_folder.as_deref().map(crate::expand_tilde), item.files) else {
+            let (Some(folder), Some(files)) = (item.output_folder.as_deref().map(crate::expand_tilde).map(native), item.files) else {
                 continue;
             };
-            for name in files.iter().filter_map(|f| f.name.as_deref()) {
-                let inside = Path::new(name);
+            for name in files.iter().filter_map(|f| f.name.clone()).map(native) {
+                let inside = Path::new(&name);
                 let stays_inside = inside.components().all(|c| matches!(c, std::path::Component::Normal(_)));
                 let path = Path::new(&folder).join(inside);
                 if stays_inside && is_plain_file(&path) {
