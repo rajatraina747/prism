@@ -313,8 +313,16 @@ async fn ensure_session(
     limits: LimitsConfig,
     cfg: SessionConfig,
 ) -> anyhow::Result<Arc<Session>> {
-    let mut guard = slot.lock().await;
-    if let Some((s, _)) = guard.as_ref() {
+    if let Some((s, _)) = slot.lock().await.as_ref() {
+        return Ok(s.clone());
+    }
+    // One start at a time (two would fight over the listen port), but the
+    // slot itself isn't held while it runs: binding, the blocklist fetch and
+    // restoring the saved session can take a while, and pause, resume, rate
+    // limits and the stream server all wait on the slot (REVIEW 2026-09-28 P-7).
+    static STARTING: Mutex<()> = Mutex::const_new(());
+    let _starting = STARTING.lock().await;
+    if let Some((s, _)) = slot.lock().await.as_ref() {
         return Ok(s.clone());
     }
     // The saved queue (store.rs), read once at engine start to drop persisted
@@ -334,7 +342,7 @@ async fn ensure_session(
     let session = start_session(default_dir, limits, &cfg).await?;
     pause_restored(&session).await;
     let api = Arc::new(Api::new(session.clone(), None));
-    *guard = Some((session.clone(), api));
+    *slot.lock().await = Some((session.clone(), api));
     spawn_session_stats(app.clone(), session.clone(), slot.clone(), active.clone(), cfg);
     Ok(session)
 }
