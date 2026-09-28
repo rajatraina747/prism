@@ -29,6 +29,7 @@ const GROUPS: readonly CreditGroup[] = [
       { name: 'yt-dlp', version: 'pinned in scripts/sidecars.lock; self-updatable', license: 'Unlicense', url: 'https://github.com/yt-dlp/yt-dlp' },
       { name: 'Deno', version: 'pinned in scripts/sidecars.lock', license: 'MIT', url: 'https://github.com/denoland/deno' },
       { name: 'librqbit', version: '9.x (embedded BitTorrent engine)', license: 'Apache-2.0', url: 'https://github.com/ikatson/rqbit' },
+      { name: 'rPGP (pgp)', version: '0.20 (checks yt-dlp update signatures)', license: 'MIT OR Apache-2.0', url: 'https://github.com/rpgp/rpgp' },
       { name: 'FFmpeg', version: 'bundled on every platform — LGPL builds, see below', license: 'LGPL-2.1-or-later', url: 'https://ffmpeg.org' },
     ],
   },

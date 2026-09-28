@@ -71,6 +71,7 @@ zip = { version = "4", default-features = false, features = ["deflate-flate2-zli
 rusqlite = { version = "0.40", features = ["bundled"] }
 # Opt-in global hotkeys (add from clipboard, show Prism, pause all).
 tauri-plugin-global-shortcut = "2.3.2"
+pgp = { version = "0.20.0", default-features = false }
 
 # Signalling yt-dlp's process tree on kill (see src/proc.rs).
 [target.'cfg(unix)'.dependencies]

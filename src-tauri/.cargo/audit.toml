@@ -22,4 +22,19 @@ ignore = [
   # Re-check when librqbit-utp moves to ringbuf 0.5.x, and drop this entry
   # then. If the element type ever stops being u8, this reasoning is void.
   "RUSTSEC-2026-0293",
+
+  # RUSTSEC-2023-0071 — rsa 0.9.x: "Marvin Attack", a timing side channel
+  # that can recover an RSA *private* key from decryption/signing timings.
+  # No fixed release exists.
+  #
+  # Reached as prism → pgp 0.20 → rsa, added for REVIEW 2026-09-28 S-6: the
+  # yt-dlp engine update checks the release's SHA2-256SUMS.sig against
+  # yt-dlp's pinned public key (engine.rs `verify_ytdlp_signature`). That is
+  # signature *verification* with a *public* key only. Prism holds no RSA
+  # private key and never decrypts or signs with one, so there is no secret
+  # for the timing to leak.
+  #
+  # Re-check if Prism ever decrypts or signs with an RSA key via pgp/rsa, and
+  # drop this entry when a fixed rsa release is available.
+  "RUSTSEC-2023-0071",
 ]
