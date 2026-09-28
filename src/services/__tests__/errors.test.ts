@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { classifyError, conciseError, errorText, isEngineError } from '../errors';
 
 describe('classifyError', () => {
+  // Regression (REVIEW 2026-09-28 A-3): loose words misfired.
+  it('reads whole phrases, not words inside other words', () => {
+    expect(classifyError('Could not read the namespace').category).not.toBe('storage');
+    expect(classifyError('The file was fully written').category).not.toBe('storage');
+    expect(classifyError('OSError: [Errno 28] No space left on device').category).toBe('storage');
+    expect(classifyError('Downloaded 1404 fragments').suggestion).not.toMatch(/no longer available/);
+  });
+
   it('offers browser cookies for sign-in walls', () => {
     for (const msg of [
       "ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies-from-browser",
