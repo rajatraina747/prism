@@ -37,4 +37,30 @@ ignore = [
   # Re-check if Prism ever decrypts or signs with an RSA key via pgp/rsa, and
   # drop this entry when a fixed rsa release is available.
   "RUSTSEC-2023-0071",
+
+  # RUSTSEC-2026-0387 — crypto-bigint 0.5.5: timing variability in operations
+  # meant to be constant-time. Fixed in 0.7.6, a semver break.
+  #
+  # Reached as prism → pgp 0.20 → cx448 / elliptic-curve → crypto-bigint, the
+  # same S-6 path as the rsa entry above: verification of a public signature
+  # only, so no secret value goes through it and timing reveals nothing.
+  #
+  # Re-check with the rsa entry, and drop this when pgp moves to
+  # crypto-bigint 0.7.
+  "RUSTSEC-2026-0387",
+
+  # RUSTSEC-2026-0367 / -0368 / -0369 — zip 4.6.1: SUID/SGID bits kept, and
+  # Unix permissions applied through symlinks, by extract(). Fixed in zip 9.
+  #
+  # Prism's own unpacker (engine.rs `unpack_onedir`) is on zip 9. The zip 4
+  # copy is reached only as prism → tauri-plugin-updater 2.12 (Windows build),
+  # which extracts an update archive only after its minisign signature has
+  # been checked against the pubkey in tauri.conf.json. Updater releases past
+  # 2.12 need rust-version 1.90; Prism declares 1.80.
+  #
+  # Drop these when tauri-plugin-updater is on zip ≥ 9 (raise rust-version
+  # to take it — docs/WORKPLAN-2026-11-01.md, B7).
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
 ]

@@ -141,7 +141,10 @@ pub(crate) fn unpack_onedir(zip_bytes: &[u8], dir: &Path, executable_in_zip: &st
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("Couldn't read the yt-dlp archive: {e}"))?;
         let Some(relative) = entry.enclosed_name() else {
-            return Err(format!("The yt-dlp archive names a path outside its folder: {}", entry.name()));
+            return Err(format!(
+                "The yt-dlp archive names a path outside its folder: {}",
+                entry.name().unwrap_or_default()
+            ));
         };
         let target = dir.join(relative);
         if entry.is_dir() {
