@@ -91,7 +91,7 @@ export function classifyError(msg: string, code?: EngineErrorCode): ClassifiedEr
     return { category: 'auth', suggestion: 'This video needs you to be signed in — choose a browser where you\'re logged in under Browser cookies', action: 'cookies' };
   // Gone / never existed
   if (lower.includes('video unavailable') || lower.includes('has been removed') || lower.includes('account terminated')
-    || lower.includes('no longer available') || lower.includes('404'))
+    || lower.includes('no longer available') || /\b404\b/.test(lower))
     return { category: 'parse', suggestion: 'This video is no longer available', action: 'none' };
   // Region locks
   // ("…has not made this video available in your country" is yt-dlp's wording)
@@ -105,9 +105,11 @@ export function classifyError(msg: string, code?: EngineErrorCode): ClassifiedEr
     return { category: 'unknown', suggestion: 'The site refused the download — retry; if it keeps happening, update the engine in Settings → Updates', action: 'engine' };
   if (lower.includes('permission') || lower.includes('access denied'))
     return { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' };
-  if (lower.includes('disk') || lower.includes('space') || lower.includes('no space') || lower.includes('full'))
+  // Whole phrases: "space" matched "namespace", "full" matched "fully"
+  // (REVIEW 2026-09-28 A-3).
+  if (lower.includes('no space') || lower.includes('disk full') || lower.includes('disk is full') || lower.includes('not enough disk') || lower.includes('not enough space'))
     return { category: 'storage', suggestion: 'Free up disk space, then retry', action: 'retry' };
-  if (lower.includes('codec') || lower.includes('format') || lower.includes('merge') || lower.includes('remux'))
+  if (lower.includes('codec') || lower.includes('requested format') || lower.includes('format is not available') || lower.includes('merge') || lower.includes('remux'))
     return { category: 'unknown', suggestion: 'Try a different quality', action: 'retry' };
   if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('connection') || lower.includes('network')
     || lower.includes('dns') || lower.includes('ssl') || lower.includes('unable to download'))

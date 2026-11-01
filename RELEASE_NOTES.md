@@ -6,52 +6,36 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-Hardening and speed, continuing from the review behind 2.3.1.
+Groundwork for 2.4: one queue, stricter engine updates, and current libraries.
 
 ### Safer
 
-- **Cancelling a paused or stopped torrent now removes what it downloaded**,
-  as cancelling a running one always did. It never touches a download that
-  already finished.
-- **Undo after Cancel resumes the download where it stopped.** Before, the
-  download started again from nothing.
-- **A pause pressed just as a download starts now takes effect.** Before, the
-  download could carry on regardless, and resuming it made a second copy.
-- **Direct downloads survive a crash or power cut without damage.** Resuming
-  never keeps parts of the file that were never written to disk.
-- A download that restarts after failing on a server without resume support
-  reuses its partial file instead of leaving it behind.
-- Prism no longer keeps what you copy to the clipboard, only a fingerprint
-  that tells a link it has already seen.
-- With a proxy set, DHT and uTP are turned off, because they can't go
-  through it and would show peers your real address. Settings says so.
-- A proxy password is no longer visible to other programs on the computer,
-  or written to the log.
-- A global shortcut now needs Ctrl, Alt or Cmd, so it can't take an
-  ordinary key away from every other app.
-- On Windows, Prism no longer looks at network paths it was handed unless
-  they are inside a folder you chose.
-
-### Faster
-
-- **The queue is saved far more cheaply:** only what changed is written,
-  rather than the whole list every two seconds.
-- **Large torrents no longer slow the window down:** their file lists are
-  sent to the window only when they change.
-- **Transfers stays smooth with many downloads:** rows redraw only when their
-  own download changes.
-- **Pages open on demand, and launch no longer waits on the database
-  backup.**
-- **Editing Settings no longer makes every subscription check itself 15
-  seconds later.**
+- **yt-dlp engine updates must be signed by yt-dlp's developers.** Prism checks
+  the release's signed checksum list against their published key before it
+  uses a new engine, so a tampered download can't replace it.
+- The window can no longer start a download directly, only add it to the
+  queue, so every download passes the queue's checks.
+- Security fixes in the networking libraries Prism uses for updates, feeds
+  and direct downloads.
 
 ### Fixes
 
-- Settings fields that something acts on (category sites, shortcuts, clip
-  times) take effect when you leave the field or press Enter. Typed commas
-  in a category's sites no longer disappear.
-- The link confirmation shows which page a link came from.
-- The details panel can be resized with the keyboard, and resizing it no
-  longer saves the setting on every mouse movement.
-- Names too long for the disk (such as long Japanese titles), and Windows'
-  reserved names such as CON, are handled.
+- The queue no longer accepts more downloads at once than the engines can
+  run. Before, a high setting made the extra downloads fail as "busy" and
+  use up their retries.
+- Failed downloads are retried (or not) on the same reading of the error
+  everywhere. A message that merely contained "full" or "404" was sometimes
+  taken for a full disk or a missing file.
+- Downloads of unknown size show as unknown, rather than as 500 MB.
+- Statistics no longer says the Library keeps only 2,000 downloads.
+
+### Under the hood
+
+- React 19 and up-to-date dependencies.
+- The web demo runs the same queue as the desktop app.
+
+### Known issue
+
+- While a torrent is still seeding, Play and Open on its files may say Prism
+  "only does this with files it downloaded". They work once seeding stops
+  (stop it from Transfers). A fix is next.

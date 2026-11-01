@@ -260,13 +260,12 @@ describe('queueReducer', () => {
     expect(queueReducer(items, { type: 'clearCompleted' }).map(i => i.id)).toEqual(['b']);
   });
 
-  it('startAll requeues paused items only; pauseAll pauses downloading items only', () => {
+  it('pauseAll pauses downloading items only', () => {
     const items = [
       makeItem({ id: 'a', status: 'paused' }),
       makeItem({ id: 'b', status: 'downloading' }),
       makeItem({ id: 'c', status: 'failed' }),
     ];
-    expect(queueReducer(items, { type: 'startAll' }).map(i => i.status)).toEqual(['queued', 'downloading', 'failed']);
     expect(queueReducer(items, { type: 'pauseAll' }).map(i => i.status)).toEqual(['paused', 'paused', 'failed']);
   });
 

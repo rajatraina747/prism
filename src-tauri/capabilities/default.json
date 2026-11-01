@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins and the .bak/.corrupt copies renamed from them (src/lib/json-store.ts), and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs. Prism's own commands: everything except the player window's (see player.json), each granted by name.",
+  "description": "Main window. File access is limited to the four top-level JSON files the frontend persists (queue, history, settings, subscriptions) plus their .tmp write-then-rename twins and the .bak/.corrupt copies renamed from them (src/lib/json-store.ts), and to files the user picks in a save dialog. Nothing recursive: torrent-session/, torrents/ and engine/ under app data belong to Rust. Deliberately no fs:default — its recursive app-dir scope is global and would merge into every fs command below. Guarded by a test in src-tauri/src/lib.rs. Prism's own commands: everything except the player window's (see player.json) and the engine commands only the Rust queue calls (listed in lib.rs's grant test), each granted by name.",
   "windows": [
     "main"
   ],
@@ -51,7 +51,6 @@
     "allow-cache-thumbnail",
     "allow-missing-files",
     "allow-log-store-problem",
-    "allow-restart-torrent-engine",
     "allow-store-load",
     "allow-store-update-history",
     "allow-store-save-doc",
@@ -71,20 +70,9 @@
     "allow-queue-remove-with-data",
     "allow-queue-restart-torrent-engine",
     "allow-when-done-cancel",
-    "allow-start-download",
-    "allow-cancel-download",
     "allow-probe-direct-link",
-    "allow-start-http-download",
-    "allow-cancel-http-download",
-    "allow-set-http-rate-limit",
     "allow-preview-filename-template",
-    "allow-start-torrent",
-    "allow-cancel-torrent",
-    "allow-pause-torrent",
-    "allow-resume-torrent",
-    "allow-update-torrent-files",
     "allow-parse-torrent",
-    "allow-set-torrent-rate-limit",
     "allow-reannounce-torrent",
     "allow-recheck-torrent",
     "allow-torrent-peers",
@@ -113,8 +101,6 @@
     "allow-set-shortcuts",
     "allow-set-progress",
     "allow-index-download",
-    "allow-convert-file",
-    "allow-cancel-convert",
     "allow-open-backup-file",
     "allow-import-torrent-client"
   ]

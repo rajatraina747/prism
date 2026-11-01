@@ -186,8 +186,11 @@ impl Prefs {
         };
         let kbps = |key: &str| Some(n(key, 0, 10_000_000) * 1024).filter(|b| *b > 0);
         Prefs {
-            max_transfers: n("maxConcurrentDownloads", 3, 50).max(1) as usize,
-            max_torrents: n("maxConcurrentTorrents", 3, 100).max(1) as usize,
+            // Clamped to what the engines accept (16 each for yt-dlp and
+            // direct): a hand-edited 50 made starts beyond 16 fail as "busy"
+            // and burn their retries (REVIEW 2026-09-28). Torrents: the UI's 20.
+            max_transfers: n("maxConcurrentDownloads", 3, 16).max(1) as usize,
+            max_torrents: n("maxConcurrentTorrents", 3, 20).max(1) as usize,
             retry_budget: n("defaultRetryCount", 3, 20) as u32,
             schedule: rules::Schedule {
                 enabled: crate::setting_bool(app, "scheduleEnabled", false),

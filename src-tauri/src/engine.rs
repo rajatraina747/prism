@@ -66,6 +66,28 @@ const FRESHNESS_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// here used to leave the Settings page's engine row stuck forever.
 const VERSION_TIMEOUT_SECS: u64 = 20;
 
+/// yt-dlp's release signing key, from `public.key` in its repository, and
+/// that key's fingerprint, checked so a replaced key file can't pass.
+const YTDLP_SIGNING_KEY: &str = include_str!("keys/yt-dlp-public.key");
+const YTDLP_KEY_FINGERPRINT: &str = "ac0cbbe6848d6a873464af4e57cf65933b5a7581";
+
+/// Whether `signature` (the release's detached `SHA2-256SUMS.sig`) is
+/// yt-dlp's signing key's signature over `sums`.
+fn verify_ytdlp_signature(sums: &[u8], signature: &[u8]) -> Result<(), String> {
+    use pgp::composed::{Deserializable, DetachedSignature, SignedPublicKey};
+    use pgp::types::KeyDetails;
+    let (key, _) = SignedPublicKey::from_armor_single(std::io::Cursor::new(YTDLP_SIGNING_KEY))
+        .map_err(|e| format!("the pinned signing key didn't load: {e}"))?;
+    let fingerprint: String = key.fingerprint().as_bytes().iter().map(|b| format!("{b:02x}")).collect();
+    if fingerprint != YTDLP_KEY_FINGERPRINT {
+        return Err(format!("the pinned signing key is {fingerprint}, not yt-dlp's"));
+    }
+    let signature = DetachedSignature::from_bytes(signature)
+        .or_else(|_| DetachedSignature::from_armor_single(signature).map(|(s, _)| s))
+        .map_err(|e| format!("unreadable signature: {e}"))?;
+    signature.verify(&key, sums).map_err(|e| format!("bad signature: {e}"))
+}
+
 /// Look up the expected SHA-256 for `asset` in the release's SHA2-256SUMS
 /// manifest (lines of `<hex>  <filename>`).
 fn expected_sha256(sums: &str, asset: &str) -> Option<String> {
@@ -119,7 +141,10 @@ pub(crate) fn unpack_onedir(zip_bytes: &[u8], dir: &Path, executable_in_zip: &st
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("Couldn't read the yt-dlp archive: {e}"))?;
         let Some(relative) = entry.enclosed_name() else {
-            return Err(format!("The yt-dlp archive names a path outside its folder: {}", entry.name()));
+            return Err(format!(
+                "The yt-dlp archive names a path outside its folder: {}",
+                entry.name().unwrap_or_default()
+            ));
         };
         let target = dir.join(relative);
         if entry.is_dir() {
@@ -611,6 +636,15 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     let bytes = fetch_capped(&client, &format!("{base}/{RELEASE_ASSET}"), MAX_BINARY_BYTES, "yt-dlp").await?;
     let sums_bytes =
         fetch_capped(&client, &format!("{base}/SHA2-256SUMS"), MAX_SUMS_BYTES, "yt-dlp checksums").await?;
+    // The checksums come from the same release as the binary, so on their own
+    // they catch a damaged download, not a replaced one. yt-dlp signs them;
+    // only a list its maintainers' key signed is used (REVIEW 2026-09-28 S-6).
+    let sig_bytes =
+        fetch_capped(&client, &format!("{base}/SHA2-256SUMS.sig"), MAX_SUMS_BYTES, "yt-dlp checksum signature").await?;
+    if let Err(e) = verify_ytdlp_signature(&sums_bytes, &sig_bytes) {
+        log::warn!("yt-dlp update rejected: {e} ({tag})");
+        return Err("The downloaded yt-dlp isn't signed by its developers — keeping the current engine".into());
+    }
     let sums = String::from_utf8_lossy(&sums_bytes);
     let expected = expected_sha256(&sums, RELEASE_ASSET)
         .ok_or_else(|| format!("No checksum entry for {} in SHA2-256SUMS", RELEASE_ASSET))?;
@@ -811,6 +845,19 @@ cccc3333  yt-dlp.exe";
         std::fs::write(&bin, b"genuine").unwrap();
         assert!(managed_binary_verified(&bin));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // REVIEW 2026-09-28 S-6: the checksum list is used only when yt-dlp's
+    // own key signed it. Fixture: the real 2026.08.19 release files.
+    #[test]
+    fn only_a_checksum_list_ytdlp_signed_is_trusted() {
+        let sums: &[u8] = include_bytes!("keys/fixtures/ytdlp-2026.08.19-SHA2-256SUMS");
+        let sig: &[u8] = include_bytes!("keys/fixtures/ytdlp-2026.08.19-SHA2-256SUMS.sig");
+        assert!(verify_ytdlp_signature(sums, sig).is_ok(), "{:?}", verify_ytdlp_signature(sums, sig));
+        let mut tampered = sums.to_vec();
+        tampered[0] ^= 1;
+        assert!(verify_ytdlp_signature(&tampered, sig).is_err(), "a changed list must fail");
+        assert!(verify_ytdlp_signature(sums, b"not a signature").is_err());
     }
 
     // Regression (REVIEW 2026-09-28 S-6): the check covered the launcher

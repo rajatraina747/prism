@@ -3,9 +3,9 @@ import { isTorrentUrl, isDirectFileUrl, siteKey } from '@/services';
 
 // What Prism has actually downloaded, kept as running counters.
 //
-// These can't be derived from the Library: history is capped at 2,000 rows, so
-// anything older has already been forgotten. The counters are therefore their
-// own record, updated as downloads finish and seeded once from whatever
+// These can't be derived from the Library: entries can be removed from it (and
+// before 2.3 it forgot everything past 2,000 rows). The counters are therefore
+// their own record, updated as downloads finish and seeded once from whatever
 // history exists at the time.
 
 /** Which engine did the work. yt-dlp items carry no `kind` at all — absent has

@@ -417,7 +417,15 @@ const UNSUPPORTED: Classified = Classified { category: "parse", suggestion: "Thi
 
 /// Classify by the engine's code, else (older engines, `unknown`) by message.
 pub fn classify(code: Option<&str>, message: &str) -> Classified {
-    match code {
+    classify_with(code, message)
+}
+
+fn classify_code(code: &str) -> Classified {
+    classify_with(Some(code), "")
+}
+
+fn classify_with(code_in: Option<&str>, message: &str) -> Classified {
+    match code_in {
         Some("auth") => return SIGN_IN,
         Some("unavailable") => return GONE,
         Some("geo") => return REGION,
@@ -440,31 +448,16 @@ pub fn classify(code: Option<&str>, message: &str) -> Classified {
         Some("cancelled") => return Classified { category: "unknown", suggestion: "The download was stopped" },
         _ => {}
     }
-    let m = message.to_ascii_lowercase();
-    let any = |words: &[&str]| words.iter().any(|w| m.contains(w));
-    if any(&["sign in to confirm", "not a bot", "login required", "private video", "members-only", "age-restricted", "age restricted", "confirm your age", "cookies"]) {
-        SIGN_IN
-    } else if any(&["video unavailable", "has been removed", "account terminated", "no longer available", "404"]) {
-        GONE
-    } else if any(&["available in your country", "geo restrict", "georestrict"]) {
-        REGION
-    } else if any(&["429", "too many requests", "rate limit"]) {
-        RATE
-    } else if any(&["403", "forbidden"]) {
-        REFUSED
-    } else if any(&["permission", "access denied"]) {
-        NO_WRITE
-    } else if any(&["disk", "space", "no space", "full"]) {
-        DISK
-    } else if any(&["codec", "format", "merge", "remux"]) {
-        QUALITY
-    } else if any(&["timeout", "timed out", "connection", "network", "dns", "ssl", "unable to download"]) {
-        CHECK_CONNECTION
-    } else if any(&["not found", "unsupported", "unable to extract"]) {
-        UNSUPPORTED
-    } else {
+    // No code (or one this list doesn't know): classify the message the one
+    // way Prism does — errors.rs, which the engines use too — and go by the
+    // code it finds. The queue kept its own word list before, looser than
+    // that one ("full" matched "fully", "space" "namespace"), so the same
+    // failure could be read two ways (REVIEW 2026-09-28 A-3).
+    let found = crate::errors::classify_output(message).code;
+    match serde_json::to_value(found).ok().as_ref().and_then(Value::as_str) {
+        Some(code) if code != "unknown" && Some(code) != code_in => classify_code(code),
         // Unknown must not be 'network': that category retries on its own.
-        Classified { category: "unknown", suggestion: "Check the link, then retry" }
+        _ => Classified { category: "unknown", suggestion: "Check the link, then retry" },
     }
 }
 
@@ -1024,6 +1017,14 @@ mod tests {
         let mut done = item("s", "downloading", json!({}));
         complete(&mut done, &Finish::default());
         assert!(!was_stopped(&done), "finished before the start returned: nothing to stop");
+    }
+
+    // REVIEW 2026-09-28 A-3: one classifier; loose words no longer misfire.
+    #[test]
+    fn messages_are_classified_the_way_the_engines_classify_them() {
+        assert_eq!(classify(None, "ERROR: [youtube] x: Sign in to confirm you're not a bot").category, "auth");
+        assert_ne!(classify(None, "Could not read the namespace").category, "disk");
+        assert_ne!(classify(None, "The file was fully written, then the merger stopped").category, "disk");
     }
 
     #[test]

@@ -117,9 +117,6 @@ export interface IPrismService {
   inspectUrl(url: string, referer?: string): Promise<InspectResult>;
   /** For each path, whether it is a recorded download no longer on disk. */
   missingFiles(paths: string[]): Promise<boolean[]>;
-  /** Stop the torrent engine so the next torrent starts it with the current
-   * settings. Returns how many torrents were running. */
-  restartTorrentEngine(): Promise<number>;
   /** Flat-parse a playlist/channel feed. `limit` caps to the newest N entries
    * (used by subscription polling; omit for full imports). */
   parsePlaylist(url: string, limit?: number): Promise<PlaylistInfo>;
@@ -127,40 +124,16 @@ export interface IPrismService {
    * is the intended destination directory. */
   parseTorrent(magnet: string, dest: string): Promise<TorrentFileEntry[]>;
 
-  /** The desktop app's queue, owned by Rust (src-tauri/src/queue.rs). Absent
-   * in the browser demo, which runs its queue in the page. */
-  readonly queue?: RemoteQueue;
+  /** The queue: Rust's on the desktop (src-tauri/src/queue.rs), and in the
+   * browser demo its stand-in, services/mock-queue.ts. */
+  readonly queue: RemoteQueue;
   /** Library entries Rust removed (a torrent deleted with its files). */
   onLibraryRemoved?(handler: (ids: string[]) => void): () => void;
 
-  // Download lifecycle — returns a cancel/cleanup function
-  startDownload(
-    item: DownloadItem,
-    onProgress: ProgressCallback,
-    onComplete: CompletionCallback,
-  ): () => void;
-
-  pauseDownload(id: string): Promise<void>;
-  cancelDownload(id: string): Promise<void>;
-  /** Torrent-only: pause/resume in place. The engine keeps the torrent in its
-   * session, so resuming needs no re-add and no hash re-check. Rejects if the
-   * torrent isn't active (caller falls back to the kill-and-requeue path). */
-  pauseTorrent(id: string): Promise<void>;
-  resumeTorrent(id: string): Promise<void>;
-  /** Torrent-only: change which files download, mid-torrent. Rejects when the
-   * torrent isn't active or the selection is empty. */
-  updateTorrentFiles(id: string, onlyFiles: number[]): Promise<void>;
-  /** Session-wide torrent caps (bytes/sec; null = unlimited). The provider
-   * merges the user's limits with Quiet Hours and pushes the effective pair. */
-  setTorrentRateLimits(downloadBps: number | null, uploadBps: number | null): Promise<void>;
-  /** Live session-wide cap for direct downloads (quiet hours); null = none. */
-  setDirectRateLimit(bytesPerSecond: number | null): Promise<void>;
   /** "Update tracker": fresh announce to trackers/DHT/LSD; keeps progress. */
   reannounceTorrent(id: string): Promise<void>;
   /** "Force re-check": hash every piece on disk again. */
   recheckTorrent(id: string): Promise<void>;
-  /** Stop a torrent and delete its files from disk. */
-  removeTorrentData(id: string): Promise<void>;
   /** Peers of a live torrent (Peers tab; poll while visible). */
   getTorrentPeers(id: string): Promise<TorrentPeer[]>;
   /** Static facts about an active torrent (detail panel). */
@@ -212,12 +185,7 @@ export interface IPrismService {
    * unsubscribe function. */
   onMenuAction(handler: (action: string) => void): () => void;
 
-  /** Convert a finished file. Reports through the same progress and completion
-   * events a download uses, under `id`, so a conversion appears as another
-   * running item. `durationSecs` comes from the item being converted, because
-   * ffmpeg reports a position but never a total; 0 means the percentage is
-   * left out rather than invented. */
-  convertFile(id: string, input: string, preset: ConvertPreset, durationSecs: number): Promise<void>;
+
 
   // Clipboard
   copyToClipboard(text: string): Promise<void>;

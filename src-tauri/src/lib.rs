@@ -3196,6 +3196,16 @@ mod tests {
             "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
+        // Engine commands the queue (queue.rs) calls from Rust. Since the page
+        // has one queue path (REVIEW 2026-09-28 A-1), no window needs them, and
+        // granting them let a page start a download that skipped queue_add's
+        // checks: granted to no window.
+        const QUEUE_ONLY: &[&str] = &[
+            "start_download", "cancel_download", "start_http_download", "cancel_http_download",
+            "set_http_rate_limit", "start_torrent", "cancel_torrent", "pause_torrent", "resume_torrent",
+            "update_torrent_files", "set_torrent_rate_limit", "convert_file", "cancel_convert",
+            "restart_torrent_engine",
+        ];
         let build = include_str!("../build.rs");
         let (main, player) = (capability("default"), capability("player"));
         let allow = |c: &str| format!("allow-{}", c.replace('_', "-"));
@@ -3204,7 +3214,8 @@ mod tests {
         for command in &registered {
             assert!(build.contains(&format!("\"{command}\"")), "{command} is missing from build.rs COMMANDS");
             let only_player = PLAYER_ONLY.contains(&command.as_str());
-            assert_eq!(main.contains(&allow(command)), !only_player, "main window and {command}");
+            let only_queue = QUEUE_ONLY.contains(&command.as_str());
+            assert_eq!(main.contains(&allow(command)), !only_player && !only_queue, "main window and {command}");
             assert_eq!(player.contains(&allow(command)), only_player, "player window and {command}");
         }
         for id in &player {

@@ -44,7 +44,6 @@ export type QueueAction =
   | { type: 'remove'; id: string }
   | { type: 'removeMany'; ids: string[] }
   | { type: 'clearCompleted' }
-  | { type: 'startAll' }
   | { type: 'pauseAll' }
   | { type: 'reorder'; from: number; to: number };
 
@@ -256,9 +255,6 @@ export function queueReducer(queue: DownloadItem[], action: QueueAction): Downlo
 
     case 'clearCompleted':
       return queue.filter(i => i.status !== 'completed');
-
-    case 'startAll':
-      return queue.map(i => (i.status === 'paused' ? { ...i, status: 'queued' as const } : i));
 
     case 'pauseAll':
       return queue.map(i =>

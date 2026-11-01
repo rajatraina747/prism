@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { formatBytes, generateId, isTorrentUrl, isDirectFileUrl } from '@/services';
+import { formatBytes, isTorrentUrl, isDirectFileUrl } from '@/services';
 import { categoriesInUse, labelsInUse, nextSelection } from '@/stores/transfers';
 import {
   Clock, Search, Trash2, ListX, CheckCircle2, XCircle, Ban, RotateCcw,
@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
+import { buildItem } from '@/stores/build-item';
 
 type FilterTab = 'all' | 'completed' | 'failed' | 'canceled';
 
@@ -102,25 +103,15 @@ export default function Library() {
   // stale failure entry is dropped (a successful retry shouldn't leave it
   // behind); completed/canceled entries stay put.
   const requeue = useCallback((item: HistoryItem) => {
-    addToQueue({
-      id: generateId(),
+    addToQueue(buildItem({
       metadata: item.metadata,
-      settings: item.settings,
-      status: 'queued',
-      progress: 0,
-      speed: 0,
-      eta: 0,
-      downloadedBytes: 0,
-      // Real size when history has it; torrents and direct files never get
-      // the yt-dlp placeholder (it would read as "476.8 MB" until the engine
-      // learns the real size).
-      totalBytes: item.totalBytes || item.settings.format?.fileSize
-        || (isTorrentUrl(item.metadata.source.url) || isDirectFileUrl(item.metadata.source.url) ? 0 : 500_000_000),
-      retryAttempt: 0,
+      // Queued again now, whatever it was held for then.
+      settings: { ...item.settings, startImmediately: true },
+      totalBytes: item.totalBytes || item.settings.format?.fileSize,
       kind: isTorrentUrl(item.metadata.source.url)
         ? 'torrent'
         : isDirectFileUrl(item.metadata.source.url) ? 'direct' : undefined,
-    });
+    }));
     if (item.status === 'failed') removeFromHistory(item.id);
     toast.success(`${item.status === 'failed' ? 'Retrying' : 'Queued again'}: ${item.metadata.title}`);
   }, [addToQueue, removeFromHistory]);
