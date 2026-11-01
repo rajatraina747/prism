@@ -33,9 +33,9 @@ LIBMPV_WRAPPER_SHA256_MACOS_X86_64=99d65d7e368a456c883b4b3cf5d6384c9af64ec29dcca
 LIBMPV_WRAPPER_SHA256_WINDOWS_X86_64=d2ff8b2edcd34d2968e544adaa915e5e5c48eb1a0995945005269c2af119a492
 
 # libmpv for Windows — zhongfly's LGPL build, https://github.com/zhongfly/mpv-winbuild/releases
-MPV_WINBUILD_TAG=2026-09-13-13a4bfbc1a
-MPV_WINBUILD_ASSET=mpv-dev-lgpl-x86_64-20260913-git-13a4bfbc1a.7z
-MPV_WINBUILD_SHA256=152188dd100c7206917ca5e4d43d5b548170ad91046cdb0415dfde0e168fb640
+MPV_WINBUILD_TAG=2026-11-01-914a11c30c
+MPV_WINBUILD_ASSET=mpv-dev-lgpl-x86_64-20261101-git-914a11c30c.7z
+MPV_WINBUILD_SHA256=9509c1483c1eb2888042ac1d45ac05e5d0138ebaa2505d6f488ea9f03ba6df6c
 
 # LGPL media toolchain for macOS arm64 — libmpv, ffmpeg and ffprobe built from
 # pinned sources by scripts/build-media-macos.sh and published by
@@ -58,11 +58,11 @@ MEDIA_MACOS_ARM64_SOURCES_SHA256=4bb9497c6f6f0d3747914466a1cbba15fca50c2ea5d5c60
 # rolling tag and would silently change what a release ships.
 #
 # The 8.1 branch on purpose — it is the same ffmpeg the macOS toolchain builds
-# (8.1.2), so a bug report means the same thing on every platform. Shared
+# (8.1.x), so a bug report means the same thing on every platform. Shared
 # rather than static: the static build is roughly twice the size for the same
 # two programs, and the libraries travel with them.
-BTBN_TAG=autobuild-2026-09-15-13-18
-BTBN_FFMPEG_WIN64=ffmpeg-n8.1.2-53-g1005b294ff-win64-lgpl-shared-8.1.zip
-BTBN_FFMPEG_WIN64_SHA256=3b8e88c903043650350bf39adcd96c686e348e35857fd3476603e4d4ce126063
-BTBN_FFMPEG_LINUX64=ffmpeg-n8.1.2-53-g1005b294ff-linux64-lgpl-shared-8.1.tar.xz
-BTBN_FFMPEG_LINUX64_SHA256=c8fb071899337b16680ea1848c87fac27c3f31ff2c88e3c3b6c813f2625e9af1
+BTBN_TAG=autobuild-2026-11-01-12-49
+BTBN_FFMPEG_WIN64=ffmpeg-n8.1.3-29-gad3b795b72-win64-lgpl-shared-8.1.zip
+BTBN_FFMPEG_WIN64_SHA256=786b43f77ea260af71fbb1bcdaabd43df83492122fb5575027f659d490d30b37
+BTBN_FFMPEG_LINUX64=ffmpeg-n8.1.3-29-gad3b795b72-linux64-lgpl-shared-8.1.tar.xz
+BTBN_FFMPEG_LINUX64_SHA256=bcf24617e957f296e763e9f5d208065f27483f07aba433bc09d573f4d483c7fe
