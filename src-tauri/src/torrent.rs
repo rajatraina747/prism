@@ -1083,7 +1083,19 @@ impl TorrentManager {
                 };
 
                 if stats.finished && finished_at.is_none() {
-                    finished_at = Some(resolve_completion_path(&handle, &output_dir));
+                    let path = resolve_completion_path(&handle, &output_dir);
+                    // Downloaded is when the files become the user's: flag and
+                    // record them now, not when seeding ends (which may be days,
+                    // or never), or Open and Play are refused meanwhile. Doing
+                    // it again after a move is harmless; the ledger dedupes.
+                    let single_file = handle.with_metadata(|m| m.file_infos.len() == 1).unwrap_or(false);
+                    let (finish_app, p, dir) = (app.clone(), path.clone(), output_dir.clone());
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        quarantine_torrent(single_file, p.as_deref(), &dir);
+                        record_finished(&finish_app, single_file, p.as_deref(), &dir);
+                    })
+                    .await;
+                    finished_at = Some(path);
                 }
                 crate::queue::emit_progress(
                     &app,
@@ -1103,7 +1115,9 @@ impl TorrentManager {
                         uploaded_bytes: uploaded,
                         peerless_secs,
                         seeding: stats.finished,
-                        output_folder: finished_at.as_ref().map(|_| output_dir.clone()),
+                        // Known once the add returns, so a finished file can be opened
+                        // while the rest still downloads.
+                        output_folder: Some(output_dir.clone()),
                         file_path: finished_at.clone().flatten(),
                         files,
                         pieces,
