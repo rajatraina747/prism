@@ -6,6 +6,7 @@ import type {
 import { useService } from '@/services/ServiceProvider';
 import { useSettings } from '@/stores/AppProvider';
 import { normalizeSha256 } from '@/stores/checksum';
+import { torrentFilePath } from '@/stores/torrent-item';
 import { formatBytes, formatSpeed, formatEta } from '@/services/utils';
 import { PiecesBar } from '@/components/queue/PiecesBar';
 import { ProgressBar, CommitInput } from '@/components/common';
@@ -455,7 +456,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
     return <p className="text-[11px] text-muted-foreground px-1">File list appears once the torrent's metadata has been fetched from peers.</p>;
   }
   const canEdit = !!onUpdateFiles && (item.status === 'downloading' || item.status === 'paused');
-  const dest = (item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
+  const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
   const folders = groupByFolder(files);
   const selectedSet = item.settings.selectedFiles;
   const isSelected = (i: number) => selectedSet?.includes(i) ?? true;
@@ -489,7 +490,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
               {!isCollapsed && folder.files.map(f => {
                 const sel = isSelected(f.index);
                 const base = f.name.split('/').pop() ?? f.name;
-                const full = `${dest}/${f.name}`;
+                const full = torrentFilePath(item, f.name);
                 const complete = f.progress >= 100;
                 return (
                   <div key={f.index} className={cn('flex items-center gap-2 text-[11px] py-0.5 tabular-nums', folder.path && 'pl-6')}>
