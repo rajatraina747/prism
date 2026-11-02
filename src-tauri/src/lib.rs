@@ -309,13 +309,18 @@ pub(crate) fn lookup_network_args(app: &AppHandle) -> Vec<String> {
 /// (which `--ignore-config` still honours), rather than on the command line,
 /// where any local user could read it with `ps` (REVIEW 2026-09-28).
 pub(crate) fn ytdlp_proxy_args(app: &AppHandle) -> Vec<String> {
-    let Some(proxy) = proxy_url(app) else { return Vec::new() };
+    let file = app.path().app_data_dir().ok().map(|d| d.join("engine").join("proxy.conf"));
+    let Some(proxy) = proxy_url(app) else {
+        discard_proxy_conf(file.as_deref());
+        return Vec::new();
+    };
     let has_credentials = url::Url::parse(&proxy).is_ok_and(|u| !u.username().is_empty() || u.password().is_some());
     let plain = || vec!["--proxy".to_string(), proxy.clone()];
     if !has_credentials || proxy.contains(['"', '\\', '\n', '\r']) {
+        discard_proxy_conf(file.as_deref());
         return plain();
     }
-    let Some(file) = app.path().app_data_dir().ok().map(|d| d.join("engine").join("proxy.conf")) else {
+    let Some(file) = file else {
         return plain();
     };
     match write_private(&file, &format!("--proxy \"{proxy}\"\n")) {
@@ -323,6 +328,16 @@ pub(crate) fn ytdlp_proxy_args(app: &AppHandle) -> Vec<String> {
         Err(e) => {
             log::warn!("couldn't write the proxy config ({e}); passing it on the command line");
             plain()
+        }
+    }
+}
+
+/// Remove the credentials file once nothing needs it, so a password the user
+/// has since taken out of the settings doesn't linger on disk.
+fn discard_proxy_conf(file: Option<&std::path::Path>) {
+    if let Some(file) = file.filter(|f| f.exists()) {
+        if let Err(e) = std::fs::remove_file(file) {
+            log::warn!("couldn't remove the old proxy config: {e}");
         }
     }
 }
@@ -456,7 +471,7 @@ async fn parse_playlist(app: AppHandle, url: String, limit: Option<u32>) -> Resu
         log::warn!(
             "link lookup on {} failed: {}",
             extract_domain(&url),
-            stderr.trim().lines().last().unwrap_or("no output")
+            errors::redact(stderr.trim().lines().last().unwrap_or("no output"))
         );
         return Err(errors::classify_output(&stderr));
     }
@@ -2760,6 +2775,19 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_stale_proxy_config_is_removed() {
+        let dir = std::env::temp_dir().join(format!("prism-proxyconf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("proxy.conf");
+        std::fs::write(&file, "--proxy \"http://u:p@h:1\"\n").unwrap();
+        discard_proxy_conf(Some(&file));
+        assert!(!file.exists());
+        discard_proxy_conf(Some(&file)); // already gone: no panic
+        discard_proxy_conf(None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Where the app's own pages are served from, as capability URL matching
     /// sees it: wry serves `tauri://localhost` on macOS/Linux and
     /// `http://tauri.localhost` on Windows.
