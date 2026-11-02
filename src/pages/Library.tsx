@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useHistory, useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
+import { torrentFilePath } from '@/stores/torrent-item';
 import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
 import { FailureNote } from '@/components/common/FailureNote';
 import { VirtualList } from '@/components/common/VirtualList';
@@ -54,15 +55,6 @@ function playInPrism(path: string, title: string) {
   import('@/lib/player-window')
     .then(({ openInPlayer }) => openInPlayer({ path, title }))
     .catch((e) => toast.error(`Couldn't open the player: ${e instanceof Error ? e.message : e}`));
-}
-
-/** Absolute(ish) path of one file inside a torrent download — file names in
- * history are relative to the folder the engine wrote into (`outputFolder`;
- * a multi-file torrent gets `<destination>/<name>`), or to the destination
- * itself for items recorded before 1.8.1. */
-function torrentFilePath(item: HistoryItem, name: string): string {
-  const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
-  return `${dest}/${name}`;
 }
 
 const iconButton = 'p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]';
@@ -651,9 +643,10 @@ const LibraryRow = React.memo(function LibraryRow({
               ?? (isTorrent ? (item.outputFolder ?? item.settings.destination) : undefined);
             return (
               <>
-                {/* In-app player: mpv handles anything, including a
-                    multi-file torrent's folder (loaded as a playlist). */}
-                {playerAvailable && item.filePath && (
+                {/* In-app player: one file. A multi-file torrent's path is its
+                    folder, which the player refuses; its files have their own
+                    buttons in the expanded list. */}
+                {playerAvailable && item.filePath && !(isTorrent && (item.files?.length ?? 0) > 1) && (
                   <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title="Play in Prism" aria-label="Play in Prism" className={iconButton}>
                     <MonitorPlay className="w-3.5 h-3.5" />
                   </button>

@@ -34,3 +34,15 @@ export function importedTorrentItems(
   }
   return items;
 }
+
+/** Absolute(ish) path of one file inside a torrent download. File names are
+ * relative to the folder the engine wrote into (`outputFolder`; a multi-file
+ * torrent gets its own folder), or to the destination itself for items
+ * recorded before 1.8.1. */
+export function torrentFilePath(
+  item: { outputFolder?: string; settings: { destination?: string } },
+  name: string,
+): string {
+  const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
+  return `${dest}/${name}`;
+}
