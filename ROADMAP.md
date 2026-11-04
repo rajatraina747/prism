@@ -32,14 +32,12 @@ nothing.
 
 ### Before 2.4.0
 
-- [ ] **Mirror the Windows/Linux media builds.** **High:** the next release
-  probably fails without it, because upstream deletes nightlies after a few
-  weeks. The scripts are done: `MEDIA_THIRDPARTY_TAG` in `sidecars.lock`,
-  `fetch-sidecars.sh` tries the mirror before upstream with the same SHA-256,
-  and `update-sidecars.sh` points the next pin at a new mirror tag.
-  **Left: run `scripts/mirror-media.sh` once** to create
-  `media-thirdparty-20261101`. It's created with `--latest=false`, because the
-  updater reads `releases/latest`. Re-run it after every repin.
+- [x] **Mirror the Windows/Linux media builds.** `fetch-sidecars.sh` tries
+  `rajatraina747/prism` release `$MEDIA_THIRDPARTY_TAG` first, then upstream,
+  with the same SHA-256. `media-thirdparty-20261101` holds the current pins
+  (verified 2026-11-05: the fetch works with upstream unreachable, and Latest
+  is untouched). **After every `update-sidecars.sh` repin, run
+  `scripts/mirror-media.sh`.**
 - [x] **Limit the Apple-playback re-encode to macOS by default.** New setting
   `applePlayable` ("Make videos play on Apple devices"). When unset, it's on for
   macOS and off elsewhere (`lib.rs apple_playable`). The re-encode is also
