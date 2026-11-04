@@ -212,12 +212,12 @@ export default function Queue() {
         <div className="flex gap-1.5">
           {hasActive && (
             <button onClick={pauseAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
-              <Pause className="w-3 h-3" /> Pause All
+              <Pause className="w-3 h-3" /> Pause all
             </button>
           )}
           {hasPaused && (
             <button onClick={startAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-xs font-medium text-primary hover:bg-primary/20 transition-colors active:scale-[0.97]">
-              <Play className="w-3 h-3" /> Resume All
+              <Play className="w-3 h-3" /> Resume all
             </button>
           )}
         </div>

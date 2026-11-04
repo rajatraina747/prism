@@ -307,7 +307,7 @@ export default function Library() {
               title="Play any audio or video file on this computer (⌘O)"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              <FolderOpen className="w-3 h-3" /> Play a File…
+              <FolderOpen className="w-3 h-3" /> Play a file…
             </button>
           )}
           {inTab.length > 0 && (
@@ -316,7 +316,7 @@ export default function Library() {
               onClick={() => setConfirmClear(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
+              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear all' : `Clear ${TAB_LABELS[tab].toLowerCase()}`}
             </button>
           )}
         </div>

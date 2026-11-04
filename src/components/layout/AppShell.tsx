@@ -94,7 +94,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98] max-[999px]:justify-center max-[999px]:px-0"
           >
             <PlayCircle className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-            <span className="max-[999px]:sr-only">Play a File</span>
+            <span className="max-[999px]:sr-only">Play a file</span>
             <kbd className="ml-auto text-xs font-sans opacity-70 max-[999px]:hidden">{MOD_KEY}O</kbd>
           </button>
         )}

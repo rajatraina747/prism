@@ -760,13 +760,13 @@ export default function Settings() {
                           <Loader2 className="w-3 h-3 animate-spin" />
                           {formatUpdateProgress(updateInstall)}
                         </span>
-                      ) : 'Check Now'}
+                      ) : 'Check now'}
                     </button>
                   </div>
                 </SettingRow>
                 {updateState === 'available' && updateNotes && (
                   <div className="py-2.5">
-                    <p className="text-xs text-muted-foreground font-medium mb-1">Release Notes</p>
+                    <p className="text-xs text-muted-foreground font-medium mb-1">Release notes</p>
                     <p className="text-xs text-muted-foreground whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
                   </div>
                 )}
@@ -866,7 +866,7 @@ export default function Settings() {
               onClick={() => setConfirmReset(true)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive transition-colors active:scale-[0.97]"
             >
-              Reset to Defaults
+              Reset to defaults
             </button>
           </div>
         </div>

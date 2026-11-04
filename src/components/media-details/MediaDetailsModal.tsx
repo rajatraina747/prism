@@ -152,14 +152,14 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               )}
             >
               <Music className="w-3 h-3" />
-              Audio Only
+              Audio only
             </button>
           </div>
 
           {/* Format Selection — only for video mode */}
           {!audioOnly && (
             <div>
-              <label className="panel-header block">Quality & Format</label>
+              <label className="panel-header block">Quality & format</label>
               {/* Cap the list — some sites return a dozen formats, which would
                   otherwise push the dialog (and its Add button) off-screen. */}
               <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
@@ -362,7 +362,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 disabled={!audioOnly && !selectedFormat}
                 className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
               >
-                Add to Queue
+                Add to queue
               </button>
             </div>
           </div>

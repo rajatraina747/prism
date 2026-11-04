@@ -18,9 +18,9 @@ test.describe('Settings', () => {
     await expect(page.locator('html')).toHaveClass(/light/);
   });
 
-  test('Reset to Defaults button is visible', async ({ page }) => {
+  test('Reset to defaults button is visible', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.getByText('Reset to Defaults')).toBeVisible();
+    await expect(page.getByText('Reset to defaults')).toBeVisible();
   });
 
   test('can navigate between settings sections', async ({ page }) => {

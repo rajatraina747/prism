@@ -19,7 +19,7 @@ export default function About() {
       <div className="page-header text-center">
         <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
         <h1 className="page-title">Prism</h1>
-        <p className="page-subtitle">Premium Video Downloader</p>
+        <p className="page-subtitle">Downloads, plays and converts video</p>
         <p className="text-xs text-muted-foreground mt-1">
           by{' '}
           <OutboundLink href="https://www.rainacorp.co.uk" className="hover:text-muted-foreground transition-colors">

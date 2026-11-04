@@ -43,7 +43,7 @@ export default function PrivacyPolicy() {
             </ul>
             <p className="mt-2">
               None of this is transmitted anywhere. Delete it at any time by removing the application data
-              folder or using "Reset to Defaults" in Settings.
+              folder or using "Reset to defaults" in Settings.
             </p>
           </section>
 
