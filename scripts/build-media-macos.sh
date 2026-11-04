@@ -212,7 +212,7 @@ for dylib in "$OUT"/lib/*.dylib; do
   install_name_tool -id "@loader_path/$(basename "$dylib")" "$dylib"
   # meson leaves libmpv with an rpath for the build tree as well as the install
   # tree. A duplicate rpath is what made the bundled libmpv hand back a NULL
-  # handle in July (docs/AUDIT-2026-07.md), so the gate below refuses more than
+  # handle in July 2026 (see git history, docs/AUDIT-2026-07.md), so the gate below refuses more than
   # one: reduce every dylib to a single @loader_path. Signing happens after.
   # Always per-architecture: MoltenVK ships fat (x86_64 + arm64) and otool
   # prints the load commands of every slice, so reading them all would see one

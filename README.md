@@ -51,7 +51,7 @@
 - **Cross-platform** — Native desktop apps for macOS (Apple Silicon), Windows, and Linux, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking. Crash reporting exists but is strictly opt-in (off by default) and contains no personal data or download history.
 
-See [ROADMAP.md](ROADMAP.md) for what's done and what's next.
+See [ROADMAP.md](ROADMAP.md) for what's next, how releases work and the security model.
 
 ## Requirements
 
@@ -179,9 +179,16 @@ upstream releases, run `scripts/update-sidecars.sh`, review the lockfile diff, a
 - `RELEASE_NOTES.md` is the release body — update it *before* tagging.
 - The npm `@tauri-apps/api` and Rust `tauri` crate must be on the same minor.
 - After the release is published, bump the Homebrew cask in `rajatraina747/homebrew-prism`.
-- The updater signing key: backup, encryption and rotation are in [`docs/RELEASE-KEYS.md`](docs/RELEASE-KEYS.md).
+- The full release steps and the updater signing key (backup, rotation) are in [ROADMAP.md → Releasing](ROADMAP.md#releasing).
 
-Found a security issue? See [SECURITY.md](SECURITY.md) — please report it privately.
+## Security
+
+Found a security issue? Please **don't open a public issue**. Report it privately:
+**[Report a vulnerability](https://github.com/rajatraina747/prism/security/advisories/new)**.
+Include the Prism version (Settings → About), your OS, what an attacker can do and what they
+need first (a web page, a crafted `.torrent`, local access…), and steps to reproduce. You'll
+hear back within a week. Only the latest release gets fixes; Prism updates itself from
+Settings → Updates. Problems in yt-dlp, librqbit, mpv or Tauri themselves belong upstream.
 
 ## Project Structure
 

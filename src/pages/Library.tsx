@@ -36,9 +36,9 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-// The embedded player needs the libmpv wrapper staged next to the executable,
-// which dev builds do and bundled releases don't yet (ROADMAP → In-app player
-// → Distribution) — ask the backend rather than assuming.
+// The embedded player needs libmpv beside the executable. Release builds for
+// macOS and Windows bundle it; Linux and some dev builds don't — ask the
+// backend rather than assuming.
 function usePlayerAvailable(): boolean {
   const [available, setAvailable] = useState(false);
   React.useEffect(() => {

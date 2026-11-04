@@ -1,7 +1,7 @@
 //! BitTorrent engine. Wraps librqbit behind a `TorrentManager` that mirrors
 //! `download_manager::DownloadManager`: it emits the same `download-progress-{id}` /
 //! `download-complete-{id}` events so torrents flow through the existing queue, plus
-//! torrent-only swarm stats and a `seeding` flag. See ROADMAP.md → "Second engine".
+//! torrent-only swarm stats and a `seeding` flag.
 //!
 //! Trust boundary: file names inside a torrent come from untrusted metadata. Writes
 //! are confined to `output_folder` and librqbit is responsible for rejecting

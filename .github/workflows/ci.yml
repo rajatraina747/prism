@@ -184,7 +184,7 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
-  # The per-release checklist from docs/AUDIT-2026-07.md, enforced.
+  # The dependency audits from the release checklist (ROADMAP.md), enforced.
   audit:
     runs-on: ubuntu-latest
     steps:
