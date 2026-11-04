@@ -1,5 +1,6 @@
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 
 // Opens (or reuses) the dedicated "player" window. The player is a separate
 // transparent window because mpv embeds into a window's native view *beneath*
@@ -64,9 +65,27 @@ export async function openInPlayer(raw: PlayerSource): Promise<void> {
     // everywhere the page doesn't paint.
     transparent: true,
     center: true,
+    // Files dropped on the player reach Rust as a native event
+    // (player::on_player_drop), which validates them and loads the first.
+    dragDropEnabled: true,
   });
   await new Promise<void>((resolve, reject) => {
     void win.once('tauri://created', () => resolve());
     void win.once('tauri://error', (e) => reject(new Error(String(e.payload))));
   });
+}
+
+/** "Play a File…" (⌘O, Library): Rust shows the picker and remembers the
+ * choice, so the player accepts it from any folder or drive. Resolves to
+ * false when the user cancels. */
+export async function pickAndPlay(): Promise<boolean> {
+  // ⌘O works on every page, but not every build has libmpv (Linux, some dev
+  // builds): say so rather than opening a player window that can't start.
+  if (!(await invoke<boolean>('player_available'))) {
+    throw new Error("the built-in player isn't available in this build");
+  }
+  const picked = await invoke<{ path: string; title: string } | null>('pick_media_file');
+  if (!picked) return false;
+  await openInPlayer({ path: picked.path, title: picked.title });
+  return true;
 }

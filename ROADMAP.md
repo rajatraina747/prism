@@ -43,14 +43,19 @@ nothing.
   macOS and off elsewhere (`lib.rs apple_playable`). The re-encode is also
   skipped above 1080p when only OpenH264 is available, and when there isn't room
   for a second copy. It now reports progress.
-- [ ] **Gate ⌘O on `player_available`.** PR #28: on a build without libmpv,
+- [x] **Gate ⌘O on `player_available`.** PR #28: on a build without libmpv,
   show a toast instead of opening a player window that fails.
-- [ ] **README pass.** The feature list is missing Convert, direct-link
+- [x] **README pass.** The feature list is missing Convert, direct-link
   downloads, RSS feeds and play-any-file. It mentions only the Firefox extension,
   but a Chromium build ships too.
 
 ### Hygiene (2.4.x)
 
+- [x] **The yt-dlp self-update was rejected on every launch** (since 2.3.1,
+  every user). `freshness.json` was written into `engine/ytdlp/` after its tree
+  hash was recorded. It now lives in `engine/`, and a copy left inside is
+  ignored. Leftover `ytdlp.staging-*` folders (~124 MB each) are cleared before
+  each update.
 - [ ] **Filtering DNS resolver for URLs a remote server chooses** (Low–Med). A
   redirect or DNS answer can still point direct downloads, RSS fetches or
   thumbnails into the LAN or loopback. Where:

@@ -10,7 +10,7 @@ import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal'
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
 import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
-import { DEFAULT_PRESETS, type MediaMetadata, type DownloadItem, type DownloadPreset, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
+import { qualityFromStored, type DefaultQuality, type MediaMetadata, type DownloadItem, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
 import { formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
@@ -20,12 +20,11 @@ import { createLimiter } from '@/lib/limit';
 import { referrerFor } from '@/lib/referrers';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
-import { cn } from '@/lib/utils';
-import { Sparkles, Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen, Film, ListMusic } from 'lucide-react';
+import { Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen, Film, ListMusic } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { publicAsset } from "@/lib/public-asset";
 import { buildItem } from '@/stores/build-item';
-import { BATCH_LOOKUPS, pickFormatForPreset, presetToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem } from './dashboard/add-items';
+import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem } from './dashboard/add-items';
 
 function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
   return (
@@ -55,7 +54,10 @@ export default function Dashboard() {
   const [parsedMetadata, setParsedMetadata] = useState<MediaMetadata | null>(null);
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ total: number; done: number } | null>(null);
-  const [selectedPreset, setSelectedPreset] = useState<DownloadPreset>(DEFAULT_PRESETS[2]); // Full HD default
+  // The quality used when Prism doesn't ask: this site's remembered one while
+  // its link is open, else Settings → Default quality.
+  const [siteQuality, setSiteQuality] = useState<DefaultQuality | null>(null);
+  const quality: DefaultQuality = siteQuality ?? preferences.defaultQuality ?? '1080p';
 
   // Playlist state
   const [parsedPlaylist, setParsedPlaylist] = useState<PlaylistInfo | null>(null);
@@ -179,13 +181,9 @@ export default function Dashboard() {
       setListChoice(ambiguous);
       return;
     }
-    // Pre-select this site's last-used quality preset before the details modal opens.
+    // Pre-select the quality last picked on this site before the details modal opens.
     const host = siteKey(url);
-    const rememberedId = host ? preferences.perSitePresets[host] : undefined;
-    if (rememberedId) {
-      const remembered = DEFAULT_PRESETS.find(p => p.id === rememberedId);
-      if (remembered) setSelectedPreset(remembered);
-    }
+    setSiteQuality((host ? qualityFromStored(preferences.perSitePresets[host]) : undefined) ?? null);
     setIsParsing(true);
     try {
       lastParsedUrlRef.current = url;
@@ -311,7 +309,7 @@ export default function Dashboard() {
         const found = await (lookups.get(i) ?? service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]));
         if (found.kind === 'playlist') {
           // A list in a batch: every entry, as if chosen in the list dialog.
-          const listFormat = presetToFormat(selectedPreset);
+          const listFormat = qualityToFormat(quality);
           for (const entry of found.playlist.entries) {
             if (findDuplicate(entry.url, [...queueItems, ...added], []) === 'queue') {
               skipped++;
@@ -347,7 +345,7 @@ export default function Dashboard() {
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
-        const format = pickFormatForPreset(metadata.formats, selectedPreset) || metadata.formats[0];
+        const format = pickFormatForQuality(metadata.formats, quality) || metadata.formats[0];
         const item = buildItem({
           metadata,
           settings: {
@@ -372,7 +370,7 @@ export default function Dashboard() {
     if (failed > 0) parts.push(`${failed} failed to parse`);
     if (abortBulkRef.current) parts.push('stopped early');
     (failed > 0 ? toast.warning : toast.info)(parts.join(' · '));
-  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, selectedPreset, queueItems]);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, quality, queueItems]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     // The page the link came from, if the extension said (lib/referrers.ts).
@@ -383,14 +381,15 @@ export default function Dashboard() {
     toast.success(`Added to queue: ${item.metadata.title}`, {
       action: { label: 'View queue', onClick: () => navigate('/queue') },
     });
-    // Remember this site's quality preset for next time. Key through siteKey so
-    // the read path (raw input URL) and write path (yt-dlp's webpage_url_domain)
-    // agree on the same normalized host.
+    // Remember the quality picked on this site for next time. Key through
+    // siteKey so the read path (raw input URL) and write path (yt-dlp's
+    // webpage_url_domain) agree on the same normalized host.
     const host = siteKey(item.metadata.source.domain);
-    if (host && !item.settings.audioOnly && item.kind !== 'torrent') {
-      updatePreference('perSitePresets', { ...preferences.perSitePresets, [host]: selectedPreset.id });
+    const picked = qualityFromStored(item.settings.format?.resolution);
+    if (host && picked && !item.settings.audioOnly && item.kind !== 'torrent') {
+      updatePreference('perSitePresets', { ...preferences.perSitePresets, [host]: picked });
     }
-  }, [addToQueue, updatePreference, preferences.perSitePresets, selectedPreset.id, navigate]);
+  }, [addToQueue, updatePreference, preferences.perSitePresets, navigate]);
 
   const handleTorrentConfirm = useCallback((indices: number[]) => {
     // All files selected → leave selectedFiles undefined (download everything).
@@ -412,7 +411,7 @@ export default function Dashboard() {
     const speedLimitBytes = preferences.bandwidthLimit > 0
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
-    const format = presetToFormat(selectedPreset);
+    const format = qualityToFormat(quality);
 
     for (const entry of entries) {
       addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined));
@@ -422,7 +421,7 @@ export default function Dashboard() {
     setParsedPlaylist(null);
     toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
     navigate('/queue');
-  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, selectedPreset, navigate]);
+  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, quality, navigate]);
 
   handleBatchSubmitRef.current = handleBatchSubmit;
 
@@ -489,28 +488,7 @@ export default function Dashboard() {
         <StatTile icon={HardDrive} value={totalDownloadedBytes > 0 ? formatBytes(totalDownloadedBytes) : '—'} label="Total downloaded" delay={130} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mt-4">
-        {/* Quick Presets */}
-        <Panel title="Quick Presets" className="animate-fade-in" style={{ animationDelay: '100ms' } as React.CSSProperties}>
-          <div className="flex flex-wrap gap-1.5">
-            {DEFAULT_PRESETS.map(preset => (
-              <button
-                key={preset.id}
-                onClick={() => setSelectedPreset(preset)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors active:scale-[0.97]',
-                  selectedPreset.id === preset.id
-                    ? 'bg-primary/15 text-primary border border-primary/30'
-                    : 'bg-secondary/60 text-secondary-foreground hover:bg-secondary border border-transparent'
-                )}
-              >
-                <Sparkles className="w-3 h-3" />
-                {preset.name}
-              </button>
-            ))}
-          </div>
-        </Panel>
-
+      <div className="mt-4">
         {/* Queue Snapshot */}
         <Panel title="Active Queue" className="animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
           {activeDownloads.length === 0 ? (
@@ -600,7 +578,7 @@ export default function Dashboard() {
         onClose={() => setShowMediaModal(false)}
         metadata={parsedMetadata}
         onAddToQueue={handleAddToQueue}
-        preferredResolution={selectedPreset.resolution}
+        preferredResolution={quality === 'best' ? 'Best' : quality}
       />
 
       {/* Playlist Modal */}

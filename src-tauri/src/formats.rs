@@ -125,16 +125,35 @@ pub(crate) fn plays_everywhere(codec: &str) -> bool {
 struct Group {
     label_height: u32,
     height: u32,
+    high_fps: bool,
     codecs: Vec<&'static str>,
     size: u64,
 }
 
-/// One option per resolution × frame rate (up to 30 / above 30) × SDR or
-/// HDR, best first: highest resolution, then SDR before HDR (HDR looks
-/// washed out on most screens and players), then the higher frame rate.
+/// The usual name for a picture by its long side: 1920×1080, 1080×1920 (a
+/// vertical video) and 1920×800 (a film) are all "1080p". Naming by height
+/// alone called a vertical video's streams "1920p" and "854p" beside the
+/// site's own "1080p" and "480p" for the same thing (2026-11-05).
+fn ladder_name(width: u32, height: u32) -> u32 {
+    match width.max(height) {
+        l if l >= 3800 => 2160,
+        l if l >= 2500 => 1440,
+        l if l >= 1900 => 1080,
+        l if l >= 1260 => 720,
+        l if l >= 840 => 480,
+        l if l >= 630 => 360,
+        l if l >= 420 => 240,
+        _ => 144,
+    }
+}
+
+/// One option per resolution, SDR or HDR, best first: highest resolution,
+/// then SDR before HDR (HDR looks washed out on most screens and players).
+/// 30 and 60 fps are one option that takes the higher rate when there is
+/// one: two near-identical rows per resolution only made the list longer.
 pub(crate) fn options(formats: &[YtDlpFormat], keep_container: bool) -> Vec<FormatOption> {
-    // (label height, high fps, hdr) → group
-    let mut groups: BTreeMap<(u32, bool, bool), Group> = BTreeMap::new();
+    // (label height, hdr) → group
+    let mut groups: BTreeMap<(u32, bool), Group> = BTreeMap::new();
     for f in formats {
         let height = f.height.unwrap_or(0);
         // A missing codec is not "none": archive.org (and other sites) don't
@@ -145,14 +164,15 @@ pub(crate) fn options(formats: &[YtDlpFormat], keep_container: bool) -> Vec<Form
         if height < 144 || vcodec == "none" || f.ext.as_deref() == Some("mhtml") {
             continue;
         }
-        // The site's own name for the height when it has one ("1080p" for a
-        // 1920×1036 film), else the pixel height.
+        // The site's own name when it has one ("1080p" for a 1920×1036 film),
+        // else the usual name for its size, else the pixel height.
         let note = f.format_note.as_deref().unwrap_or("");
         let label_height = note
             .strip_suffix('p')
             .and_then(|n| n.parse::<u32>().ok())
             .or_else(|| note.split('p').next().and_then(|n| n.parse::<u32>().ok()))
             .filter(|h| *h >= 144)
+            .or_else(|| f.width.map(|w| ladder_name(w, height)))
             .unwrap_or(height);
         let high_fps = f.fps.is_some_and(|fps| fps > 30.5);
         // HDR only where someone would want it: below 1080p it only doubled
@@ -161,9 +181,10 @@ pub(crate) fn options(formats: &[YtDlpFormat], keep_container: bool) -> Vec<Form
         if f.dynamic_range.as_deref().is_some_and(|d| !d.eq_ignore_ascii_case("SDR")) && !hdr {
             continue;
         }
-        let group = groups.entry((label_height, high_fps, hdr)).or_default();
+        let group = groups.entry((label_height, hdr)).or_default();
         group.label_height = label_height;
         group.height = group.height.max(height);
+        group.high_fps |= high_fps;
         let codec = codec_name(vcodec);
         if !group.codecs.contains(&codec) {
             group.codecs.push(codec);
@@ -171,11 +192,11 @@ pub(crate) fn options(formats: &[YtDlpFormat], keep_container: bool) -> Vec<Form
         group.size = group.size.max(f.filesize.or(f.filesize_approx).unwrap_or(0));
     }
 
-    let mut keyed: Vec<((u32, bool, bool), Group)> = groups.into_iter().collect();
-    keyed.sort_by(|((ha, fa, da), _), ((hb, fb, db), _)| hb.cmp(ha).then(da.cmp(db)).then(fb.cmp(fa)));
+    let mut keyed: Vec<((u32, bool), Group)> = groups.into_iter().collect();
+    keyed.sort_by(|((ha, da), _), ((hb, db), _)| hb.cmp(ha).then(da.cmp(db)));
     keyed
         .into_iter()
-        .map(|((label_height, high_fps, hdr), g)| option_for(label_height, g.height, high_fps, hdr, &g.codecs, g.size, keep_container))
+        .map(|((label_height, hdr), g)| option_for(label_height, g.height, g.high_fps, hdr, &g.codecs, g.size, keep_container))
         .collect()
 }
 
@@ -190,8 +211,9 @@ fn option_for(
 ) -> FormatOption {
     let offered: Vec<&str> = codecs.iter().copied().filter(|c| !hdr || *c != "H.264").collect();
     let codec = delivered_codec(&offered, keep_container);
-    // `=?`/`<=?`: sites that don't report fps or dynamic range still match.
-    let fps = if high_fps { "[fps>30]" } else { "[fps<=?30]" };
+    // No frame-rate filter: yt-dlp's own order prefers the higher rate at a
+    // given height, which is what the one option per resolution means.
+    // `=?`: sites that don't report a dynamic range still match.
     let range = if hdr { "[dynamic_range!=SDR]" } else { "[dynamic_range=?SDR]" };
     let h = height;
     // The chosen resolution wins over codec compatibility: yt-dlp takes the
@@ -200,10 +222,10 @@ fn option_for(
     // for HDR, which has none), then any codec there, then the nearest below.
     let mut chain = Vec::new();
     if !hdr {
-        chain.push(format!("bestvideo[height={h}]{fps}{range}[vcodec^=avc1]+bestaudio[acodec^=mp4a]"));
+        chain.push(format!("bestvideo[height={h}]{range}[vcodec^=avc1]+bestaudio[acodec^=mp4a]"));
     }
-    chain.push(format!("bestvideo[height={h}]{fps}{range}+bestaudio"));
-    chain.push(format!("bestvideo[height<={h}]{fps}{range}+bestaudio"));
+    chain.push(format!("bestvideo[height={h}]{range}+bestaudio"));
+    chain.push(format!("bestvideo[height<={h}]{range}+bestaudio"));
     chain.push(format!("bestvideo[height<={h}]+bestaudio"));
     chain.push(format!("best[height<={h}]"));
     chain.push("best".into());
@@ -285,7 +307,7 @@ mod tests {
     #[test]
     fn labels_say_what_arrives() {
         let labels: Vec<String> = options(&youtube_4k(), false).into_iter().map(|o| o.label).collect();
-        assert_eq!(labels, ["2160p60 · VP9", "2160p60 HDR · VP9", "1080p60 · H.264", "1080p · H.264", "720p · H.264"]);
+        assert_eq!(labels, ["2160p60 · VP9", "2160p60 HDR · VP9", "1080p60 · H.264", "720p · H.264"]);
         // Without Prism's H.264 sort, yt-dlp's own order puts AV1 first.
         assert_eq!(options(&youtube_4k(), true)[0].label, "2160p60 · AV1");
     }
@@ -300,10 +322,48 @@ mod tests {
     #[test]
     fn the_exact_height_wins_and_hdr_never_asks_for_h264() {
         let opts = options(&youtube_4k(), false);
-        assert!(opts[0].id.starts_with("bestvideo[height=2160][fps>30][dynamic_range=?SDR][vcodec^=avc1]"));
-        assert!(opts[1].id.starts_with("bestvideo[height=2160][fps>30][dynamic_range!=SDR]+bestaudio"));
+        assert!(opts[0].id.starts_with("bestvideo[height=2160][dynamic_range=?SDR][vcodec^=avc1]"));
+        assert!(opts[1].id.starts_with("bestvideo[height=2160][dynamic_range!=SDR]+bestaudio"));
         assert!(!opts[1].id.contains("avc1"));
-        assert!(opts[3].id.contains("[fps<=?30]"));
+    }
+
+    // Regression (2026-11-05): a vertical 1080×1920 upload listed its HLS
+    // streams (no format note) by pixel height — "1920p60", "1280p60",
+    // "854p" — beside YouTube's "1080p60", "720p60" and "480p" for the same
+    // sizes, plus a 30 fps twin of each.
+    #[test]
+    fn a_vertical_video_lists_each_size_once() {
+        let portrait = |w: u32, h: u32, fps: f64, note: Option<&str>| YtDlpFormat {
+            width: Some(w),
+            height: Some(h),
+            vcodec: Some("avc1.640028".into()),
+            fps: Some(fps),
+            dynamic_range: Some("SDR".into()),
+            ext: Some("mp4".into()),
+            format_note: note.map(String::from),
+            ..Default::default()
+        };
+        let formats = vec![
+            portrait(1080, 1920, 60.0, None),
+            portrait(720, 1280, 60.0, None),
+            portrait(480, 854, 30.0, None),
+            portrait(1080, 1920, 60.0, Some("1080p60")),
+            portrait(720, 1280, 60.0, Some("720p60")),
+            portrait(720, 1280, 30.0, Some("720p")),
+            portrait(480, 854, 30.0, Some("480p")),
+        ];
+        let labels: Vec<String> = options(&formats, false).into_iter().map(|o| o.label).collect();
+        assert_eq!(labels, ["1080p60 · H.264", "720p60 · H.264", "480p · H.264"]);
+        // The selector uses the real pixel height, which is the long side here.
+        assert!(options(&formats, false)[0].id.contains("[height=1920]"));
+    }
+
+    #[test]
+    fn films_and_unnamed_streams_get_the_usual_name() {
+        assert_eq!(ladder_name(1920, 800), 1080);
+        assert_eq!(ladder_name(3840, 1600), 2160);
+        assert_eq!(ladder_name(854, 480), 480);
+        assert_eq!(ladder_name(1080, 1920), 1080);
     }
 
     #[test]

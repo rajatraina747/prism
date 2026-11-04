@@ -197,6 +197,16 @@ fn recorded_tree_path(binary: &Path) -> PathBuf {
     binary.with_extension("tree-sha256")
 }
 
+/// Prism's own files in the engine folder, which aren't part of the engine.
+/// `freshness.json` (the last update check) was written *into* the folder
+/// from 2.3.1 to 2.4.0, after the tree was recorded, so every launch saw one
+/// file too many, rejected the engine and downloaded it again. It now lives
+/// one level up; a copy left inside is ignored so those installs heal.
+fn is_prism_record(rel: &Path) -> bool {
+    let name = rel.to_string_lossy();
+    name.ends_with(".sha256") || name.ends_with(".tree-sha256") || name.ends_with(".version") || name == "freshness.json"
+}
+
 /// Every regular file under `folder`, as paths relative to it, sorted, with
 /// Prism's own records left out.
 fn tree_files(folder: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -210,8 +220,7 @@ fn tree_files(folder: &Path) -> std::io::Result<Vec<PathBuf>> {
                 stack.push(entry.path());
             } else {
                 let rel = entry.path().strip_prefix(folder).map(Path::to_path_buf).unwrap_or_default();
-                let name = rel.to_string_lossy();
-                if !(name.ends_with(".sha256") || name.ends_with(".tree-sha256") || name.ends_with(".version")) {
+                if !is_prism_record(&rel) {
                     out.push(rel);
                 }
             }
@@ -305,14 +314,28 @@ fn managed_binary_verified(binary: &Path) -> bool {
             }
         }
     }
-    let exe_ok = read_record(recorded_sha_path(binary)).is_some_and(|expected| sha256_file(binary).is_ok_and(|actual| actual == expected));
-    let tree_ok = match &tree {
-        Some((expected, folder)) => tree_sha256(folder).is_ok_and(|actual| &actual == expected),
-        None => true,
+    let exe_actual = sha256_file(binary);
+    let exe_expected = read_record(recorded_sha_path(binary));
+    let exe_ok = exe_expected.as_ref().is_some_and(|e| exe_actual.as_ref().is_ok_and(|a| a == e));
+    let tree_actual = tree.as_ref().map(|(_, folder)| tree_sha256(folder));
+    let tree_ok = match (&tree, &tree_actual) {
+        (Some((expected, _)), Some(Ok(actual))) => actual == expected,
+        (Some(_), _) => false,
+        (None, _) => true,
     };
     let ok = exe_ok && tree_ok;
     if !ok {
-        log::warn!("self-updated yt-dlp failed its integrity check; using the bundled engine");
+        // Say which check failed and with what, so a mismatch can be traced.
+        let files = tree.as_ref().and_then(|(_, f)| tree_files(f).ok()).map(|f| f.len());
+        log::warn!(
+            "self-updated yt-dlp failed its integrity check; using the bundled engine \
+             (exe ok: {exe_ok}, exe: {:?} vs {:?}; tree ok: {tree_ok}, tree: {:?} vs {:?}, files: {files:?}, at {})",
+            exe_actual.as_ref().map(|h| &h[..12.min(h.len())]).map_err(|e| e.to_string()),
+            exe_expected.as_deref().map(|h| &h[..12]),
+            tree_actual.as_ref().map(|r| r.as_ref().map(|h| h[..12].to_string()).map_err(|e| e.to_string())),
+            tree.as_ref().map(|(e, _)| &e[..12]),
+            binary.display(),
+        );
     }
     if let Ok(mut guard) = CACHE.lock() {
         *guard = Some((binary.to_path_buf(), len, mtime, stamp, ok));
@@ -436,8 +459,10 @@ impl Freshness {
     }
 }
 
+/// `engine/freshness.json`: beside the engine's folder, never inside it,
+/// where it would change the folder the integrity record covers.
 fn freshness_path(app: &AppHandle) -> Option<PathBuf> {
-    managed_ytdlp_path(app)?.parent().map(|dir| dir.join("freshness.json"))
+    managed_ytdlp_path(app)?.parent()?.parent().map(|dir| dir.join("freshness.json"))
 }
 
 fn read_freshness(app: &AppHandle) -> Option<Freshness> {
@@ -668,6 +693,7 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let staging = folder.with_file_name(format!("ytdlp.staging-{unique}"));
+    remove_leftover_installs(&folder);
     let unpacked = {
         let staging = staging.clone();
         tauri::async_runtime::spawn_blocking(move || {
@@ -735,6 +761,27 @@ pub async fn update_ytdlp(app: AppHandle) -> Result<String, String> {
     remove_legacy_engine(&app);
     log::info!("yt-dlp engine updated to {version}");
     Ok(version)
+}
+
+/// Staging and retired engine folders an earlier update left behind (the app
+/// quit or was killed mid-update; ~120 MB each). Safe to clear here: only one
+/// update runs at a time, and the live engine is `folder` itself.
+fn remove_leftover_installs(folder: &Path) {
+    let Some(parent) = folder.parent() else { return };
+    let Ok(entries) = std::fs::read_dir(parent) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_leftover_install(&name) && entry.path() != folder {
+            match std::fs::remove_dir_all(entry.path()) {
+                Ok(()) => log::info!("yt-dlp update: removed leftover {name}"),
+                Err(e) => log::warn!("yt-dlp update: couldn't remove leftover {name}: {e}"),
+            }
+        }
+    }
+}
+
+fn is_leftover_install(name: &str) -> bool {
+    name.starts_with("ytdlp.staging-") || name.starts_with("ytdlp.old-")
 }
 
 /// The one-file engine a pre-2.3 update installed, with its records.
@@ -881,6 +928,41 @@ cccc3333  yt-dlp.exe";
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    // Regression (2026-11-05): the update check wrote freshness.json into the
+    // engine's folder after its tree was recorded, so every launch rejected
+    // the engine and downloaded it again. Only `freshness.json` at the top
+    // is exempt; one in `_internal/` is still an added file.
+    #[test]
+    fn the_update_check_record_does_not_break_the_engine() {
+        let dir = std::env::temp_dir().join(format!("prism-engine-fresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("_internal")).unwrap();
+        let bin = dir.join(YTDLP_NAME);
+        std::fs::write(&bin, b"launcher").unwrap();
+        std::fs::write(dir.join("_internal/base.zip"), b"code").unwrap();
+        std::fs::write(recorded_sha_path(&bin), sha256_file(&bin).unwrap()).unwrap();
+        std::fs::write(recorded_tree_path(&bin), tree_sha256(&dir).unwrap()).unwrap();
+        std::fs::write(dir.join("freshness.json"), br#"{"latest":"2026.10.26"}"#).unwrap();
+        assert!(managed_binary_verified(&bin), "freshness.json beside the engine broke it");
+        std::fs::write(dir.join("_internal/freshness.json"), b"{}").unwrap();
+        assert!(!managed_binary_verified(&bin), "a file inside _internal must still count");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn leftover_update_folders_are_cleared_but_the_engine_is_kept() {
+        let root = std::env::temp_dir().join(format!("prism-engine-leftovers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in ["ytdlp", "ytdlp.staging-1", "ytdlp.old-2", "ytdlp-notes"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        remove_leftover_installs(&root.join("ytdlp"));
+        assert!(root.join("ytdlp").exists(), "the live engine stays");
+        assert!(root.join("ytdlp-notes").exists(), "only Prism's own leftovers go");
+        assert!(!root.join("ytdlp.staging-1").exists() && !root.join("ytdlp.old-2").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn http_client_builds_with_timeouts() {
         assert!(client_builder().build().is_ok());
@@ -956,3 +1038,4 @@ cccc3333  yt-dlp.exe";
         assert_eq!(garbage.age(), Duration::MAX);
     }
 }
+

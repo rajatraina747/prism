@@ -352,39 +352,140 @@ pub async fn player_destroy(app: AppHandle, window: tauri::Window) -> Result<(),
 #[tauri::command]
 pub async fn player_load(app: AppHandle, window: tauri::Window, path: String) -> Result<(), String> {
     ensure_player_window(&window)?;
-    let validated = crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?;
+    let validated = crate::validate_open_path(&path, false, &crate::picked_dirs(&app));
+    // A path from the page must be something Prism downloaded (ledger.rs),
+    // or one the user chose in a dialog Rust showed or dropped on the player
+    // (`UserPicked`). Those aren't held to the download roots either: the
+    // choice is the permission, and mpv only ever plays the file.
+    if let Some(picked) = user_picked_media(&app, &path) {
+        return load_validated(&app, picked).await;
+    }
+    let validated = validated?;
     if !crate::is_openable_media(&validated) {
         return Err("The player only opens media files".into());
     }
-    // A path from the page must be something Prism downloaded (ledger.rs).
-    // Any other file comes in through `player_open_file`, where the user
-    // picks it in a dialog Rust shows.
     crate::ledger::require_recorded(&app, &validated)?;
     load_validated(&app, validated).await
 }
 
-/// "Open file…" in the player: Rust shows the dialog, so the user's pick is
-/// the permission, and loads the file. Returns its name, or None if the user
-/// cancelled.
-#[tauri::command]
-pub async fn player_open_file(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
+/// Audio and video the player opens from anywhere when the user picks it.
+/// Narrower than `is_openable_media`: no images, subtitles or documents.
+pub const PLAYABLE_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "mkv", "webm", "mov", "avi", "flv", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts",
+    "3gp", "ogv", "vob", "mp3", "m4a", "aac", "opus", "ogg", "oga", "wav", "flac", "aiff", "aif",
+    "wma", "alac",
+];
+
+pub fn is_playable(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .is_some_and(|e| PLAYABLE_EXTENSIONS.contains(&e.as_str()))
+}
+
+/// Files the user chose this session in a dialog Rust showed, or dropped on
+/// the player window (a native event, not something the page can fake).
+/// Canonical paths. Session-only: nothing is persisted, so a page can't grow
+/// this list, and the next launch starts empty.
+#[derive(Default)]
+pub struct UserPicked(std::sync::Mutex<std::collections::HashSet<String>>);
+
+/// Check a file the user chose and remember it. Returns its canonical path.
+/// Deliberately not held to the download roots, so a film on an external
+/// drive or a NAS plays; still has to be a real file of a media type.
+pub fn accept_user_pick(app: &AppHandle, path: &std::path::Path) -> Result<String, String> {
+    use tauri::Manager;
+    let resolved = path.canonicalize().map_err(|_| "File not found".to_string())?;
+    if !resolved.is_file() {
+        return Err("That isn't a file".into());
+    }
+    if !is_playable(&resolved) {
+        return Err("The player only opens audio and video files".into());
+    }
+    let canonical = crate::canonical_string(&resolved);
+    if let Some(state) = app.try_state::<UserPicked>() {
+        if let Ok(mut set) = state.0.lock() {
+            set.insert(canonical.clone());
+        }
+    }
+    Ok(canonical)
+}
+
+/// `path`, canonical, if the user picked it this session.
+fn user_picked_media(app: &AppHandle, path: &str) -> Option<String> {
+    use tauri::Manager;
+    let canonical = crate::canonical_string(&std::path::Path::new(path).canonicalize().ok()?);
+    let state = app.try_state::<UserPicked>()?;
+    let set = state.0.lock().ok()?;
+    set.contains(&canonical).then_some(canonical)
+}
+
+/// Show the "play a file" dialog and return what was chosen.
+async fn pick_playable(app: &AppHandle) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
-    ensure_player_window(&window)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Media", &["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "mp3", "m4a", "opus", "flac", "wav", "ogg"])
+        .set_title("Play a file")
+        .add_filter("Audio and video", PLAYABLE_EXTENSIONS)
         .pick_file(move |picked| {
             let _ = tx.send(picked);
         });
     let Some(picked) = rx.await.map_err(|_| "File picker was closed".to_string())? else {
         return Ok(None);
     };
-    let path = picked.into_path().map_err(|e| format!("Invalid file: {e}"))?;
-    let validated = crate::validate_open_path(&path.to_string_lossy(), false, &crate::picked_dirs(&app))?;
-    if !crate::is_openable_media(&validated) {
-        return Err("The player only opens media files".into());
+    picked.into_path().map(Some).map_err(|e| format!("Invalid file: {e}"))
+}
+
+/// A file the main window wants played, picked in a Rust dialog.
+#[derive(serde::Serialize)]
+pub struct PickedMedia {
+    pub path: String,
+    pub title: String,
+}
+
+/// "Play a file…" from the main window (Library, ⌘O). Rust shows the dialog
+/// and remembers the choice, so the `player_load` that follows accepts it.
+/// None if the user cancelled.
+#[tauri::command]
+pub async fn pick_media_file(app: AppHandle) -> Result<Option<PickedMedia>, String> {
+    let Some(path) = pick_playable(&app).await? else { return Ok(None) };
+    let path = accept_user_pick(&app, &path)?;
+    let title = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(Some(PickedMedia { path, title }))
+}
+
+/// A file dropped on the player window. The paths come from the OS drop
+/// event in Rust, so the page can't make one up. The first playable one is
+/// remembered and handed to the player as an ordinary load.
+pub fn on_player_drop(app: &AppHandle, paths: &[std::path::PathBuf]) {
+    use tauri::Emitter;
+    let Some(path) = paths.iter().find(|p| is_playable(p)) else {
+        let _ = app.emit_to(PLAYER_LABEL, "player-load-error", "The player only opens audio and video files");
+        return;
+    };
+    match accept_user_pick(app, path) {
+        Ok(path) => {
+            let title = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned());
+            let _ = app.emit_to(PLAYER_LABEL, "player-load", serde_json::json!({ "path": path, "title": title }));
+        }
+        Err(e) => {
+            let _ = app.emit_to(PLAYER_LABEL, "player-load-error", e);
+        }
     }
+}
+
+/// "Open file…" in the player: Rust shows the dialog, so the user's pick is
+/// the permission, and loads the file — from any folder or drive. Returns
+/// its name, or None if the user cancelled.
+#[tauri::command]
+pub async fn player_open_file(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
+    ensure_player_window(&window)?;
+    let Some(path) = pick_playable(&app).await? else { return Ok(None) };
+    let validated = accept_user_pick(&app, &path)?;
     let name = std::path::Path::new(&validated).file_name().map(|n| n.to_string_lossy().into_owned());
     load_validated(&app, validated).await?;
     Ok(name)
@@ -523,11 +624,55 @@ pub async fn player_add_subtitle(
     path: String,
 ) -> Result<(), String> {
     ensure_player_window(&window)?;
-    let validated = crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?;
+    // Beside the file that is playing is fine wherever that is (those are
+    // what `player_sibling_subtitles` offers); otherwise the usual roots.
+    let validated = match beside_current_media(&app, &path) {
+        Some(p) => p,
+        None => crate::validate_open_path(&path, false, &crate::picked_dirs(&app))?,
+    };
+    add_subtitle(&app, validated).await
+}
+
+/// "Add subtitle…": Rust shows the dialog, so a subtitle anywhere works.
+/// Returns false if the user cancelled.
+#[tauri::command]
+pub async fn player_pick_subtitle(app: AppHandle, window: tauri::Window) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    ensure_player_window(&window)?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Add subtitles")
+        .add_filter("Subtitles", SUBTITLE_EXTENSIONS)
+        .pick_file(move |picked| {
+            let _ = tx.send(picked);
+        });
+    let Some(picked) = rx.await.map_err(|_| "File picker was closed".to_string())? else {
+        return Ok(false);
+    };
+    let path = picked.into_path().map_err(|e| format!("Invalid file: {e}"))?;
+    let resolved = path.canonicalize().map_err(|_| "File not found".to_string())?;
+    if !resolved.is_file() {
+        return Err("File not found".into());
+    }
+    add_subtitle(&app, crate::canonical_string(&resolved)).await?;
+    Ok(true)
+}
+
+/// `path`, canonical, when it's a file in the same folder as what's playing.
+fn beside_current_media(app: &AppHandle, path: &str) -> Option<String> {
+    use tauri::Manager;
+    let current = app.state::<crate::player_state::PlayerState>().current()?.path?;
+    let dir = std::path::Path::new(&current).parent()?.canonicalize().ok()?;
+    let resolved = std::path::Path::new(path).canonicalize().ok()?;
+    (resolved.is_file() && resolved.parent() == Some(dir.as_path())).then(|| crate::canonical_string(&resolved))
+}
+
+async fn add_subtitle(app: &AppHandle, validated: String) -> Result<(), String> {
     if !is_subtitle(&validated) {
         return Err("That isn't a subtitle file".into());
     }
-    mpv_worker(&app)
+    mpv_worker(app)
         .run("sub-add", CALL_TIMEOUT, move |mpv| {
             mpv.command(
                 "sub-add",
@@ -698,6 +843,23 @@ pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    // Picked files skip the download roots, so the type check is what keeps
+    // "Play a File…" to media: no scripts, apps, images or documents.
+    #[test]
+    fn only_audio_and_video_can_be_picked_to_play() {
+        use std::path::Path;
+        for ok in ["/Volumes/NAS/Film.MKV", "D:/films/a.mp4", "/x/song.flac", "/x/a.m2ts"] {
+            assert!(super::is_playable(Path::new(ok)), "{ok}");
+        }
+        for bad in ["/x/run.command", "/x/a.app", "/x/a.exe", "/x/a.pdf", "/x/a.srt", "/x/a.jpg", "/x/noext", "/x/a.mp4.sh"] {
+            assert!(!super::is_playable(Path::new(bad)), "{bad}");
+        }
+        // Everything playable is also something Prism would open at all.
+        for ext in super::PLAYABLE_EXTENSIONS {
+            assert!(crate::is_openable_media(&format!("/x/a.{ext}")), "{ext}");
+        }
+    }
+
     // Regression (2.0.2): the macOS libmpv shipped since 2.0 is built without
     // Lua, so `osc`/`ytdl` don't exist and setting them failed player init.
     // Regression (2.0.3): 2.0.2 still set `osc` from the fixed list, so a

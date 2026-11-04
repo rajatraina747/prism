@@ -34,6 +34,7 @@
     "allow-player-set-mini",
     "allow-player-seek",
     "allow-player-set",
-    "allow-player-open-file"
+    "allow-player-open-file",
+    "allow-player-pick-subtitle"
   ]
 }

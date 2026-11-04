@@ -18,6 +18,7 @@ import {
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { toast } from 'sonner';
 import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
@@ -36,18 +37,10 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-// The embedded player needs libmpv beside the executable. Release builds for
-// macOS and Windows bundle it; Linux and some dev builds don't — ask the
-// backend rather than assuming.
-function usePlayerAvailable(): boolean {
-  const [available, setAvailable] = useState(false);
-  React.useEffect(() => {
-    import('@tauri-apps/api/core')
-      .then(({ isTauri, invoke }) => (isTauri() ? invoke<boolean>('player_available') : false))
-      .then(setAvailable)
-      .catch(() => {});
-  }, []);
-  return available;
+function playAFile() {
+  import('@/lib/player-window')
+    .then(({ pickAndPlay }) => pickAndPlay())
+    .catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
 }
 
 function playInPrism(path: string, title: string) {
@@ -306,6 +299,16 @@ export default function Library() {
                 <AlignJustify className="w-3.5 h-3.5" />
               </button>
             </>
+          )}
+          {playerAvailable && (
+            <button
+              type="button"
+              onClick={playAFile}
+              title="Play any audio or video file on this computer (⌘O)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              <FolderOpen className="w-3 h-3" /> Play a File…
+            </button>
           )}
           {inTab.length > 0 && (
             <button

@@ -2545,6 +2545,7 @@ pub fn run() {
         .manage(torrent::TorrentManager::new())
         .manage(stream_server::StreamServer::new())
         .manage(player_state::PlayerState::new())
+        .manage(player::UserPicked::default())
         .manage(store::Store::new())
         .manage(queue::QueueManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
@@ -2571,6 +2572,13 @@ pub fn run() {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     lifecycle::on_main_close_requested(window, api);
+                }
+            }
+            // Files dropped on the player: the paths come from the OS, so
+            // a drop is as good as a pick (player::on_player_drop).
+            if window.label() == "player" {
+                if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                    player::on_player_drop(window.app_handle(), paths);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -2733,6 +2741,8 @@ pub fn run() {
             player::player_load,
             player::player_load_stream,
             player::player_open_file,
+            player::player_pick_subtitle,
+            player::pick_media_file,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -3234,6 +3244,7 @@ mod tests {
         const PLAYER_ONLY: &[&str] = &[
             "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
             "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
+            "player_pick_subtitle",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
         // Engine commands the queue (queue.rs) calls from Rust. Since the page
