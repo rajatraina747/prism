@@ -56,11 +56,14 @@ test.describe('Library', () => {
     await expect(firstRow).toContainText('Library entry 0');
   });
 
-  test('can be laid out as a grid', async ({ page }) => {
+  test('opens as a poster grid and can switch to a list and back', async ({ page }) => {
     await page.goto('/library');
+    // Posters first since 2.6: the Library is where watching starts.
+    await page.getByRole('button', { name: 'Show as a list' }).click();
+    // Still a selectable listbox — the layout changes, not the meaning, so a
+    // screen reader is told the same thing either way.
+    expect(await page.getByRole('option').count()).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Show as a grid' }).click();
-    // Still a selectable listbox — a grid changes the layout, not the meaning,
-    // so a screen reader is told the same thing either way.
     expect(await page.getByRole('option').count()).toBeGreaterThan(0);
     await expect(page.getByRole('button', { name: 'Show as a list' })).toBeVisible();
   });

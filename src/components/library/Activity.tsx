@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStats } from '@/stores/AppProvider';
 import { Panel } from '@/components/common';
 import { formatBytes } from '@/services';
 import { topBy, recentDays, engineTotals, type StatsEngine } from '@/stores/stats';
-import { CheckCircle2, XCircle, Ban, HardDrive, ArrowUpFromLine } from 'lucide-react';
+import { CheckCircle2, XCircle, Ban, HardDrive, ArrowUpFromLine, ChevronRight, BarChart3 } from 'lucide-react';
 
 // Charts are drawn by hand, the way the player's speed graph is: a handful of
 // bars doesn't justify a charting library, and these stay in step with the
@@ -66,7 +66,11 @@ function BarList({ rows, empty }: {
   );
 }
 
-export default function Statistics() {
+/** Lifetime download counters and the last 30 days, at the top of the
+ * Library: the Statistics page until 2.6, whose four tiles and a chart
+ * didn't need a sidebar slot. Collapsed to one line by default. */
+export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const { stats } = useStats();
   const days = useMemo(() => recentDays(stats, 30), [stats]);
   const sites = useMemo(() => topBy(stats.bySite), [stats]);
@@ -76,16 +80,25 @@ export default function Statistics() {
   const busiest = Math.max(1, ...days.map(d => d.bytes));
   const finished = stats.completed + stats.failed + stats.canceled;
 
+  const summary = finished === 0
+    ? 'Nothing has finished downloading yet'
+    : `${stats.completed.toLocaleString()} completed · ${formatBytes(stats.bytes)} since ${when(stats.since)}`;
+
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1 className="page-title">Statistics</h1>
-        <p className="page-subtitle">
-          {finished === 0
-            ? 'Nothing has finished downloading yet.'
-            : `Everything Prism has finished since ${when(stats.since)}.`}
-        </p>
-      </div>
+    <section aria-label="Activity" className="mb-4 rounded-xl border border-border/30 bg-card/40">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <BarChart3 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        <span className="font-medium text-foreground">Activity</span>
+        <span className="truncate tabular-nums">{summary}</span>
+        <ChevronRight className={`w-3.5 h-3.5 ml-auto shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+      <div className="px-3 pb-3">
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
         <Tile icon={HardDrive} label="Downloaded" value={formatBytes(stats.bytes)} />
@@ -160,6 +173,8 @@ export default function Statistics() {
         These counters are kept separately from the Library, so removing entries from the Library
         doesn't change the totals above.
       </p>
-    </div>
+      </div>
+      )}
+    </section>
   );
 }

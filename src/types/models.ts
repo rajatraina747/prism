@@ -651,7 +651,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   whenDoneIgnoresSeeding: false,
   closeToTray: true,
   librarySort: 'newest',
-  libraryView: 'list',
+  // Posters first: the Library is where watching starts (2.6).
+  libraryView: 'grid',
   listDensity: 'comfortable',
   // All unassigned: Prism claims no system-wide key until asked to.
   shortcuts: { addFromClipboard: '', showPrism: '', pauseAll: '' },
