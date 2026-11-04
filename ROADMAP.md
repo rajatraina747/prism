@@ -111,23 +111,94 @@ nothing.
 - [ ] **Linux player.** Measure the effort before promising it.
 - [ ] Subtitle search (OpenSubtitles, user's own API key). Low priority.
 
-### UX (2.5)
+### Interface overhaul (2.5–2.6)
 
-- [ ] **Narrow windows.** At 900×600 the sidebar and logo crowd the content.
-  Below ~1000px, collapse the sidebar to icons, and keep queue stats on one line.
-- [ ] Clear the Dashboard URL box once its item is queued.
-- [ ] Torrent file picker: show "Selected X · Y free" and disable Add when it
-  won't fit (needs the torrent free-space check).
-- [ ] Actions the ledger would refuse are disabled, with the reason as a
-  tooltip, instead of failing in a toast.
-- [ ] Terminology pass, Settings regroup and search, and one policy for
-  destructive actions.
-- [ ] Empty-state actions, Library keyboard support, ⌘F, contrast and a 12px
-  minimum type size.
-- [ ] One add pipeline. Add-time options: clip, start-after, checksum, hold.
-- [ ] Bulk retry and edit, per-item speed limit, custom presets, and
-  per-subscription options.
-- [ ] i18n scaffold (English only at first).
+Decided 2026-11-05: refine the look (keep the dark theme, green accent and
+logo) and reorganise around what Prism does now, which is downloading,
+playing, converting and following feeds. The engine and Rust core stay as
+they are. Each stage below is its own release, shipped and used before the
+next one starts.
+
+**Audit (2026-11-05), what's wrong today:**
+- The Dashboard repeats other pages: a second add box beside the Add sheet,
+  an "Active Queue" that is a short Transfers, and "Recent Downloads" that is
+  a short Library.
+- Playing has no home: "Play a File" was a small Library button until 2.4.
+- The Library mixes media with a failure log (completed, failed and
+  cancelled tabs).
+- Statistics takes a sidebar slot for four counters and a chart.
+- Settings: 10 tabs, 14 groups, 67 rows, no search.
+- Look: page widths differ (centred on Dashboard and Statistics, full width
+  on Transfers and Library). Every page names itself twice (top bar and
+  heading; Statistics' top bar says "Prism"). The logo block uses a quarter of
+  the sidebar. 129 uses of 11px text and no type scale. Empty states say
+  "paste a URL on the Dashboard" instead of offering a button.
+
+**Target structure:**
+
+| Sidebar | Holds |
+|---|---|
+| **Add** (⌘N), **Play a File** (⌘O) | The two actions, as now. |
+| **Downloads** (`/`) | The home page, merging Dashboard and Transfers. The add bar on top uses the same pipeline as the Add sheet. Then a status strip (active, speed, free space, totals). Then the list with filters: Active, Queued, Needs attention (failed and cancelled), Done today. The Transfers table, detail panel, multi-select and shortcuts are kept. The first-run setup card stays. |
+| **Library** | Finished media only: a poster grid by default, Play first, Play a File in the header. Filters: video/audio/torrent, category, label, missing. Statistics' 30-day chart becomes a collapsible "Activity" strip here. |
+| **Subscriptions** | As now, after the visual pass. |
+| **Settings** (bottom) | About, licences and legal move inside it. |
+
+- Old routes redirect: `/queue` → `/`, `/statistics` → `/library`.
+- Settings drops from 10 tabs to 6:
+  - **General:** appearance, notifications, updates, "when done", shortcuts.
+  - **Downloads:** quality, files, cookies, SponsorBlock, speed and quiet hours.
+  - **Torrents.**
+  - **Player & conversion.**
+  - **Network.**
+  - **Privacy & advanced:** diagnostics, crash reports, about, legal.
+- Plus a search box over every row.
+
+**Look (a refinement, not a rebrand):**
+- **Type scale tokens:** 12 / 13 / 14 / 16 / 20 / 24 px, with no
+  `text-[Npx]`. An eslint rule bans arbitrary sizes, so it holds.
+- **Contrast:** no muted text below /80.
+- **One page layout:** a single `<Page>` with the title once (the top bar
+  becomes breadcrumbs and actions) and one content width (fluid, max ~1100px).
+- **Sidebar:** a compact brand row (32px logo + name). Below ~1000px it
+  collapses to icons.
+- **Empty states** offer the action as a button ("Add a link", "Play a file").
+- **One destructive-action policy:** undo toast for reversible actions, a
+  confirm dialog only for deleting files.
+- **One vocabulary:** Downloads, Library, Subscriptions, Cancelled, sentence case.
+
+**Stages:**
+
+- [ ] **2.5.0 Foundations.** Visible straight away, low risk; the structure
+  isn't changed yet.
+  - Type tokens and the eslint rule.
+  - `<Page>` layout and the single title.
+  - Compact, collapsible sidebar.
+  - Contrast pass, empty-state actions, terminology pass.
+  - Also from the old UX list: clear the URL box once queued, and disabled
+    actions with the reason as a tooltip.
+  - Check with Playwright screenshots of every page at 1200×800 and 900×600,
+    in both themes.
+- [ ] **2.5.1 Downloads home.**
+  - Merge Dashboard and Transfers into `/`, with one add pipeline (Dashboard
+    box = Add sheet).
+  - The status strip and the Needs-attention filter; failed and cancelled
+    items leave the Library.
+  - Redirects; e2e flows updated.
+  - Also from the old UX list: the torrent picker's "Selected X · Y free"
+    (needs the torrent free-space check in Hygiene).
+- [ ] **2.6.0 Library as media + player.**
+  - Poster grid default and the Activity strip (Statistics retired).
+  - From Player round 2: Recent files and folder/playlist playback
+    (next/previous), so the Library is where watching starts.
+  - Library keyboard support and ⌘F.
+- [ ] **2.6.1 Settings.**
+  - 6 tabs, search, About and legal moved inside.
+  - Per-subscription options.
+- [ ] **Then:**
+  - Add-time options (clip, start-after, checksum, hold).
+  - Bulk retry and edit, per-item speed limit, custom presets.
+  - i18n scaffold (English only at first).
 
 ### Features (later, roughly in order)
 
