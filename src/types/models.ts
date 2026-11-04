@@ -348,6 +348,9 @@ export interface AppPreferences {
   // Video: skip the forced MP4 remux so VP9/AV1 stay in mkv/webm (some
   // players mishandle those codecs inside .mp4). Read Rust-side. Default off.
   keepOriginalContainer: boolean;
+  // Re-encode VP9/AV1/Opus MP4 downloads to H.264/AAC so QuickTime, iMessage
+  // and iOS open them. Read Rust-side; unset means on for macOS, off elsewhere.
+  applePlayable?: boolean;
   // First-run setup card on the Dashboard (destination, ffmpeg, cookies).
   setupCardDismissed: boolean;
   // Torrent seeding: what to do once a torrent finishes downloading.

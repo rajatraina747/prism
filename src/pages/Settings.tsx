@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { DAY_NAMES } from '@/stores/schedule';
 import { toast } from 'sonner';
+import { IS_MAC } from '@/lib/platform';
 import { useUpdateInstall, installAppUpdate, formatUpdateProgress } from '@/stores/app-update';
 import { FolderOpen, Film, Magnet, Gauge, Globe, Bell, Palette, HardDrive, RefreshCw, Bug, Shield, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { SettingRow, SettingGroup, Advanced, Toggle, StorageTile, Select, NumberInput, TextInput } from './settings/controls';
@@ -201,6 +202,9 @@ export default function Settings() {
                 </SettingRow>
                 <SettingRow label="Keep original container" help={HELP.container} description="Off: every video becomes .mp4 for QuickTime and Finder. On: 4K/HDR downloads stay .mkv/.webm as the site serves them — better in VLC and mpv">
                   <Toggle checked={p.keepOriginalContainer} onChange={v => updatePreference('keepOriginalContainer', v)} />
+                </SettingRow>
+                <SettingRow label="Make videos play on Apple devices" description="Re-encodes the few downloads QuickTime, iMessage and iPhone can't open (VP9/AV1 video, Opus audio) to H.264/AAC. Takes extra time and some quality; skipped when Keep original container is on. On by default on Mac">
+                  <Toggle checked={p.applePlayable ?? IS_MAC} onChange={v => updatePreference('applePlayable', v)} />
                 </SettingRow>
                 <SettingRow label="SponsorBlock" help={HELP.sponsorblock} description="Mark sponsor segments as chapters, or cut them out (needs ffmpeg)">
                   <Select
