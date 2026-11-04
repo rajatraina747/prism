@@ -32,24 +32,17 @@ nothing.
 
 ### Before 2.4.0
 
-- [ ] **Mirror the Windows/Linux media builds.** **High:** the next release
-  probably fails without it. `scripts/sidecars.lock` pins zhongfly mpv-winbuild
-  and BtbN ffmpeg nightlies (2026-11-01). Both projects delete old builds after
-  a few weeks, which already broke the 2.3.3 build. Upload the pinned archives
-  to a `media-thirdparty-<date>` release in this repo, keeping the same SHA-256s.
-  Point `scripts/fetch-sidecars.sh` at them, and have `update-sidecars.sh`
-  re-mirror when it repins.
-- [ ] **Limit the Apple-playback re-encode to macOS by default.** **Medium:** a
-  regression from 2.3.5/2.3.6. After a download, VP9/AV1/Opus MP4s are
-  re-encoded to H.264/AAC (`download_manager.rs` ~616 → `playable.rs`). Since
-  2.3.6 that also happens on Windows and Linux. With no usable GPU it uses
-  software OpenH264, so a 4K download can take longer to re-encode than to
-  download. The fix:
-  - Make it a setting, "Make videos play on Apple devices": on for macOS, off
-    elsewhere.
-  - Skip it above 1080p when only a software encoder exists.
-  - Show progress (reuse `convert.rs`'s `-progress` parsing).
-  - Check there's room for a second copy before starting.
+- [x] **Mirror the Windows/Linux media builds.** `fetch-sidecars.sh` tries
+  `rajatraina747/prism` release `$MEDIA_THIRDPARTY_TAG` first, then upstream,
+  with the same SHA-256. `media-thirdparty-20261101` holds the current pins
+  (verified 2026-11-05: the fetch works with upstream unreachable, and Latest
+  is untouched). **After every `update-sidecars.sh` repin, run
+  `scripts/mirror-media.sh`.**
+- [x] **Limit the Apple-playback re-encode to macOS by default.** New setting
+  `applePlayable` ("Make videos play on Apple devices"). When unset, it's on for
+  macOS and off elsewhere (`lib.rs apple_playable`). The re-encode is also
+  skipped above 1080p when only OpenH264 is available, and when there isn't room
+  for a second copy. It now reports progress.
 - [ ] **Gate ⌘O on `player_available`.** PR #28: on a build without libmpv,
   show a toast instead of opening a player window that fails.
 - [ ] **README pass.** The feature list is missing Convert, direct-link

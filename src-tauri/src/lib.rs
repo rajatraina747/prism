@@ -1660,6 +1660,16 @@ pub fn keep_original_container(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Re-encode VP9/AV1/Opus MP4 downloads so QuickTime, iMessage and iOS can
+/// open them (playable.rs). On by default on macOS, where that's the point;
+/// off elsewhere, where those players aren't in the picture and the
+/// re-encode would only cost time and quality.
+pub fn apple_playable(app: &AppHandle) -> bool {
+    read_setting(app, "applePlayable")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(cfg!(target_os = "macos"))
+}
+
 /// Torrent seeding policy, whitelisted; defaults to seed-to-ratio (target from
 /// `seedRatioTarget`, clamped 0.1..=10, default 1.0).
 pub fn seeding_policy(app: &AppHandle) -> torrent::SeedingPolicy {
