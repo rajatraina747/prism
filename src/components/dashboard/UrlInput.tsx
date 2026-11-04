@@ -13,6 +13,9 @@ interface UrlInputProps {
   errorAction?: { label: string; onClick: () => void };
   /** Called when the user edits the URL, so a stale parse error can be dismissed. */
   onErrorClear?: () => void;
+  /** Bumped by the parent once what was typed is queued: the box clears.
+   * A failed lookup leaves it as it was, so Retry still has the link. */
+  clearSignal?: number;
 }
 
 function extractUrls(text: string): string[] {
@@ -22,12 +25,15 @@ function extractUrls(text: string): string[] {
     .filter(line => line.length > 4 && /^(https?:\/\/|magnet:\?)/i.test(line));
 }
 
-export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint, errorAction, onErrorClear }: UrlInputProps) {
+export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint, errorAction, onErrorClear, clearSignal }: UrlInputProps) {
   const [url, setUrl] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [batchCount, setBatchCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (clearSignal) setUrl('');
+  }, [clearSignal]);
 
   const handleSubmit = () => {
     const trimmed = url.trim();

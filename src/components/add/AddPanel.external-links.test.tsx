@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import Dashboard from '../Dashboard';
+import { AddPanel } from './AddPanel';
 import { StaticServiceProvider } from '@/services/ServiceProvider';
 import { AppProvider } from '@/stores/AppProvider';
 import { MockPrismService } from '@/services/mock';
@@ -16,7 +16,7 @@ function renderDashboard() {
     <MemoryRouter initialEntries={['/']}>
       <StaticServiceProvider service={service}>
         <AppProvider>
-          <Dashboard />
+          <AddPanel />
         </AppProvider>
       </StaticServiceProvider>
     </MemoryRouter>

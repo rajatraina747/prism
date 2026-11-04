@@ -14,7 +14,6 @@ import { onStoreProblem, describeStoreProblem } from '@/lib/store-problems';
 import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
 import { toast } from 'sonner';
 import {
-  LayoutDashboard,
   ArrowDownToLine,
   Library as LibraryIcon,
   Rss,
@@ -36,8 +35,7 @@ function playAFile() {
 }
 
 const NAV_ITEMS = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/queue', icon: ArrowDownToLine, label: 'Transfers' },
+  { path: '/', icon: ArrowDownToLine, label: 'Downloads' },
   { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
   { path: '/library', icon: LibraryIcon, label: 'Library' },
   { path: '/statistics', icon: BarChart3, label: 'Statistics' },
@@ -117,7 +115,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
           >
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span className="max-[999px]:sr-only">{item.label}</span>
-            {item.path === '/queue' && activeCount > 0 && (
+            {item.path === '/' && activeCount > 0 && (
               <span className="ml-auto text-xs tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md max-[999px]:absolute max-[999px]:-top-1 max-[999px]:right-1 max-[999px]:px-1 max-[999px]:py-0">
                 {activeCount}
               </span>

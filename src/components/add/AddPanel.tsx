@@ -5,45 +5,30 @@ import { useService } from '@/services/ServiceProvider';
 import { toast } from 'sonner';
 import { UrlInput } from '@/components/dashboard/UrlInput';
 import { SetupCard } from '@/components/dashboard/SetupCard';
-import { QuietHoursBanner } from '@/components/common/QuietHoursBanner';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
-import { Panel, ProgressBar, Thumb, OutboundLink } from '@/components/common';
 import { qualityFromStored, type DefaultQuality, type MediaMetadata, type DownloadItem, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
-import { formatBytes, formatSpeed, isTorrentUrl, isDirectFileUrl, isFormatlessLookup, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
+import { isTorrentUrl, isDirectFileUrl, isFormatlessLookup, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
 import { useClipboardWatcher } from '@/hooks/use-clipboard-watcher';
 import { consumeDeepLinks } from '@/lib/deep-link-bus';
 import { createLimiter } from '@/lib/limit';
 import { referrerFor } from '@/lib/referrers';
 import { COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
 import { classifyError, conciseError, errorText, type ErrorText } from '@/services/errors';
-import { Loader2, ArrowDownToLine, Gauge, CheckCircle2, HardDrive, Play, FolderOpen, Film, ListMusic } from 'lucide-react';
+import { Loader2, Film, ListMusic } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { publicAsset } from "@/lib/public-asset";
 import { buildItem } from '@/stores/build-item';
-import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem } from './dashboard/add-items';
+import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem } from './add-items';
 
-function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
-  return (
-    <div
-      className="glass-strong rounded-xl px-3.5 py-3 flex items-center gap-3 animate-fade-in"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-primary" strokeWidth={1.8} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-foreground tabular-nums truncate">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-export default function Dashboard() {
+/** Everything that adds things: the link box, the first-run setup card, the
+ * batch progress line, and the dialogs a lookup opens (quality, playlist,
+ * torrent files, external links). Shown at the top of Downloads; it was the
+ * Dashboard until 2.5.1, whose stat tiles, mini queue and recent list only
+ * repeated Downloads and the Library. */
+export function AddPanel() {
   const { items: queueItems, addToQueue } = useQueue();
   const { items: historyItems } = useHistory();
   const { preferences, updatePreference } = useSettings();
@@ -70,12 +55,9 @@ export default function Dashboard() {
 
   // A watch URL that also names a playlist — ask which the user meant.
   const [listChoice, setListChoice] = useState<{ videoUrl: string; playlistUrl: string } | null>(null);
+  // Bumped once something typed in the link box is queued, which clears it.
+  const [queuedCount, setQueuedCount] = useState(0);
 
-  const activeDownloads = useMemo(() => queueItems.filter(i => i.status === 'downloading'), [queueItems]);
-  const totalSpeed = useMemo(() => activeDownloads.reduce((s, i) => s + (i.speed || 0), 0), [activeDownloads]);
-  const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
-  const totalDownloadedBytes = useMemo(() => completedHistory.reduce((s, i) => s + (i.fileSize || 0), 0), [completedHistory]);
-  const recentDownloads = useMemo(() => completedHistory.slice(0, 3), [completedHistory]);
   // Parse errors get the same treatment as failed downloads: the engine's
   // line, what to do, and the action that can fix it.
   const parseProblem = useMemo(() => {
@@ -378,6 +360,7 @@ export default function Dashboard() {
     if (referer) item = { ...item, settings: { ...item.settings, referer } };
     addToQueue(item);
     setParsedMetadata(null);
+    setQueuedCount(n => n + 1);
     toast.success(`Added to queue: ${item.metadata.title}`, {
       action: { label: 'View queue', onClick: () => navigate('/queue') },
     });
@@ -401,6 +384,7 @@ export default function Dashboard() {
     setShowTorrentModal(false);
     setTorrentFiles(null);
     setTorrentUrl('');
+    setQueuedCount(n => n + 1);
   }, [torrentUrl, torrentFiles, preferences.defaultSaveFolder, addToQueue]);
 
   // Queue playlist entries instantly from the flat-parse data (title, duration,
@@ -418,6 +402,7 @@ export default function Dashboard() {
     }
 
     setShowPlaylistModal(false);
+    setQueuedCount(n => n + 1);
     setParsedPlaylist(null);
     toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
     navigate('/queue');
@@ -426,11 +411,7 @@ export default function Dashboard() {
   handleBatchSubmitRef.current = handleBatchSubmit;
 
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Paste a video URL or magnet link to get started</p>
-      </div>
+    <div className="mb-4">
 
       {/* URL Input */}
       <UrlInput
@@ -449,12 +430,11 @@ export default function Dashboard() {
                 ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
                 : undefined}
         onErrorClear={() => setParseError(null)}
+        clearSignal={queuedCount}
       />
 
       {/* First-run setup: destination, ffmpeg, cookies. Dismissible. */}
       <SetupCard />
-
-      <QuietHoursBanner className="mt-3" />
 
       {/* Batch progress indicator */}
       {batchProgress && (
@@ -479,98 +459,6 @@ export default function Dashboard() {
           </button>
         </div>
       )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mt-6">
-        <StatTile icon={ArrowDownToLine} value={String(activeDownloads.length)} label="Active" delay={40} />
-        <StatTile icon={Gauge} value={totalSpeed > 0 ? formatSpeed(totalSpeed) : '—'} label="Current speed" delay={70} />
-        <StatTile icon={CheckCircle2} value={String(completedHistory.length)} label="Completed" delay={100} />
-        <StatTile icon={HardDrive} value={totalDownloadedBytes > 0 ? formatBytes(totalDownloadedBytes) : '—'} label="Total downloaded" delay={130} />
-      </div>
-
-      <div className="mt-4">
-        {/* Queue Snapshot */}
-        <Panel title="Active Queue" className="animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
-          {activeDownloads.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">No active downloads</p>
-          ) : (
-            <div className="space-y-2">
-              {activeDownloads.slice(0, 3).map(item => (
-                <div key={item.id} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-foreground truncate">{item.metadata.title}</p>
-                    <ProgressBar value={item.progress} className="mt-1" />
-                  </div>
-                  <span className="text-xs tabular-nums text-muted-foreground shrink-0">
-                    {item.progress.toFixed(0)}%
-                  </span>
-                </div>
-              ))}
-              {activeDownloads.length > 3 && (
-                <p className="text-xs text-muted-foreground">+{activeDownloads.length - 3} more</p>
-              )}
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      {/* Recent Downloads */}
-      {recentDownloads.length > 0 && (
-        <Panel title="Recent Downloads" className="mt-4 animate-fade-in" style={{ animationDelay: '200ms' } as React.CSSProperties}>
-          <div className="space-y-1">
-            {recentDownloads.map(item => (
-              <div key={item.id} className="flex items-center gap-3 py-1.5 group">
-                <Thumb
-                  src={item.metadata.thumbnail}
-                  className="w-16 h-9"
-                  fallbackIcon={<CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{item.metadata.title}</p>
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {formatBytes(item.fileSize)} · {new Date(item.completedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                {item.filePath && (
-                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                      title="Play"
-                      aria-label="Play"
-                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                      title="Show in folder"
-                      aria-label="Show in folder"
-                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {/* RainaCorp Branding */}
-      <OutboundLink
-        href="https://www.rainacorp.co.uk"
-        className="mt-10 mb-2 flex flex-col items-center gap-2.5 py-5 group animate-fade-in"
-        style={{ animationDelay: '220ms' } as React.CSSProperties}
-      >
-        <img src={publicAsset("rainacorp-logo.webp")} alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
-        <div className="text-center">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground group-hover:text-muted-foreground transition-colors">
-            A RAINACORP PRODUCT
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">rainacorp.co.uk</p>
-        </div>
-      </OutboundLink>
 
       {/* Media Details Modal */}
       <MediaDetailsModal

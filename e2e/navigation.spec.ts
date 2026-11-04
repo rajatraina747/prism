@@ -1,15 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Navigation', () => {
-  test('loads the dashboard by default', async ({ page }) => {
+  test('opens on Downloads, with the link box', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1')).toContainText('Dashboard');
+    await expect(page.locator('h1')).toContainText('Downloads');
+    await expect(page.getByPlaceholder(/Paste a video URL/i)).toBeVisible();
   });
 
-  test('navigates to Queue page', async ({ page }) => {
-    await page.goto('/');
-    await page.click('a[href="/queue"]');
-    await expect(page.locator('h1')).toContainText('Transfers');
+  test('navigates back to Downloads', async ({ page }) => {
+    await page.goto('/library');
+    await page.click('a[href="/"]');
+    await expect(page.locator('h1')).toContainText('Downloads');
+  });
+
+  test('the old Transfers address opens Downloads', async ({ page }) => {
+    await page.goto('/queue');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator('h1')).toContainText('Downloads');
   });
 
   test('navigates to Library page', async ({ page }) => {
