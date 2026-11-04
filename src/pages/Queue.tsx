@@ -1,5 +1,12 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { useQueue, useSettings } from '@/stores/AppProvider';
+import React, { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react';
+import { useQueue, useSettings, useHistory } from '@/stores/AppProvider';
+
+// Failed and cancelled downloads, shown under Needs attention. The Library
+// page owns that list (its rows, retry and missing-file logic); loaded only
+// when the filter is opened, so the home page doesn't carry the Library.
+const AttentionList = lazy(() => import('@/pages/Library').then(m => ({
+  default: () => <m.LibraryView mode="attention" embedded />,
+})));
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { AddPanel } from '@/components/add/AddPanel';
@@ -86,7 +93,15 @@ export default function Queue() {
   const now = useMinuteClock();
   const quiet = quietHoursStatus(preferences, now);
   const activeItems = useMemo(() => items.filter(isTransfer), [items]);
-  const counts = useMemo(() => filterCounts(activeItems), [activeItems]);
+  const { items: historyItems } = useHistory();
+  const attentionCount = useMemo(
+    () => historyItems.filter(i => i.status === 'failed' || i.status === 'canceled').length,
+    [historyItems],
+  );
+  const counts = useMemo(() => {
+    const c = filterCounts(activeItems);
+    return { ...c, errored: c.errored + attentionCount };
+  }, [activeItems, attentionCount]);
   const categories = useMemo(() => categoriesInUse(activeItems), [activeItems]);
   const labelNames = useMemo(
     () => Object.fromEntries(preferences.labels.map(l => [l.id, l.name])),
@@ -232,7 +247,7 @@ export default function Queue() {
           filter tabs to the list panel for assistive tech. */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as TransfersFilter)} className="contents">
       {/* Filter tabs + sort + search */}
-      {activeItems.length > 0 && (
+      {(activeItems.length > 0 || attentionCount > 0) && (
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <TabsList aria-label="Filter downloads" className="h-auto gap-1 bg-transparent p-0">
             {FILTERS.map(f => (
@@ -323,7 +338,7 @@ export default function Queue() {
       )}
 
       <div className="flex-1 min-h-[360px] flex flex-col">
-        {activeItems.length === 0 ? (
+        {filter === 'errored' && visibleItems.length === 0 ? null : activeItems.length === 0 ? (
           <EmptyState
             icon={ArrowDownToLine}
             title="Nothing downloading"
@@ -360,6 +375,12 @@ export default function Queue() {
               onOpenDetails={openDetails}
             />
           </TabsContent>
+        )}
+
+        {filter === 'errored' && (
+          <Suspense fallback={null}>
+            <AttentionList />
+          </Suspense>
         )}
 
         {detailsOpen && detailItem && (

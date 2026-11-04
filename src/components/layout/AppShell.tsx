@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useQueue, useQueueActions, useHistory, useSettings } from '@/stores/AppProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
@@ -20,7 +20,6 @@ import {
   Settings2,
   Info,
   Plus,
-  BarChart3,
   PlayCircle,
 } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
@@ -38,7 +37,6 @@ const NAV_ITEMS = [
   { path: '/', icon: ArrowDownToLine, label: 'Downloads' },
   { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
   { path: '/library', icon: LibraryIcon, label: 'Library' },
-  { path: '/statistics', icon: BarChart3, label: 'Statistics' },
 ] as const;
 
 const BOTTOM_ITEMS = [
@@ -257,6 +255,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }), [service, pauseAll, addLinks]);
 
   // One Add surface: the sheet (sidebar button, ⌘N / ⌘L from any page)…
+  // Every page scrolls in this one <main>, so a new page would open at the
+  // previous page's scroll position (the Library opened with its title
+  // scrolled out of view). Back to the top on each route change.
+  const mainRef = React.useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+  React.useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [pathname]);
   const [addOpen, setAddOpen] = React.useState(false);
   React.useEffect(() => onAddRequest(() => setAddOpen(true)), []);
 
@@ -308,7 +312,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
       <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 overflow-auto">
+        <main ref={mainRef} className="flex-1 overflow-auto">
           {children}
         </main>
       </div>

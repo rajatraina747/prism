@@ -56,11 +56,14 @@ test.describe('Library', () => {
     await expect(firstRow).toContainText('Library entry 0');
   });
 
-  test('can be laid out as a grid', async ({ page }) => {
+  test('opens as a poster grid and can switch to a list and back', async ({ page }) => {
     await page.goto('/library');
+    // Posters first since 2.6: the Library is where watching starts.
+    await page.getByRole('button', { name: 'Show as a list' }).click();
+    // Still a selectable listbox — the layout changes, not the meaning, so a
+    // screen reader is told the same thing either way.
+    expect(await page.getByRole('option').count()).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Show as a grid' }).click();
-    // Still a selectable listbox — a grid changes the layout, not the meaning,
-    // so a screen reader is told the same thing either way.
     expect(await page.getByRole('option').count()).toBeGreaterThan(0);
     await expect(page.getByRole('button', { name: 'Show as a list' })).toBeVisible();
   });
@@ -70,5 +73,27 @@ test.describe('Library', () => {
     await page.getByRole('textbox', { name: 'Search library' }).fill('entry 42');
     await expect(page.getByText('Library entry 42', { exact: true })).toBeVisible();
     await expect(page.getByText('Library entry 43', { exact: true })).toHaveCount(0);
+  });
+
+  // A torrent's files can be reached from the poster grid too: the count opens
+  // them in a dialog, so the card keeps its size (2026-11-05).
+  test('a grid card opens a torrent\'s files without selecting the card', async ({ page }) => {
+    await page.addInitScript(() => {
+      const history = JSON.parse(localStorage.getItem('prism_history') ?? '[]');
+      history.unshift({
+        ...history[0],
+        id: 'torrent-1',
+        metadata: { ...history[0].metadata, title: 'Season pack', source: { ...history[0].metadata.source, url: 'magnet:?xt=urn:btih:abc' } },
+        completedAt: '2027-01-01T00:00:00Z',
+        files: [{ index: 0, name: 'Episode 1.mkv', size: 1000 }, { index: 1, name: 'Episode 2.mkv', size: 2000 }],
+      });
+      localStorage.setItem('prism_history', JSON.stringify(history));
+    });
+    await page.goto('/library');
+    await page.getByRole('button', { name: /Show the 2 files in Season pack/ }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Episode 1.mkv')).toBeVisible();
+    await expect(dialog.getByText('Episode 2.mkv')).toBeVisible();
+    await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
   });
 });

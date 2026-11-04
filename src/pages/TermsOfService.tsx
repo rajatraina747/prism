@@ -7,7 +7,7 @@ export default function TermsOfService() {
   const navigate = useNavigate();
 
   return (
-    <div className="page-container max-w-2xl mx-auto">
+    <div className="page-container max-w-2xl">
       <div className="page-header">
         <button
           onClick={() => navigate('/settings')}

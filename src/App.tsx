@@ -21,7 +21,6 @@ const Library = lazy(() => import("@/pages/Library"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const About = lazy(() => import("@/pages/About"));
 const PrivacyPolicy = lazy(() => import("@/pages/PrivacyPolicy"));
-const Statistics = lazy(() => import("@/pages/Statistics"));
 const TermsOfService = lazy(() => import("@/pages/TermsOfService"));
 const OpenSourceLicenses = lazy(() => import("@/pages/OpenSourceLicenses"));
 import { routerBasename } from "@/lib/public-asset";
@@ -84,7 +83,8 @@ const App = () => {
                 <Route path="/queue" element={<Navigate to="/" replace />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/library" element={<Library />} />
-                <Route path="/statistics" element={<Statistics />} />
+                {/* Statistics folded into the Library's Activity strip in 2.6. */}
+                <Route path="/statistics" element={<Navigate to="/library?activity=1" replace />} />
                 {/* Old routes — Downloads/Failed/History merged into Library */}
                 <Route path="/downloads" element={<Navigate to="/library" replace />} />
                 <Route path="/failed" element={<Navigate to="/library" replace />} />

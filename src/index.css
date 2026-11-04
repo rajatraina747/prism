@@ -143,10 +143,12 @@
 }
 
 @layer components {
-  /* One content width for every page (2.5): fluid up to 1100px, centred.
-     Reading pages (legal, About) narrow it further with max-w-*. */
+  /* One content width for every page (2.5): fluid up to 1400px and anchored
+     beside the sidebar. Centring it left a gap by the sidebar on wide
+     windows that read as misaligned (2026-11-05). Reading pages (legal,
+     About) narrow it with max-w-*. */
   .page-container {
-    @apply flex-1 overflow-auto p-6 w-full max-w-[1100px] mx-auto;
+    @apply flex-1 overflow-auto p-6 w-full max-w-[1400px];
   }
   .page-header {
     @apply mb-6;

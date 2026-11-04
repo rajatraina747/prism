@@ -18,20 +18,107 @@ import {
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { usePlayerAvailable } from '@/hooks/use-player-available';
+import { ActivityPanel } from '@/components/library/Activity';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
 import { buildItem } from '@/stores/build-item';
 
-type FilterTab = 'all' | 'completed' | 'failed' | 'canceled';
+/** The Library shows finished media ('media'); what didn't finish (failed
+ * and cancelled) is the same list in 'attention' mode, shown under
+ * Downloads → Needs attention (2.6 redesign). */
+type Mode = 'media' | 'attention';
+type FilterTab = 'all' | 'video' | 'audio' | 'torrent' | 'missing' | 'failed' | 'canceled';
 
 const TAB_LABELS: Record<FilterTab, string> = {
   all: 'All',
-  completed: 'Completed',
+  video: 'Video',
+  audio: 'Audio',
+  torrent: 'Torrents',
+  missing: 'Missing',
   failed: 'Failed',
   canceled: 'Cancelled',
 };
+
+const MODE_TABS: Record<Mode, FilterTab[]> = {
+  media: ['all', 'video', 'audio', 'torrent', 'missing'],
+  attention: ['all', 'failed', 'canceled'],
+};
+
+function inMode(item: HistoryItem, mode: Mode): boolean {
+  return mode === 'media' ? item.status === 'completed' : item.status === 'failed' || item.status === 'canceled';
+}
+
+/** What a finished download is, for the Library's tabs. */
+function mediaKind(item: HistoryItem): 'video' | 'audio' | 'torrent' {
+  if (isTorrentUrl(item.metadata.source.url)) return 'torrent';
+  if (item.settings.audioOnly) return 'audio';
+  return 'video';
+}
+
+function matchesTab(item: HistoryItem, tab: FilterTab, missing: Set<string>): boolean {
+  switch (tab) {
+    case 'all': return true;
+    case 'video': case 'audio': case 'torrent': return mediaKind(item) === tab;
+    case 'missing': return missing.has(item.id);
+    default: return item.status === tab;
+  }
+}
+
+/** A torrent's files with their own Play / Open / Show buttons. Inline in
+ * list view; in grid view it opens in a dialog, so the card keeps its size. */
+function TorrentFiles({ item, playerAvailable }: { item: HistoryItem; playerAvailable: boolean }) {
+  const service = useService();
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {(item.files ?? []).map((f) => (
+        <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
+          <span className="truncate flex-1" title={f.name}>{f.name}</span>
+          <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
+          {playerAvailable && (
+            <button
+              type="button"
+              onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
+              title="Play in Prism"
+              aria-label={`Play ${f.name} in Prism`}
+              className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <MonitorPlay className="w-3 h-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+            title="Open in default player"
+            aria-label={`Open ${f.name}`}
+            className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Play className="w-3 h-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+            title="Show in folder"
+            aria-label={`Show ${f.name} in folder`}
+            className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <FolderOpen className="w-3 h-3" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Height of every grid card; the grid's size estimate uses it too. */
+const GRID_CARD_HEIGHT = 228;
+
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -63,7 +150,18 @@ function statusIcon(status: string) {
  * History trio, which showed the same records three ways. Long libraries are
  * windowed — only the rows near the viewport are mounted. */
 export default function Library() {
-  const { items, removeFromHistory, restoreHistory, clearHistory } = useHistory();
+  return <LibraryView mode="media" />;
+}
+
+/** The Activity strip opens when you arrive from the old Statistics page. */
+function LibraryActivity() {
+  const [params] = useSearchParams();
+  return <ActivityPanel defaultOpen={params.get('activity') === '1'} />;
+}
+
+export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?: boolean }) {
+  const { items: allItems, removeFromHistory, restoreHistory } = useHistory();
+  const items = useMemo(() => allItems.filter(i => inMode(i, mode)), [allItems, mode]);
   const { addToQueue } = useQueueActions();
   const { preferences, updatePreference } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
@@ -101,7 +199,6 @@ export default function Library() {
     toast.success(`${item.status === 'failed' ? 'Retrying' : 'Queued again'}: ${item.metadata.title}`);
   }, [addToQueue, removeFromHistory]);
 
-  const inTab = useMemo(() => items.filter(i => tab === 'all' || i.status === tab), [items, tab]);
   const categories = useMemo(() => categoriesInUse(items), [items]);
   // Survives a category being cleared out of the library entirely.
   const activeCategory = category && categories.some(c => c.id === category) ? category : null;
@@ -136,6 +233,7 @@ export default function Library() {
     }, 500);
     return () => { live = false; clearTimeout(timer); };
   }, [filesKey, service]);
+  const inTab = useMemo(() => items.filter(i => matchesTab(i, tab, missing)), [items, tab, missing]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return inTab.filter(i =>
@@ -162,16 +260,16 @@ export default function Library() {
   }, []);
   const columns = preferences.libraryView === 'grid' ? gridColumns(listWidth) : 1;
 
-  const tabs = (['all', 'completed', 'failed', 'canceled'] as const).map(key => ({
-    key,
-    label: TAB_LABELS[key],
-    count: key === 'all' ? items.length : items.filter(i => i.status === key).length,
-  }));
+  const tabs = MODE_TABS[mode]
+    .map(key => ({ key, label: TAB_LABELS[key], count: items.filter(i => matchesTab(i, key, missing)).length }))
+    // An empty Missing tab is noise; the others stay so the layout is steady.
+    .filter(t => t.key !== 'missing' || t.count > 0 || tab === 'missing');
 
+  // Only this mode's entries in this tab: the Library's Clear never removes
+  // what's waiting under Needs attention, or the other way round.
   const clearCurrent = useCallback(() => {
-    if (tab === 'all') clearHistory();
-    else items.filter(i => i.status === tab).forEach(i => removeFromHistory(i.id));
-  }, [tab, items, clearHistory, removeFromHistory]);
+    inTab.forEach(i => removeFromHistory(i.id));
+  }, [inTab, removeFromHistory]);
 
   const toggleExpanded = useCallback((id: string) => setExpandedId(cur => (cur === id ? null : id)), []);
 
@@ -241,11 +339,31 @@ export default function Library() {
   }, [trashable, trashTargets, service, removeFromHistory, clearSelection]);
 
   return (
-    <div className="page-container">
+    <div className={embedded ? 'mt-4' : 'page-container'}>
+      {embedded ? (
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Didn&apos;t finish</h2>
+            <p className="text-xs text-muted-foreground">Failed and cancelled downloads, with the reason and a retry button.</p>
+          </div>
+          <div className="flex items-center gap-2">
+          {inTab.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmClear(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear all' : `Clear ${TAB_LABELS[tab].toLowerCase()}`}
+            </button>
+          )}
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="flex items-center justify-between page-header">
         <div>
           <h1 className="page-title">Library</h1>
-          <p className="page-subtitle">Completed, failed and cancelled downloads</p>
+          <p className="page-subtitle">Everything you&apos;ve downloaded, ready to play</p>
         </div>
         <div className="flex items-center gap-2">
           {items.length > 0 && (
@@ -321,6 +439,11 @@ export default function Library() {
           )}
         </div>
       </div>
+
+      </>
+      )}
+
+      {mode === 'media' && <LibraryActivity />}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
         <TabsList aria-label="Filter library" className="h-auto gap-1 bg-transparent p-0 mb-4">
@@ -412,16 +535,21 @@ export default function Library() {
 
         <TabsContent ref={listRef} value={tab} className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
           {sorted.length === 0 ? (
-            <EmptyState
-              icon={tab === 'failed' ? XCircle : Clock}
-              title={tab === 'failed' ? 'No failed downloads' : 'Nothing here yet'}
-              description={
-                tab === 'failed'
-                  ? 'Downloads that hit errors land here with a reason and a retry button.'
-                  : 'Everything you download ends up here, ready to play.'
-              }
-              action={tab === 'failed' ? undefined : <EmptyActions play={playerAvailable} />}
-            />
+            mode === 'attention' ? (
+              <EmptyState
+                icon={XCircle}
+                title="Nothing needs attention"
+                description="Downloads that fail or are cancelled show up here, with the reason and a retry button."
+                className="py-8"
+              />
+            ) : (
+              <EmptyState
+                icon={Clock}
+                title={tab === 'all' ? 'Nothing here yet' : `No ${TAB_LABELS[tab].toLowerCase()} yet`}
+                description="Everything you download ends up here, ready to play."
+                action={<EmptyActions play={playerAvailable} />}
+              />
+            )
           ) : (
             <VirtualList
               items={sorted}
@@ -431,7 +559,7 @@ export default function Library() {
               // row, so the estimate has to follow the layout — a fixed one
               // would leave the windowing maths wrong in whichever mode it
               // wasn't measured for.
-              estimateSize={columns > 1 ? 188 : preferences.listDensity === 'compact' ? 48 : 64}
+              estimateSize={columns > 1 ? GRID_CARD_HEIGHT : preferences.listDensity === 'compact' ? 48 : 64}
               gap={6}
               aria-label={`${TAB_LABELS[tab]} downloads`}
               role="listbox"
@@ -460,13 +588,11 @@ export default function Library() {
       <ConfirmDialog
         open={confirmClear}
         onOpenChange={setConfirmClear}
-        title={tab === 'all' ? 'Clear the whole library?' : `Clear all ${TAB_LABELS[tab].toLowerCase()} items?`}
-        description={
-          tab === 'all'
-            ? `This removes all ${items.length} entries — completed, failed and cancelled. Downloaded files stay on disk.`
-            : `This removes ${inTab.length} ${TAB_LABELS[tab].toLowerCase()} entr${inTab.length === 1 ? 'y' : 'ies'}. Downloaded files stay on disk.`
-        }
-        confirmLabel={tab === 'all' ? 'Clear Everything' : `Clear ${TAB_LABELS[tab]}`}
+        title={mode === 'attention'
+          ? "Clear what didn't finish?"
+          : tab === 'all' ? 'Clear the whole library?' : `Clear all ${TAB_LABELS[tab].toLowerCase()} items?`}
+        description={`This removes ${inTab.length} entr${inTab.length === 1 ? 'y' : 'ies'} from ${mode === 'attention' ? 'this list' : 'the Library'}. Downloaded files stay on disk.`}
+        confirmLabel={tab === 'all' ? 'Clear everything' : `Clear ${TAB_LABELS[tab].toLowerCase()}`}
         destructive
         onConfirm={clearCurrent}
       />
@@ -522,6 +648,8 @@ const LibraryRow = React.memo(function LibraryRow({
     onSelect?.(item.id, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey });
   };
 
+  const [filesOpen, setFilesOpen] = useState(false);
+
   return (
     <div
       role="option"
@@ -530,32 +658,40 @@ const LibraryRow = React.memo(function LibraryRow({
       className={cn(
         'surface-row rounded-xl',
         density === 'compact' ? 'p-2' : 'p-3',
+        // Every grid card is the same height: the grid is laid out in lanes,
+        // and cards of different heights drifted out of line (2026-11-05).
+        grid && 'flex flex-col overflow-hidden',
         selected && 'ring-1 ring-primary/60 bg-primary/5',
       )}
+      style={grid ? { height: GRID_CARD_HEIGHT } : undefined}
     >
       {/* A grid cell leads with the picture, which is the useful handle for
           finished video; a row leads with the title. */}
-      <div className={grid ? 'flex flex-col gap-2' : 'flex items-start gap-3'}>
+      <div className={grid ? 'flex flex-col gap-2 h-full min-h-0' : 'flex items-start gap-3'}>
         {isFailed ? (
           <div className={cn(
             'rounded-lg bg-destructive/10 flex items-center justify-center shrink-0',
-            grid ? 'w-full h-24' : 'w-8 h-8 mt-0.5',
+            grid ? 'w-full h-28' : 'w-8 h-8 mt-0.5',
           )}>
             <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
           </div>
         ) : (
           <Thumb
             src={item.metadata.thumbnail}
-            className={grid ? 'w-full h-24' : 'w-[72px] h-10'}
+            className={grid ? 'w-full h-28 shrink-0' : 'w-[72px] h-10'}
             fallbackIcon={statusIcon(item.status)}
           />
         )}
-        <div className="flex-1 min-w-0">
+        <div className={grid ? 'min-w-0' : 'flex-1 min-w-0'}>
           <div className="flex items-center gap-1.5 min-w-0">
             {statusIcon(item.status)}
             <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground tabular-nums">
+          <div className={cn(
+            'flex items-center mt-0.5 text-xs text-muted-foreground tabular-nums whitespace-nowrap',
+            // One line in a grid card, the date giving way first.
+            grid ? 'gap-2 overflow-hidden [&>*]:shrink-0 [&>*:last-child]:shrink [&>*:last-child]:truncate' : 'gap-3 flex-wrap',
+          )}>
             {(() => {
               // Show what was actually delivered; call out a shortfall
               // vs the requested quality instead of hiding it.
@@ -581,11 +717,21 @@ const LibraryRow = React.memo(function LibraryRow({
               <span className="px-1.5 rounded bg-destructive/10 text-destructive" title="The file has been moved or deleted outside Prism">Missing</span>
             )}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
-            <span>{formatWhen(item.completedAt)}</span>
+            {grid && item.status === 'completed' && item.files && item.files.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setFilesOpen(true); }}
+                className="underline decoration-dotted underline-offset-2 hover:text-foreground transition-colors"
+                aria-label={`Show the ${item.files.length} files in ${item.metadata.title}`}
+              >
+                {item.files.length} file{item.files.length === 1 ? '' : 's'}
+              </button>
+            )}
+            <span title={formatWhen(item.completedAt)}>{grid ? formatDay(item.completedAt) : formatWhen(item.completedAt)}</span>
           </div>
           {isFailed && item.error && <FailureNote error={item.error} onRetry={() => onRequeue(item)} />}
           {/* Torrent: expandable per-file list with per-file actions */}
-          {item.status === 'completed' && item.files && item.files.length > 0 && (
+          {!grid && item.status === 'completed' && item.files && item.files.length > 0 && (
             <div className="mt-1.5">
               <button
                 type="button"
@@ -596,49 +742,11 @@ const LibraryRow = React.memo(function LibraryRow({
                 <ChevronRight className={cn('w-3 h-3 transition-transform', expanded && 'rotate-90')} />
                 {item.files.length} {item.files.length === 1 ? 'file' : 'files'}
               </button>
-              {expanded && (
-                <ul className="mt-1 space-y-0.5">
-                  {item.files.map((f) => (
-                    <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
-                      <span className="truncate flex-1" title={f.name}>{f.name}</span>
-                      <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
-                      {playerAvailable && (
-                        <button
-                          type="button"
-                          onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
-                          title="Play in Prism"
-                          aria-label={`Play ${f.name} in Prism`}
-                          className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                        >
-                          <MonitorPlay className="w-3 h-3" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                        title="Open in default player"
-                        aria-label={`Open ${f.name}`}
-                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                      >
-                        <Play className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                        title="Show in folder"
-                        aria-label={`Show ${f.name} in folder`}
-                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                      >
-                        <FolderOpen className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {expanded && <TorrentFiles item={item} playerAvailable={playerAvailable} />}
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className={cn('flex items-center gap-1 shrink-0', grid && 'mt-auto')}>
           {item.status === 'completed' && (() => {
             // Older torrent completions (flat multi-file torrents) were
             // recorded without a path — falling back to the destination
@@ -708,6 +816,21 @@ const LibraryRow = React.memo(function LibraryRow({
           </button>
         </div>
       </div>
+      {grid && filesOpen && (
+        <Dialog open onOpenChange={setFilesOpen}>
+          {/* Clicks inside a portal still bubble through React to the row,
+              which would select it: stop them here. */}
+          <DialogContent className="max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="truncate pr-6">{item.metadata.title}</DialogTitle>
+              <DialogDescription>{(item.files ?? []).length} files</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <TorrentFiles item={item} playerAvailable={!!playerAvailable} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 });
