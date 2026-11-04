@@ -6,6 +6,7 @@ import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { useService } from '@/services/ServiceProvider';
 import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useDropToAdd } from '@/hooks/use-drop-to-add';
+import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { pushDeepLink } from '@/lib/deep-link-bus';
 import { setRemoteImagesAllowed } from '@/lib/remote-images';
 import { onNavigateRequest } from '@/lib/nav-bus';
@@ -21,6 +22,7 @@ import {
   Info,
   Plus,
   BarChart3,
+  PlayCircle,
 } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
 
@@ -52,6 +54,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const activeCount = queueItems.filter(i => i.status === 'downloading' || i.status === 'queued').length;
   const failedCount = historyItems.filter(i => i.status === 'failed').length;
   const engine = useEngineStatus();
+  const playerAvailable = usePlayerAvailable();
 
   return (
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
@@ -73,6 +76,19 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
           <span>Add</span>
           <kbd className="ml-auto text-[10px] font-sans opacity-70">{MOD_KEY}N</kbd>
         </button>
+        {playerAvailable && (
+          <button
+            type="button"
+            onClick={playAFile}
+            title="Play any video or audio file on this computer"
+            aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+O' : 'Control+O'}
+            className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-[13px] font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98]"
+          >
+            <PlayCircle className="w-4 h-4 shrink-0" strokeWidth={1.8} />
+            <span>Play a File</span>
+            <kbd className="ml-auto text-[10px] font-sans opacity-70">{MOD_KEY}O</kbd>
+          </button>
+        )}
       </div>
 
       {/* Main Nav */}

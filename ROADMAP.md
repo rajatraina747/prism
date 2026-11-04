@@ -51,6 +51,13 @@ nothing.
 
 ### Hygiene (2.4.x)
 
+- [ ] **The yt-dlp self-update is rejected on every launch.** **Medium.** Seen
+  2026-11-05 in `Prism.log`: each start logs "self-updated yt-dlp failed its
+  integrity check; using the bundled engine", then updates to 2026.10.26 again.
+  So the update's `*.sha256` / `*.tree-sha256` record never matches what's on
+  disk after a restart (`engine.rs`). Find what changes between writing and
+  re-checking: quarantine xattrs, `.pyc` files the onedir writes on first run,
+  or a path difference.
 - [ ] **Filtering DNS resolver for URLs a remote server chooses** (Low–Med). A
   redirect or DNS answer can still point direct downloads, RSS fetches or
   thumbnails into the LAN or loopback. Where:

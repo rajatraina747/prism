@@ -18,6 +18,7 @@ import {
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { toast } from 'sonner';
 import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
@@ -34,20 +35,6 @@ const TAB_LABELS: Record<FilterTab, string> = {
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-// The embedded player needs libmpv beside the executable. Release builds for
-// macOS and Windows bundle it; Linux and some dev builds don't — ask the
-// backend rather than assuming.
-function usePlayerAvailable(): boolean {
-  const [available, setAvailable] = useState(false);
-  React.useEffect(() => {
-    import('@tauri-apps/api/core')
-      .then(({ isTauri, invoke }) => (isTauri() ? invoke<boolean>('player_available') : false))
-      .then(setAvailable)
-      .catch(() => {});
-  }, []);
-  return available;
 }
 
 function playAFile() {

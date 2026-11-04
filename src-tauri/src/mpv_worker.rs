@@ -17,6 +17,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::AppHandle;
@@ -27,9 +28,9 @@ pub const LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(5);
 
 const STOPPED_RESPONDING: &str =
-    "The player stopped responding. Close the player window and restart Prism to play again.";
+    "The player stopped responding. Close the player window and open it again; if it still won't play, restart Prism.";
 
-type Job = Box<dyn FnOnce(&MpvCalls) + Send>;
+type Job<C> = Box<dyn FnOnce(&C) + Send>;
 
 /// The mpv operations Prism uses. Only handed out on the worker thread.
 pub struct MpvCalls {
@@ -54,44 +55,77 @@ impl MpvCalls {
     }
 }
 
-pub struct MpvWorker {
-    jobs: mpsc::Sender<Job>,
+/// The worker Prism manages: one thread, handed the plugin's mpv calls.
+pub type MpvWorker = Worker<MpvCalls>;
+
+/// A single thread that runs jobs in order, each given `C`. Generic so the
+/// timeout and recovery rules can be tested without an mpv.
+pub struct Worker<C> {
+    jobs: mpsc::Sender<Job<C>>,
     /// Set when a call outlives its timeout. The thread is still stuck inside
     /// mpv, so anything queued behind it would wait too — fail fast instead.
-    wedged: AtomicBool,
+    /// Cleared again by the thread when that call does return: a call that
+    /// was only slow (a first start, while macOS checks freshly installed
+    /// libraries, took 16 s) mustn't leave the player dead until a restart.
+    wedged: Arc<AtomicBool>,
 }
 
-impl MpvWorker {
+impl Worker<MpvCalls> {
     pub fn spawn(app: AppHandle) -> std::io::Result<Self> {
-        let (jobs, queue) = mpsc::channel::<Job>();
+        Self::spawn_with(MpvCalls { app })
+    }
+}
+
+impl<C: Send + 'static> Worker<C> {
+    pub fn spawn_with(calls: C) -> std::io::Result<Self> {
+        let (jobs, queue) = mpsc::channel::<Job<C>>();
+        let wedged = Arc::new(AtomicBool::new(false));
+        let thread_wedged = wedged.clone();
         std::thread::Builder::new().name("prism-mpv".into()).spawn(move || {
-            let calls = MpvCalls { app };
             for job in queue {
                 job(&calls);
+                // Whatever overran has returned: the thread is free again.
+                if thread_wedged.swap(false, Ordering::Relaxed) {
+                    log::info!("mpv thread is responding again");
+                }
             }
         })?;
-        Ok(Self { jobs, wedged: AtomicBool::new(false) })
+        Ok(Self { jobs, wedged })
     }
 
-    /// Run `f` on the mpv thread and wait for it, for at most `timeout`.
+    /// Run `f` on the mpv thread and wait for it, for at most `timeout` once it
+    /// has started. Time spent queued behind another call doesn't count: a
+    /// slow `init` used to make the calls behind it time out and mark a
+    /// player that was about to work as dead. While queued, it gives up only
+    /// if the call ahead of it is declared stuck.
     pub async fn run<T: Send + 'static>(
         &self,
         what: &'static str,
         timeout: Duration,
-        f: impl FnOnce(&MpvCalls) -> Result<T, String> + Send + 'static,
+        f: impl FnOnce(&C) -> Result<T, String> + Send + 'static,
     ) -> Result<T, String> {
         if self.wedged.load(Ordering::Relaxed) {
             return Err(STOPPED_RESPONDING.into());
         }
         let (tx, rx) = tokio::sync::oneshot::channel();
+        let (started_tx, mut started_rx) = tokio::sync::oneshot::channel::<()>();
         self.jobs
             .send(Box::new(move |calls| {
+                let _ = started_tx.send(());
                 // A panic must not take the thread (and every later call) down.
                 let result = catch_unwind(AssertUnwindSafe(|| f(calls)))
                     .unwrap_or_else(|_| Err("The player engine failed handling a request".into()));
                 let _ = tx.send(result);
             }))
             .map_err(|_| "The player engine thread has stopped".to_string())?;
+        loop {
+            match tokio::time::timeout(Duration::from_millis(250), &mut started_rx).await {
+                Ok(Ok(())) => break,
+                Ok(Err(_)) => return Err("The player engine thread has stopped".into()),
+                Err(_) if self.wedged.load(Ordering::Relaxed) => return Err(STOPPED_RESPONDING.into()),
+                Err(_) => {}
+            }
+        }
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("The player engine dropped the request".into()),
@@ -106,6 +140,48 @@ impl MpvWorker {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+    }
+
+    // Regression (play-any-file testing, 2026-11-05): the first player start
+    // took 16 s; four calls queued behind it hit their 5 s timeouts and
+    // marked the player dead, though init then succeeded.
+    #[test]
+    fn time_spent_queued_behind_a_slow_call_does_not_count() {
+        let w = Worker::spawn_with(()).unwrap();
+        let rt = rt();
+        rt.block_on(async {
+            let slow = w.run("init", Duration::from_secs(5), |_| {
+                std::thread::sleep(Duration::from_millis(600));
+                Ok(1)
+            });
+            let queued = w.run("set_property", Duration::from_millis(200), |_| Ok(2));
+            let (a, b) = tokio::join!(slow, queued);
+            assert_eq!((a.unwrap(), b.unwrap()), (1, 2));
+        });
+    }
+
+    #[test]
+    fn a_call_that_overruns_marks_it_stuck_until_it_returns() {
+        let w = Worker::spawn_with(()).unwrap();
+        let rt = rt();
+        rt.block_on(async {
+            let stuck = w.run("loadfile", Duration::from_millis(100), |_| {
+                std::thread::sleep(Duration::from_millis(500));
+                Ok(())
+            });
+            assert!(stuck.await.is_err(), "an overrun is reported");
+            // While it's still inside the call, others fail fast.
+            assert!(w.run("seek", Duration::from_secs(5), |_| Ok(())).await.is_err());
+            // Once it returns, the player works again without a restart.
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            assert_eq!(w.run("seek", Duration::from_secs(5), |_| Ok(7)).await.unwrap(), 7);
+        });
+    }
+
     /// The deadlock came back once already by way of a "harmless" helper that
     /// called mpv on the main thread. Nothing outside this module may reach
     /// the plugin's mpv handle.
