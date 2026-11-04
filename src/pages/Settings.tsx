@@ -5,7 +5,7 @@ import { useService } from '@/services/ServiceProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
 import { diagnostics } from '@/services/diagnostics';
 import { formatReleaseNotes, generateId, isSameFolder } from '@/services';
-import type { DownloadCategory } from '@/types/models';
+import { QUALITY_CHOICES, type DownloadCategory } from '@/types/models';
 import { Panel, ConfirmDialog, CommitInput } from '@/components/common';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -189,6 +189,13 @@ export default function Settings() {
                 </SettingRow>
               </SettingGroup>
               <SettingGroup title="Files">
+                <SettingRow label="Default quality" description="Used for playlists and batches, and pre-selected in the quality list. A site you've used before starts with the quality you picked there last">
+                  <Select
+                    value={p.defaultQuality ?? '1080p'}
+                    options={QUALITY_CHOICES}
+                    onChange={v => updatePreference('defaultQuality', v)}
+                  />
+                </SettingRow>
                 <SettingRow label="Audio format" description="For audio-only downloads. MP3 plays everywhere; M4A is smaller at the same quality; Opus is smallest">
                   <Select
                     value={p.audioFormat}

@@ -300,12 +300,26 @@ export interface DownloadError {
   detail?: string;
 }
 
-export interface DownloadPreset {
-  id: string;
-  name: string;
-  resolution: string;
-  container: string;
-  quality: string;
+/** The quality Prism picks when it doesn't ask: playlists, batches, and the
+ * row pre-selected in the quality list. Replaced the Dashboard's Quick
+ * Presets in 2.4, which reset to Full HD on every launch. */
+export type DefaultQuality = 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p';
+
+export const QUALITY_CHOICES: { value: DefaultQuality; label: string }[] = [
+  { value: 'best', label: 'Best available' },
+  { value: '2160p', label: '4K (2160p)' },
+  { value: '1440p', label: '1440p' },
+  { value: '1080p', label: '1080p (Full HD)' },
+  { value: '720p', label: '720p' },
+  { value: '480p', label: '480p (smaller files)' },
+];
+
+/** A remembered per-site quality. Before 2.4 these were preset ids, so the
+ * old ones are translated; anything unknown is ignored. */
+export function qualityFromStored(value: string | undefined): DefaultQuality | undefined {
+  const legacy: Record<string, DefaultQuality> = { '4k': '2160p', compact: '480p', compatible: '1080p' };
+  const v = value === undefined ? undefined : (legacy[value] ?? value);
+  return QUALITY_CHOICES.some(c => c.value === v) ? (v as DefaultQuality) : undefined;
 }
 
 export interface AppPreferences {
@@ -406,9 +420,12 @@ export interface AppPreferences {
   // IP blocklist URL for the torrent engine (standard p2p formats, gz ok).
   // Applied when the engine starts — takes effect on next launch. Empty = off.
   blocklistUrl: string;
-  // Remembered quality preset per domain (host -> preset id). When you add a URL
-  // from a site you've used before, its last-used preset is pre-selected.
+  // Remembered quality per domain (host -> DefaultQuality; pre-2.4 values are
+  // preset ids, see qualityFromStored). When you add a URL from a site you've
+  // used before, the quality you picked there last is pre-selected.
   perSitePresets: Record<string, string>;
+  // See DefaultQuality.
+  defaultQuality: DefaultQuality;
   // Pass --force-ipv4 to yt-dlp (lookups and downloads). Many sites throttle
   // IPv6 downloads; on by default, which was the hardcoded behaviour before
   // 1.9. Read Rust-side.
@@ -618,6 +635,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   extraTrackers: '',
   blocklistUrl: '',
   perSitePresets: {},
+  defaultQuality: '1080p',
   forceIpv4: true,
   browserUserAgent: true,
   engineAutoCheck: true,
@@ -640,13 +658,3 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   settingsVersion: SETTINGS_VERSION,
 };
 
-export const DEFAULT_PRESETS: DownloadPreset[] = [
-  { id: 'best', name: 'Best Quality', resolution: 'Best', container: 'mp4', quality: 'best' },
-  { id: '4k', name: '4K Ultra HD', resolution: '2160p', container: 'mp4', quality: 'best' },
-  { id: '1080p', name: 'Full HD', resolution: '1080p', container: 'mp4', quality: 'high' },
-  { id: '720p', name: 'HD Ready', resolution: '720p', container: 'mp4', quality: 'medium' },
-  { id: 'compact', name: 'Compact', resolution: '480p', container: 'mp4', quality: 'low' },
-  // H.264 only (up to 1080p on YouTube): plays in QuickTime, Photos and on
-  // iPhones, where VP9/AV1 at higher resolutions don't.
-  { id: 'compatible', name: 'Compatible (H.264)', resolution: '1080p', container: 'mp4', quality: 'high' },
-];
