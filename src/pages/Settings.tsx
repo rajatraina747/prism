@@ -13,30 +13,46 @@ import { DAY_NAMES } from '@/stores/schedule';
 import { toast } from 'sonner';
 import { IS_MAC } from '@/lib/platform';
 import { useUpdateInstall, installAppUpdate, formatUpdateProgress } from '@/stores/app-update';
-import { FolderOpen, Film, Magnet, Gauge, Globe, Bell, Palette, HardDrive, RefreshCw, Bug, Shield, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
+import { FolderOpen, Film, Magnet, Globe, Palette, Shield, ChevronRight, Loader2, AlertTriangle, Search } from 'lucide-react';
 import { SettingRow, SettingGroup, Advanced, Toggle, StorageTile, Select, NumberInput, TextInput } from './settings/controls';
+import { SettingsQuery } from './settings/query';
+import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { ClientImportRow, RestartTorrentEngineRow, BackupRow } from './settings/rows';
 
+/** Five tabs since 2.6 (there were ten). Each holds one or more of the old
+ * sections, which keep their own headings, so nothing moved inside them. */
 const SECTIONS = [
-  { id: 'video', label: 'Video', icon: Film },
-  { id: 'bittorrent', label: 'BitTorrent', icon: Magnet },
-  { id: 'speed', label: 'Speed & schedule', icon: Gauge },
+  { id: 'general', label: 'General', icon: Palette },
+  { id: 'downloads', label: 'Downloads', icon: Film },
+  { id: 'torrents', label: 'Torrents', icon: Magnet },
   { id: 'network', label: 'Network', icon: Globe },
-  { id: 'storage', label: 'Storage', icon: HardDrive },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'updates', label: 'Updates', icon: RefreshCw },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Bug },
-  { id: 'legal', label: 'Legal', icon: Shield },
+  { id: 'privacy', label: 'Privacy & advanced', icon: Shield },
 ] as const;
 
-/** Section ids from before the 1.9 restructure, so old links still land. */
-const SECTION_ALIASES: Record<string, string> = { downloads: 'video', queue: 'speed' };
+/** The old sections, the tab each one now lives in, and its heading there. */
+const PARTS: Record<string, { tab: string; title: string }> = {
+  appearance: { tab: 'general', title: 'Appearance' },
+  notifications: { tab: 'general', title: 'Notifications' },
+  updates: { tab: 'general', title: 'Updates' },
+  video: { tab: 'downloads', title: 'Video' },
+  speed: { tab: 'downloads', title: 'Speed & schedule' },
+  storage: { tab: 'downloads', title: 'Storage' },
+  bittorrent: { tab: 'torrents', title: 'Torrents' },
+  network: { tab: 'network', title: 'Network' },
+  diagnostics: { tab: 'privacy', title: 'Diagnostics' },
+  legal: { tab: 'privacy', title: 'About & legal' },
+};
+
+/** Old links (?section=video, ?section=updates, pre-1.9 ids) still land. */
+const SECTION_ALIASES: Record<string, string> = {
+  downloads: 'downloads', queue: 'downloads',
+  ...Object.fromEntries(Object.entries(PARTS).map(([old, { tab }]) => [old, tab])),
+};
 
 function resolveSection(requested: string | null): string | null {
   if (!requested) return null;
-  const id = SECTION_ALIASES[requested] ?? requested;
-  return SECTIONS.some(s => s.id === id) ? id : null;
+  const id = SECTIONS.some(s => s.id === requested) ? requested : SECTION_ALIASES[requested];
+  return id && SECTIONS.some(s => s.id === id) ? id : null;
 }
 
 /** Torrent limits are stored in KB/s (what the engine takes); every speed is
@@ -78,7 +94,11 @@ export default function Settings() {
   // failed download), including when Settings is already open.
   const [searchParams] = useSearchParams();
   const requestedSection = resolveSection(searchParams.get('section'));
-  const [activeSection, setActiveSection] = React.useState<string>(requestedSection ?? 'video');
+  const [activeSection, setActiveSection] = React.useState<string>(requestedSection ?? 'general');
+  const [query, setQuery] = React.useState('');
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  useFindShortcut(searchRef);
+  const searching = query.trim() !== '';
   React.useEffect(() => {
     if (requestedSection) setActiveSection(requestedSection);
   }, [requestedSection]);
@@ -104,7 +124,7 @@ export default function Settings() {
   // Live preview of the file name template, rendered by the same code that
   // names real downloads.
   React.useEffect(() => {
-    if (activeSection !== 'storage') return;
+    if (activeSection !== 'downloads' && !searching) return;
     const timer = setTimeout(() => {
       service.previewFilenameTemplate(p.filenameTemplate, SAMPLE_TEMPLATE_VARS)
         .then(text => setTemplatePreview({ ok: true, text }))
@@ -114,13 +134,13 @@ export default function Settings() {
         }));
     }, 250);
     return () => clearTimeout(timer);
-  }, [activeSection, p.filenameTemplate, service]);
+  }, [activeSection, searching, p.filenameTemplate, service]);
 
   React.useEffect(() => {
-    if (activeSection !== 'updates') return;
+    if (activeSection !== 'general' && !searching) return;
     service.getEngineVersion().then(setEngineVersion).catch(() => setEngineVersion(null));
     service.getEngineInfo().then(publishEngineInfo).catch(() => {});
-  }, [activeSection, service]);
+  }, [activeSection, searching, service]);
 
   React.useEffect(() => {
     service.ffmpegAvailable().then(setFfmpegOk).catch(() => {});
@@ -128,13 +148,28 @@ export default function Settings() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1 className="page-title">Settings</h1>
-        <p className="page-subtitle">Configure Prism preferences</p>
+      <div className="page-header flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Configure Prism preferences</p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-input border border-border/40 w-72">
+          <Search className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+          <input
+            ref={searchRef}
+            type="search"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') setQuery(''); }}
+            placeholder="Search settings…"
+            aria-label="Search settings"
+            className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
+          />
+        </div>
       </div>
 
       <Tabs value={activeSection} onValueChange={setActiveSection} orientation="vertical" className="flex gap-6">
-        <TabsList aria-label="Settings sections" className="w-44 shrink-0 h-auto flex flex-col items-stretch justify-start gap-0.5 bg-transparent p-0">
+        <TabsList aria-label="Settings sections" className={cn(searching && 'opacity-50 pointer-events-none', 'w-44 shrink-0 h-auto flex flex-col items-stretch justify-start gap-0.5 bg-transparent p-0')}>
           {SECTIONS.map(s => (
             <TabsTrigger
               key={s.id}
@@ -147,7 +182,7 @@ export default function Settings() {
             >
               <s.icon className="w-3.5 h-3.5" strokeWidth={1.8} aria-hidden="true" />
               {s.label}
-              {s.id === 'updates' && engine?.updateAvailable && (
+              {s.id === 'general' && engine?.updateAvailable && (
                 <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" aria-label="Engine update available" />
               )}
             </TabsTrigger>
@@ -155,8 +190,10 @@ export default function Settings() {
         </TabsList>
 
         <div className="flex-1 min-w-0">
-          <Panel className="animate-fade-in" key={activeSection}>
-            <TabsContent value="video" className="mt-0">
+          <SettingsQuery.Provider value={query}>
+          <Panel className="animate-fade-in" key={searching ? 'search' : activeSection}>
+            <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Video</h2>
               {!ffmpegOk && (
                 <div className="flex items-start gap-2.5 px-3 py-2.5 mb-2 rounded-lg bg-warning/10 border border-warning/25">
                   <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
@@ -227,7 +264,8 @@ export default function Settings() {
               </SettingGroup>
             </TabsContent>
 
-            <TabsContent value="bittorrent" className="mt-0">
+            <TabsContent value="torrents" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Torrents</h2>
               <SettingGroup title="Seeding">
                 <SettingRow label="When a torrent finishes" description="How long to keep uploading to the swarm afterwards">
                   <Select
@@ -290,7 +328,8 @@ export default function Settings() {
               </SettingGroup>
             </TabsContent>
 
-            <TabsContent value="speed" className="mt-0">
+            <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Speed &amp; schedule</h2>
               <SettingGroup title="Queue">
                 <SettingRow label="Max concurrent downloads" description="Videos and direct downloads running at the same time">
                   <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
@@ -451,7 +490,8 @@ export default function Settings() {
               </SettingGroup>
             </TabsContent>
 
-            <TabsContent value="network" className="mt-0">
+            <TabsContent value="network" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Network</h2>
               <SettingGroup title="Connection">
                 <SettingRow label="Proxy" help={HELP.proxy} description="Video and direct downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails are fetched through it too, and kept on this machine. Empty = direct">
                   <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
@@ -465,7 +505,8 @@ export default function Settings() {
               </SettingGroup>
             </TabsContent>
 
-            <TabsContent value="storage" className="mt-0">
+            <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Storage</h2>
               <StorageTile
                 folder={p.defaultSaveFolder}
                 load={() => service.storageSummary(p.defaultSaveFolder)}
@@ -665,7 +706,8 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="notifications" className="mt-0">
+            <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Notifications</h2>
               <div className="divide-y divide-border/30">
                 <SettingRow label="Notifications" description="Show notifications for download events">
                   <Toggle checked={p.notificationsEnabled} onChange={v => updatePreference('notificationsEnabled', v)} />
@@ -679,7 +721,8 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="appearance" className="mt-0">
+            <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Appearance</h2>
               <div className="divide-y divide-border/30">
                 <SettingRow label="Theme" description="Application color scheme">
                   <Select
@@ -691,7 +734,8 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="updates" className="mt-0">
+            <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Updates</h2>
               <div className="divide-y divide-border/30">
                 <SettingRow label="Auto-update" description="Check for a new version on launch and offer to install it">
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
@@ -816,7 +860,8 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="diagnostics" className="mt-0">
+            <TabsContent value="privacy" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Diagnostics</h2>
               <div className="divide-y divide-border/30">
                 <SettingRow label="Log level" description="Verbosity of diagnostic logs">
                   <Select
@@ -843,13 +888,14 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            <TabsContent value="legal" className="mt-0">
+            <TabsContent value="privacy" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
+              <h2 className="text-sm font-semibold text-foreground mb-2">About &amp; legal</h2>
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground text-pretty leading-relaxed">
                   Prism is a general-purpose video download utility. Users are responsible for ensuring they have the right to download any content. Do not use Prism to circumvent DRM or access restrictions.
                 </p>
                 <div className="divide-y divide-border/30">
-                  {([['Privacy Policy', '/privacy'], ['Terms of Service', '/terms'], ['Open Source Licenses', '/licenses']] as const).map(([label, path]) => (
+                  {([['About Prism', '/about'], ['Privacy Policy', '/privacy'], ['Terms of Service', '/terms'], ['Open Source Licenses', '/licenses']] as const).map(([label, path]) => (
                     <button key={path} type="button" onClick={() => navigate(path)} className="w-full flex items-center justify-between py-2.5 min-h-[40px] text-left">
                       <span className="text-xs font-medium text-foreground">{label}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
@@ -859,6 +905,7 @@ export default function Settings() {
               </div>
             </TabsContent>
           </Panel>
+          </SettingsQuery.Provider>
 
           <div className="mt-4 flex justify-end">
             <button

@@ -5,14 +5,14 @@ test.describe('Settings', () => {
   test('displays settings sections as tabs', async ({ page }) => {
     await page.goto('/settings');
     const sections = page.getByRole('tablist', { name: 'Settings sections' });
-    for (const name of ['Video', 'BitTorrent', 'Speed & schedule', 'Network', 'Appearance', 'Updates']) {
+    for (const name of ['General', 'Downloads', 'Torrents', 'Network', 'Privacy & advanced']) {
       await expect(sections.getByRole('tab', { name })).toBeVisible();
     }
   });
 
   test('can switch to Appearance section and change theme', async ({ page }) => {
     await page.goto('/settings');
-    await page.getByRole('tab', { name: 'Appearance' }).click();
+    // Appearance is under General, the tab Settings opens on.
     // The select is labelled by its row, not just positioned next to it.
     await page.getByRole('combobox', { name: 'Theme' }).selectOption('light');
     await expect(page.locator('html')).toHaveClass(/light/);
@@ -26,10 +26,10 @@ test.describe('Settings', () => {
   test('can navigate between settings sections', async ({ page }) => {
     await page.goto('/settings');
 
-    await page.getByRole('tab', { name: 'Speed & schedule' }).click();
+    await page.getByRole('tab', { name: 'Downloads' }).click();
     await expect(page.getByRole('spinbutton', { name: 'Max concurrent downloads' })).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Notifications' }).click();
+    await page.getByRole('tab', { name: 'General' }).click();
     await expect(page.getByRole('switch', { name: 'Sound effects' })).toBeVisible();
   });
 
@@ -41,13 +41,27 @@ test.describe('Settings', () => {
   });
 
   test('old section links still land on the right section', async ({ page }) => {
-    await page.goto('/settings?section=downloads');
-    await expect(page.getByRole('combobox', { name: 'Browser cookies' })).toBeVisible();
+    for (const old of ['downloads', 'video', 'speed']) {
+      await page.goto(`/settings?section=${old}`);
+      await expect(page.getByRole('combobox', { name: 'Browser cookies' })).toBeVisible();
+    }
+    await page.goto('/settings?section=updates');
+    await expect(page.getByRole('tab', { name: 'General', selected: true })).toBeVisible();
+  });
+
+  test('search finds a setting in any tab, advanced ones included', async ({ page }) => {
+    await page.goto('/settings');
+    await page.getByRole('searchbox', { name: 'Search settings' }).fill('dht');
+    await expect(page.getByRole('switch', { name: 'DHT' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Theme' })).toHaveCount(0);
+    await page.getByRole('searchbox', { name: 'Search settings' }).fill('theme');
+    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
+    await expect(page.getByRole('switch', { name: 'DHT' })).toHaveCount(0);
   });
 
   test('exports a backup and imports it back', async ({ page }) => {
     await page.goto('/settings');
-    await page.getByRole('tab', { name: 'Storage' }).click();
+    await page.getByRole('tab', { name: 'Downloads' }).click();
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
