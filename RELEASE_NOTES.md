@@ -6,15 +6,17 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-Videos from Instagram, Facebook and similar sites now play in QuickTime, iMessage and on iPhone/iPad.
+Convert to MP4 (H.264) and MP4 (HEVC) work again in the downloaded app.
 
 ### Fixes
 
-- **Downloads that QuickTime couldn't open now can.** Many sites serve VP9/AV1
-  video or Opus audio, which Prism wrapped in an `.mp4` without changing, so
-  QuickTime refused it, iMessage wouldn't preview it and AirDrop to an iPhone
-  or iPad arrived as a plain file. After a download Prism now re-encodes just
-  the streams Apple players can't decode (to H.264 / AAC); everything else is
-  copied untouched, so ordinary YouTube downloads take no extra time. If the
-  conversion fails, the original file is kept. Turn on "Keep original
-  container" in Settings to skip this.
+- **Converting to MP4 H.264 / HEVC no longer fails.** Prism ships an LGPL
+  build of ffmpeg, which can't include the x264/x265 encoders those presets
+  asked for, so every such conversion stopped with an error. Prism now uses
+  the encoder your computer actually has: Apple's hardware encoder on a Mac,
+  your NVIDIA/Intel/AMD GPU or Windows' built-in encoder on Windows, and the
+  OpenH264/Kvazaar software encoders otherwise. It tries each one on a split
+  second of video first, so a GPU encoder that's listed but unusable is
+  skipped rather than failing your conversion. The same applies to the
+  automatic "make it play in QuickTime" re-encode added in 2.3.5, which
+  until now could only re-encode video on a Mac.

@@ -24,6 +24,7 @@ on:
       - src-tauri/tauri.windows.conf.json
       - src-tauri/tauri.linux.conf.json
       - .github/workflows/media.yml
+      - src-tauri/src/encoders.rs
 
 permissions:
   contents: read
@@ -73,6 +74,20 @@ jobs:
 
           src-tauri/lib/bin/ffprobe -hide_banner -version | head -1
           cat src-tauri/lib/VERSIONS.txt
+
+      # LGPL means no x264/x265, so Convert and the post-download re-encode
+      # rely on these software encoders where there is no usable GPU (as on
+      # a CI runner). Same options as src-tauri/src/encoders.rs uses.
+      - name: H.264 and HEVC encode without x264/x265
+        shell: bash
+        run: |
+          set -euo pipefail
+          ff="src-tauri/lib/bin/ffmpeg${{ matrix.exe }}"
+          src=(-hide_banner -nostdin -loglevel error -f lavfi -i color=c=black:s=320x240:r=30:d=0.5 -frames:v 5)
+          "$ff" "${src[@]}" -c:v libopenh264 -b:v 2500k -pix_fmt yuv420p -f null -
+          echo "✓ libopenh264"
+          "$ff" "${src[@]}" -c:v libkvazaar -kvazaar-params preset=fast,qp=26 -pix_fmt yuv420p -f null -
+          echo "✓ libkvazaar"
 
   # Windows and Linux get BtbN's LGPL ffmpeg the same way macOS gets the
   # toolchain Prism builds, and build.yml only runs on tags — so the staging is
@@ -125,4 +140,18 @@ jobs:
           fi
 
           cat src-tauri/lib/VERSIONS.txt
+
+      # LGPL means no x264/x265, so Convert and the post-download re-encode
+      # rely on these software encoders where there is no usable GPU (as on
+      # a CI runner). Same options as src-tauri/src/encoders.rs uses.
+      - name: H.264 and HEVC encode without x264/x265
+        shell: bash
+        run: |
+          set -euo pipefail
+          ff="src-tauri/lib/bin/ffmpeg${{ matrix.exe }}"
+          src=(-hide_banner -nostdin -loglevel error -f lavfi -i color=c=black:s=320x240:r=30:d=0.5 -frames:v 5)
+          "$ff" "${src[@]}" -c:v libopenh264 -b:v 2500k -pix_fmt yuv420p -f null -
+          echo "✓ libopenh264"
+          "$ff" "${src[@]}" -c:v libkvazaar -kvazaar-params preset=fast,qp=26 -pix_fmt yuv420p -f null -
+          echo "✓ libkvazaar"
 
