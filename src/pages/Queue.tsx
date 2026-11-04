@@ -4,7 +4,7 @@ import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
-import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
+import { EmptyState, EmptyActions, ConfirmDialog, BulkButton } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
@@ -324,7 +324,8 @@ export default function Queue() {
           <EmptyState
             icon={ArrowDownToLine}
             title="No transfers"
-            description="Downloads and torrents you add will appear here. Paste a URL or magnet link on the Dashboard to get started."
+            description="Videos, links and torrents you add show up here while they download."
+            action={<EmptyActions />}
           />
         ) : visibleItems.length === 0 ? (
           <EmptyState

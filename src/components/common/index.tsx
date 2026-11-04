@@ -128,6 +128,31 @@ interface EmptyStateProps {
   className?: string;
 }
 
+/** The buttons an empty page offers: add a link, and play a file when the
+ * player is there. Opens the shell's own Add sheet and file picker. */
+export function EmptyActions({ play = false }: { play?: boolean }) {
+  return (
+    <div className="flex items-center justify-center gap-2">
+      <button
+        type="button"
+        onClick={() => import('@/lib/nav-bus').then(({ requestAdd }) => requestAdd())}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+      >
+        Add a link
+      </button>
+      {play && (
+        <button
+          type="button"
+          onClick={() => import('@/lib/player-window').then(({ pickAndPlay }) => pickAndPlay()).catch(() => {})}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+        >
+          Play a file
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div className={cn('flex flex-col items-center justify-center py-16 text-center animate-fade-in', className)}>
@@ -151,7 +176,7 @@ const STATUS_CONFIG: Record<DownloadStatus, { label: string; className: string }
   paused: { label: 'Paused', className: 'bg-warning/15 text-warning' },
   completed: { label: 'Completed', className: 'bg-success/15 text-success' },
   failed: { label: 'Failed', className: 'bg-destructive/15 text-destructive' },
-  canceled: { label: 'Canceled', className: 'bg-muted text-muted-foreground' },
+  canceled: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
 };
 
 export function StatusBadge({ status }: { status: DownloadStatus }) {

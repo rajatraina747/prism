@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useHistory, useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
-import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
+import { EmptyState, EmptyActions, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
 import { torrentFilePath } from '@/stores/torrent-item';
 import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
 import { FailureNote } from '@/components/common/FailureNote';
@@ -30,7 +30,7 @@ const TAB_LABELS: Record<FilterTab, string> = {
   all: 'All',
   completed: 'Completed',
   failed: 'Failed',
-  canceled: 'Canceled',
+  canceled: 'Cancelled',
 };
 
 function formatWhen(iso: string): string {
@@ -55,7 +55,7 @@ const iconButton = 'p-1.5 rounded-md hover:bg-secondary text-muted-foreground ho
 function statusIcon(status: string) {
   if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" aria-label="Completed" />;
   if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" aria-label="Failed" />;
-  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Canceled" />;
+  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Cancelled" />;
 }
 
 /** One page for everything that has finished, one way or another: completed,
@@ -245,7 +245,7 @@ export default function Library() {
       <div className="flex items-center justify-between page-header">
         <div>
           <h1 className="page-title">Library</h1>
-          <p className="page-subtitle">Completed, failed, and canceled downloads</p>
+          <p className="page-subtitle">Completed, failed and cancelled downloads</p>
         </div>
         <div className="flex items-center gap-2">
           {items.length > 0 && (
@@ -418,8 +418,9 @@ export default function Library() {
               description={
                 tab === 'failed'
                   ? 'Downloads that hit errors land here with a reason and a retry button.'
-                  : 'Finished downloads will appear here. Paste a URL on the Dashboard to get started.'
+                  : 'Everything you download ends up here, ready to play.'
               }
+              action={tab === 'failed' ? undefined : <EmptyActions play={playerAvailable} />}
             />
           ) : (
             <VirtualList
@@ -462,7 +463,7 @@ export default function Library() {
         title={tab === 'all' ? 'Clear the whole library?' : `Clear all ${TAB_LABELS[tab].toLowerCase()} items?`}
         description={
           tab === 'all'
-            ? `This removes all ${items.length} entries — completed, failed, and canceled. Downloaded files stay on disk.`
+            ? `This removes all ${items.length} entries — completed, failed and cancelled. Downloaded files stay on disk.`
             : `This removes ${inTab.length} ${TAB_LABELS[tab].toLowerCase()} entr${inTab.length === 1 ? 'y' : 'ies'}. Downloaded files stay on disk.`
         }
         confirmLabel={tab === 'all' ? 'Clear Everything' : `Clear ${TAB_LABELS[tab]}`}

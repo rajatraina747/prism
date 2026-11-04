@@ -9,7 +9,7 @@ import { useDropToAdd } from '@/hooks/use-drop-to-add';
 import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { pushDeepLink } from '@/lib/deep-link-bus';
 import { setRemoteImagesAllowed } from '@/lib/remote-images';
-import { onNavigateRequest } from '@/lib/nav-bus';
+import { onNavigateRequest, onAddRequest } from '@/lib/nav-bus';
 import { onStoreProblem, describeStoreProblem } from '@/lib/store-problems';
 import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
 import { toast } from 'sonner';
@@ -260,6 +260,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // One Add surface: the sheet (sidebar button, ⌘N / ⌘L from any page)…
   const [addOpen, setAddOpen] = React.useState(false);
+  React.useEffect(() => onAddRequest(() => setAddOpen(true)), []);
 
   // The application menu names an intent; deciding what it means belongs here,
   // with the rest of the navigation, rather than in Rust.

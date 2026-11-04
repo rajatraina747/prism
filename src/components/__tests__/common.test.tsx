@@ -13,7 +13,7 @@ describe('StatusBadge', () => {
       { status: 'paused' as const, label: 'Paused' },
       { status: 'completed' as const, label: 'Completed' },
       { status: 'failed' as const, label: 'Failed' },
-      { status: 'canceled' as const, label: 'Canceled' },
+      { status: 'canceled' as const, label: 'Cancelled' },
     ];
 
     for (const { status, label } of statuses) {

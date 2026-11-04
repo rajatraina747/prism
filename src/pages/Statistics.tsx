@@ -91,7 +91,7 @@ export default function Statistics() {
         <Tile icon={HardDrive} label="Downloaded" value={formatBytes(stats.bytes)} />
         <Tile icon={CheckCircle2} label="Completed" value={stats.completed.toLocaleString()} />
         <Tile icon={XCircle} label="Failed" value={stats.failed.toLocaleString()} />
-        <Tile icon={Ban} label="Canceled" value={stats.canceled.toLocaleString()} />
+        <Tile icon={Ban} label="Cancelled" value={stats.canceled.toLocaleString()} />
       </div>
 
       {/* Upload is a torrent figure, and only ever counted live — nothing in
