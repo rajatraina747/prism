@@ -12,6 +12,7 @@ import { setRemoteImagesAllowed } from '@/lib/remote-images';
 import { onNavigateRequest, onAddRequest } from '@/lib/nav-bus';
 import { onStoreProblem, describeStoreProblem } from '@/lib/store-problems';
 import { AddSheet, MOD_KEY } from '@/components/add/AddSheet';
+import { OutboundLink } from '@/components/common';
 import { toast } from 'sonner';
 import {
   ArrowDownToLine,
@@ -38,6 +39,9 @@ const NAV_ITEMS = [
   { path: '/library', icon: LibraryIcon, label: 'Library' },
 ] as const;
 
+/** Pages reached from Settings, which keep Settings lit in the sidebar. */
+const UNDER_SETTINGS = ['/about', '/privacy', '/terms', '/licenses'];
+
 const BOTTOM_ITEMS = [
   { path: '/settings', icon: Settings2, label: 'Settings' },
 ] as const;
@@ -50,21 +54,27 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const engine = useEngineStatus();
   const playerAvailable = usePlayerAvailable();
   const service = useService();
+  const { pathname } = useLocation();
 
   return (
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] max-[999px]:w-16 max-[999px]:min-w-16 h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
-      {/* Brand: one compact row. Below 1000px the sidebar is icons only. */}
-      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border/30 max-[999px]:justify-center max-[999px]:px-0">
-        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-8 h-8 rounded-lg object-contain shrink-0" />
-        <span className="text-sm font-semibold tracking-tight text-foreground max-[999px]:sr-only">Prism</span>
-        {service.isDemo && (
-          <span
-            title="Browser demo: downloads are simulated and nothing is saved to disk"
-            className="ml-auto px-2 py-0.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide max-[999px]:hidden"
-          >
-            Demo
-          </span>
-        )}
+      {/* Brand. Below 1000px the sidebar is icons only, and this is the logo. */}
+      <div className="flex items-center gap-3 px-4 h-[72px] border-b border-border/30 max-[999px]:justify-center max-[999px]:px-0">
+        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-11 h-11 rounded-xl object-contain shrink-0" />
+        <div className="min-w-0 max-[999px]:sr-only">
+          <p className="text-base font-semibold tracking-tight text-foreground leading-tight whitespace-nowrap flex items-center gap-2">
+            Prism
+            {service.isDemo && (
+              <span
+                title="Browser demo: downloads are simulated and nothing is saved to disk"
+                className="px-1.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide"
+              >
+                Demo
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground leading-tight whitespace-nowrap">by RainaCorp</p>
+        </div>
       </div>
 
       <div className="px-3 pt-3 max-[999px]:px-2">
@@ -130,14 +140,24 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
 
       {/* Bottom Nav */}
       <div className="px-3 py-3 space-y-0.5 border-t border-border/30 max-[999px]:px-2">
+        <OutboundLink
+          href="https://www.rainacorp.co.uk"
+          title="RainaCorp — rainacorp.co.uk"
+          className="flex flex-col items-center gap-1 py-2 mb-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors group"
+        >
+          <img src={publicAsset("rainacorp-logo.webp")} alt="" className="w-7 h-7 object-contain opacity-70 group-hover:opacity-100 transition-opacity" />
+          <span className="text-xs font-semibold tracking-wide whitespace-nowrap max-[999px]:sr-only">A RAINACORP PRODUCT</span>
+          <span className="text-xs whitespace-nowrap max-[999px]:sr-only">rainacorp.co.uk</span>
+        </OutboundLink>
         {BOTTOM_ITEMS.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
+            // About and the legal pages live under Settings now.
             title={item.label}
             className={({ isActive }) => cn(
               'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 max-[999px]:justify-center max-[999px]:px-0 relative',
-              isActive
+              isActive || (item.path === '/settings' && UNDER_SETTINGS.includes(pathname))
                 ? 'bg-primary/12 text-primary'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}

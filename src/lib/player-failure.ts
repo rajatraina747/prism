@@ -14,5 +14,5 @@ export function playerFailureHint(error: string, platform: Platform): string {
       ? "Prism's player needs libmpv. Install it from your package manager (e.g. libmpv2), then reopen the player."
       : 'Part of the player is missing from this copy of Prism. Reinstalling Prism should restore it.';
   }
-  return 'This is a problem in Prism, not in your video or your installation. Check Settings → Updates for a newer version. If it keeps happening, Settings → Diagnostics → Export logs gives you a file to attach to a bug report.';
+  return 'This is a problem in Prism, not in your video or your installation. Check Settings → General → Updates for a newer version. If it keeps happening, Settings → Privacy & advanced → Diagnostics → Export logs gives you a file to attach to a bug report.';
 }
