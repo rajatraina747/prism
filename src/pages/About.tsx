@@ -18,9 +18,9 @@ export default function About() {
     <div className="page-container max-w-lg mx-auto">
       <div className="page-header text-center">
         <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
-        <h2 className="page-title">Prism</h2>
-        <p className="page-subtitle">Premium Video Downloader</p>
-        <p className="text-[11px] text-muted-foreground/60 mt-1">
+        <h1 className="page-title">Prism</h1>
+        <p className="page-subtitle">Downloads, plays and converts video</p>
+        <p className="text-xs text-muted-foreground mt-1">
           by{' '}
           <OutboundLink href="https://www.rainacorp.co.uk" className="hover:text-muted-foreground transition-colors">
             RainaCorp
@@ -80,9 +80,9 @@ function LinkRow({ icon: Icon, label, description, href }: { icon: React.Element
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium text-foreground">{label}</p>
-        <p className="text-[11px] text-muted-foreground">{description}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      {href && <ExternalLink className="w-3 h-3 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />}
+      {href && <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />}
     </>
   );
 

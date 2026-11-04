@@ -15,7 +15,9 @@
     --secondary: 228 12% 17%;
     --secondary-foreground: 210 15% 80%;
     --muted: 228 10% 20%;
-    --muted-foreground: 215 12% 50%;
+    /* 62%: 6.9:1 on the background, 6.3:1 on cards (was 50%, 4.5:1). Muted
+       text is never faded below /80 (eslint), which is where it used to fail. */
+    --muted-foreground: 215 12% 62%;
     --accent: 160 50% 44%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62% 55%;
@@ -52,7 +54,8 @@
     --secondary: 220 14% 92%;
     --secondary-foreground: 228 12% 30%;
     --muted: 220 14% 92%;
-    --muted-foreground: 215 10% 45%;
+    /* 40%: 5.6:1 on the background, 6.0:1 on white cards (was 45%, 4.6:1). */
+    --muted-foreground: 215 10% 40%;
     --accent: 160 50% 38%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 65% 50%;
@@ -140,8 +143,10 @@
 }
 
 @layer components {
+  /* One content width for every page (2.5): fluid up to 1100px, centred.
+     Reading pages (legal, About) narrow it further with max-w-*. */
   .page-container {
-    @apply flex-1 overflow-auto p-6;
+    @apply flex-1 overflow-auto p-6 w-full max-w-[1100px] mx-auto;
   }
   .page-header {
     @apply mb-6;

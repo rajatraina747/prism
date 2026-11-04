@@ -29,9 +29,9 @@ function Tile({ icon: Icon, label, value, hint }: {
     <div className="flex items-start gap-3 p-3 rounded-xl bg-secondary/30 border border-border/20">
       <Icon className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
       <div className="min-w-0">
-        <p className="text-[11px] text-muted-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-sm font-medium text-foreground tabular-nums">{value}</p>
-        {hint && <p className="text-[10px] text-muted-foreground/80 mt-0.5">{hint}</p>}
+        {hint && <p className="text-xs text-muted-foreground/80 mt-0.5">{hint}</p>}
       </div>
     </div>
   );
@@ -43,12 +43,12 @@ function BarList({ rows, empty }: {
   empty: string;
 }) {
   const max = Math.max(1, ...rows.map(r => r.bytes));
-  if (rows.length === 0) return <p className="text-[11px] text-muted-foreground px-1 py-2">{empty}</p>;
+  if (rows.length === 0) return <p className="text-xs text-muted-foreground px-1 py-2">{empty}</p>;
   return (
     <ul className="space-y-1.5">
       {rows.map(row => (
         <li key={row.key}>
-          <div className="flex items-baseline justify-between gap-3 text-[11px]">
+          <div className="flex items-baseline justify-between gap-3 text-xs">
             <span className="text-foreground truncate" title={row.key}>{row.key}</span>
             <span className="text-muted-foreground tabular-nums shrink-0">
               {formatBytes(row.bytes)} · {row.items}
@@ -77,9 +77,9 @@ export default function Statistics() {
   const finished = stats.completed + stats.failed + stats.canceled;
 
   return (
-    <div className="page-container max-w-3xl mx-auto">
+    <div className="page-container">
       <div className="page-header">
-        <h2 className="page-title">Statistics</h2>
+        <h1 className="page-title">Statistics</h1>
         <p className="page-subtitle">
           {finished === 0
             ? 'Nothing has finished downloading yet.'
@@ -91,7 +91,7 @@ export default function Statistics() {
         <Tile icon={HardDrive} label="Downloaded" value={formatBytes(stats.bytes)} />
         <Tile icon={CheckCircle2} label="Completed" value={stats.completed.toLocaleString()} />
         <Tile icon={XCircle} label="Failed" value={stats.failed.toLocaleString()} />
-        <Tile icon={Ban} label="Canceled" value={stats.canceled.toLocaleString()} />
+        <Tile icon={Ban} label="Cancelled" value={stats.canceled.toLocaleString()} />
       </div>
 
       {/* Upload is a torrent figure, and only ever counted live — nothing in
@@ -111,7 +111,7 @@ export default function Statistics() {
       <Panel className="mb-4">
         <h3 className="text-xs font-semibold text-foreground mb-2">Last 30 days</h3>
         {stats.bytes === 0 ? (
-          <p className="text-[11px] text-muted-foreground">Finished downloads will show up here.</p>
+          <p className="text-xs text-muted-foreground">Finished downloads will show up here.</p>
         ) : (
           <>
             <div className="flex items-end gap-[2px] h-24" role="img" aria-label="Bytes downloaded per day over the last 30 days">
@@ -124,7 +124,7 @@ export default function Statistics() {
                 />
               ))}
             </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>{days[0]?.day}</span>
               <span>{days[days.length - 1]?.day}</span>
             </div>
@@ -156,7 +156,7 @@ export default function Statistics() {
         </Panel>
       )}
 
-      <p className="text-[10px] text-muted-foreground mt-4 px-1">
+      <p className="text-xs text-muted-foreground mt-4 px-1">
         These counters are kept separately from the Library, so removing entries from the Library
         doesn't change the totals above.
       </p>

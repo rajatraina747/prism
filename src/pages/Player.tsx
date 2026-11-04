@@ -413,31 +413,31 @@ export default function Player() {
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-medium text-white truncate drop-shadow">{title}</h1>
           {loadError && (
-            <span role="alert" className="shrink-0 max-w-[60%] truncate text-[11px] px-1.5 py-0.5 rounded bg-red-500/80 text-white" title={loadError}>
+            <span role="alert" className="shrink-0 max-w-[60%] truncate text-xs px-1.5 py-0.5 rounded bg-red-500/80 text-white" title={loadError}>
               {loadError}
             </span>
           )}
           {resumedFrom !== null && (
             <button
               onClick={() => { seek(0).catch(() => {}); setResumedFrom(null); }}
-              className="shrink-0 pointer-events-auto text-[11px] px-1.5 py-0.5 rounded bg-white/15 text-white/90 hover:bg-white/25 transition-colors"
+              className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/90 hover:bg-white/25 transition-colors"
               title={`Resumed from ${formatDuration(resumedFrom)}`}
             >
               Resumed from {formatDuration(resumedFrom)} · Start over
             </button>
           )}
           {isHdr && (
-            <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-400/90 text-black">
+            <span className="shrink-0 text-xs font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-400/90 text-black">
               HDR
             </span>
           )}
           {videoParams?.w && videoParams?.h && (
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/15 text-white/90 tabular-nums">
+            <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/90 tabular-nums">
               {videoParams.w}×{videoParams.h}
             </span>
           )}
           {channelBadge && (
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/15 text-white/90 tabular-nums">
+            <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/90 tabular-nums">
               {channelBadge}
             </span>
           )}
@@ -503,12 +503,12 @@ export default function Player() {
             </>
           )}
 
-          <span className="text-[11px] tabular-nums text-white/90 shrink-0">
+          <span className="text-xs tabular-nums text-white/90 shrink-0">
             {formatDuration(timePos)} / {formatDuration(duration)}
           </span>
 
           {chapters.length > 1 && chapter !== null && chapters[chapter]?.title && (
-            <span className="text-[11px] text-white/70 truncate max-w-40 shrink-0" title={chapters[chapter].title}>
+            <span className="text-xs text-white/70 truncate max-w-40 shrink-0" title={chapters[chapter].title}>
               {chapters[chapter].title}
             </span>
           )}
@@ -536,12 +536,12 @@ export default function Player() {
           <div className="flex-1" />
 
           {audioTracks.length > 0 && (
-            <label className="flex items-center gap-1 text-[11px] text-white/80">
+            <label className="flex items-center gap-1 text-xs text-white/80">
               Audio
               <select
                 value={audioTracks.find((t) => t.selected)?.id ?? ''}
                 onChange={(e) => setProp('aid', e.target.value).catch(() => {})}
-                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-36"
+                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-36"
               >
                 {audioTracks.map((t) => (
                   <option key={t.id} value={t.id}>{trackLabel(t)}</option>
@@ -550,7 +550,7 @@ export default function Player() {
             </label>
           )}
 
-          <label className="flex items-center gap-1 text-[11px] text-white/80">
+          <label className="flex items-center gap-1 text-xs text-white/80">
             Subs
             {subTracks.length > 0 && (
               <select
@@ -561,7 +561,7 @@ export default function Player() {
                   setProp('sub-visibility', e.target.value !== 'no').catch(() => {});
                   if (e.target.value !== 'no') setProp('sid', e.target.value).catch(() => {});
                 }}
-                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-36"
+                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-36"
               >
                 <option value="no">Off</option>
                 {subTracks.map((t) => (
@@ -579,7 +579,7 @@ export default function Player() {
                     .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
                   e.target.value = '';
                 }}
-                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white max-w-28"
+                className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-28"
                 aria-label="Subtitles found next to this file"
               >
                 <option value="">Nearby…</option>
@@ -621,11 +621,11 @@ export default function Player() {
             )}
           </label>
 
-          <label className="flex items-center gap-1 text-[11px] text-white/80">
+          <label className="flex items-center gap-1 text-xs text-white/80">
             <select
               value={speed}
               onChange={(e) => setProp('speed', Number(e.target.value)).catch(() => {})}
-              className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-[11px] text-white"
+              className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white"
               aria-label="Playback speed"
             >
               {SPEEDS.map((s) => (

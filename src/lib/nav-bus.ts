@@ -18,3 +18,18 @@ export function onNavigateRequest(cb: (path: string) => void): () => void {
     if (listener === cb) listener = null;
   };
 }
+
+// The Add sheet belongs to the shell too: an empty page's "Add a link"
+// button opens the same sheet as ⌘N rather than sending people elsewhere.
+let addListener: (() => void) | null = null;
+
+export function requestAdd() {
+  addListener?.();
+}
+
+export function onAddRequest(cb: () => void): () => void {
+  addListener = cb;
+  return () => {
+    if (addListener === cb) addListener = null;
+  };
+}

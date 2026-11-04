@@ -16,7 +16,7 @@ export default function TermsOfService() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Settings
         </button>
-        <h2 className="page-title">Terms of Service</h2>
+        <h1 className="page-title">Terms of Service</h1>
         <p className="page-subtitle">Last updated: September 2026</p>
       </div>
 

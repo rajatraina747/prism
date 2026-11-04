@@ -116,11 +116,11 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex-1 min-h-0 flex flex-col px-3 pb-3">
         <div className="flex items-center gap-2">
           <TabsList className="h-8">
-            <TabsTrigger value="general" className="text-[11px] h-6">General</TabsTrigger>
-            {isTorrent && <TabsTrigger value="files" className="text-[11px] h-6">Files</TabsTrigger>}
-            {isTorrent && <TabsTrigger value="peers" className="text-[11px] h-6">Peers</TabsTrigger>}
-            {isTorrent && <TabsTrigger value="trackers" className="text-[11px] h-6">Trackers</TabsTrigger>}
-            <TabsTrigger value="speed" className="text-[11px] h-6">Speed</TabsTrigger>
+            <TabsTrigger value="general" className="text-xs h-6">General</TabsTrigger>
+            {isTorrent && <TabsTrigger value="files" className="text-xs h-6">Files</TabsTrigger>}
+            {isTorrent && <TabsTrigger value="peers" className="text-xs h-6">Peers</TabsTrigger>}
+            {isTorrent && <TabsTrigger value="trackers" className="text-xs h-6">Trackers</TabsTrigger>}
+            <TabsTrigger value="speed" className="text-xs h-6">Speed</TabsTrigger>
           </TabsList>
           <span className="text-xs text-foreground truncate flex-1 min-w-0" title={item.metadata.title}>{item.metadata.title}</span>
           <button onClick={onClose} aria-label="Close details" className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
@@ -159,7 +159,7 @@ function useDetails(item: DownloadItem): TorrentDetails | null {
 
 function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex items-baseline gap-3 text-[11px] py-0.5">
+    <div className="flex items-baseline gap-3 text-xs py-0.5">
       <span className="w-28 shrink-0 text-muted-foreground">{label}</span>
       <span className={cn('text-foreground min-w-0 truncate', mono && 'font-mono')}>{children}</span>
     </div>
@@ -192,7 +192,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
       {isTorrent && item.pieces && item.pieces.length > 0 && (
         <div className="mb-2">
           <PiecesBar pieces={item.pieces} height="h-2.5" />
-          <p className="text-[10px] text-muted-foreground mt-1">Pieces on disk{details ? ` · ${details.totalPieces.toLocaleString()} × ${formatBytes(details.pieceLength)}` : ''}</p>
+          <p className="text-xs text-muted-foreground mt-1">Pieces on disk{details ? ` · ${details.totalPieces.toLocaleString()} × ${formatBytes(details.pieceLength)}` : ''}</p>
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
@@ -221,7 +221,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                 value={item.settings.categoryId ?? ''}
                 onChange={(e) => onSetCategory(item.id, preferences.categories.find(c => c.id === e.target.value) ?? null)}
                 aria-label="Category"
-                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               >
                 <option value="">None</option>
                 {preferences.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -248,7 +248,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                   (e.target.value || null) as PostCompletionAction | null,
                 )}
                 aria-label="When it finishes"
-                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               >
                 <option value="">Use the default</option>
                 <option value="nothing">Do nothing</option>
@@ -271,7 +271,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                   e.target.value ? new Date(e.target.value).toISOString() : null,
                 )}
                 aria-label="Start after"
-                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 max-w-[180px]"
+                className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               />
             </Row>
           )}
@@ -295,7 +295,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                       item.settings.splitChapters ?? false,
                     )}
                     aria-label="Clip from"
-                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
+                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 w-20"
                   />
                   <span className="text-muted-foreground">–</span>
                   <CommitInput
@@ -309,9 +309,9 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                       item.settings.splitChapters ?? false,
                     )}
                     aria-label="Clip to"
-                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-[11px] text-foreground outline-none focus:border-primary/50 w-20"
+                    className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 w-20"
                   />
-                  <span className="text-muted-foreground/70">e.g. 1:23</span>
+                  <span className="text-muted-foreground">e.g. 1:23</span>
                 </span>
               </Row>
               {/* Ignored when a range is set, so it is only offered without one. */}
@@ -325,7 +325,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                       aria-label="Split by chapter"
                       className="accent-primary"
                     />
-                    <span className="text-[11px] text-muted-foreground">One file per chapter</span>
+                    <span className="text-xs text-muted-foreground">One file per chapter</span>
                   </label>
                 </Row>
               )}
@@ -338,7 +338,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
           {!isTorrent && <Row label="Source">{item.metadata.source.domain}</Row>}
           {!isTorrent && item.settings.format && <Row label="Format">{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</Row>}
           {isTorrent && onReannounce && (item.status === 'downloading' || item.status === 'seeding') && (
-            <button onClick={() => onReannounce(item.id)} className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors">
+            <button onClick={() => onReannounce(item.id)} className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors">
               <RefreshCw className="w-3 h-3" /> Update tracker
             </button>
           )}
@@ -346,7 +346,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
       </div>
       {onSetLabels && preferences.labels.length > 0 && (
         <div className="flex items-baseline gap-3 mt-2 pt-2 border-t border-border/20">
-          <span className="w-28 shrink-0 text-[11px] text-muted-foreground">Labels</span>
+          <span className="w-28 shrink-0 text-xs text-muted-foreground">Labels</span>
           <span className="flex flex-wrap gap-1">
             {preferences.labels.map(label => {
               const on = item.settings.labelIds?.includes(label.id) ?? false;
@@ -360,7 +360,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                     onSetLabels(item.id, on ? current.filter(x => x !== label.id) : [...current, label.id]);
                   }}
                   className={cn(
-                    'px-1.5 py-0.5 rounded-md text-[10px] border transition-colors',
+                    'px-1.5 py-0.5 rounded-md text-xs border transition-colors',
                     on
                       ? 'bg-primary/15 border-primary/40 text-primary'
                       : 'bg-input border-border/40 text-muted-foreground hover:text-foreground',
@@ -406,11 +406,11 @@ function ChecksumRow({ item, onSetChecksum }: {
           aria-label="Expected SHA-256"
           aria-invalid={invalid}
           className={cn(
-            'w-64 max-w-full bg-input border rounded-md px-1.5 py-0.5 text-[11px] font-mono text-foreground outline-none',
+            'w-64 max-w-full bg-input border rounded-md px-1.5 py-0.5 text-xs font-mono text-foreground outline-none',
             invalid ? 'border-destructive/60' : 'border-border/40 focus:border-primary/50',
           )}
         />
-        {invalid && <span className="text-[10px] text-destructive">That isn't a SHA-256 (64 hex characters)</span>}
+        {invalid && <span className="text-xs text-destructive">That isn't a SHA-256 (64 hex characters)</span>}
       </span>
     </Row>
   );
@@ -453,7 +453,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
   const files: FileNode[] = (item.files ?? []).map((f, index) => ({ index, ...f }));
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
   if (files.length === 0) {
-    return <p className="text-[11px] text-muted-foreground px-1">File list appears once the torrent's metadata has been fetched from peers.</p>;
+    return <p className="text-xs text-muted-foreground px-1">File list appears once the torrent's metadata has been fetched from peers.</p>;
   }
   const canEdit = !!onUpdateFiles && (item.status === 'downloading' || item.status === 'paused');
   const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
@@ -478,7 +478,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
               {folder.path && (
                 <button
                   onClick={() => setCollapsed(s => { const n = new Set(s); if (n.has(folder.path)) n.delete(folder.path); else n.add(folder.path); return n; })}
-                  className="w-full flex items-center gap-1.5 text-[11px] text-foreground py-0.5 hover:text-primary transition-colors"
+                  className="w-full flex items-center gap-1.5 text-xs text-foreground py-0.5 hover:text-primary transition-colors"
                   aria-expanded={!isCollapsed}
                 >
                   <ChevronRight className={cn('w-3 h-3 transition-transform', !isCollapsed && 'rotate-90')} />
@@ -493,7 +493,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
                 const full = torrentFilePath(item, f.name);
                 const complete = f.progress >= 100;
                 return (
-                  <div key={f.index} className={cn('flex items-center gap-2 text-[11px] py-0.5 tabular-nums', folder.path && 'pl-6')}>
+                  <div key={f.index} className={cn('flex items-center gap-2 text-xs py-0.5 tabular-nums', folder.path && 'pl-6')}>
                     {canEdit ? (
                       <input type="checkbox" checked={sel} onChange={() => toggle(f.index)} aria-label={`Download ${base}`} className="w-3 h-3 accent-primary shrink-0 cursor-pointer" />
                     ) : <span className="w-3" />}
@@ -552,11 +552,11 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
     return () => { cancelled = true; clearInterval(t); };
   }, [service, item.id, active, live]);
 
-  if (!live) return <p className="text-[11px] text-muted-foreground px-1">Peers are listed while the torrent is downloading or seeding.</p>;
-  if (peers === null) return <p className="text-[11px] text-muted-foreground px-1">Loading peers…</p>;
+  if (!live) return <p className="text-xs text-muted-foreground px-1">Peers are listed while the torrent is downloading or seeding.</p>;
+  if (peers === null) return <p className="text-xs text-muted-foreground px-1">Loading peers…</p>;
   if (peers.length === 0) {
     return (
-      <p className="text-[11px] text-muted-foreground px-1">
+      <p className="text-xs text-muted-foreground px-1">
         No peers yet. Prism is asking the trackers, the DHT and the local network every few minutes — low-seed torrents can sit here for a while and still complete.
       </p>
     );
@@ -564,7 +564,7 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
   const liveCount = peers.filter(p => p.state === 'live').length;
   return (
     <ScrollArea className="h-full pr-2">
-      <table className="w-full text-[11px] tabular-nums">
+      <table className="w-full text-xs tabular-nums">
         <thead className="text-muted-foreground">
           <tr className="text-left">
             <th className="font-medium py-1 pr-2">Address</th>
@@ -592,7 +592,7 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-muted-foreground mt-2">{liveCount} connected · {peers.length - liveCount} connecting/other. Per-peer progress and flags aren't reported by the engine.</p>
+      <p className="text-xs text-muted-foreground mt-2">{liveCount} connected · {peers.length - liveCount} connecting/other. Per-peer progress and flags aren't reported by the engine.</p>
     </ScrollArea>
   );
 }
@@ -609,32 +609,32 @@ function TrackersTab({ item, onReannounce }: { item: DownloadItem; onReannounce?
     <ScrollArea className="h-full pr-2">
       <div className="flex items-center gap-2 mb-2">
         {onReannounce && (
-          <button disabled={!live} onClick={() => onReannounce(item.id)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50">
+          <button disabled={!live} onClick={() => onReannounce(item.id)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50">
             <RefreshCw className="w-3 h-3" /> Update tracker
           </button>
         )}
-        <button onClick={() => navigate('/settings')} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">Add trackers in Settings →</button>
+        <button onClick={() => navigate('/settings')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Add trackers in Settings →</button>
       </div>
       {details ? (
         details.trackers.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">No trackers in this torrent — peers come from DHT, PEX and the local network only.</p>
+          <p className="text-xs text-muted-foreground">No trackers in this torrent — peers come from DHT, PEX and the local network only.</p>
         ) : (
           <ul className="space-y-0.5">
             {details.trackers.map(t => (
-              <li key={t} className="text-[11px] font-mono text-foreground truncate" title={t}>{t}</li>
+              <li key={t} className="text-xs font-mono text-foreground truncate" title={t}>{t}</li>
             ))}
           </ul>
         )
       ) : (
-        <p className="text-[11px] text-muted-foreground">Tracker list appears once the torrent is active.</p>
+        <p className="text-xs text-muted-foreground">Tracker list appears once the torrent is active.</p>
       )}
       {extra.length > 0 && (
         <div className="mt-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Added to every torrent (Settings)</p>
-          <ul className="space-y-0.5">{extra.map(t => <li key={t} className="text-[11px] font-mono text-muted-foreground truncate" title={t}>{t}</li>)}</ul>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Added to every torrent (Settings)</p>
+          <ul className="space-y-0.5">{extra.map(t => <li key={t} className="text-xs font-mono text-muted-foreground truncate" title={t}>{t}</li>)}</ul>
         </div>
       )}
-      <p className="text-[10px] text-muted-foreground mt-3">
+      <p className="text-xs text-muted-foreground mt-3">
         Prism announces to every tracker on start and re-announces automatically every 5 minutes while no peers are connected. Per-tracker status (last announce, seeders/leechers) isn't reported by the engine.
       </p>
     </ScrollArea>
@@ -665,7 +665,7 @@ function SpeedTab({ item }: { item: DownloadItem }) {
   const padLeft = (xs: number[]) => [...Array(SAMPLES - xs.length).fill(0), ...xs];
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-4 text-[11px] text-muted-foreground mb-1">
+      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-1">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> ↓ {formatSpeed(item.speed || 0)}</span>
         {item.kind === 'torrent' && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> ↑ {formatSpeed(item.uploadSpeed || 0)}</span>}
         <span className="ml-auto">peak {formatSpeed(max)} · last {SAMPLES} s</span>

@@ -37,7 +37,7 @@ function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType
       </div>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-foreground tabular-nums truncate">{value}</p>
-        <p className="text-[11px] text-muted-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
       </div>
     </div>
   );
@@ -426,9 +426,9 @@ export default function Dashboard() {
   handleBatchSubmitRef.current = handleBatchSubmit;
 
   return (
-    <div className="page-container max-w-3xl mx-auto">
-      <div className="page-header text-center">
-        <h2 className="page-title">Dashboard</h2>
+    <div className="page-container">
+      <div className="page-header">
+        <h1 className="page-title">Dashboard</h1>
         <p className="page-subtitle">Paste a video URL or magnet link to get started</p>
       </div>
 
@@ -473,7 +473,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={() => { abortBulkRef.current = true; }}
-            className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
+            className="shrink-0 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
           >
             Stop
           </button>
@@ -492,22 +492,22 @@ export default function Dashboard() {
         {/* Queue Snapshot */}
         <Panel title="Active Queue" className="animate-fade-in" style={{ animationDelay: '160ms' } as React.CSSProperties}>
           {activeDownloads.length === 0 ? (
-            <p className="text-xs text-muted-foreground/60 py-2">No active downloads</p>
+            <p className="text-xs text-muted-foreground py-2">No active downloads</p>
           ) : (
             <div className="space-y-2">
               {activeDownloads.slice(0, 3).map(item => (
                 <div key={item.id} className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-foreground truncate">{item.metadata.title}</p>
+                    <p className="text-xs text-foreground truncate">{item.metadata.title}</p>
                     <ProgressBar value={item.progress} className="mt-1" />
                   </div>
-                  <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
+                  <span className="text-xs tabular-nums text-muted-foreground shrink-0">
                     {item.progress.toFixed(0)}%
                   </span>
                 </div>
               ))}
               {activeDownloads.length > 3 && (
-                <p className="text-[11px] text-muted-foreground">+{activeDownloads.length - 3} more</p>
+                <p className="text-xs text-muted-foreground">+{activeDownloads.length - 3} more</p>
               )}
             </div>
           )}
@@ -526,8 +526,8 @@ export default function Dashboard() {
                   fallbackIcon={<CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium text-foreground truncate">{item.metadata.title}</p>
-                  <p className="text-[11px] text-muted-foreground tabular-nums">
+                  <p className="text-xs font-medium text-foreground truncate">{item.metadata.title}</p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
                     {formatBytes(item.fileSize)} · {new Date(item.completedAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -565,10 +565,10 @@ export default function Dashboard() {
       >
         <img src={publicAsset("rainacorp-logo.webp")} alt="RainaCorp" className="w-10 h-10 object-contain opacity-60 group-hover:opacity-90 transition-opacity" />
         <div className="text-center">
-          <p className="text-[11px] font-semibold tracking-wide text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground group-hover:text-muted-foreground transition-colors">
             A RAINACORP PRODUCT
           </p>
-          <p className="text-[11px] text-muted-foreground/40 mt-0.5">rainacorp.co.uk</p>
+          <p className="text-xs text-muted-foreground mt-0.5">rainacorp.co.uk</p>
         </div>
       </OutboundLink>
 
@@ -638,18 +638,18 @@ export default function Dashboard() {
           {pendingExternalLink && (
             <div className="space-y-1.5 min-w-0">
               <p className="text-xs font-medium text-foreground truncate">{describeExternalLink(pendingExternalLink)}</p>
-              <p className="max-h-24 overflow-auto rounded-md bg-secondary/60 px-2.5 py-2 font-mono text-[11px] text-muted-foreground break-all">
+              <p className="max-h-24 overflow-auto rounded-md bg-secondary/60 px-2.5 py-2 font-mono text-xs text-muted-foreground break-all">
                 {pendingExternalLink}
               </p>
               {referrerFor(pendingExternalLink) && (
                 // Sent as the Referer with this download: the page said it came
                 // from here, so show it (REVIEW 2026-09-28).
-                <p className="text-[11px] text-muted-foreground truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   From the page: {referrerFor(pendingExternalLink)}
                 </p>
               )}
               {externalLinks.length > 1 && (
-                <p className="text-[11px] text-muted-foreground">{externalLinks.length - 1} more waiting</p>
+                <p className="text-xs text-muted-foreground">{externalLinks.length - 1} more waiting</p>
               )}
             </div>
           )}

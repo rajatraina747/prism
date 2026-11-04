@@ -132,7 +132,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
             onPaste={handleInputPaste}
             aria-label="Video URL or magnet link"
             placeholder="Paste a video URL or magnet link..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
             disabled={isLoading}
           />
           {isLoading && <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />}
@@ -187,12 +187,12 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
           <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-px" />
           <div className="min-w-0 flex-1">
             <p className="text-xs text-destructive break-words">{error}</p>
-            {errorHint && <p className="text-[11px] text-muted-foreground mt-0.5">{errorHint}</p>}
+            {errorHint && <p className="text-xs text-muted-foreground mt-0.5">{errorHint}</p>}
           </div>
           {errorAction && (
             <button
               onClick={errorAction.onClick}
-              className="shrink-0 px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+              className="shrink-0 px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
               {errorAction.label}
             </button>
@@ -207,7 +207,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
         </div>
       )}
 
-      <p className="mt-2.5 px-1 text-[11px] text-muted-foreground/60">
+      <p className="mt-2.5 px-1 text-xs text-muted-foreground">
         Supports single or multiple URLs · Drag and drop URLs or text files · Paste from clipboard
       </p>
     </div>

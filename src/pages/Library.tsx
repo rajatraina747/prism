@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useHistory, useQueueActions, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
-import { EmptyState, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
+import { EmptyState, EmptyActions, Thumb, ConfirmDialog, BulkButton } from '@/components/common';
 import { torrentFilePath } from '@/stores/torrent-item';
 import { sortHistory, gridColumns, LIBRARY_SORTS, trashTarget, baseName } from '@/stores/library';
 import { FailureNote } from '@/components/common/FailureNote';
@@ -30,7 +30,7 @@ const TAB_LABELS: Record<FilterTab, string> = {
   all: 'All',
   completed: 'Completed',
   failed: 'Failed',
-  canceled: 'Canceled',
+  canceled: 'Cancelled',
 };
 
 function formatWhen(iso: string): string {
@@ -55,7 +55,7 @@ const iconButton = 'p-1.5 rounded-md hover:bg-secondary text-muted-foreground ho
 function statusIcon(status: string) {
   if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" aria-label="Completed" />;
   if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" aria-label="Failed" />;
-  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Canceled" />;
+  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Cancelled" />;
 }
 
 /** One page for everything that has finished, one way or another: completed,
@@ -244,8 +244,8 @@ export default function Library() {
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Library</h2>
-          <p className="page-subtitle">Completed, failed, and canceled downloads</p>
+          <h1 className="page-title">Library</h1>
+          <p className="page-subtitle">Completed, failed and cancelled downloads</p>
         </div>
         <div className="flex items-center gap-2">
           {items.length > 0 && (
@@ -307,7 +307,7 @@ export default function Library() {
               title="Play any audio or video file on this computer (⌘O)"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              <FolderOpen className="w-3 h-3" /> Play a File…
+              <FolderOpen className="w-3 h-3" /> Play a file…
             </button>
           )}
           {inTab.length > 0 && (
@@ -316,7 +316,7 @@ export default function Library() {
               onClick={() => setConfirmClear(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear All' : `Clear ${TAB_LABELS[tab]}`}
+              <ListX className="w-3 h-3" /> {tab === 'all' ? 'Clear all' : `Clear ${TAB_LABELS[tab].toLowerCase()}`}
             </button>
           )}
         </div>
@@ -351,7 +351,7 @@ export default function Library() {
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search library..."
                 aria-label="Search library"
-                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
               />
             </div>
             {categories.length > 0 && (
@@ -418,8 +418,9 @@ export default function Library() {
               description={
                 tab === 'failed'
                   ? 'Downloads that hit errors land here with a reason and a retry button.'
-                  : 'Finished downloads will appear here. Paste a URL on the Dashboard to get started.'
+                  : 'Everything you download ends up here, ready to play.'
               }
+              action={tab === 'failed' ? undefined : <EmptyActions play={playerAvailable} />}
             />
           ) : (
             <VirtualList
@@ -462,7 +463,7 @@ export default function Library() {
         title={tab === 'all' ? 'Clear the whole library?' : `Clear all ${TAB_LABELS[tab].toLowerCase()} items?`}
         description={
           tab === 'all'
-            ? `This removes all ${items.length} entries — completed, failed, and canceled. Downloaded files stay on disk.`
+            ? `This removes all ${items.length} entries — completed, failed and cancelled. Downloaded files stay on disk.`
             : `This removes ${inTab.length} ${TAB_LABELS[tab].toLowerCase()} entr${inTab.length === 1 ? 'y' : 'ies'}. Downloaded files stay on disk.`
         }
         confirmLabel={tab === 'all' ? 'Clear Everything' : `Clear ${TAB_LABELS[tab]}`}
@@ -554,7 +555,7 @@ const LibraryRow = React.memo(function LibraryRow({
             {statusIcon(item.status)}
             <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground tabular-nums">
             {(() => {
               // Show what was actually delivered; call out a shortfall
               // vs the requested quality instead of hiding it.
@@ -589,7 +590,7 @@ const LibraryRow = React.memo(function LibraryRow({
               <button
                 type="button"
                 onClick={() => onToggleExpanded(item.id)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 aria-expanded={expanded}
               >
                 <ChevronRight className={cn('w-3 h-3 transition-transform', expanded && 'rotate-90')} />
@@ -598,7 +599,7 @@ const LibraryRow = React.memo(function LibraryRow({
               {expanded && (
                 <ul className="mt-1 space-y-0.5">
                   {item.files.map((f) => (
-                    <li key={f.name} className="flex items-center gap-2 text-[11px] text-muted-foreground group">
+                    <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
                       <span className="truncate flex-1" title={f.name}>{f.name}</span>
                       <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
                       {playerAvailable && (

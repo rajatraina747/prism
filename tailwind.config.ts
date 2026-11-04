@@ -11,6 +11,18 @@ export default {
       screens: { "2xl": "1400px" },
     },
     extend: {
+      // One type scale for the whole app (2.5 redesign): 12px is the
+      // smallest text anywhere, 13px is body, as on macOS. Arbitrary sizes
+      // (text-[11px]) are refused by eslint so the scale holds.
+      fontSize: {
+        xs: ["12px", "16px"],
+        sm: ["13px", "18px"],
+        base: ["14px", "20px"],
+        lg: ["16px", "22px"],
+        xl: ["20px", "26px"],
+        "2xl": ["24px", "30px"],
+        "4xl": ["36px", "40px"],
+      },
       fontFamily: {
         sans: ["-apple-system", "BlinkMacSystemFont", "SF Pro Display", "Segoe UI", "system-ui", "sans-serif"],
         mono: ["SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", "monospace"],

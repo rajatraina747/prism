@@ -152,14 +152,14 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               )}
             >
               <Music className="w-3 h-3" />
-              Audio Only
+              Audio only
             </button>
           </div>
 
           {/* Format Selection — only for video mode */}
           {!audioOnly && (
             <div>
-              <label className="panel-header block">Quality & Format</label>
+              <label className="panel-header block">Quality & format</label>
               {/* Cap the list — some sites return a dozen formats, which would
                   otherwise push the dialog (and its Add button) off-screen. */}
               <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
@@ -192,7 +192,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {/* Not for "Video" (the site didn't say which codec): the note
               would read "Video video plays in…" and guess. */}
           {!audioOnly && selectedFormat?.playsEverywhere === false && selectedFormat.codec !== 'Video' && (
-            <p className="text-[11px] text-muted-foreground -mt-2">
+            <p className="text-xs text-muted-foreground -mt-2">
               {IS_MAC
                 ? `${selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.`
                 : `${selectedFormat.codec} video plays in VLC and browsers, but not in every player or editor. Pick an H.264 option for the widest support.`}
@@ -205,7 +205,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               <Music className="w-4 h-4 text-primary" />
               <div>
                 <p className="text-xs font-medium text-foreground">{preferences.audioFormat.toUpperCase()} Audio</p>
-                <p className="text-[11px] text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
+                <p className="text-xs text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
               </div>
             </div>
           )}
@@ -221,7 +221,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 onChange={(e) => setFilename(e.target.value)}
                 className="flex-1 bg-transparent text-xs text-foreground outline-none"
               />
-              <span className="text-[11px] text-muted-foreground">.{fileExtension}</span>
+              <span className="text-xs text-muted-foreground">.{fileExtension}</span>
             </div>
           </div>
 
@@ -271,7 +271,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                     type="button"
                     onClick={() => setSubtitleCodes(codes => on ? codes.filter(c => c !== l.code) : [...codes, l.code])}
                     className={cn(
-                      'px-2 py-0.5 rounded-md text-[11px] border transition-colors',
+                      'px-2 py-0.5 rounded-md text-xs border transition-colors',
                       on ? 'bg-primary/12 border-primary/30 text-foreground' : 'bg-secondary/50 border-transparent text-muted-foreground hover:bg-secondary',
                     )}
                   >
@@ -313,7 +313,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {showAdvanced && (
             <div className="space-y-3 pl-1 animate-fade-in">
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40">
                   <FolderOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
@@ -324,14 +324,14 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                       const dir = await service.pickDirectory().catch(() => null);
                       if (dir) setDestination(dir);
                     }}
-                    className="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors active:scale-[0.97]"
+                    className="shrink-0 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors active:scale-[0.97]"
                   >
                     Change…
                   </button>
                 </div>
               </div>
               {preferences.bandwidthLimit > 0 && (
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground">
                   Speed limited to {preferences.bandwidthLimit} MB/s (from Settings)
                 </div>
               )}
@@ -362,7 +362,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 disabled={!audioOnly && !selectedFormat}
                 className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
               >
-                Add to Queue
+                Add to queue
               </button>
             </div>
           </div>

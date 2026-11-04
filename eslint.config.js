@@ -30,6 +30,15 @@ export default tseslint.config(
           "useMinuteClock", "MOD_KEY", "buttonVariants", "toast",
         ],
       }],
+      // The design system (2.5): sizes come from the type scale in
+      // tailwind.config.ts, and muted text is never faded below 80% — the
+      // 40–70% variants failed contrast on the dark theme.
+      "no-restricted-syntax": ["error",
+        { selector: "Literal[value=/\\btext-\\[\\d+(px|rem)\\]/]", message: "Use the type scale (text-xs … text-2xl), not an arbitrary size." },
+        { selector: "TemplateElement[value.raw=/\\btext-\\[\\d+(px|rem)\\]/]", message: "Use the type scale (text-xs … text-2xl), not an arbitrary size." },
+        { selector: "Literal[value=/\\btext-muted-foreground.[1-7]0\\b/]", message: "Muted text stays at 80% or more: use text-muted-foreground or /80." },
+        { selector: "TemplateElement[value.raw=/\\btext-muted-foreground.[1-7]0\\b/]", message: "Muted text stays at 80% or more: use text-muted-foreground or /80." },
+      ],
       // `_`-prefixed names are deliberate discards (e.g. destructuring a
       // field out of an object before persisting the rest).
       "@typescript-eslint/no-unused-vars": ["error", {

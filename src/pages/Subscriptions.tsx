@@ -20,7 +20,7 @@ function KeywordField({ label, placeholder, words, onChange }: {
   React.useEffect(() => { setDraft(joined); }, [joined]);
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-xs uppercase tracking-wider text-muted-foreground">{label}</span>
       <input
         type="text"
         value={draft}
@@ -29,7 +29,7 @@ function KeywordField({ label, placeholder, words, onChange }: {
         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
         placeholder={placeholder}
         spellCheck={false}
-        className="mt-0.5 w-full px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground/50"
+        className="mt-0.5 w-full px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none focus:border-primary/50 placeholder:text-muted-foreground"
       />
     </label>
   );
@@ -81,7 +81,7 @@ export default function Subscriptions() {
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Subscriptions</h2>
+          <h1 className="page-title">Subscriptions</h1>
           <p className="page-subtitle">
             {items.length === 0
               ? 'Watch channels and playlists — new videos download automatically'
@@ -109,7 +109,7 @@ export default function Subscriptions() {
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
             placeholder="Paste a channel, playlist, or RSS feed URL to subscribe"
-            className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/50"
+            className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
             disabled={adding}
           />
           <button
@@ -122,9 +122,9 @@ export default function Subscriptions() {
           </button>
         </div>
         {addError && (
-          <p className="mt-2 text-[11px] text-destructive">{addError}</p>
+          <p className="mt-2 text-xs text-destructive">{addError}</p>
         )}
-        <p className="mt-2 text-[11px] text-muted-foreground/70">
+        <p className="mt-2 text-xs text-muted-foreground">
           Only videos published after you subscribe are downloaded — the existing catalog is marked as seen.
         </p>
       </div>
@@ -151,8 +151,8 @@ export default function Subscriptions() {
                   <h4 className={`text-xs font-medium truncate ${sub.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {sub.title}
                   </h4>
-                  <p className="text-[11px] text-muted-foreground/70 truncate">{sub.url}</p>
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground truncate">{sub.url}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <span>Checked {formatRelative(sub.lastCheckedAt)}</span>
                     <span>·</span>
                     <span>{sub.audioOnly ? 'Audio only' : 'Video'}</span>
@@ -175,14 +175,14 @@ export default function Subscriptions() {
                         words={sub.excludeKeywords}
                         onChange={words => updateSubscription(sub.id, { excludeKeywords: words })}
                       />
-                      <p className="text-[10px] text-muted-foreground/80">
+                      <p className="text-xs text-muted-foreground/80">
                         Matched against the title and the link, ignoring case. A video the rules turn
                         down is still remembered, so changing them later won't pull in the back catalogue.
                       </p>
                     </div>
                   )}
                   {sub.lastError && (
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-destructive">
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-destructive">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
                       <span className="truncate">{sub.lastError}</span>
                     </div>

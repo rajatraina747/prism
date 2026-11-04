@@ -4,7 +4,7 @@ import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
-import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
+import { EmptyState, EmptyActions, ConfirmDialog, BulkButton } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
@@ -206,18 +206,18 @@ export default function Queue() {
     <div className="page-container flex flex-col">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Transfers</h2>
+          <h1 className="page-title">Transfers</h1>
           <p className="page-subtitle tabular-nums">{subtitle}</p>
         </div>
         <div className="flex gap-1.5">
           {hasActive && (
             <button onClick={pauseAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
-              <Pause className="w-3 h-3" /> Pause All
+              <Pause className="w-3 h-3" /> Pause all
             </button>
           )}
           {hasPaused && (
             <button onClick={startAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-xs font-medium text-primary hover:bg-primary/20 transition-colors active:scale-[0.97]">
-              <Play className="w-3 h-3" /> Resume All
+              <Play className="w-3 h-3" /> Resume all
             </button>
           )}
         </div>
@@ -299,7 +299,7 @@ export default function Queue() {
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter transfers…"
               aria-label="Filter transfers"
-              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             />
           </div>
         </div>
@@ -324,7 +324,8 @@ export default function Queue() {
           <EmptyState
             icon={ArrowDownToLine}
             title="No transfers"
-            description="Downloads and torrents you add will appear here. Paste a URL or magnet link on the Dashboard to get started."
+            description="Videos, links and torrents you add show up here while they download."
+            action={<EmptyActions />}
           />
         ) : visibleItems.length === 0 ? (
           <EmptyState

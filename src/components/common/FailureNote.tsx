@@ -15,14 +15,14 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
   const { suggestion, action } = classifyError(error.message, error.engineCode);
   return (
     <div className="mt-1.5 space-y-1">
-      <p className="text-[11px] text-destructive">{error.suggestion ?? suggestion}</p>
-      <p className="text-[11px] text-muted-foreground/70 truncate" title={error.detail ?? error.message}>{conciseError(error.message)}</p>
+      <p className="text-xs text-destructive">{error.suggestion ?? suggestion}</p>
+      <p className="text-xs text-muted-foreground truncate" title={error.detail ?? error.message}>{conciseError(error.message)}</p>
       <div className="flex items-center gap-1.5 pt-0.5">
         {action === 'cookies' && (
           <button
             type="button"
             onClick={() => requestNavigate(COOKIES_SETTINGS_PATH)}
-            className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
+            className="px-2 py-1 rounded-md bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
           >
             Set browser cookies
           </button>
@@ -31,7 +31,7 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
           <button
             type="button"
             onClick={() => requestNavigate(ENGINE_SETTINGS_PATH)}
-            className="px-2 py-1 rounded-md bg-primary/15 text-[11px] font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
+            className="px-2 py-1 rounded-md bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
           >
             Update engine
           </button>
@@ -39,7 +39,7 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
         <button
           type="button"
           onClick={onRetry}
-          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+          className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
         >
           {retryLabel}
         </button>

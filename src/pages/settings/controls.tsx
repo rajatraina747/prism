@@ -26,12 +26,12 @@ export function HelpTip({ term, text }: { term: string; text: string }) {
         <button
           type="button"
           aria-label={`What is ${term}?`}
-          className="inline-flex text-muted-foreground/60 hover:text-muted-foreground focus-visible:text-foreground transition-colors"
+          className="inline-flex text-muted-foreground hover:text-muted-foreground focus-visible:text-foreground transition-colors"
         >
           <HelpCircle className="w-3 h-3" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs text-[11px] leading-relaxed">{text}</TooltipContent>
+      <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">{text}</TooltipContent>
     </Tooltip>
   );
 }
@@ -54,7 +54,7 @@ export function SettingRow({ label, description, help, children }: {
           <span id={labelId}>{label}</span>
           {help && <HelpTip term={help[0]} text={help[1]} />}
         </p>
-        {description && <p id={descId} className="text-[11px] text-muted-foreground mt-0.5">{description}</p>}
+        {description && <p id={descId} className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
       <div className="shrink-0">
         <RowIds.Provider value={{ labelId, descId }}>{children}</RowIds.Provider>
@@ -83,7 +83,7 @@ export function Advanced({ children }: { children: React.ReactNode }) {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-controls={id}
-        className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         {open ? 'Hide advanced settings' : 'Show advanced settings'}
@@ -146,20 +146,20 @@ export function StorageTile({ folder, load }: { folder: string; load: () => Prom
   return (
     <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/30 border border-border/20">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[11px] text-muted-foreground">In this folder</span>
+        <span className="text-xs text-muted-foreground">In this folder</span>
         {failed ? (
-          <span className="text-[11px] text-muted-foreground">Couldn't read it</span>
+          <span className="text-xs text-muted-foreground">Couldn't read it</span>
         ) : summary ? (
           <span className="text-xs text-foreground tabular-nums">
             {summary.partial && '≥ '}{size(summary.bytes)} · {summary.files.toLocaleString()} file{summary.files === 1 ? '' : 's'}
             <span className="text-muted-foreground"> · {size(summary.freeBytes)} free</span>
           </span>
         ) : (
-          <span className="text-[11px] text-muted-foreground">Measuring…</span>
+          <span className="text-xs text-muted-foreground">Measuring…</span>
         )}
       </div>
       {summary?.partial && (
-        <p className="text-[10px] text-muted-foreground/80 mt-0.5">
+        <p className="text-xs text-muted-foreground/80 mt-0.5">
           A big folder — counting stopped early, so this is at least that much.
         </p>
       )}
@@ -216,7 +216,7 @@ export function NumberInput({ value, onChange, min, max, step, unit }: {
         step={step}
         className="w-20 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none tabular-nums text-right"
       />
-      {unit && <span className="text-[11px] text-muted-foreground" aria-hidden="true">{unit}</span>}
+      {unit && <span className="text-xs text-muted-foreground" aria-hidden="true">{unit}</span>}
     </div>
   );
 }
@@ -231,7 +231,7 @@ export function TextInput({ value, onChange, placeholder }: { value: string; onC
       placeholder={placeholder}
       spellCheck={false}
       autoComplete="off"
-      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground"
     />
   );
 }
