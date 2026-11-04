@@ -115,6 +115,8 @@ const COMMANDS: &[&str] = &[
     "player_load",
     "player_load_stream",
     "player_open_file",
+    "player_pick_subtitle",
+    "pick_media_file",
     "player_save_position",
     "player_resume_position",
     "player_add_subtitle",

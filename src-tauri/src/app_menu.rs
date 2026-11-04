@@ -20,6 +20,9 @@ const EVENT: &str = "menu-action";
 /// Opens the Add sheet.
 const ADD_ID: &str = "add";
 
+/// "Play a File…": the shell asks Rust for a file and opens the player.
+const OPEN_MEDIA_ID: &str = "open-media";
+
 /// Prism's own Quit, in place of the predefined one (see `replace_quit`).
 const QUIT_ID: &str = "app-quit";
 
@@ -37,7 +40,7 @@ const NAV_ITEMS: [(&str, &str, &str); 6] = [
 /// Whether an id is one this menu emitted, rather than a predefined item
 /// (Copy, Minimise…) that the OS handles on its own.
 fn is_ours(id: &str) -> bool {
-    id == ADD_ID || id.starts_with("nav:")
+    id == ADD_ID || id == OPEN_MEDIA_ID || id.starts_with("nav:")
 }
 
 /// Whether a predefined item is the standard Quit. Matched on its label
@@ -73,6 +76,7 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
     }
 
     let add = MenuItem::with_id(app, ADD_ID, "Add Link…", true, Some("CmdOrCtrl+N"))?;
+    let open_media = MenuItem::with_id(app, OPEN_MEDIA_ID, "Play a File…", true, Some("CmdOrCtrl+O"))?;
     let separator = PredefinedMenuItem::separator(app)?;
     let nav: Vec<MenuItem<tauri::Wry>> = NAV_ITEMS
         .iter()
@@ -81,7 +85,7 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .collect::<tauri::Result<_>>()?;
 
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&add, &separator];
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&add, &open_media, &separator];
     items.extend(nav.iter().map(|item| item as &dyn IsMenuItem<tauri::Wry>));
 
     // A submenu, not loose items: a root menu's children have to be submenus.
@@ -119,6 +123,7 @@ mod tests {
 
         // The Add item shares the same keyboard space as the Go entries.
         assert!(accelerators.insert("CmdOrCtrl+N"), "Add collides with a Go entry");
+        assert!(accelerators.insert("CmdOrCtrl+O"), "Play a File collides with another entry");
     }
 
     #[test]
@@ -142,6 +147,7 @@ mod tests {
         // Copy, Minimise and friends must not be forwarded to the frontend —
         // the OS already performed them.
         assert!(is_ours(ADD_ID));
+        assert!(is_ours(OPEN_MEDIA_ID));
         assert!(is_ours("nav:/library"));
         assert!(!is_ours("copy"));
         assert!(!is_ours("minimize"));

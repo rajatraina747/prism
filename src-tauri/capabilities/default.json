@@ -78,6 +78,7 @@
     "allow-torrent-peers",
     "allow-torrent-details",
     "allow-open-file",
+    "allow-pick-media-file",
     "allow-open-external",
     "allow-show-in-folder",
     "allow-get-default-download-path",

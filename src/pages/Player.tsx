@@ -3,7 +3,6 @@ import { observeProperties, type MpvObservableProperty } from 'tauri-plugin-libm
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import {
   Play, Pause, RotateCcw, Volume2, VolumeX, Maximize2, Minimize2, AlertTriangle, FolderOpen,
   SkipBack, SkipForward, Captions, PictureInPicture2,
@@ -191,6 +190,8 @@ export default function Player() {
       unlisteners.push(await listen<PlayerSource>(PLAYER_LOAD_EVENT, (e) => {
         loadFile(e.payload).catch(() => {});
       }));
+      // A file dropped on the window that Rust wouldn't play.
+      unlisteners.push(await listen<string>('player-load-error', (e) => setLoadError(e.payload)));
 
       if (cancelled) return;
 
@@ -327,16 +328,10 @@ export default function Player() {
     setProp('chapter', next).catch(() => {});
   }, [chapters.length, chapter]);
 
+  // Rust shows the picker, so a subtitle from any folder or drive works.
   const addSubtitle = useCallback(() => {
-    openFileDialog({
-      multiple: false,
-      filters: [{ name: 'Subtitles', extensions: ['srt', 'vtt', 'ass', 'ssa', 'sub', 'lrc'] }],
-    }).then((picked) => {
-      if (typeof picked === 'string') {
-        invoke('player_add_subtitle', { path: picked })
-          .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
-      }
-    }).catch(() => {});
+    invoke<boolean>('player_pick_subtitle')
+      .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   const toggleMini = useCallback(() => {

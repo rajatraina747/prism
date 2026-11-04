@@ -24,6 +24,15 @@ import {
 } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
 
+/** "Play a File…" from the app menu (⌘O): any audio or video on this
+ * computer, picked in a dialog Rust shows. Dynamic import keeps the Tauri
+ * window APIs out of the web-demo bundle. */
+function playAFile() {
+  import('@/lib/player-window')
+    .then(({ pickAndPlay }) => pickAndPlay())
+    .catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+}
+
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/queue', icon: ArrowDownToLine, label: 'Transfers' },
@@ -263,6 +272,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => service.onMenuAction(action => {
     if (action === 'add') {
       setAddOpen(true);
+      return;
+    }
+    if (action === 'open-media') {
+      playAFile();
       return;
     }
     if (action.startsWith('nav:')) {

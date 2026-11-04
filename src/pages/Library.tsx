@@ -50,6 +50,12 @@ function usePlayerAvailable(): boolean {
   return available;
 }
 
+function playAFile() {
+  import('@/lib/player-window')
+    .then(({ pickAndPlay }) => pickAndPlay())
+    .catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+}
+
 function playInPrism(path: string, title: string) {
   // Dynamic import keeps the Tauri window APIs out of the web-demo bundle path.
   import('@/lib/player-window')
@@ -306,6 +312,16 @@ export default function Library() {
                 <AlignJustify className="w-3.5 h-3.5" />
               </button>
             </>
+          )}
+          {playerAvailable && (
+            <button
+              type="button"
+              onClick={playAFile}
+              title="Play any audio or video file on this computer (⌘O)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              <FolderOpen className="w-3 h-3" /> Play a File…
+            </button>
           )}
           {inTab.length > 0 && (
             <button
