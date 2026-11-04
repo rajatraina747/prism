@@ -49,8 +49,10 @@ ignore = [
   # crypto-bigint 0.7.
   "RUSTSEC-2026-0387",
 
-  # RUSTSEC-2026-0367 / -0368 / -0369 — zip 4.6.1: SUID/SGID bits kept, and
-  # Unix permissions applied through symlinks, by extract(). Fixed in zip 9.
+  # RUSTSEC-2026-0367 / -0368 / -0369 / -0429 — zip 4.6.1: SUID/SGID bits kept,
+  # Unix permissions applied through symlinks, and (0429, published 2026-11-02)
+  # an abort on a symlink entry with a huge declared size, all in extract().
+  # Fixed in zip 9. Prism's own unpacker never calls extract().
   #
   # Prism's own unpacker (engine.rs `unpack_onedir`) is on zip 9. The zip 4
   # copy is reached only as prism → tauri-plugin-updater 2.12 (Windows build),
@@ -63,4 +65,5 @@ ignore = [
   "RUSTSEC-2026-0367",
   "RUSTSEC-2026-0368",
   "RUSTSEC-2026-0369",
+  "RUSTSEC-2026-0429",
 ]

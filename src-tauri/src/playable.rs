@@ -63,11 +63,7 @@ pub fn plan_from_probe(json: &str) -> Option<Plan> {
                     _ => plan.encode_video = true,
                 }
             }
-            Some("audio") => {
-                if !matches!(codec, "aac" | "mp3" | "alac" | "ac3" | "eac3") {
-                    plan.encode_audio = true;
-                }
-            }
+            Some("audio") if !matches!(codec, "aac" | "mp3" | "alac" | "ac3" | "eac3") => plan.encode_audio = true,
             _ => {}
         }
     }
@@ -162,8 +158,11 @@ pub async fn make_playable(ffmpeg: &str, path: &str, on_start: impl FnOnce(Child
             Event::Stderr(b) => {
                 stderr.push_str(&String::from_utf8_lossy(&b));
                 if stderr.len() > 4000 {
-                    let cut = stderr.len() - 2000;
-                    stderr = stderr[stderr.ceil_char_boundary(cut)..].to_string();
+                    let mut cut = stderr.len() - 2000;
+                    while !stderr.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    stderr = stderr[cut..].to_string();
                 }
             }
             Event::Terminated(c) => {
