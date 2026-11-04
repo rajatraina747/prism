@@ -1345,17 +1345,31 @@ fn summarize_storage(expanded: String) -> Result<StorageSummary, String> {
     let (files, bytes, partial) = if path.is_dir() { walk_storage(&path) } else { (0, 0, false) };
     // Free space comes from the nearest existing ancestor, so the figure is
     // still right before the folder has been created.
-    let mut probe = path.as_path();
-    let free_bytes = loop {
-        match fs2::available_space(probe) {
-            Ok(free) => break free,
-            Err(_) => match probe.parent() {
-                Some(parent) => probe = parent,
-                None => break 0,
-            },
-        }
-    };
+    let free_bytes = free_space_near(&path).unwrap_or(0);
     Ok(StorageSummary { folder: expanded, files, bytes, free_bytes, partial })
+}
+
+/// Free space on the disk that holds `path`, measured at its nearest
+/// existing ancestor, so it is right before the folder has been created.
+pub(crate) fn free_space_near(path: &std::path::Path) -> Option<u64> {
+    let mut probe = path;
+    loop {
+        match fs2::available_space(probe) {
+            Ok(free) => return Some(free),
+            Err(_) => probe = probe.parent()?,
+        }
+    }
+}
+
+/// Free space where a download would go, for the torrent file picker's
+/// "Selected X · Y free". None when it can't be told.
+#[tauri::command]
+async fn free_space(app: AppHandle, path: String) -> Option<u64> {
+    let dir = validate_download_path(&path, &picked_dirs(&app)).ok()?;
+    tauri::async_runtime::spawn_blocking(move || free_space_near(std::path::Path::new(&dir)))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Most items one call may trash. A bulk action over a selection, not a way
@@ -2749,6 +2763,7 @@ pub fn run() {
             player_queue::recent_media,
             player_queue::clear_recent_media,
             player_state::forget_playback_history,
+            free_space,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -2803,6 +2818,15 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // The torrent picker and preflight ask about a folder that may not exist
+    // yet (Prism creates it on the first download).
+    #[test]
+    fn free_space_is_measured_at_the_nearest_existing_folder() {
+        let missing = std::env::temp_dir().join("prism-free-space-probe/not/yet/made");
+        assert!(!missing.exists());
+        assert!(free_space_near(&missing).is_some_and(|f| f > 0));
+    }
+
     #[test]
     fn a_stale_proxy_config_is_removed() {
         let dir = std::env::temp_dir().join(format!("prism-proxyconf-{}", std::process::id()));

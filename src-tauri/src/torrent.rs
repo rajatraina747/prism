@@ -942,6 +942,8 @@ impl TorrentManager {
             let mut cached_bytes = false;
             // Where the finished files are, worked out once when it finishes.
             let mut finished_at: Option<Option<String>> = None;
+            // Free space is checked once, when the size is first known.
+            let mut space_checked = false;
 
             loop {
                 // Removal from the map is the cancel signal — exit without emitting
@@ -993,6 +995,29 @@ impl TorrentManager {
                 }
 
                 let stats = handle.stats();
+
+                // Once the size is known, refuse up front if what's left won't
+                // fit, rather than fail on a full disk at 99% (the check
+                // yt-dlp downloads already get).
+                if !space_checked && stats.total_bytes > 0 && !stats.finished {
+                    space_checked = true;
+                    let remaining = stats.total_bytes.saturating_sub(stats.progress_bytes);
+                    if let Some(free) = crate::free_space_near(Path::new(&output_dir)) {
+                        if free < remaining {
+                            active.lock().await.remove(&id);
+                            leave_session(&session, &handle, &id).await;
+                            return emit_failure(
+                                &app,
+                                &id,
+                                format!(
+                                    "Not enough disk space: need ~{} MB free, have {} MB",
+                                    remaining / 1_048_576,
+                                    free / 1_048_576
+                                ),
+                            );
+                        }
+                    }
+                }
 
                 // Fail fast on an engine error (disk full, unrecoverable, …).
                 if matches!(stats.state, TorrentStatsState::Error) {

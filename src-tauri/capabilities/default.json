@@ -82,6 +82,7 @@
     "allow-recent-media",
     "allow-clear-recent-media",
     "allow-forget-playback-history",
+    "allow-free-space",
     "allow-open-external",
     "allow-show-in-folder",
     "allow-get-default-download-path",
