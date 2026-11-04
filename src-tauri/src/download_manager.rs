@@ -614,6 +614,57 @@ impl DownloadManager {
                 last_error = "Already downloaded".into();
             }
 
+            // VP9/AV1/Opus survive `--remux-video mp4` as-is and give a file
+            // QuickTime, iMessage and iOS can't open. Re-encode just those
+            // streams. Registered under this id while it runs so Cancel
+            // reaches it; a failure leaves the original in place.
+            if success && !audio_only && !crate::keep_original_container(&app) {
+                let target = reported
+                    .clone()
+                    .filter(|p| std::path::Path::new(p).is_file() && is_own_output(p, &output_path, run_started))
+                    .or_else(|| find_output_file(&output_path));
+                if let (Some(path), Some(ffmpeg_path)) = (target, crate::find_ffmpeg_blocking(&app).await) {
+                    let registry = downloads.clone();
+                    let progress_app = app.clone();
+                    let progress_id = id.clone();
+                    crate::queue::emit_progress(
+                        &progress_app,
+                        &progress_id,
+                        &DownloadProgress {
+                            id: progress_id.clone(),
+                            downloaded_bytes: 0,
+                            total_bytes: 0,
+                            progress: 100.0,
+                            speed: 0.0,
+                            eta: 0.0,
+                            stage: Some("processing"),
+                        },
+                    );
+                    let alive_flag = alive.clone();
+                    let reg_id = id.clone();
+                    let tpl = output_path.clone();
+                    let started = run_started;
+                    let res = crate::playable::make_playable(&ffmpeg_path, &path, |child| {
+                        // The yt-dlp child has exited; hand its slot to ffmpeg.
+                        if let Ok(mut map) = registry.try_lock() {
+                            map.insert(
+                                reg_id,
+                                ActiveDownload { child, alive: alive_flag, template: tpl, started },
+                            );
+                        }
+                    })
+                    .await;
+                    match res {
+                        Ok(true) => log::info!("download {id}: re-encoded to a QuickTime-playable mp4"),
+                        Ok(false) => {}
+                        Err(e) => log::warn!("download {id}: couldn't make it QuickTime-playable: {}", crate::errors::redact(&e)),
+                    }
+                    if !alive.load(Ordering::SeqCst) {
+                        return;
+                    }
+                }
+            }
+
             // Remove from active downloads and release the template claim
             {
                 let mut map = downloads.lock().await;

@@ -6,19 +6,15 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-A fix for torrents that are still seeding.
+Videos from Instagram, Facebook and similar sites now play in QuickTime, iMessage and on iPhone/iPad.
 
 ### Fixes
 
-- **Play and Open work on a torrent as soon as it has downloaded**, not only
-  after seeding ends. Before, they were refused ("only does this with files it
-  downloaded") for as long as the torrent kept seeding, which with "seed
-  forever" was never.
-- A multi-file torrent's files can be opened, played and shown in the folder
-  from the Transfers detail panel while the rest is still downloading. The
-  panel used to look for them one folder too high.
-- Library no longer offers "Play in Prism" for a multi-file torrent's folder,
-  where it always failed. Each file in the expanded list still has its own
-  play button.
-- A proxy password you have removed from Settings no longer stays on disk, and
-  a failed playlist lookup no longer logs a link's credentials.
+- **Downloads that QuickTime couldn't open now can.** Many sites serve VP9/AV1
+  video or Opus audio, which Prism wrapped in an `.mp4` without changing, so
+  QuickTime refused it, iMessage wouldn't preview it and AirDrop to an iPhone
+  or iPad arrived as a plain file. After a download Prism now re-encodes just
+  the streams Apple players can't decode (to H.264 / AAC); everything else is
+  copied untouched, so ordinary YouTube downloads take no extra time. If the
+  conversion fails, the original file is kept. Turn on "Keep original
+  container" in Settings to skip this.
