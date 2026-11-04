@@ -10,13 +10,12 @@ import { SubscriptionsProvider } from "@/stores/SubscriptionsProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { SplashScreen } from "@/components/SplashScreen";
-import Dashboard from "@/pages/Dashboard";
+import Downloads from "@/pages/Queue";
 import NotFound from "@/pages/NotFound";
 
 // The first screen is in the main bundle; every other page loads when it is
 // first opened. All of them were one 686 KB chunk parsed at launch, the legal
 // pages and the 1,267-line Settings included (REVIEW 2026-09-28 P-12).
-const Queue = lazy(() => import("@/pages/Queue"));
 const Subscriptions = lazy(() => import("@/pages/Subscriptions"));
 const Library = lazy(() => import("@/pages/Library"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -80,8 +79,9 @@ const App = () => {
               <ErrorBoundary>
               <Suspense fallback={null}>
               <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/queue" element={<Queue />} />
+                {/* Downloads is the home page: the Dashboard and Transfers merged in 2.5.1. */}
+                <Route path="/" element={<Downloads />} />
+                <Route path="/queue" element={<Navigate to="/" replace />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/library" element={<Library />} />
                 <Route path="/statistics" element={<Statistics />} />

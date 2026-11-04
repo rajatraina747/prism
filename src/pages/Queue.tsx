@@ -2,9 +2,10 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useQueue, useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
+import { AddPanel } from '@/components/add/AddPanel';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
-import { EmptyState, EmptyActions, ConfirmDialog, BulkButton } from '@/components/common';
+import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
 import { formatSpeed } from '@/services';
@@ -188,7 +189,7 @@ export default function Queue() {
   const hasTorrents = activeItems.some(i => i.kind === 'torrent');
   const totalSpeed = downloading.reduce((sum, i) => sum + (i.speed || 0), 0);
   const subtitle = [
-    `${activeItems.length} transfer${activeItems.length !== 1 ? 's' : ''}`,
+    activeItems.length === 0 ? 'Paste a link, a magnet or a .torrent to start' : `${activeItems.length} in the list`,
     downloading.length > 0 && `${downloading.length} downloading`,
     totalSpeed > 0 && formatSpeed(totalSpeed),
   ].filter(Boolean).join(' · ');
@@ -206,7 +207,7 @@ export default function Queue() {
     <div className="page-container flex flex-col">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h1 className="page-title">Transfers</h1>
+          <h1 className="page-title">Downloads</h1>
           <p className="page-subtitle tabular-nums">{subtitle}</p>
         </div>
         <div className="flex gap-1.5">
@@ -223,6 +224,8 @@ export default function Queue() {
         </div>
       </div>
 
+      <AddPanel />
+
       <QuietHoursBanner className="mb-3" />
 
       {/* `contents` keeps the page's flex layout: the Tabs root only ties the
@@ -231,7 +234,7 @@ export default function Queue() {
       {/* Filter tabs + sort + search */}
       {activeItems.length > 0 && (
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <TabsList aria-label="Filter transfers" className="h-auto gap-1 bg-transparent p-0">
+          <TabsList aria-label="Filter downloads" className="h-auto gap-1 bg-transparent p-0">
             {FILTERS.map(f => (
               <TabsTrigger
                 key={f.id}
@@ -249,7 +252,7 @@ export default function Queue() {
           </TabsList>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Sort transfers">
+              <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Sort downloads">
                 <ArrowUpDown className="w-3 h-3" /> {SORTS.find(s => s.id === sort)?.label}
               </button>
             </DropdownMenuTrigger>
@@ -297,8 +300,8 @@ export default function Queue() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Filter transfers…"
-              aria-label="Filter transfers"
+              placeholder="Filter downloads…"
+              aria-label="Filter downloads"
               className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             />
           </div>
@@ -319,13 +322,12 @@ export default function Queue() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-[360px] flex flex-col">
         {activeItems.length === 0 ? (
           <EmptyState
             icon={ArrowDownToLine}
-            title="No transfers"
-            description="Videos, links and torrents you add show up here while they download."
-            action={<EmptyActions />}
+            title="Nothing downloading"
+            description="Videos, links and torrents you add show up here while they download. Finished ones move to the Library."
           />
         ) : visibleItems.length === 0 ? (
           <EmptyState
@@ -394,8 +396,8 @@ export default function Queue() {
       <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
-        title={`Remove ${selectedItems.length} transfer${selectedItems.length === 1 ? '' : 's'}?`}
-        description="Active transfers are cancelled; downloaded data stays on disk."
+        title={`Remove ${selectedItems.length} download${selectedItems.length === 1 ? '' : 's'}?`}
+        description="Active downloads are cancelled; downloaded data stays on disk."
         confirmLabel="Remove"
         destructive
         onConfirm={removeSelectedNow}

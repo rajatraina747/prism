@@ -10,7 +10,7 @@ export const FILTERS: { id: TransfersFilter; label: string }[] = [
   { id: 'seeding', label: 'Seeding' },
   { id: 'paused', label: 'Paused' },
   { id: 'queued', label: 'Queued' },
-  { id: 'errored', label: 'Errored' },
+  { id: 'errored', label: 'Needs attention' },
 ];
 
 export const SORTS: { id: TransfersSort; label: string }[] = [

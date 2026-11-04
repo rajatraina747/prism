@@ -28,12 +28,11 @@ const QUIT_ID: &str = "app-quit";
 
 /// Where each "Go" entry leads: menu id, label, accelerator. The id after
 /// `nav:` is the route, so the shell needs no table of its own.
-const NAV_ITEMS: [(&str, &str, &str); 6] = [
-    ("nav:/", "Dashboard", "CmdOrCtrl+1"),
-    ("nav:/queue", "Transfers", "CmdOrCtrl+2"),
-    ("nav:/subscriptions", "Subscriptions", "CmdOrCtrl+3"),
-    ("nav:/library", "Library", "CmdOrCtrl+4"),
-    ("nav:/statistics", "Statistics", "CmdOrCtrl+5"),
+const NAV_ITEMS: [(&str, &str, &str); 5] = [
+    ("nav:/", "Downloads", "CmdOrCtrl+1"),
+    ("nav:/subscriptions", "Subscriptions", "CmdOrCtrl+2"),
+    ("nav:/library", "Library", "CmdOrCtrl+3"),
+    ("nav:/statistics", "Statistics", "CmdOrCtrl+4"),
     ("nav:/settings", "Settings", "CmdOrCtrl+,"),
 ];
 
