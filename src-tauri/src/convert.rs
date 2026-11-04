@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::download_manager::{DownloadComplete, DownloadProgress};
+use crate::encoders::{encoder_args, Codec};
 use crate::errors::{ErrorCode, PrismError};
 use crate::spawn::{Child, CommandSpec, Event};
 
@@ -79,6 +80,14 @@ impl Preset {
         }
     }
 
+    /// The video codec this preset encodes to, if it encodes video at all.
+    pub fn video_codec(self) -> Option<Codec> {
+        match self {
+            Preset::Mp4H264 => Some(Codec::H264),
+            Preset::Mp4Hevc => Some(Codec::Hevc),
+            _ => None,
+        }
+    }
 }
 
 /// The full argument list for a conversion.
@@ -86,9 +95,12 @@ impl Preset {
 /// `-nostdin` because a child reading the terminal would hang on a stray
 /// keypress; `-progress pipe:1` with `-nostats` because the machine-readable
 /// stream is what this parses, and the human one would only interleave with
-/// it. The output path is last, and is expected to be one that doesn't exist —
-/// there is no `-y`, so ffmpeg refuses rather than overwriting someone's file.
-pub fn preset_args(preset: Preset, input: &str, output: &str) -> Vec<String> {
+/// it. The output path is last.
+///
+/// `encoder` is the video encoder `encoders::pick` found for the preset's
+/// codec (ignored by presets that don't encode video); `height` sizes the
+/// bitrate for encoders that only take one.
+pub fn preset_args(preset: Preset, encoder: &str, height: Option<u32>, input: &str, output: &str) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "-hide_banner".into(),
         "-nostdin".into(),
@@ -109,25 +121,25 @@ pub fn preset_args(preset: Preset, input: &str, output: &str) -> Vec<String> {
     ];
 
     match preset {
-        Preset::Mp4H264 => args.extend([
-            "-c:v".into(), "libx264".into(),
-            "-preset".into(), "medium".into(),
-            "-crf".into(), "20".into(),
-            "-c:a".into(), "aac".into(),
-            "-b:a".into(), "192k".into(),
-            // Lets a player start before the whole file has arrived.
-            "-movflags".into(), "+faststart".into(),
-        ]),
-        Preset::Mp4Hevc => args.extend([
-            "-c:v".into(), "libx265".into(),
-            "-preset".into(), "medium".into(),
-            "-crf".into(), "24".into(),
-            "-c:a".into(), "aac".into(),
-            "-b:a".into(), "192k".into(),
-            // Without this tag QuickTime won't open an HEVC mp4 at all.
-            "-tag:v".into(), "hvc1".into(),
-            "-movflags".into(), "+faststart".into(),
-        ]),
+        Preset::Mp4H264 => {
+            args.extend(encoder_args(encoder, Codec::H264, height, ""));
+            args.extend([
+                "-c:a".into(), "aac".into(),
+                "-b:a".into(), "192k".into(),
+                // Lets a player start before the whole file has arrived.
+                "-movflags".into(), "+faststart".into(),
+            ]);
+        }
+        Preset::Mp4Hevc => {
+            args.extend(encoder_args(encoder, Codec::Hevc, height, ""));
+            args.extend([
+                "-c:a".into(), "aac".into(),
+                "-b:a".into(), "192k".into(),
+                // Without this tag QuickTime won't open an HEVC mp4 at all.
+                "-tag:v".into(), "hvc1".into(),
+                "-movflags".into(), "+faststart".into(),
+            ]);
+        }
         Preset::Mp4Remux => args.extend([
             "-c".into(), "copy".into(),
             "-movflags".into(), "+faststart".into(),
@@ -296,6 +308,18 @@ pub async fn convert_file(
         .await
         .ok_or_else(|| "Converting needs ffmpeg, which isn't installed".to_string())?;
 
+    // The bundled ffmpeg is LGPL, so it has no x264/x265: find what it does
+    // have that works on this machine (VideoToolbox, a GPU, OpenH264…).
+    let (encoder, height) = match preset.video_codec() {
+        Some(codec) => {
+            let encoder = crate::encoders::pick(&ffmpeg, codec)
+                .await
+                .ok_or_else(|| crate::encoders::missing(codec))?;
+            (encoder, crate::encoders::probe_height(&ffmpeg, &input).await)
+        }
+        None => ("", None),
+    };
+
     if ticket.cancelled() {
         log::info!("convert {id}: stopped before it started");
         return Ok(());
@@ -303,7 +327,7 @@ pub async fn convert_file(
     // From here the destination is this run's own file, so removing it on
     // failure can only ever remove what this run made.
     let destination = reserve_output(&source, preset).map_err(|e| format!("Couldn't create the converted file: {e}"))?;
-    let args = preset_args(preset, &input, &destination.to_string_lossy());
+    let args = preset_args(preset, encoder, height, &input, &destination.to_string_lossy());
 
     let (mut events, child) = match CommandSpec::new(&ffmpeg).args(&args).spawn() {
         Ok(pair) => pair,
@@ -425,7 +449,7 @@ mod tests {
 
     #[test]
     fn the_output_is_the_last_argument() {
-        let args = preset_args(Preset::Mp4H264, "/in.mkv", "/out.mp4");
+        let args = preset_args(Preset::Mp4H264, "h264_videotoolbox", None, "/in.mkv", "/out.mp4");
         assert_eq!(args.last().unwrap(), "/out.mp4");
         // It overwrites only the empty file `reserve_output` created for it.
         assert_eq!(args[args.len() - 2], "-y");
@@ -459,7 +483,7 @@ mod tests {
     #[test]
     fn the_input_is_read_with_local_protocols_only() {
         for preset in [Preset::Mp4H264, Preset::Mp4Hevc, Preset::Mp4Remux, Preset::Mp3, Preset::M4a, Preset::Opus] {
-            let args = preset_args(preset, "/in.mkv", "/out.mp4");
+            let args = preset_args(preset, "libopenh264", None, "/in.mkv", "/out.mp4");
             let whitelist = args.iter().position(|a| a == "-protocol_whitelist").expect("whitelist set");
             assert_eq!(args[whitelist + 1], "file,pipe", "{preset:?}");
             let input = args.iter().position(|a| a == "-i").unwrap();
@@ -470,7 +494,7 @@ mod tests {
     #[test]
     fn every_preset_asks_for_the_machine_readable_progress_stream() {
         for preset in [Preset::Mp4H264, Preset::Mp4Hevc, Preset::Mp4Remux, Preset::Mp3, Preset::M4a, Preset::Opus] {
-            let args = preset_args(preset, "in", "out");
+            let args = preset_args(preset, "libopenh264", None, "in", "out");
             assert!(args.windows(2).any(|w| w[0] == "-progress" && w[1] == "pipe:1"), "{preset:?}");
             assert!(args.iter().any(|a| a == "-nostats"), "{preset:?}");
         }
@@ -479,19 +503,32 @@ mod tests {
     #[test]
     fn audio_presets_drop_the_video_stream() {
         for preset in [Preset::Mp3, Preset::M4a, Preset::Opus] {
-            assert!(preset_args(preset, "in", "out").iter().any(|a| a == "-vn"), "{preset:?}");
+            assert!(preset_args(preset, "libopenh264", None, "in", "out").iter().any(|a| a == "-vn"), "{preset:?}");
         }
     }
 
     #[test]
     fn hevc_carries_the_tag_quicktime_needs() {
-        let args = preset_args(Preset::Mp4Hevc, "in", "out");
+        let args = preset_args(Preset::Mp4Hevc, "hevc_videotoolbox", None, "in", "out");
         assert!(args.windows(2).any(|w| w[0] == "-tag:v" && w[1] == "hvc1"));
+    }
+
+    // Regression: the bundled LGPL ffmpeg has no x264/x265, so the presets
+    // must use whatever encoder was picked rather than naming libx264.
+    #[test]
+    fn video_presets_use_the_picked_encoder() {
+        let h = preset_args(Preset::Mp4H264, "h264_videotoolbox", None, "in", "out");
+        assert!(h.windows(2).any(|w| w == ["-c:v", "h264_videotoolbox"]));
+        let x = preset_args(Preset::Mp4Hevc, "libkvazaar", Some(720), "in", "out");
+        assert!(x.windows(2).any(|w| w == ["-c:v", "libkvazaar"]));
+        for a in [h, x] {
+            assert!(!a.iter().any(|s| s == "libx264" || s == "libx265"));
+        }
     }
 
     #[test]
     fn a_remux_re_encodes_nothing() {
-        let args = preset_args(Preset::Mp4Remux, "in", "out");
+        let args = preset_args(Preset::Mp4Remux, "", None, "in", "out");
         assert!(args.windows(2).any(|w| w[0] == "-c" && w[1] == "copy"));
     }
 

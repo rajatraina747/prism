@@ -4,6 +4,7 @@ mod clip;
 mod content_index;
 mod convert;
 mod download_manager;
+mod encoders;
 mod finished;
 mod formats;
 mod engine;
