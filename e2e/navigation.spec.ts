@@ -38,9 +38,9 @@ test.describe('Navigation', () => {
     await expect(page.locator('h1')).toContainText('Settings');
   });
 
-  test('navigates to About page', async ({ page }) => {
-    await page.goto('/');
-    await page.click('a[href="/about"]');
+  test('reaches About from Settings', async ({ page }) => {
+    await page.goto('/settings?section=privacy');
+    await page.getByRole('button', { name: 'About Prism' }).click();
     await expect(page.locator('h1')).toContainText('Prism');
   });
 
