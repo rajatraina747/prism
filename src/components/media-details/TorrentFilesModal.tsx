@@ -80,7 +80,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                   Select all ({selected.size}/{files.length})
                 </span>
               </label>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-xs text-muted-foreground tabular-nums">
                 {formatBytes(totalSelectedBytes)} selected
               </span>
             </div>
@@ -117,7 +117,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                   <span className="flex-1 min-w-0 text-xs font-medium text-foreground truncate" title={file.name}>
                     {file.name.split('/').pop()}
                   </span>
-                  <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {formatBytes(file.size)}
                   </span>
                 </button>

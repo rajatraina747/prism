@@ -62,7 +62,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
       <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
         <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
         <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
-        <span className="text-[11px] text-muted-foreground/60">by RainaCorp</span>
+        <span className="text-xs text-muted-foreground">by RainaCorp</span>
       </div>
 
       <div className="px-3 pt-3">
@@ -70,11 +70,11 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
           type="button"
           onClick={onAdd}
           aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+N' : 'Control+N'}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-[13px] font-medium hover:bg-primary/90 transition-colors active:scale-[0.98]"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 shrink-0" strokeWidth={2} />
           <span>Add</span>
-          <kbd className="ml-auto text-[10px] font-sans opacity-70">{MOD_KEY}N</kbd>
+          <kbd className="ml-auto text-xs font-sans opacity-70">{MOD_KEY}N</kbd>
         </button>
         {playerAvailable && (
           <button
@@ -82,11 +82,11 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             onClick={playAFile}
             title="Play any video or audio file on this computer"
             aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+O' : 'Control+O'}
-            className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-[13px] font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98]"
+            className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98]"
           >
             <PlayCircle className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span>Play a File</span>
-            <kbd className="ml-auto text-[10px] font-sans opacity-70">{MOD_KEY}O</kbd>
+            <kbd className="ml-auto text-xs font-sans opacity-70">{MOD_KEY}O</kbd>
           </button>
         )}
       </div>
@@ -99,7 +99,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             to={item.path}
             end={item.path === '/'}
             className={({ isActive }) => cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               isActive
                 ? 'bg-primary/12 text-primary'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -108,14 +108,14 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
             <span>{item.label}</span>
             {item.path === '/queue' && activeCount > 0 && (
-              <span className="ml-auto text-[11px] tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
+              <span className="ml-auto text-xs tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
                 {activeCount}
               </span>
             )}
             {item.path === '/library' && failedCount > 0 && (
               <span
                 title={`${failedCount} failed download${failedCount !== 1 ? 's' : ''}`}
-                className="ml-auto text-[11px] tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md"
+                className="ml-auto text-xs tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md"
               >
                 {failedCount}
               </span>
@@ -131,7 +131,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             key={item.path}
             to={item.path}
             className={({ isActive }) => cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               isActive
                 ? 'bg-primary/12 text-primary'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -178,7 +178,7 @@ function PageHeader() {
       {service.isDemo && (
         <span
           title="Browser demo: downloads are simulated and nothing is saved to disk"
-          className="ml-3 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-[10px] font-semibold uppercase tracking-wide"
+          className="ml-3 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide"
         >
           Demo
         </span>

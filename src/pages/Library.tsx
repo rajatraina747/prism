@@ -351,7 +351,7 @@ export default function Library() {
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search library..."
                 aria-label="Search library"
-                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+                className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
               />
             </div>
             {categories.length > 0 && (
@@ -554,7 +554,7 @@ const LibraryRow = React.memo(function LibraryRow({
             {statusIcon(item.status)}
             <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground tabular-nums">
             {(() => {
               // Show what was actually delivered; call out a shortfall
               // vs the requested quality instead of hiding it.
@@ -589,7 +589,7 @@ const LibraryRow = React.memo(function LibraryRow({
               <button
                 type="button"
                 onClick={() => onToggleExpanded(item.id)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 aria-expanded={expanded}
               >
                 <ChevronRight className={cn('w-3 h-3 transition-transform', expanded && 'rotate-90')} />
@@ -598,7 +598,7 @@ const LibraryRow = React.memo(function LibraryRow({
               {expanded && (
                 <ul className="mt-1 space-y-0.5">
                   {item.files.map((f) => (
-                    <li key={f.name} className="flex items-center gap-2 text-[11px] text-muted-foreground group">
+                    <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
                       <span className="truncate flex-1" title={f.name}>{f.name}</span>
                       <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
                       {playerAvailable && (

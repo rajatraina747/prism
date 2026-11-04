@@ -157,7 +157,7 @@ const STATUS_CONFIG: Record<DownloadStatus, { label: string; className: string }
 export function StatusBadge({ status }: { status: DownloadStatus }) {
   const config = STATUS_CONFIG[status];
   return (
-    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase', config.className)}>
+    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tracking-wide uppercase', config.className)}>
       {config.label}
     </span>
   );
@@ -221,7 +221,7 @@ export function BulkButton({ icon: Icon, label, onClick }: {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-[11px] text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+      className="flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
     >
       <Icon className="w-3 h-3" /> {label}
     </button>

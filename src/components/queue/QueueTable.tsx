@@ -223,7 +223,7 @@ const QueueRow = React.memo(function QueueRow({
             role="button"
             tabIndex={0}
             data-reorder-handle
-            className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground focus:text-muted-foreground transition-colors"
+            className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-muted-foreground focus:text-muted-foreground transition-colors"
             title="Drag to reorder (or focus and use arrow keys)"
             aria-label={`Reorder ${item.metadata.title} — position ${index + 1} of ${count}. Use arrow keys to move.`}
             onKeyDown={(e) => {
@@ -245,8 +245,8 @@ const QueueRow = React.memo(function QueueRow({
           src={item.metadata.thumbnail}
           className="w-20 h-12"
           fallbackIcon={isTorrent
-            ? <Magnet className="w-4 h-4 text-muted-foreground/50" />
-            : <ArrowDownToLine className="w-4 h-4 text-muted-foreground/50" />}
+            ? <Magnet className="w-4 h-4 text-muted-foreground" />
+            : <ArrowDownToLine className="w-4 h-4 text-muted-foreground" />}
         />
 
         {/* Info */}
@@ -257,7 +257,7 @@ const QueueRow = React.memo(function QueueRow({
             {item.settings.categoryName && (
               <span
                 title={`Category: ${item.settings.categoryName}`}
-                className="shrink-0 px-1.5 py-0.5 rounded-md bg-secondary/70 text-[10px] font-medium text-muted-foreground max-w-24 truncate"
+                className="shrink-0 px-1.5 py-0.5 rounded-md bg-secondary/70 text-xs font-medium text-muted-foreground max-w-24 truncate"
               >
                 {item.settings.categoryName}
               </span>
@@ -266,7 +266,7 @@ const QueueRow = React.memo(function QueueRow({
               <span
                 key={name}
                 title={`Label: ${name}`}
-                className="shrink-0 px-1.5 py-0.5 rounded-md bg-primary/10 text-[10px] font-medium text-primary/90 max-w-24 truncate"
+                className="shrink-0 px-1.5 py-0.5 rounded-md bg-primary/10 text-xs font-medium text-primary/90 max-w-24 truncate"
               >
                 {name}
               </span>
@@ -285,14 +285,14 @@ const QueueRow = React.memo(function QueueRow({
           )}
 
           {/* Stats row */}
-          <div className="flex items-center gap-4 text-[11px] text-muted-foreground tabular-nums flex-wrap">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums flex-wrap">
             {item.settings.audioOnly ? (
               <span className="text-primary/80">Audio only</span>
             ) : item.settings.format ? (
               <span>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</span>
             ) : null}
             {item.settings.downloadSubtitles && (
-              <span className="text-muted-foreground/70">+ Subs</span>
+              <span className="text-muted-foreground">+ Subs</span>
             )}
             {isActive && item.retryAt ? (
               <RetryCountdown at={item.retryAt} reason={item.retryReason} />
@@ -343,7 +343,7 @@ const QueueRow = React.memo(function QueueRow({
             <div className="mt-1.5">
               <button
                 onClick={() => setShowFiles(v => !v)}
-                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 {showFiles ? '▾' : '▸'} {files.length} files
               </button>
@@ -355,7 +355,7 @@ const QueueRow = React.memo(function QueueRow({
                     const fileSelected = item.settings.selectedFiles?.includes(i) ?? true;
                     const canEdit = !!onUpdateFiles && (isActive || isPaused);
                     return (
-                      <div key={i} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+                      <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
                         {canEdit && (
                           <input
                             type="checkbox"
@@ -513,7 +513,7 @@ export function SwarmHealth({ item }: { item: DownloadItem }) {
     return <span className="text-warning" title="Peers exist but none are reachable — possible NAT/firewall issue">0 of {seen} peers reachable{since}</span>;
   }
   return (
-    <span className="text-muted-foreground/70" title="Prism keeps announcing to trackers and the DHT every 5 minutes">
+    <span className="text-muted-foreground" title="Prism keeps announcing to trackers and the DHT every 5 minutes">
       searching for peers{since || '…'}
     </span>
   );
@@ -531,7 +531,7 @@ function ActionButton({ icon: Icon, onClick, tooltip }: { icon: React.ElementTyp
           <Icon className="w-3.5 h-3.5" strokeWidth={1.8} />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="text-[11px]">{tooltip}</TooltipContent>
+      <TooltipContent side="bottom" className="text-xs">{tooltip}</TooltipContent>
     </Tooltip>
   );
 }

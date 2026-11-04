@@ -38,7 +38,7 @@ export function QuietHoursBanner({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => requestNavigate('/settings?section=speed')}
-        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+        className="shrink-0 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
       >
         Change
       </button>

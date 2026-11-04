@@ -299,7 +299,7 @@ export default function Queue() {
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter transfers…"
               aria-label="Filter transfers"
-              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             />
           </div>
         </div>

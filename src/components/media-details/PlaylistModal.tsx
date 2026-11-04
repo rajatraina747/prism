@@ -120,7 +120,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{entry.title}</p>
                   {entry.duration > 0 && (
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                       <Clock className="w-2.5 h-2.5" />
                       {formatDuration(entry.duration)}
                     </p>

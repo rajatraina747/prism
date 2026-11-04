@@ -57,7 +57,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
           placeholder={'https://www.youtube.com/watch?v=…\nmagnet:?xt=urn:btih:…'}
           spellCheck={false}
           rows={5}
-          className="w-full resize-none rounded-lg bg-input border border-border/40 px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-primary/40 placeholder:text-muted-foreground/50"
+          className="w-full resize-none rounded-lg bg-input border border-border/40 px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-primary/40 placeholder:text-muted-foreground"
         />
 
         <input
@@ -115,7 +115,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
           >
             <FileText className="w-3.5 h-3.5" /> {service.isDemo ? 'Import file…' : 'Import list…'}
           </button>
-          <span className="ml-auto text-[11px] text-muted-foreground tabular-nums" aria-live="polite">
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums" aria-live="polite">
             {links.length === 0 ? '' : `${links.length} link${links.length === 1 ? '' : 's'}`}
           </span>
           <button

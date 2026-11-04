@@ -162,7 +162,7 @@ export default function Settings() {
                   <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
                       won't work. Prism ships its own copy on macOS, so if it's missing there,
                       reinstalling Prism restores it. On Windows install{' '}
@@ -368,7 +368,7 @@ export default function Settings() {
                                 updatePreference('scheduleDays', next);
                               }}
                               className={cn(
-                                'w-7 h-7 rounded-md text-[11px] font-medium transition-colors',
+                                'w-7 h-7 rounded-md text-xs font-medium transition-colors',
                                 chosen
                                   ? 'bg-primary/15 text-primary'
                                   : 'bg-secondary text-muted-foreground hover:text-secondary-foreground',
@@ -495,11 +495,11 @@ export default function Settings() {
                       spellCheck={false}
                       autoComplete="off"
                       aria-label="File name template"
-                      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+                      className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground"
                     />
                     {templatePreview && (
                       <span
-                        className={cn('text-[11px] max-w-56 truncate', templatePreview.ok ? 'text-muted-foreground' : 'text-destructive')}
+                        className={cn('text-xs max-w-56 truncate', templatePreview.ok ? 'text-muted-foreground' : 'text-destructive')}
                         title={templatePreview.text}
                       >
                         {templatePreview.ok ? `e.g. ${templatePreview.text}.mp4` : templatePreview.text}
@@ -551,7 +551,7 @@ export default function Settings() {
                             type="button"
                             aria-label={`Remove category ${category.name || index + 1}`}
                             onClick={() => updatePreference('categories', p.categories.filter(c => c.id !== category.id))}
-                            className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                            className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                           >
                             Remove
                           </button>
@@ -564,7 +564,7 @@ export default function Settings() {
                             placeholder="File names, e.g. {uploader}/{title}"
                             spellCheck={false}
                             aria-label={`Category ${index + 1} file names`}
-                            className="w-44 px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-foreground outline-none font-mono placeholder:text-muted-foreground/50"
+                            className="w-44 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground"
                           />
                           <button
                             type="button"
@@ -573,7 +573,7 @@ export default function Settings() {
                               const dir = await service.pickDirectory('category');
                               if (dir) updateCategory(category.id, { destination: dir });
                             }}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-input border border-border/40 text-[11px] text-muted-foreground hover:bg-secondary transition-colors max-w-44"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors max-w-44"
                           >
                             <FolderOpen className="w-3 h-3 shrink-0" />
                             <span className="truncate">{category.destination || 'Default folder'}</span>
@@ -609,7 +609,7 @@ export default function Settings() {
                           type="button"
                           aria-label={`Remove label ${label.name || index + 1}`}
                           onClick={() => updatePreference('labels', p.labels.filter(l => l.id !== label.id))}
-                          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                          className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                         >
                           Remove
                         </button>
@@ -628,12 +628,12 @@ export default function Settings() {
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (
                       <div key={folder.path} className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-muted-foreground max-w-48 truncate" title={folder.path}>{folder.path}</span>
+                        <span className="text-xs text-muted-foreground max-w-48 truncate" title={folder.path}>{folder.path}</span>
                         <button
                           type="button"
                           aria-label={`Stop watching ${folder.path}`}
                           onClick={() => updatePreference('watchFolders', p.watchFolders.filter(f => f.path !== folder.path))}
-                          className="px-2 py-1 rounded-md bg-secondary text-[11px] font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                          className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                         >
                           Remove
                         </button>
@@ -766,8 +766,8 @@ export default function Settings() {
                 </SettingRow>
                 {updateState === 'available' && updateNotes && (
                   <div className="py-2.5">
-                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Release Notes</p>
-                    <p className="text-[11px] text-muted-foreground/70 whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
+                    <p className="text-xs text-muted-foreground font-medium mb-1">Release Notes</p>
+                    <p className="text-xs text-muted-foreground whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
                   </div>
                 )}
                 <SettingRow
