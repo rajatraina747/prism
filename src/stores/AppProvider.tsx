@@ -83,6 +83,9 @@ interface QueueActions {
 interface HistoryActions {
   items: HistoryItem[];
   removeFromHistory: (id: string) => void;
+  /** Several at once, in one update (Library → Clear: one setHistory, not
+   * one per row). */
+  removeManyFromHistory: (ids: string[]) => void;
   /** Put a removed entry back, for an undo. Removing from the Library only
    * drops the record — the files are untouched — so this genuinely restores
    * everything that was lost. */
@@ -490,6 +493,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory(prev => prev.filter(i => i.id !== id));
   }, []);
 
+  const removeManyFromHistory = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const gone = new Set(ids);
+    setHistory(prev => prev.filter(i => !gone.has(i.id)));
+  }, []);
+
   const restoreHistory = useCallback((item: HistoryItem) => {
     setHistory(prev => (
       // Guard against a double undo, and keep the list in completion order so
@@ -531,8 +540,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [queue, addToQueue, removeFromQueue, pauseDownload, resumeDownload, cancelDownload, retryDownload, clearCompleted, startAll, pauseAll, reorderQueue, updateTorrentFiles, setItemCategory, setItemLabels, setItemChecksum, setItemWhenComplete, setItemStartAt, setItemClip, reannounceTorrent, recheckTorrent, removeWithData, moveToTop, moveToBottom, restartTorrentEngine],
   );
   const historyValue = useMemo(
-    () => ({ items: history, removeFromHistory, restoreHistory, importHistory, clearHistory }),
-    [history, removeFromHistory, restoreHistory, importHistory, clearHistory],
+    () => ({ items: history, removeFromHistory, removeManyFromHistory, restoreHistory, importHistory, clearHistory }),
+    [history, removeFromHistory, removeManyFromHistory, restoreHistory, importHistory, clearHistory],
   );
   const resetStats = useCallback(() => setStats(freshStats()), []);
   const statsValue = useMemo(() => ({ stats, resetStats }), [stats, resetStats]);

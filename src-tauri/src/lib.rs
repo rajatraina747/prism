@@ -2748,6 +2748,7 @@ pub fn run() {
             player::player_now_playing,
             player_queue::recent_media,
             player_queue::clear_recent_media,
+            player_state::forget_playback_history,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,

@@ -9,7 +9,9 @@ export default defineConfig({
   // PAGES_BASE is the GitHub Pages demo's path (/prism/), set by deploy-web.yml.
   base: isTauri ? "./" : process.env.PAGES_BASE || "/",
   server: {
-    host: "::",
+    // Loopback only: "::" served the source and the demo to the whole LAN,
+    // and esbuild's dev server lets any website read its responses.
+    host: "127.0.0.1",
     port: 8080,
     strictPort: true,
     hmr: {

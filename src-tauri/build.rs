@@ -121,6 +121,7 @@ const COMMANDS: &[&str] = &[
     "player_now_playing",
     "recent_media",
     "clear_recent_media",
+    "forget_playback_history",
     "player_save_position",
     "player_resume_position",
     "player_add_subtitle",
