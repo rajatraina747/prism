@@ -43,21 +43,19 @@ nothing.
   macOS and off elsewhere (`lib.rs apple_playable`). The re-encode is also
   skipped above 1080p when only OpenH264 is available, and when there isn't room
   for a second copy. It now reports progress.
-- [ ] **Gate ⌘O on `player_available`.** PR #28: on a build without libmpv,
+- [x] **Gate ⌘O on `player_available`.** PR #28: on a build without libmpv,
   show a toast instead of opening a player window that fails.
-- [ ] **README pass.** The feature list is missing Convert, direct-link
+- [x] **README pass.** The feature list is missing Convert, direct-link
   downloads, RSS feeds and play-any-file. It mentions only the Firefox extension,
   but a Chromium build ships too.
 
 ### Hygiene (2.4.x)
 
-- [ ] **The yt-dlp self-update is rejected on every launch.** **Medium.** Seen
-  2026-11-05 in `Prism.log`: each start logs "self-updated yt-dlp failed its
-  integrity check; using the bundled engine", then updates to 2026.10.26 again.
-  So the update's `*.sha256` / `*.tree-sha256` record never matches what's on
-  disk after a restart (`engine.rs`). Find what changes between writing and
-  re-checking: quarantine xattrs, `.pyc` files the onedir writes on first run,
-  or a path difference.
+- [x] **The yt-dlp self-update was rejected on every launch** (since 2.3.1,
+  every user). `freshness.json` was written into `engine/ytdlp/` after its tree
+  hash was recorded. It now lives in `engine/`, and a copy left inside is
+  ignored. Leftover `ytdlp.staging-*` folders (~124 MB each) are cleared before
+  each update.
 - [ ] **Filtering DNS resolver for URLs a remote server chooses** (Low–Med). A
   redirect or DNS answer can still point direct downloads, RSS fetches or
   thumbnails into the LAN or loopback. Where:
