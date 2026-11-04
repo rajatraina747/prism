@@ -35,6 +35,8 @@
     "allow-player-seek",
     "allow-player-set",
     "allow-player-open-file",
-    "allow-player-pick-subtitle"
+    "allow-player-pick-subtitle",
+    "allow-player-playlist-step",
+    "allow-player-now-playing"
   ]
 }

@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { usePlayerAvailable } from '@/hooks/use-player-available';
+import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { ActivityPanel } from '@/components/library/Activity';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -113,6 +114,9 @@ function TorrentFiles({ item, playerAvailable }: { item: HistoryItem; playerAvai
   );
 }
 
+/** No search box: the embedded Needs attention list leaves ⌘F to its page. */
+const NO_INPUT = { current: null };
+
 /** Height of every grid card; the grid's size estimate uses it too. */
 const GRID_CARD_HEIGHT = 228;
 
@@ -153,6 +157,47 @@ export default function Library() {
   return <LibraryView mode="media" />;
 }
 
+/** "Play a file": the picker, and the files played recently (which play
+ * again from wherever they are; Rust kept the list). */
+function PlayFileMenu() {
+  const [recent, setRecent] = useState<import('@/lib/player-window').RecentMedia[]>([]);
+  const load = () => {
+    import('@/lib/player-window').then(m => m.recentMedia()).then(setRecent).catch(() => setRecent([]));
+  };
+  return (
+    <DropdownMenu onOpenChange={(o) => { if (o) load(); }}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title="Play any audio or video file on this computer (⌘O)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+        >
+          <FolderOpen className="w-3 h-3" /> Play a file
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuItem onSelect={playAFile} className="text-xs">Choose a file…</DropdownMenuItem>
+        {recent.length > 0 && (
+          <>
+            <div className="px-2 pt-2 pb-1 text-xs text-muted-foreground">Recent</div>
+            {recent.map(r => (
+              <DropdownMenuItem key={r.path} onSelect={() => playInPrism(r.path, r.title)} className="text-xs" title={r.path}>
+                <span className="truncate">{r.title}</span>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              onSelect={() => import('@/lib/player-window').then(m => m.clearRecentMedia()).then(() => setRecent([])).catch(() => {})}
+              className="text-xs text-muted-foreground"
+            >
+              Clear recent files
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** The Activity strip opens when you arrive from the old Statistics page. */
 function LibraryActivity() {
   const [params] = useSearchParams();
@@ -166,6 +211,9 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
   const { preferences, updatePreference } = useSettings();
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  // Only the page's own Library list, not the embedded Needs attention one.
+  useFindShortcut(embedded ? NO_INPUT : searchRef);
   const [category, setCategory] = useState<string | null>(null);
   const [label, setLabel] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -418,16 +466,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
               </button>
             </>
           )}
-          {playerAvailable && (
-            <button
-              type="button"
-              onClick={playAFile}
-              title="Play any audio or video file on this computer (⌘O)"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
-            >
-              <FolderOpen className="w-3 h-3" /> Play a file…
-            </button>
-          )}
+          {playerAvailable && <PlayFileMenu />}
           {inTab.length > 0 && (
             <button
               type="button"
@@ -471,8 +510,9 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
               <input
                 type="text"
                 value={search}
+                ref={searchRef}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search library..."
+                placeholder="Search library…"
                 aria-label="Search library"
                 className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
               />

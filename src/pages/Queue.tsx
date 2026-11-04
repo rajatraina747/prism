@@ -10,6 +10,7 @@ const AttentionList = lazy(() => import('@/pages/Library').then(m => ({
 import { useService } from '@/services/ServiceProvider';
 import { QueueTable, type SelectMods } from '@/components/queue/QueueTable';
 import { AddPanel } from '@/components/add/AddPanel';
+import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
 import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
@@ -81,6 +82,8 @@ export default function Queue() {
   }, [cancelDownload, pauseDownload, resumeDownload]);
 
   const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useFindShortcut(searchRef);
   // Kept local, like the search box: a filter you can't see the effect of is
   // worse after a restart than a fresh list.
   const [category, setCategory] = useState<string | null>(null);
@@ -314,6 +317,7 @@ export default function Queue() {
             <input
               type="text"
               value={search}
+              ref={searchRef}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter downloads…"
               aria-label="Filter downloads"

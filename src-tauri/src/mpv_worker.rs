@@ -53,6 +53,10 @@ impl MpvCalls {
     pub fn set_property(&self, name: &str, value: &serde_json::Value, label: &str) -> Result<(), String> {
         self.app.mpv().set_property(name, value, label).map_err(|e| e.to_string())
     }
+
+    pub fn get_property(&self, name: &str, format: &str, label: &str) -> Result<serde_json::Value, String> {
+        self.app.mpv().get_property(name.to_string(), format.to_string(), label).map_err(|e| e.to_string())
+    }
 }
 
 /// The worker Prism manages: one thread, handed the plugin's mpv calls.
