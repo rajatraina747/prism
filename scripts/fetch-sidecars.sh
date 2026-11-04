@@ -65,6 +65,20 @@ fetch() {
   echo "✓ $(basename "$dest") verified"
 }
 
+# fetch_mirrored <upstream-url> <asset> <dest> <sha256> — Prism's mirror
+# release first (MEDIA_THIRDPARTY_TAG), then upstream. Upstream nightlies are
+# deleted after a few weeks; the mirror keeps an old pin buildable. Same hash
+# check either way, so where it came from doesn't matter.
+fetch_mirrored() {
+  local upstream=$1 asset=$2 dest=$3 want=$4
+  if [ -n "${MEDIA_THIRDPARTY_TAG:-}" ] &&
+     ( fetch "https://github.com/rajatraina747/prism/releases/download/$MEDIA_THIRDPARTY_TAG/$asset" "$dest" "$want" ); then
+    return 0
+  fi
+  [ -n "${MEDIA_THIRDPARTY_TAG:-}" ] && echo "  (not on the mirror; trying upstream)"
+  fetch "$upstream" "$dest" "$want"
+}
+
 # extract_member <archive> <member-path-inside> <dest-file>
 extract_member() {
   local archive=$1 member=$2 dest=$3 tmp
@@ -263,10 +277,10 @@ if [ "$WITH_PLAYER" = 1 ]; then
       extract_member "$TMP/wrapper.zip" "LICENSE" "$LIB/libmpv-wrapper-LICENSE"
       # Both DLLs must sit in the same directory: the wrapper resolves libmpv by
       # bare name, and the vendored plugin pre-loads it from beside the wrapper.
-      fetch "https://github.com/zhongfly/mpv-winbuild/releases/download/$MPV_WINBUILD_TAG/$MPV_WINBUILD_ASSET" \
-        "$TMP/mpv-dev.7z" "$MPV_WINBUILD_SHA256"
+      fetch_mirrored "https://github.com/zhongfly/mpv-winbuild/releases/download/$MPV_WINBUILD_TAG/$MPV_WINBUILD_ASSET" \
+        "$MPV_WINBUILD_ASSET" "$TMP/mpv-dev.7z" "$MPV_WINBUILD_SHA256"
       extract_member "$TMP/mpv-dev.7z" "libmpv-2.dll" "$LIB/libmpv-2.dll"
-      fetch "$BTBN_BASE/$BTBN_FFMPEG_WIN64" "$TMP/ffmpeg-win64.zip" "$BTBN_FFMPEG_WIN64_SHA256"
+      fetch_mirrored "$BTBN_BASE/$BTBN_FFMPEG_WIN64" "$BTBN_FFMPEG_WIN64" "$TMP/ffmpeg-win64.zip" "$BTBN_FFMPEG_WIN64_SHA256"
       stage_ffmpeg "$TMP/ffmpeg-win64.zip"
       {
         echo "libmpv-wrapper $LIBMPV_WRAPPER_VERSION"
@@ -278,7 +292,7 @@ if [ "$WITH_PLAYER" = 1 ]; then
       # No embedded player on Linux yet, but ffmpeg is bundled all the same, so
       # merging and audio extraction don't depend on what the distro ships.
       mkdir -p "$LIB"
-      fetch "$BTBN_BASE/$BTBN_FFMPEG_LINUX64" "$TMP/ffmpeg-linux64.tar.xz" "$BTBN_FFMPEG_LINUX64_SHA256"
+      fetch_mirrored "$BTBN_BASE/$BTBN_FFMPEG_LINUX64" "$BTBN_FFMPEG_LINUX64" "$TMP/ffmpeg-linux64.tar.xz" "$BTBN_FFMPEG_LINUX64_SHA256"
       stage_ffmpeg "$TMP/ffmpeg-linux64.tar.xz"
       echo "ffmpeg (BtbN LGPL build) $BTBN_FFMPEG_LINUX64" > "$LIB/VERSIONS.txt"
       ;;
