@@ -17,6 +17,7 @@ mod migrate;
 mod mpv_worker;
 mod player;
 mod player_state;
+mod playable;
 mod postprocess;
 mod proc;
 mod quarantine;
