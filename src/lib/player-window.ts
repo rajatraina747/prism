@@ -79,6 +79,11 @@ export async function openInPlayer(raw: PlayerSource): Promise<void> {
  * choice, so the player accepts it from any folder or drive. Resolves to
  * false when the user cancels. */
 export async function pickAndPlay(): Promise<boolean> {
+  // ⌘O works on every page, but not every build has libmpv (Linux, some dev
+  // builds): say so rather than opening a player window that can't start.
+  if (!(await invoke<boolean>('player_available'))) {
+    throw new Error("the built-in player isn't available in this build");
+  }
   const picked = await invoke<{ path: string; title: string } | null>('pick_media_file');
   if (!picked) return false;
   await openInPlayer({ path: picked.path, title: picked.title });

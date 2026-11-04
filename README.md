@@ -29,10 +29,13 @@
 
 ## Features
 
-- **Built-in player (macOS & Windows)** — Play any download inside Prism, powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching. Plays individual files inside torrents too.
+- **Built-in player (macOS & Windows)** — Play any download inside Prism, or any audio or video file on your computer (⌘O, or drop it on the player), powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching, resume where you left off. Plays files inside torrents while they're still downloading.
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p — and the resolution you pick is what you get, with a warning if a site delivers less.
 - **BitTorrent downloads** — Paste a magnet link or `.torrent` file and download it in the same queue as your videos. Pick which files to grab, watch peers and share ratio live, and control seeding (stop at 100%, seed to ratio 1.0, or seed until you stop). UPnP port forwarding for peers behind a router; Quiet Hours throttles torrents too.
 - **One place to add anything** — The Add button (⌘N / ⌘L from any page) takes video links, magnets, `.torrent` files and lists of links; or drop any of them anywhere in the window. Links opened from your browser ask before Prism fetches anything.
+- **Direct downloads** — Plain file links (disk images, archives, documents) download over several connections, resume after a pause or a crash, and can be checked against a SHA-256.
+- **Convert** — Turn a finished download into MP4 (H.264 or HEVC), MP3, M4A or Opus, using your Mac's or PC's hardware encoder where there is one.
+- **Plays on your iPhone** — On a Mac, the few downloads QuickTime, iMessage and iOS can't open (VP9/AV1, Opus) are re-encoded to H.264/AAC automatically (Settings → Files).
 - **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder, full keyboard control. Configurable concurrent downloads and speed limits.
 - **Quiet hours** — Hold or throttle downloads during part of the day, with a banner saying until when; full speed the rest of the time.
 - **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
@@ -42,11 +45,11 @@
 - **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
 - **SponsorBlock** — Optionally mark sponsor segments as chapters or cut them out entirely, using crowd-sourced data.
 - **Library** — Searchable record of every download with one-click replay; stays fast with thousands of entries.
-- **Subscriptions** — Watch channels and playlists; new videos are queued automatically on a configurable interval.
+- **Subscriptions** — Watch channels, playlists, and RSS/Atom feeds (podcasts, torrent feeds); new items are queued automatically on a configurable interval, with keyword rules.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
 - **Menu bar quick-add** — Tray icon with Paste & Download; drag a URL onto the window to fetch it.
 - **Audio your way** — Extract audio-only as MP3, M4A, or Opus.
-- **Browser integration** — Firefox extension and a universal bookmarklet send any page to Prism via the `prism://` scheme.
+- **Browser integration** — Extensions for Firefox and Chrome/Edge, and a bookmarklet for any browser, send a page or link to Prism via the `prism://` scheme.
 - **Dark and light themes** — Follows your system preference or set manually.
 - **Cross-platform** — Native desktop apps for macOS (Apple Silicon), Windows, and Linux, with signed auto-updates.
 - **Privacy-first** — All data stays on your machine. No accounts, no telemetry, no tracking. Crash reporting exists but is strictly opt-in (off by default) and contains no personal data or download history.
@@ -107,10 +110,10 @@ Or get the latest release for your platform:
 
 Prism registers the `prism://` URL scheme, and there are two ways to use it:
 
-**Firefox extension** — see [extension/firefox](extension/firefox/): a toolbar
-button and right-click menu ("Download this page/link in Prism"). Load it
-temporarily via `about:debugging`, or package it for AMO (instructions in the
-folder).
+**Browser extension (Firefox, Chrome, Edge)** — a toolbar button and right-click
+menu ("Download this page/link in Prism"). Each release attaches both builds
+(`prism-downloader-firefox-*.zip`, `prism-downloader-chromium-*.zip`); build and
+install steps are in [extension/README.md](extension/README.md).
 
 **Bookmarklet (any browser)** — save this to your bookmarks bar, then click it
 on any video page:
