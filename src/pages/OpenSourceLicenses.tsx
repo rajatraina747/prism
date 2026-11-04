@@ -70,7 +70,6 @@ const GROUPS: readonly CreditGroup[] = [
       { name: 'Radix UI', version: '1.x', license: 'MIT', url: 'https://github.com/radix-ui/primitives' },
       { name: 'React Router', version: '7.x', license: 'MIT', url: 'https://github.com/remix-run/react-router' },
       { name: 'Lucide Icons', version: '0.x', license: 'ISC', url: 'https://github.com/lucide-icons/lucide' },
-      { name: 'next-themes', version: '0.x', license: 'MIT', url: 'https://github.com/pacocoursey/next-themes' },
       { name: 'Sonner', version: '1.x', license: 'MIT', url: 'https://github.com/emilkowalski/sonner' },
       { name: 'clsx', version: '2.x', license: 'MIT', url: 'https://github.com/lukeed/clsx' },
       { name: 'tailwind-merge', version: '2.x', license: 'MIT', url: 'https://github.com/dcastil/tailwind-merge' },
