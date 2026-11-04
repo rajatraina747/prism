@@ -6,7 +6,7 @@
 //! main thread while that is in flight waits on mpv's core, the core waits on
 //! the video output, and the video output waits on the main thread: the whole
 //! app beach-balls and never recovers. 1.7.2–1.9.0 ran every call on the main
-//! thread and did exactly that (docs/AUDIT-2026-07.md, 1.9.1 addendum).
+//! thread and did exactly that (the July 2026 audit, 1.9.1 addendum; in git history).
 //!
 //! So every mpv call runs here, on one dedicated thread, in the order it was
 //! made, and the caller awaits it with a timeout. The main thread never runs or

@@ -61,7 +61,7 @@ ignore = [
   # 2.12 need rust-version 1.90; Prism declares 1.80.
   #
   # Drop these when tauri-plugin-updater is on zip ≥ 9 (raise rust-version
-  # to take it — docs/WORKPLAN-2026-11-01.md, B7).
+  # to take it — ROADMAP.md → Hygiene, cargo-audit ignores).
   "RUSTSEC-2026-0367",
   "RUSTSEC-2026-0368",
   "RUSTSEC-2026-0369",

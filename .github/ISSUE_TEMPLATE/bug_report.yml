@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time. Found a security issue? Please report it
-        privately instead — see SECURITY.md.
+        privately instead — see the Security section of the README.
   - type: input
     id: version
     attributes:

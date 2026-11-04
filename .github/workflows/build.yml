@@ -54,7 +54,7 @@ jobs:
   build-macos:
     needs: notes
     # Signs the updater artifacts. The `release` environment is where the
-    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    # signing secrets and a required reviewer belong (ROADMAP.md → Releasing).
     environment: release
     runs-on: macos-latest
     permissions:
@@ -88,7 +88,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          # Empty until the key is re-encrypted — see ROADMAP.md → Releasing.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -115,7 +115,7 @@ jobs:
   build-windows:
     needs: notes
     # Signs the updater artifacts. The `release` environment is where the
-    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    # signing secrets and a required reviewer belong (ROADMAP.md → Releasing).
     environment: release
     runs-on: windows-latest
     permissions:
@@ -149,7 +149,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          # Empty until the key is re-encrypted — see ROADMAP.md → Releasing.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -170,7 +170,7 @@ jobs:
   build-linux:
     needs: notes
     # Signs the updater artifacts. The `release` environment is where the
-    # signing secrets and a required reviewer belong (docs/RELEASE-KEYS.md §4).
+    # signing secrets and a required reviewer belong (ROADMAP.md → Releasing).
     environment: release
     runs-on: ubuntu-latest
     permissions:
@@ -204,7 +204,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # Empty until the key is re-encrypted — see docs/RELEASE-KEYS.md.
+          # Empty until the key is re-encrypted — see ROADMAP.md → Releasing.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Optional: bakes in opt-in crash reporting; empty/missing = disabled
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
