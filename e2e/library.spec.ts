@@ -74,4 +74,26 @@ test.describe('Library', () => {
     await expect(page.getByText('Library entry 42', { exact: true })).toBeVisible();
     await expect(page.getByText('Library entry 43', { exact: true })).toHaveCount(0);
   });
+
+  // A torrent's files can be reached from the poster grid too: the count opens
+  // them in a dialog, so the card keeps its size (2026-11-05).
+  test('a grid card opens a torrent\'s files without selecting the card', async ({ page }) => {
+    await page.addInitScript(() => {
+      const history = JSON.parse(localStorage.getItem('prism_history') ?? '[]');
+      history.unshift({
+        ...history[0],
+        id: 'torrent-1',
+        metadata: { ...history[0].metadata, title: 'Season pack', source: { ...history[0].metadata.source, url: 'magnet:?xt=urn:btih:abc' } },
+        completedAt: '2027-01-01T00:00:00Z',
+        files: [{ index: 0, name: 'Episode 1.mkv', size: 1000 }, { index: 1, name: 'Episode 2.mkv', size: 2000 }],
+      });
+      localStorage.setItem('prism_history', JSON.stringify(history));
+    });
+    await page.goto('/library');
+    await page.getByRole('button', { name: /Show the 2 files in Season pack/ }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Episode 1.mkv')).toBeVisible();
+    await expect(dialog.getByText('Episode 2.mkv')).toBeVisible();
+    await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
+  });
 });

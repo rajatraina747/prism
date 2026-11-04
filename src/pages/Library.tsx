@@ -18,6 +18,7 @@ import {
   FolderOpen, Play, Copy, AlertTriangle, MonitorPlay, ChevronRight, Tag, Tags, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { ActivityPanel } from '@/components/library/Activity';
 import { useSearchParams } from 'react-router-dom';
@@ -65,6 +66,51 @@ function matchesTab(item: HistoryItem, tab: FilterTab, missing: Set<string>): bo
     case 'missing': return missing.has(item.id);
     default: return item.status === tab;
   }
+}
+
+/** A torrent's files with their own Play / Open / Show buttons. Inline in
+ * list view; in grid view it opens in a dialog, so the card keeps its size. */
+function TorrentFiles({ item, playerAvailable }: { item: HistoryItem; playerAvailable: boolean }) {
+  const service = useService();
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {(item.files ?? []).map((f) => (
+        <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
+          <span className="truncate flex-1" title={f.name}>{f.name}</span>
+          <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
+          {playerAvailable && (
+            <button
+              type="button"
+              onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
+              title="Play in Prism"
+              aria-label={`Play ${f.name} in Prism`}
+              className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <MonitorPlay className="w-3 h-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+            title="Open in default player"
+            aria-label={`Open ${f.name}`}
+            className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <Play className="w-3 h-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
+            title="Show in folder"
+            aria-label={`Show ${f.name} in folder`}
+            className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <FolderOpen className="w-3 h-3" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** Height of every grid card; the grid's size estimate uses it too. */
@@ -602,6 +648,8 @@ const LibraryRow = React.memo(function LibraryRow({
     onSelect?.(item.id, { shift: e.shiftKey, meta: e.metaKey || e.ctrlKey });
   };
 
+  const [filesOpen, setFilesOpen] = useState(false);
+
   return (
     <div
       role="option"
@@ -669,8 +717,15 @@ const LibraryRow = React.memo(function LibraryRow({
               <span className="px-1.5 rounded bg-destructive/10 text-destructive" title="The file has been moved or deleted outside Prism">Missing</span>
             )}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
-            {grid && item.files && item.files.length > 0 && (
-              <span>{item.files.length} file{item.files.length === 1 ? '' : 's'}</span>
+            {grid && item.status === 'completed' && item.files && item.files.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setFilesOpen(true); }}
+                className="underline decoration-dotted underline-offset-2 hover:text-foreground transition-colors"
+                aria-label={`Show the ${item.files.length} files in ${item.metadata.title}`}
+              >
+                {item.files.length} file{item.files.length === 1 ? '' : 's'}
+              </button>
             )}
             <span title={formatWhen(item.completedAt)}>{grid ? formatDay(item.completedAt) : formatWhen(item.completedAt)}</span>
           </div>
@@ -687,45 +742,7 @@ const LibraryRow = React.memo(function LibraryRow({
                 <ChevronRight className={cn('w-3 h-3 transition-transform', expanded && 'rotate-90')} />
                 {item.files.length} {item.files.length === 1 ? 'file' : 'files'}
               </button>
-              {expanded && (
-                <ul className="mt-1 space-y-0.5">
-                  {item.files.map((f) => (
-                    <li key={f.name} className="flex items-center gap-2 text-xs text-muted-foreground group">
-                      <span className="truncate flex-1" title={f.name}>{f.name}</span>
-                      <span className="tabular-nums shrink-0">{formatBytes(f.size)}</span>
-                      {playerAvailable && (
-                        <button
-                          type="button"
-                          onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
-                          title="Play in Prism"
-                          aria-label={`Play ${f.name} in Prism`}
-                          className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                        >
-                          <MonitorPlay className="w-3 h-3" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                        title="Open in default player"
-                        aria-label={`Open ${f.name}`}
-                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                      >
-                        <Play className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                        title="Show in folder"
-                        aria-label={`Show ${f.name} in folder`}
-                        className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                      >
-                        <FolderOpen className="w-3 h-3" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {expanded && <TorrentFiles item={item} playerAvailable={playerAvailable} />}
             </div>
           )}
         </div>
@@ -799,6 +816,21 @@ const LibraryRow = React.memo(function LibraryRow({
           </button>
         </div>
       </div>
+      {grid && filesOpen && (
+        <Dialog open onOpenChange={setFilesOpen}>
+          {/* Clicks inside a portal still bubble through React to the row,
+              which would select it: stop them here. */}
+          <DialogContent className="max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <DialogHeader>
+              <DialogTitle className="truncate pr-6">{item.metadata.title}</DialogTitle>
+              <DialogDescription>{(item.files ?? []).length} files</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <TorrentFiles item={item} playerAvailable={!!playerAvailable} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 });
