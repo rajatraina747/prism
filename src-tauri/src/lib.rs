@@ -17,6 +17,7 @@ mod ledger;
 mod migrate;
 mod mpv_worker;
 mod player;
+mod player_queue;
 mod player_state;
 mod playable;
 mod postprocess;
@@ -2743,6 +2744,10 @@ pub fn run() {
             player::player_open_file,
             player::player_pick_subtitle,
             player::pick_media_file,
+            player::player_playlist_step,
+            player::player_now_playing,
+            player_queue::recent_media,
+            player_queue::clear_recent_media,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -3244,7 +3249,7 @@ mod tests {
         const PLAYER_ONLY: &[&str] = &[
             "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
             "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
-            "player_pick_subtitle",
+            "player_pick_subtitle", "player_playlist_step", "player_now_playing",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
         // Engine commands the queue (queue.rs) calls from Rust. Since the page

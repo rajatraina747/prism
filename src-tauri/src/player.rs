@@ -309,6 +309,9 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         "chapter": "int64",
         "sub-delay": "double",
         "sub-visibility": "flag",
+        "audio-delay": "double",
+        "playlist-pos": "int64",
+        "playlist-count": "int64",
     });
     serde_json::from_value(serde_json::json!({
         "initialOptions": initial,
@@ -416,8 +419,11 @@ fn user_picked_media(app: &AppHandle, path: &str) -> Option<String> {
     use tauri::Manager;
     let canonical = crate::canonical_string(&std::path::Path::new(path).canonicalize().ok()?);
     let state = app.try_state::<UserPicked>()?;
-    let set = state.0.lock().ok()?;
-    set.contains(&canonical).then_some(canonical)
+    let picked = state.0.lock().ok()?.contains(&canonical);
+    // A file played before (Recent files) was chosen by the user then; the
+    // list is Rust's own file, so the page can't add to it.
+    (picked || (is_playable(std::path::Path::new(&canonical)) && crate::player_queue::is_recent(app, &canonical)))
+        .then_some(canonical)
 }
 
 /// Show the "play a file" dialog and return what was chosen.
@@ -503,12 +509,89 @@ async fn load_validated(app: &AppHandle, validated: String) -> Result<(), String
             Some(validated.clone()),
         );
     }
+    // The rest of its folder, in reading order, so Next/Previous work and a
+    // season plays through. Built from the validated file's own folder, off
+    // the async workers (a big folder is a directory walk).
+    let current = std::path::PathBuf::from(&validated);
+    let queue = {
+        let current = current.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::player_queue::folder_playlist(&current))
+            .await
+            .ok()
+            .flatten()
+    };
+    let episode = current
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(crate::player_queue::looks_like_episode);
+    {
+        let (app, path) = (app.clone(), validated.clone());
+        tauri::async_runtime::spawn_blocking(move || crate::player_queue::record(&app, &path));
+    }
     mpv_worker(app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
             mpv.command("loadfile", vec![serde_json::json!(validated)], PLAYER_LABEL)?;
+            // Episodes go on to the next one by themselves; anything else
+            // waits for Next ("always": never advance at the end of a file).
+            mpv.set_property("keep-open", &serde_json::json!(if episode { "yes" } else { "always" }), PLAYER_LABEL)?;
+            if let Some((list, at)) = queue {
+                for p in list.iter().filter(|p| **p != current) {
+                    mpv.command("loadfile", vec![serde_json::json!(p.to_string_lossy()), serde_json::json!("append")], PLAYER_LABEL)?;
+                }
+                // The current file went in first; move it to its place in the
+                // sorted list (mpv inserts before the target entry).
+                if at > 0 {
+                    mpv.command("playlist-move", vec![serde_json::json!(0), serde_json::json!(at + 1)], PLAYER_LABEL)?;
+                }
+            }
             mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
         })
         .await
+}
+
+/// Next or previous in the folder playlist.
+#[tauri::command]
+pub async fn player_playlist_step(app: AppHandle, window: tauri::Window, forward: bool) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    mpv_worker(&app)
+        .run("playlist step", CALL_TIMEOUT, move |mpv| {
+            mpv.command(if forward { "playlist-next" } else { "playlist-prev" }, vec![], PLAYER_LABEL)
+        })
+        .await
+}
+
+/// The playlist moved on (Next, Previous, or the end of an episode): point
+/// Prism's idea of what's playing at the file mpv is actually playing, so
+/// resume positions, subtitles beside it and Recent files follow. The path
+/// comes from mpv, and only a playable file in the same folder as the one
+/// Prism loaded is accepted. Returns its name for the window title, or None
+/// when nothing changed.
+#[tauri::command]
+pub async fn player_now_playing(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
+    use tauri::Manager;
+    ensure_player_window(&window)?;
+    let Some(current) = app.state::<crate::player_state::PlayerState>().current() else { return Ok(None) };
+    let Some(loaded) = current.path else { return Ok(None) };
+    let value = mpv_worker(&app)
+        .run("get path", CALL_TIMEOUT, |mpv| mpv.get_property("path", "string", PLAYER_LABEL))
+        .await?;
+    let Some(now) = value.as_str().map(str::to_string) else { return Ok(None) };
+    let (now_p, loaded_p) = (std::path::Path::new(&now), std::path::Path::new(&loaded));
+    let same_folder = now_p.parent().and_then(|d| d.canonicalize().ok()) == loaded_p.parent().and_then(|d| d.canonicalize().ok());
+    // Nothing to follow: still the file Prism loaded, or not one it queued.
+    if now == loaded || !same_folder || !now_p.is_file() || !is_playable(now_p) {
+        return Ok(None);
+    }
+    let canonical = now_p.canonicalize().map(|p| crate::canonical_string(&p)).unwrap_or(now.clone());
+    let title = now_p.file_name().map(|n| n.to_string_lossy().into_owned());
+    app.state::<crate::player_state::PlayerState>().set_current(
+        crate::player_state::key_for_path(&canonical),
+        title.clone(),
+        Some(canonical.clone()),
+    );
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::player_queue::record(&app2, &canonical));
+    Ok(title)
 }
 
 /// Play a file of a torrent that is still downloading. Unlike `player_load`
@@ -763,6 +846,12 @@ pub(crate) fn validate_player_property(
         "sub-delay" => value
             .as_f64()
             .filter(|v| (-60.0..=60.0).contains(v))
+            .map(|v| serde_json::json!(v))
+            .ok_or_else(bad),
+        // Audio timing nudge, for a file whose sound runs early or late.
+        "audio-delay" => value
+            .as_f64()
+            .filter(|v| (-10.0..=10.0).contains(v))
             .map(|v| serde_json::json!(v))
             .ok_or_else(bad),
         // Track ids come from mpv's own track-list.

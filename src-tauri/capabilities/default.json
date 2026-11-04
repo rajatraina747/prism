@@ -79,6 +79,8 @@
     "allow-torrent-details",
     "allow-open-file",
     "allow-pick-media-file",
+    "allow-recent-media",
+    "allow-clear-recent-media",
     "allow-open-external",
     "allow-show-in-folder",
     "allow-get-default-download-path",

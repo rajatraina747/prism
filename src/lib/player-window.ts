@@ -89,3 +89,23 @@ export async function pickAndPlay(): Promise<boolean> {
   await openInPlayer({ path: picked.path, title: picked.title });
   return true;
 }
+
+export interface RecentMedia {
+  path: string;
+  title: string;
+  at: string;
+}
+
+/** Files played recently that still exist, newest first (Rust keeps the
+ * list in player-recent.json; player_queue.rs). Empty outside the app. */
+export async function recentMedia(): Promise<RecentMedia[]> {
+  try {
+    return await invoke<RecentMedia[]>('recent_media');
+  } catch {
+    return [];
+  }
+}
+
+export async function clearRecentMedia(): Promise<void> {
+  await invoke('clear_recent_media');
+}
