@@ -119,6 +119,8 @@ const COMMANDS: &[&str] = &[
     "pick_media_file",
     "player_playlist_step",
     "player_now_playing",
+    "player_action",
+    "player_screenshot",
     "recent_media",
     "clear_recent_media",
     "forget_playback_history",

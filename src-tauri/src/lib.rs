@@ -2760,6 +2760,8 @@ pub fn run() {
             player::pick_media_file,
             player::player_playlist_step,
             player::player_now_playing,
+            player::player_action,
+            player::player_screenshot,
             player_queue::recent_media,
             player_queue::clear_recent_media,
             player_state::forget_playback_history,
@@ -3274,7 +3276,7 @@ mod tests {
         const PLAYER_ONLY: &[&str] = &[
             "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
             "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
-            "player_pick_subtitle", "player_playlist_step", "player_now_playing",
+            "player_pick_subtitle", "player_playlist_step", "player_now_playing", "player_action", "player_screenshot",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
         // Engine commands the queue (queue.rs) calls from Rust. Since the page

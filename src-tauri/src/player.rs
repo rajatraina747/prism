@@ -312,6 +312,9 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         "audio-delay": "double",
         "playlist-pos": "int64",
         "playlist-count": "int64",
+        "ab-loop-a": "string",
+        "ab-loop-b": "string",
+        "video-aspect-override": "string",
     });
     serde_json::from_value(serde_json::json!({
         "initialOptions": initial,
@@ -639,6 +642,57 @@ pub async fn player_load_stream(
         .await
 }
 
+/// The few mpv actions the player's keys and buttons need beyond seeking,
+/// each named here rather than passed through: frame step, the A-B loop.
+#[tauri::command]
+pub async fn player_action(app: AppHandle, window: tauri::Window, action: String) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let command = match action.as_str() {
+        "frame-step" => "frame-step",
+        "frame-back-step" => "frame-back-step",
+        "ab-loop" => "ab-loop",
+        _ => return Err(format!("Unknown player action '{action}'")),
+    };
+    mpv_worker(&app)
+        .run("player action", CALL_TIMEOUT, move |mpv| mpv.command(command, vec![], PLAYER_LABEL))
+        .await
+}
+
+/// A screenshot of the current frame, saved to Pictures/Prism. The folder and
+/// name are Rust's (the video's name and the time), never the page's.
+/// Returns where it went.
+#[tauri::command]
+pub async fn player_screenshot(app: AppHandle, window: tauri::Window) -> Result<String, String> {
+    use tauri::Manager;
+    ensure_player_window(&window)?;
+    let dir = dirs::picture_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .ok_or("No Pictures folder")?
+        .join("Prism");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create {}: {e}", dir.display()))?;
+    let base = app
+        .state::<crate::player_state::PlayerState>()
+        .current()
+        .and_then(|c| c.title)
+        .map(|t| std::path::Path::new(&t).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(t))
+        .unwrap_or_else(|| "Prism".into());
+    let safe: String = base
+        .chars()
+        .map(|c| if c.is_alphanumeric() || " ._-()".contains(c) { c } else { '_' })
+        .take(80)
+        .collect();
+    let stamp = chrono::Local::now().format("%Y-%m-%d at %H.%M.%S");
+    let file = dir.join(format!("{} {}.png", safe.trim(), stamp));
+    let target = file.to_string_lossy().into_owned();
+    let arg = target.clone();
+    mpv_worker(&app)
+        .run("screenshot", LOAD_TIMEOUT, move |mpv| {
+            mpv.command("screenshot-to-file", vec![serde_json::json!(arg), serde_json::json!("video")], PLAYER_LABEL)
+        })
+        .await?;
+    Ok(target)
+}
+
 #[tauri::command]
 pub async fn player_seek(
     app: AppHandle,
@@ -848,6 +902,11 @@ pub(crate) fn validate_player_property(
             .filter(|v| (-60.0..=60.0).contains(v))
             .map(|v| serde_json::json!(v))
             .ok_or_else(bad),
+        // Picture shape: mpv's own values only.
+        "video-aspect-override" => match value.as_str() {
+            Some("-1" | "16:9" | "4:3" | "21:9" | "2.39:1" | "1:1") => Ok(value.clone()),
+            _ => Err(bad()),
+        },
         // Audio timing nudge, for a file whose sound runs early or late.
         "audio-delay" => value
             .as_f64()

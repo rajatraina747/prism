@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { observeProperties, type MpvObservableProperty } from 'tauri-plugin-libmpv-api';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -45,7 +45,28 @@ const OBSERVED = [
   ['audio-delay', 'double'],
   ['playlist-pos', 'int64'],
   ['playlist-count', 'int64'],
+  ['ab-loop-a', 'string', 'none'],
+  ['ab-loop-b', 'string', 'none'],
+  ['video-aspect-override', 'string', 'none'],
 ] as const satisfies MpvObservableProperty[];
+
+/** Picture shapes the A key cycles through ("-1" is the file's own). */
+const ASPECTS = ['-1', '16:9', '4:3', '21:9', '2.39:1', '1:1'] as const;
+
+/** Everything the keyboard does, for the ? sheet. */
+const SHORTCUTS: [string, string][] = [
+  ['Space', 'Play / pause'],
+  ['← / →', 'Back / forward 5 seconds'],
+  [', / .', 'One frame back / forward'],
+  ['↑ / ↓', 'Volume up / down'],
+  ['M', 'Mute'],
+  ['F', 'Full screen'],
+  ['N / P', 'Next / previous file in the folder'],
+  ['L', 'A-B loop: set start, set end, clear'],
+  ['A', 'Cycle the picture shape'],
+  ['S', 'Screenshot to Pictures/Prism'],
+  ['?', 'Show these shortcuts'],
+];
 
 interface MpvTrack {
   id: number;
@@ -101,6 +122,11 @@ export default function Player() {
   const [chapter, setChapter] = useState<number | null>(null);
   const [subDelay, setSubDelay] = useState(0);
   const [audioDelay, setAudioDelay] = useState(0);
+  const [loopA, setLoopA] = useState<string | null>(null);
+  const [loopB, setLoopB] = useState<string | null>(null);
+  const [aspect, setAspect] = useState<string>('-1');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showKeys, setShowKeys] = useState(false);
   // The folder playlist Rust queued (player_queue.rs): Previous/Next show
   // when there is more than one file.
   const [playlistPos, setPlaylistPos] = useState<number | null>(null);
@@ -194,6 +220,9 @@ export default function Player() {
           case 'audio-delay': setAudioDelay(data ?? 0); break;
           case 'playlist-pos': setPlaylistPos(data ?? null); break;
           case 'playlist-count': setPlaylistCount(data ?? 0); break;
+          case 'ab-loop-a': setLoopA(data && data !== 'no' ? data : null); break;
+          case 'ab-loop-b': setLoopB(data && data !== 'no' ? data : null); break;
+          case 'video-aspect-override': setAspect(data ?? '-1'); break;
           case 'sub-visibility': setSubVisible(data ?? true); break;
         }
       }));
@@ -387,6 +416,24 @@ export default function Player() {
   const hasPrev = playlistCount > 1 && (playlistPos ?? 0) > 0;
   const hasNext = playlistCount > 1 && playlistPos !== null && playlistPos < playlistCount - 1;
 
+  // A brief line on screen for things with no other feedback.
+  const say = useCallback((text: string) => {
+    setNotice(text);
+    setTimeout(() => setNotice(cur => (cur === text ? null : cur)), 2500);
+  }, []);
+  const action = useCallback((name: 'frame-step' | 'frame-back-step' | 'ab-loop') => {
+    invoke('player_action', { action: name }).catch(() => {});
+  }, []);
+  const screenshot = useCallback(() => {
+    invoke<string>('player_screenshot')
+      .then(path => say(`Screenshot saved to ${path.split(/[\\/]/).slice(-2).join('/')}`))
+      .catch(e => say(e instanceof Error ? e.message : String(e)));
+  }, [say]);
+  const cycleAspect = useCallback(() => {
+    const next = ASPECTS[(ASPECTS.indexOf(aspect as typeof ASPECTS[number]) + 1) % ASPECTS.length];
+    setProp('video-aspect-override', next).then(() => say(next === '-1' ? 'Picture: original shape' : `Picture: ${next}`)).catch(() => {});
+  }, [aspect, say]);
+
   // Keyboard parity with normal players.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -401,13 +448,19 @@ export default function Player() {
         case 'f': toggleFullscreen(); break;
         case 'n': case 'N': step(true); break;
         case 'p': case 'P': step(false); break;
+        case ',': action('frame-back-step'); break;
+        case '.': action('frame-step'); break;
+        case 'l': case 'L': action('ab-loop'); break;
+        case 'a': case 'A': cycleAspect(); break;
+        case 's': case 'S': screenshot(); break;
+        case '?': setShowKeys(v => !v); break;
         // Simple fullscreen has no OS-level Escape handling — provide it.
         case 'Escape': if (fullscreen) toggleFullscreen(); break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePause, toggleFullscreen, volume, muted, fullscreen, step]);
+  }, [togglePause, toggleFullscreen, volume, muted, fullscreen, step, action, cycleAspect, screenshot]);
 
   const audioTracks = tracks.filter((t) => t.type === 'audio');
   const subTracks = tracks.filter((t) => t.type === 'sub');
@@ -445,6 +498,26 @@ export default function Player() {
       style={ready ? { background: 'rgba(0, 0, 0, 0.01)' } : undefined}
       onMouseMove={pokeControls}
     >
+      {showKeys && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
+          onClick={() => setShowKeys(false)}
+          role="dialog"
+          aria-label="Keyboard shortcuts"
+        >
+          <div className="rounded-xl bg-black/85 border border-white/15 p-5 min-w-80" onClick={e => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold text-white mb-3">Keyboard shortcuts</h2>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-xs">
+              {SHORTCUTS.map(([k, what]) => (
+                <Fragment key={k}>
+                  <dt className="font-mono text-white/90">{k}</dt>
+                  <dd className="text-white/70">{what}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
       {/* Click video = play/pause, double-click = fullscreen */}
       <div className="absolute inset-0" onClick={togglePause} onDoubleClick={toggleFullscreen} />
 
@@ -458,6 +531,18 @@ export default function Player() {
             <span role="alert" className="shrink-0 max-w-[60%] truncate text-xs px-1.5 py-0.5 rounded bg-red-500/80 text-white" title={loadError}>
               {loadError}
             </span>
+          )}
+          {loopA && (
+            <button
+              onClick={() => action('ab-loop')}
+              className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-primary/80 text-white hover:bg-primary transition-colors"
+              title="A-B loop (L): click to move to the next step"
+            >
+              {loopB ? `Looping ${formatDuration(Number(loopA))}–${formatDuration(Number(loopB))}` : `Loop from ${formatDuration(Number(loopA))} · L to set the end`}
+            </button>
+          )}
+          {notice && (
+            <span role="status" className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-black/70 text-white/90">{notice}</span>
           )}
           {resumedFrom !== null && (
             <button
