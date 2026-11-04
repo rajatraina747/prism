@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { useStats } from '@/stores/AppProvider';
 import { Panel } from '@/components/common';
 import { formatBytes } from '@/services';
-import { topBy, recentDays, engineTotals, type StatsEngine } from '@/stores/stats';
+import { topBy, engineTotals, periodTotals, chartBuckets, ACTIVITY_PERIODS, type StatsEngine, type ActivityPeriod } from '@/stores/stats';
+import { ConfirmDialog } from '@/components/common';
+import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle, Ban, HardDrive, ArrowUpFromLine, ChevronRight, BarChart3 } from 'lucide-react';
 
 // Charts are drawn by hand, the way the player's speed graph is: a handful of
@@ -71,8 +73,12 @@ function BarList({ rows, empty }: {
  * didn't need a sidebar slot. Collapsed to one line by default. */
 export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { stats } = useStats();
-  const days = useMemo(() => recentDays(stats, 30), [stats]);
+  const { stats, resetStats } = useStats();
+  const [period, setPeriod] = useState<ActivityPeriod>(30);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const days = useMemo(() => chartBuckets(stats, period), [stats, period]);
+  const inPeriod = useMemo(() => periodTotals(stats, period), [stats, period]);
+  const periodLabel = ACTIVITY_PERIODS.find(p => p.value === period)?.label ?? '';
   const sites = useMemo(() => topBy(stats.bySite), [stats]);
   const categories = useMemo(() => topBy(stats.byCategory), [stats]);
   const engines = useMemo(() => engineTotals(stats), [stats]);
@@ -99,12 +105,37 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
       </button>
       {open && (
       <div className="px-3 pb-3">
+      <div className="flex items-center gap-1 mb-3 flex-wrap" role="radiogroup" aria-label="Period">
+        {ACTIVITY_PERIODS.map(p => (
+          <button
+            key={String(p.value)}
+            type="button"
+            role="radio"
+            aria-checked={period === p.value}
+            onClick={() => setPeriod(p.value)}
+            className={cn(
+              'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors',
+              period === p.value ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-secondary-foreground',
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setConfirmReset(true)}
+          className="ml-auto px-2.5 py-1 rounded-lg text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
+        >
+          Reset statistics…
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-        <Tile icon={HardDrive} label="Downloaded" value={formatBytes(stats.bytes)} />
-        <Tile icon={CheckCircle2} label="Completed" value={stats.completed.toLocaleString()} />
-        <Tile icon={XCircle} label="Failed" value={stats.failed.toLocaleString()} />
-        <Tile icon={Ban} label="Cancelled" value={stats.canceled.toLocaleString()} />
+        <Tile icon={HardDrive} label={`Downloaded · ${periodLabel}`} value={formatBytes(inPeriod.bytes)} />
+        <Tile icon={CheckCircle2} label={`Completed · ${periodLabel}`} value={inPeriod.items.toLocaleString()} />
+        {/* Only completions are kept per day, so these two are lifetime figures. */}
+        <Tile icon={XCircle} label="Failed · all time" value={stats.failed.toLocaleString()} />
+        <Tile icon={Ban} label="Cancelled · all time" value={stats.canceled.toLocaleString()} />
       </div>
 
       {/* Upload is a torrent figure, and only ever counted live — nothing in
@@ -122,24 +153,24 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
       )}
 
       <Panel className="mb-4">
-        <h3 className="text-xs font-semibold text-foreground mb-2">Last 30 days</h3>
-        {stats.bytes === 0 ? (
+        <h3 className="text-xs font-semibold text-foreground mb-2">{period === 'all' ? 'All time, by month' : period === 365 ? 'Last year, by month' : `Last ${periodLabel}`}</h3>
+        {inPeriod.bytes === 0 ? (
           <p className="text-xs text-muted-foreground">Finished downloads will show up here.</p>
         ) : (
           <>
-            <div className="flex items-end gap-[2px] h-24" role="img" aria-label="Bytes downloaded per day over the last 30 days">
+            <div className="flex items-end gap-[2px] h-24" role="img" aria-label={`Bytes downloaded, ${periodLabel}`}>
               {days.map(d => (
                 <div
-                  key={d.day}
-                  title={`${d.day}: ${formatBytes(d.bytes)} · ${d.items} item${d.items === 1 ? '' : 's'}`}
+                  key={d.label}
+                  title={`${d.label}: ${formatBytes(d.bytes)} · ${d.items} item${d.items === 1 ? '' : 's'}`}
                   className="flex-1 rounded-t bg-primary/60 hover:bg-primary transition-colors"
                   style={{ height: `${Math.max(d.bytes > 0 ? 4 : 1, (d.bytes / busiest) * 100)}%` }}
                 />
               ))}
             </div>
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>{days[0]?.day}</span>
-              <span>{days[days.length - 1]?.day}</span>
+              <span>{days[0]?.label}</span>
+              <span>{days[days.length - 1]?.label}</span>
             </div>
           </>
         )}
@@ -147,7 +178,7 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
 
       <div className="grid md:grid-cols-2 gap-3">
         <Panel>
-          <h3 className="text-xs font-semibold text-foreground mb-2">By engine</h3>
+          <h3 className="text-xs font-semibold text-foreground mb-2">By engine · all time</h3>
           <BarList
             rows={engines
               .filter(e => e.items > 0)
@@ -157,14 +188,14 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
         </Panel>
 
         <Panel>
-          <h3 className="text-xs font-semibold text-foreground mb-2">By site</h3>
+          <h3 className="text-xs font-semibold text-foreground mb-2">By site · all time</h3>
           <BarList rows={sites} empty="Sites appear once downloads finish." />
         </Panel>
       </div>
 
       {categories.length > 0 && (
         <Panel className="mt-3">
-          <h3 className="text-xs font-semibold text-foreground mb-2">By category</h3>
+          <h3 className="text-xs font-semibold text-foreground mb-2">By category · all time</h3>
           <BarList rows={categories} empty="" />
         </Panel>
       )}
@@ -175,6 +206,15 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
       </p>
       </div>
       )}
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title="Reset statistics?"
+        description="Every counter starts again from zero today. Your Library and your files are not touched, and downloads already finished aren't counted again."
+        confirmLabel="Reset"
+        destructive
+        onConfirm={() => { resetStats(); setConfirmReset(false); }}
+      />
     </section>
   );
 }

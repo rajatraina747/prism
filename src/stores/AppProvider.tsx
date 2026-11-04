@@ -7,7 +7,7 @@ import { installAppUpdate } from '@/stores/app-update';
 import { mergeHistory, mergeSettings } from '@/stores/backup';
 import { applyCategory, categoryFor } from '@/stores/categories';
 import { migrateSettings } from '@/stores/settings-migrations';
-import { hydrateStats, recordCompletion, backfillFromHistory, type Stats } from '@/stores/stats';
+import { hydrateStats, recordCompletion, backfillFromHistory, resetStats as freshStats, type Stats } from '@/stores/stats';
 import { whenDoneLabel } from '@/stores/completion';
 import { syncCrashReporting } from '@/services/crash-reporting';
 import { useService } from '@/services/ServiceProvider';
@@ -102,6 +102,8 @@ interface SettingsActions {
 
 interface StatsValue {
   stats: Stats;
+  /** Start the counters again from now (Library → Activity). */
+  resetStats: () => void;
 }
 
 // ── Contexts ──
@@ -532,7 +534,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({ items: history, removeFromHistory, restoreHistory, importHistory, clearHistory }),
     [history, removeFromHistory, restoreHistory, importHistory, clearHistory],
   );
-  const statsValue = useMemo(() => ({ stats }), [stats]);
+  const resetStats = useCallback(() => setStats(freshStats()), []);
+  const statsValue = useMemo(() => ({ stats, resetStats }), [stats, resetStats]);
 
   return (
     <SettingsContext.Provider value={settingsValue}>

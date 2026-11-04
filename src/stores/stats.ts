@@ -235,3 +235,70 @@ export function hydrateStats(stored: unknown, now = new Date()): Stats {
     version: STATS_VERSION,
   };
 }
+
+// ── Periods and reset (2.6) ─────────────────────────────────────────────
+// byDay is the only per-period record, and it holds completed downloads
+// only. So a period can say how much finished and how many bytes; failures,
+// cancellations and the per-site/engine/category totals stay all-time.
+
+export type ActivityPeriod = 7 | 30 | 90 | 365 | 'all';
+
+export const ACTIVITY_PERIODS: { value: ActivityPeriod; label: string }[] = [
+  { value: 7, label: '7 days' },
+  { value: 30, label: '30 days' },
+  { value: 90, label: '90 days' },
+  { value: 365, label: '1 year' },
+  { value: 'all', label: 'All time' },
+];
+
+function cutoffDay(days: number, now: Date): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() - (days - 1));
+  return day(d.toISOString());
+}
+
+/** Completed downloads and their bytes within the period. */
+export function periodTotals(stats: Stats, period: ActivityPeriod, now = new Date()): { items: number; bytes: number } {
+  if (period === 'all') return { items: stats.completed, bytes: stats.bytes };
+  const from = cutoffDay(period, now);
+  let items = 0;
+  let bytes = 0;
+  for (const [key, v] of Object.entries(stats.byDay)) {
+    // 'unknown' (an unreadable date) sorts after every real day; skip it.
+    if (/^\d{4}-/.test(key) && key >= from) { items += v.items; bytes += v.bytes; }
+  }
+  return { items, bytes };
+}
+
+/** Bars for the chart: a day each up to 90 days, a month each beyond. */
+export function chartBuckets(
+  stats: Stats,
+  period: ActivityPeriod,
+  now = new Date(),
+): { label: string; items: number; bytes: number }[] {
+  if (period !== 'all' && period <= 90) {
+    return recentDays(stats, period, now).map(d => ({ label: d.day, items: d.items, bytes: d.bytes }));
+  }
+  const month = (key: string) => key.slice(0, 7);
+  const months: string[] = [];
+  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startDate = period === 'all' ? new Date(stats.since) : new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  // Five years of bars at most: past that, a bar is too thin to read.
+  while (cursor <= end && months.length < 60) {
+    months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  const sums = new Map(months.map(m => [m, { items: 0, bytes: 0 }]));
+  for (const [key, v] of Object.entries(stats.byDay)) {
+    const at = sums.get(month(key));
+    if (at) { at.items += v.items; at.bytes += v.bytes; }
+  }
+  return months.map(m => ({ label: m, ...sums.get(m)! }));
+}
+
+/** Start counting again from now. backfilledThrough is now, so the next
+ * launch's backfill doesn't count the Library's existing history again. */
+export function resetStats(now = new Date()): Stats {
+  return { ...emptyStats(now), backfilledThrough: now.toISOString() };
+}
