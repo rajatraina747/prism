@@ -143,8 +143,10 @@
 }
 
 @layer components {
+  /* One content width for every page (2.5): fluid up to 1100px, centred.
+     Reading pages (legal, About) narrow it further with max-w-*. */
   .page-container {
-    @apply flex-1 overflow-auto p-6;
+    @apply flex-1 overflow-auto p-6 w-full max-w-[1100px] mx-auto;
   }
   .page-header {
     @apply mb-6;

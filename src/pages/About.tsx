@@ -18,7 +18,7 @@ export default function About() {
     <div className="page-container max-w-lg mx-auto">
       <div className="page-header text-center">
         <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
-        <h2 className="page-title">Prism</h2>
+        <h1 className="page-title">Prism</h1>
         <p className="page-subtitle">Premium Video Downloader</p>
         <p className="text-xs text-muted-foreground mt-1">
           by{' '}

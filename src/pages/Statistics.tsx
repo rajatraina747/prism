@@ -77,9 +77,9 @@ export default function Statistics() {
   const finished = stats.completed + stats.failed + stats.canceled;
 
   return (
-    <div className="page-container max-w-3xl mx-auto">
+    <div className="page-container">
       <div className="page-header">
-        <h2 className="page-title">Statistics</h2>
+        <h1 className="page-title">Statistics</h1>
         <p className="page-subtitle">
           {finished === 0
             ? 'Nothing has finished downloading yet.'

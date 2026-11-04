@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useQueue, useQueueActions, useHistory, useSettings } from '@/stores/AppProvider';
 import { useEngineStatus, publishEngineInfo } from '@/stores/engine-status';
@@ -55,67 +55,77 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const failedCount = historyItems.filter(i => i.status === 'failed').length;
   const engine = useEngineStatus();
   const playerAvailable = usePlayerAvailable();
+  const service = useService();
 
   return (
-    <aside aria-label="Navigation" className="w-[220px] min-w-[220px] h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
-      {/* Brand */}
-      <div className="flex flex-col items-center gap-1.5 px-5 py-5 border-b border-border/30">
-        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-24 h-24 rounded-2xl object-contain" />
-        <span className="text-sm font-semibold tracking-tight text-foreground">Prism</span>
-        <span className="text-xs text-muted-foreground">by RainaCorp</span>
+    <aside aria-label="Navigation" className="w-[220px] min-w-[220px] max-[999px]:w-16 max-[999px]:min-w-16 h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
+      {/* Brand: one compact row. Below 1000px the sidebar is icons only. */}
+      <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border/30 max-[999px]:justify-center max-[999px]:px-0">
+        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-8 h-8 rounded-lg object-contain shrink-0" />
+        <span className="text-sm font-semibold tracking-tight text-foreground max-[999px]:sr-only">Prism</span>
+        {service.isDemo && (
+          <span
+            title="Browser demo: downloads are simulated and nothing is saved to disk"
+            className="ml-auto px-2 py-0.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide max-[999px]:hidden"
+          >
+            Demo
+          </span>
+        )}
       </div>
 
-      <div className="px-3 pt-3">
+      <div className="px-3 pt-3 max-[999px]:px-2">
         <button
           type="button"
           onClick={onAdd}
+          title={`Add (${MOD_KEY}N)`}
           aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+N' : 'Control+N'}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors active:scale-[0.98]"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors active:scale-[0.98] max-[999px]:justify-center max-[999px]:px-0"
         >
           <Plus className="w-4 h-4 shrink-0" strokeWidth={2} />
-          <span>Add</span>
-          <kbd className="ml-auto text-xs font-sans opacity-70">{MOD_KEY}N</kbd>
+          <span className="max-[999px]:sr-only">Add</span>
+          <kbd className="ml-auto text-xs font-sans opacity-70 max-[999px]:hidden">{MOD_KEY}N</kbd>
         </button>
         {playerAvailable && (
           <button
             type="button"
             onClick={playAFile}
-            title="Play any video or audio file on this computer"
+            title={`Play any video or audio file on this computer (${MOD_KEY}O)`}
             aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+O' : 'Control+O'}
-            className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98]"
+            className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98] max-[999px]:justify-center max-[999px]:px-0"
           >
             <PlayCircle className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-            <span>Play a File</span>
-            <kbd className="ml-auto text-xs font-sans opacity-70">{MOD_KEY}O</kbd>
+            <span className="max-[999px]:sr-only">Play a File</span>
+            <kbd className="ml-auto text-xs font-sans opacity-70 max-[999px]:hidden">{MOD_KEY}O</kbd>
           </button>
         )}
       </div>
 
       {/* Main Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto max-[999px]:px-2">
         {NAV_ITEMS.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
             end={item.path === '/'}
+            title={item.label}
             className={({ isActive }) => cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 max-[999px]:justify-center max-[999px]:px-0 relative',
               isActive
                 ? 'bg-primary/12 text-primary'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
           >
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-            <span>{item.label}</span>
+            <span className="max-[999px]:sr-only">{item.label}</span>
             {item.path === '/queue' && activeCount > 0 && (
-              <span className="ml-auto text-xs tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
+              <span className="ml-auto text-xs tabular-nums font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md max-[999px]:absolute max-[999px]:-top-1 max-[999px]:right-1 max-[999px]:px-1 max-[999px]:py-0">
                 {activeCount}
               </span>
             )}
             {item.path === '/library' && failedCount > 0 && (
               <span
                 title={`${failedCount} failed download${failedCount !== 1 ? 's' : ''}`}
-                className="ml-auto text-xs tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md"
+                className="ml-auto text-xs tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md max-[999px]:absolute max-[999px]:-top-1 max-[999px]:right-1 max-[999px]:px-1 max-[999px]:py-0"
               >
                 {failedCount}
               </span>
@@ -125,25 +135,26 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
       </nav>
 
       {/* Bottom Nav */}
-      <div className="px-3 py-3 space-y-0.5 border-t border-border/30">
+      <div className="px-3 py-3 space-y-0.5 border-t border-border/30 max-[999px]:px-2">
         {BOTTOM_ITEMS.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
+            title={item.label}
             className={({ isActive }) => cn(
-              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 max-[999px]:justify-center max-[999px]:px-0 relative',
               isActive
                 ? 'bg-primary/12 text-primary'
                 : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
             )}
           >
             <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-            <span>{item.label}</span>
+            <span className="max-[999px]:sr-only">{item.label}</span>
             {item.path === '/settings' && engine?.updateAvailable && (
               <span
                 title={`Downloader engine ${engine.latest} is available`}
                 aria-label="Engine update available"
-                className="ml-auto w-2 h-2 rounded-full bg-primary"
+                className="ml-auto w-2 h-2 rounded-full bg-primary max-[999px]:absolute max-[999px]:top-1 max-[999px]:right-3"
               />
             )}
           </NavLink>
@@ -151,39 +162,6 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
       </div>
 
     </aside>
-  );
-}
-
-function PageHeader() {
-  const location = useLocation();
-  const titles: Record<string, string> = {
-    '/': 'Dashboard',
-    '/queue': 'Transfers',
-    '/subscriptions': 'Subscriptions',
-    '/library': 'Library',
-    '/settings': 'Settings',
-    '/about': 'About Prism',
-    '/privacy': 'Privacy Policy',
-    '/terms': 'Terms of Service',
-    '/licenses': 'Open Source Licenses',
-  };
-
-  const service = useService();
-
-  return (
-    <header className="h-14 flex items-center px-6 border-b border-border/30 shrink-0">
-      <h1 className="text-sm font-semibold text-foreground">
-        {titles[location.pathname] || 'Prism'}
-      </h1>
-      {service.isDemo && (
-        <span
-          title="Browser demo: downloads are simulated and nothing is saved to disk"
-          className="ml-3 px-2 py-0.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide"
-        >
-          Demo
-        </span>
-      )}
-    </header>
   );
 }
 
@@ -331,7 +309,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
       <div className="flex-1 flex flex-col min-w-0">
-        <PageHeader />
         <main className="flex-1 overflow-auto">
           {children}
         </main>

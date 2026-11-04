@@ -244,7 +244,7 @@ export default function Library() {
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Library</h2>
+          <h1 className="page-title">Library</h1>
           <p className="page-subtitle">Completed, failed, and canceled downloads</p>
         </div>
         <div className="flex items-center gap-2">

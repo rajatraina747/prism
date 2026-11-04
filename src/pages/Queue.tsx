@@ -206,7 +206,7 @@ export default function Queue() {
     <div className="page-container flex flex-col">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Transfers</h2>
+          <h1 className="page-title">Transfers</h1>
           <p className="page-subtitle tabular-nums">{subtitle}</p>
         </div>
         <div className="flex gap-1.5">

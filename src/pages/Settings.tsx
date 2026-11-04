@@ -129,7 +129,7 @@ export default function Settings() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h2 className="page-title">Settings</h2>
+        <h1 className="page-title">Settings</h1>
         <p className="page-subtitle">Configure Prism preferences</p>
       </div>
 

@@ -426,9 +426,9 @@ export default function Dashboard() {
   handleBatchSubmitRef.current = handleBatchSubmit;
 
   return (
-    <div className="page-container max-w-3xl mx-auto">
-      <div className="page-header text-center">
-        <h2 className="page-title">Dashboard</h2>
+    <div className="page-container">
+      <div className="page-header">
+        <h1 className="page-title">Dashboard</h1>
         <p className="page-subtitle">Paste a video URL or magnet link to get started</p>
       </div>
 

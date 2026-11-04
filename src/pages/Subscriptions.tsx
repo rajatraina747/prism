@@ -81,7 +81,7 @@ export default function Subscriptions() {
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h2 className="page-title">Subscriptions</h2>
+          <h1 className="page-title">Subscriptions</h1>
           <p className="page-subtitle">
             {items.length === 0
               ? 'Watch channels and playlists — new videos download automatically'

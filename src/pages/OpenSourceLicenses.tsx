@@ -110,7 +110,7 @@ export default function OpenSourceLicenses() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Settings
         </button>
-        <h2 className="page-title">Open Source Licenses</h2>
+        <h1 className="page-title">Open Source Licenses</h1>
         <p className="page-subtitle">Prism is MIT-licensed and built with the following open source software</p>
       </div>
 
