@@ -3,38 +3,38 @@ import { test, expect } from '@playwright/test';
 test.describe('Navigation', () => {
   test('loads the dashboard by default', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h2')).toContainText('Dashboard');
+    await expect(page.locator('h1')).toContainText('Dashboard');
   });
 
   test('navigates to Queue page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/queue"]');
-    await expect(page.locator('h2')).toContainText('Transfers');
+    await expect(page.locator('h1')).toContainText('Transfers');
   });
 
   test('navigates to Library page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/library"]');
-    await expect(page.locator('h2')).toContainText('Library');
+    await expect(page.locator('h1')).toContainText('Library');
   });
 
   test('old routes redirect to Library', async ({ page }) => {
     for (const old of ['/downloads', '/failed', '/history']) {
       await page.goto(old);
-      await expect(page.locator('h2')).toContainText('Library');
+      await expect(page.locator('h1')).toContainText('Library');
     }
   });
 
   test('navigates to Settings page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/settings"]');
-    await expect(page.locator('h2')).toContainText('Settings');
+    await expect(page.locator('h1')).toContainText('Settings');
   });
 
   test('navigates to About page', async ({ page }) => {
     await page.goto('/');
     await page.click('a[href="/about"]');
-    await expect(page.locator('h2')).toContainText('Prism');
+    await expect(page.locator('h1')).toContainText('Prism');
   });
 
   test('shows 404 for unknown routes', async ({ page }) => {
