@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { ClipboardPaste, Link2, Loader2, AlertCircle, FileText, ListPlus } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 interface UrlInputProps {
   onSubmit: (url: string) => void;
@@ -151,31 +152,37 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
             className="hidden"
             onChange={handleFileInput}
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            title="Import URLs from text file"
-            aria-label="Import URLs from text file"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
-          >
-            <FileText className="w-3.5 h-3.5" />
-          </button>
+          <DisabledReason reason={isLoading ? 'Wait for this link to finish reading' : null}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              title="Import URLs from text file"
+              aria-label="Import URLs from text file"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
+            >
+              <FileText className="w-3.5 h-3.5" />
+            </button>
+          </DisabledReason>
 
-          <button
-            onClick={handlePaste}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
-          >
-            <ClipboardPaste className="w-3.5 h-3.5" />
-            Paste
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading || !url.trim()}
-            className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground transition-colors active:scale-[0.97] disabled:opacity-40"
-          >
-            {isLoading ? 'Parsing…' : 'Fetch'}
-          </button>
+          <DisabledReason reason={isLoading ? 'Wait for this link to finish reading' : null}>
+            <button
+              onClick={handlePaste}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              Paste
+            </button>
+          </DisabledReason>
+          <DisabledReason reason={isLoading ? 'Already reading this link' : !url.trim() ? 'Paste a link first' : null}>
+            <button
+              onClick={handleSubmit}
+              disabled={isLoading || !url.trim()}
+              className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground transition-colors active:scale-[0.97] disabled:opacity-40"
+            >
+              {isLoading ? 'Parsing…' : 'Fetch'}
+            </button>
+          </DisabledReason>
         </div>
 
         {isDragOver && (

@@ -5,6 +5,7 @@ import { CheckCircle2, AlertTriangle, FolderOpen, Cookie, X, RefreshCw } from 'l
 import { cn } from '@/lib/utils';
 
 import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 const FFMPEG_HINT = IS_MAC
   ? 'brew install ffmpeg'
@@ -88,13 +89,15 @@ export function SetupCard() {
                 </p>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="text-xs font-mono px-2 py-1 rounded-md bg-input border border-border/40 text-foreground">{FFMPEG_HINT}</code>
-                  <button
-                    onClick={checkFfmpeg}
-                    disabled={checking}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('w-3 h-3', checking && 'animate-spin')} /> Check again
-                  </button>
+                  <DisabledReason reason={checking ? 'Already checking' : null}>
+                    <button
+                      onClick={checkFfmpeg}
+                      disabled={checking}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={cn('w-3 h-3', checking && 'animate-spin')} /> Check again
+                    </button>
+                  </DisabledReason>
                 </div>
               </>
             ) : (

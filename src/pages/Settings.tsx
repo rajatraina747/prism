@@ -18,6 +18,7 @@ import { SettingRow, SettingGroup, Advanced, Toggle, StorageTile, Select, Number
 import { SettingsQuery } from './settings/query';
 import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { ClientImportRow, RestartTorrentEngineRow, BackupRow } from './settings/rows';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 /** Five tabs since 2.6 (there were ten). Each holds one or more of the old
  * sections, which keep their own headings, so nothing moved inside them. */
@@ -767,45 +768,47 @@ export default function Settings() {
                         Install Update
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={updateState === 'checking' || updateState === 'installing'}
-                      onClick={async () => {
-                        setUpdateState('checking');
-                        const result = await service.checkForUpdates();
-                        setUpdateError(result.error);
-                        if (result.available) {
-                          setUpdateState('available');
-                          setUpdateVersion(result.version);
-                          setUpdateNotes(result.notes);
-                          toast.success(`Update ${result.version} available!`);
-                        } else if (result.error) {
-                          setUpdateState('error');
-                          toast.error('Could not check for updates');
-                        } else {
-                          setUpdateState('up-to-date');
-                          toast.success('You are on the latest version');
-                        }
-                      }}
-                      className={cn(
-                        'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
-                        updateState === 'checking' || updateState === 'installing'
-                          ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
-                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                      )}
-                    >
-                      {updateState === 'checking' ? (
-                        <span className="flex items-center gap-1.5">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Checking...
-                        </span>
-                      ) : updateState === 'installing' ? (
-                        <span className="flex items-center gap-1.5">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          {formatUpdateProgress(updateInstall)}
-                        </span>
-                      ) : 'Check now'}
-                    </button>
+                    <DisabledReason reason={updateState === 'checking' ? 'Already checking' : updateState === 'installing' ? 'An update is installing' : null}>
+                      <button
+                        type="button"
+                        disabled={updateState === 'checking' || updateState === 'installing'}
+                        onClick={async () => {
+                          setUpdateState('checking');
+                          const result = await service.checkForUpdates();
+                          setUpdateError(result.error);
+                          if (result.available) {
+                            setUpdateState('available');
+                            setUpdateVersion(result.version);
+                            setUpdateNotes(result.notes);
+                            toast.success(`Update ${result.version} available!`);
+                          } else if (result.error) {
+                            setUpdateState('error');
+                            toast.error('Could not check for updates');
+                          } else {
+                            setUpdateState('up-to-date');
+                            toast.success('You are on the latest version');
+                          }
+                        }}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                          updateState === 'checking' || updateState === 'installing'
+                            ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {updateState === 'checking' ? (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Checking...
+                          </span>
+                        ) : updateState === 'installing' ? (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {formatUpdateProgress(updateInstall)}
+                          </span>
+                        ) : 'Check now'}
+                      </button>
+                    </DisabledReason>
                   </div>
                 </SettingRow>
                 {updateState === 'available' && updateNotes && (
@@ -820,36 +823,38 @@ export default function Settings() {
                     ? `yt-dlp ${engineVersion ?? engine.activeVersion ?? ''} — ${engine.latest} is available`
                     : engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
                 >
-                  <button
-                    type="button"
-                    disabled={engineUpdating}
-                    onClick={async () => {
-                      setEngineUpdating(true);
-                      try {
-                        const v = await service.updateEngine();
-                        setEngineVersion(v);
-                        service.getEngineInfo().then(publishEngineInfo).catch(() => {});
-                        toast.success(`Downloader engine updated to ${v}`);
-                      } catch (e) {
-                        toast.error('Engine update failed: ' + (e instanceof Error ? e.message : String(e)));
-                      } finally {
-                        setEngineUpdating(false);
-                      }
-                    }}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
-                      engineUpdating
-                        ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    )}
-                  >
-                    {engineUpdating ? (
-                      <span className="flex items-center gap-1.5">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Updating...
-                      </span>
-                    ) : 'Update Engine'}
-                  </button>
+                  <DisabledReason reason={engineUpdating ? 'Already updating' : null}>
+                    <button
+                      type="button"
+                      disabled={engineUpdating}
+                      onClick={async () => {
+                        setEngineUpdating(true);
+                        try {
+                          const v = await service.updateEngine();
+                          setEngineVersion(v);
+                          service.getEngineInfo().then(publishEngineInfo).catch(() => {});
+                          toast.success(`Downloader engine updated to ${v}`);
+                        } catch (e) {
+                          toast.error('Engine update failed: ' + (e instanceof Error ? e.message : String(e)));
+                        } finally {
+                          setEngineUpdating(false);
+                        }
+                      }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97]',
+                        engineUpdating
+                          ? 'bg-secondary/50 text-muted-foreground cursor-not-allowed'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      )}
+                    >
+                      {engineUpdating ? (
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Updating...
+                        </span>
+                      ) : 'Update Engine'}
+                    </button>
+                  </DisabledReason>
                 </SettingRow>
                 <SettingRow label="Check for engine updates" description="Once a day, compare the downloader engine with the newest yt-dlp release">
                   <Toggle checked={p.engineAutoCheck} onChange={v => updatePreference('engineAutoCheck', v)} />

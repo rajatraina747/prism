@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBackup, parseBackup, mergeSettings, mergeHistory, mergeSubscriptions, describeImport, BACKUP_VERSION } from '../backup';
+import { buildBackup, parseBackup, mergeSettings, mergeHistory, mergeSubscriptions, describeImport, BACKUP_FORMAT, BACKUP_VERSION } from '../backup';
 import { DEFAULT_PREFERENCES, type AppPreferences, type HistoryItem, type Subscription } from '@/types/models';
 
 function item(id: string, completedAt = '2026-09-01T00:00:00.000Z'): HistoryItem {
@@ -103,5 +103,18 @@ describe('merging', () => {
   it('describes what an import adds', () => {
     const backup = buildBackup({ settings, history: [item('a'), item('b')], subscriptions: [sub('s', 'https://f')], appVersion: '2.1.0' });
     expect(describeImport(backup, { history: [item('a')], subscriptions: [] })).toEqual({ newLibraryEntries: 1, newSubscriptions: 1, settings: true });
+  });
+});
+
+describe('subscription folders in a backup', () => {
+  it("drops a subscription's folder but keeps its other options", () => {
+    const parsed = parseBackup(JSON.stringify({
+      format: BACKUP_FORMAT, version: BACKUP_VERSION,
+      subscriptions: [{ id: 's', url: 'https://y/c', quality: '720p', destination: '/Volumes/Other/Talks' }],
+    }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.backup.subscriptions[0].quality).toBe('720p');
+    expect(parsed.backup.subscriptions[0].destination).toBeUndefined();
   });
 });

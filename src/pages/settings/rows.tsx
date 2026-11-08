@@ -9,6 +9,7 @@ import { useService } from '@/services/ServiceProvider';
 import { ConfirmDialog } from '@/components/common';
 import { toast } from 'sonner';
 import { SettingRow } from './controls';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 export function ClientImportRow() {
   const service = useService();
@@ -47,8 +48,12 @@ export function ClientImportRow() {
   return (
     <SettingRow label="Import torrents" description="Add the torrents from qBittorrent or Transmission, pointed at the files they already downloaded. Quit the other app first">
       <div className="flex items-center gap-2">
-        <button type="button" disabled={busy} onClick={() => importFrom('qbittorrent', 'qBittorrent')} className={button}>qBittorrent…</button>
-        <button type="button" disabled={busy} onClick={() => importFrom('transmission', 'Transmission')} className={button}>Transmission…</button>
+        <DisabledReason reason={busy ? 'An import is already running' : null}>
+          <button type="button" disabled={busy} onClick={() => importFrom('qbittorrent', 'qBittorrent')} className={button}>qBittorrent…</button>
+        </DisabledReason>
+        <DisabledReason reason={busy ? 'An import is already running' : null}>
+          <button type="button" disabled={busy} onClick={() => importFrom('transmission', 'Transmission')} className={button}>Transmission…</button>
+        </DisabledReason>
       </div>
     </SettingRow>
   );
@@ -71,14 +76,16 @@ export function RestartTorrentEngineRow() {
   };
   return (
     <SettingRow label="Apply now" description="Restart the torrent engine with the settings above. Running torrents pause for a moment and carry on, without checking their files again">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void restart()}
-        className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
-      >
-        {busy ? 'Restarting…' : 'Restart engine'}
-      </button>
+      <DisabledReason reason={busy ? 'Already restarting' : null}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void restart()}
+          className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
+        >
+          {busy ? 'Restarting…' : 'Restart engine'}
+        </button>
+      </DisabledReason>
     </SettingRow>
   );
 }

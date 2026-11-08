@@ -555,6 +555,12 @@ export interface Subscription {
   /** File everything from this feed under a category, as if it had been
    * added by hand with that category chosen. */
   categoryId?: string;
+  /** The quality to take from this channel. Absent means the best available,
+   * which is what every subscription before 2.6.3 did. */
+  quality?: DefaultQuality;
+  /** This feed's own folder, ahead of its category's and the default one. A
+   * path on this computer, so it doesn't come across in a backup. */
+  destination?: string;
   /** YouTube: the channel's or playlist's RSS feed, polled first — when it
    * shows nothing new, the slower yt-dlp check is skipped. */
   feedUrl?: string;

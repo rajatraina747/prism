@@ -1,6 +1,9 @@
+import { qualityFromStored } from '@/types/models';
 import type { Subscription, PlaylistEntry, DownloadItem, AppPreferences } from '@/types/models';
 import { sanitizeFilename, classifyLink, siteKey } from '@/services/utils';
 import { buildItem, linkMetadata } from '@/stores/build-item';
+import { applyCategory } from '@/stores/categories';
+import { qualityToFormat } from '@/components/add/add-items';
 
 // Pure logic for a subscription check: diff the feed against what we've seen
 // and build queue items for the new entries. IO (parsePlaylist, addToQueue,
@@ -146,32 +149,36 @@ export function sameSiteAsSubscription(entryUrl: string, subUrl: string): boolea
   return a === b || a.endsWith(`.${b}`);
 }
 
-/** Build a queue item for a feed entry. Format is left null so the backend
- * picks its default best-quality H.264/AAC chain — flat playlist entries
- * don't carry format lists. */
+/** Build a queue item for a feed entry. Flat playlist entries don't carry
+ * format lists, so the quality is a capped yt-dlp chain, or null for the
+ * backend's default best-quality H.264/AAC chain.
+ *
+ * The category is applied here rather than left to addToQueue, which skips
+ * filing for an item that already has a category. A category that has since
+ * been deleted is ignored, so the normal rules sort the item instead. */
 export function entryToDownloadItem(
   entry: PlaylistEntry,
   sub: Subscription,
   prefs: AppPreferences,
 ): DownloadItem {
   const speedLimitBytes = prefs.bandwidthLimit > 0 ? prefs.bandwidthLimit * 1024 * 1024 : 0;
-  return buildItem({
+  const kind = classifyLink(entry.url);
+  const quality = kind === 'http' && !sub.audioOnly ? qualityFromStored(sub.quality) : undefined;
+  const ownFolder = sub.destination?.trim();
+  const item = buildItem({
     metadata: linkMetadata(entry.url, entry.title, extractDomain(entry.url), {
       duration: entry.duration,
       thumbnail: entry.thumbnail,
       uploader: sub.title,
     }),
     settings: {
-      format: null,
-      destination: prefs.defaultSaveFolder,
+      format: quality ? qualityToFormat(quality) : null,
+      destination: ownFolder || prefs.defaultSaveFolder,
       // sanitizeFilename keeps unicode titles (CJK, Cyrillic, …) intact — the
       // old \w-only strip reduced them to 'video' and collided on dedupe.
       filename: sanitizeFilename(entry.title),
       audioOnly: sub.audioOnly || undefined,
       speedLimit: speedLimitBytes || undefined,
-      // A feed's own category wins over the site/engine rules, the same way a
-      // category chosen by hand does: addToQueue leaves a pre-set id alone.
-      categoryId: sub.categoryId || undefined,
       // Links to another site don't get the browser's cookies (M1).
       noCookies: !sameSiteAsSubscription(entry.url, sub.url) || undefined,
       // The same video can reach several feeds (a channel and a playlist of
@@ -182,8 +189,12 @@ export function entryToDownloadItem(
     // the engine is chosen from the URL — with the same rule the Dashboard
     // uses, so a feed link and a pasted link behave identically. Channel feeds
     // classify as 'http' and go to yt-dlp exactly as before.
-    kind: classifyLink(entry.url),
+    kind,
   });
+  const category = prefs.categories.find(c => c.id === sub.categoryId);
+  if (!category) return item;
+  const filed = applyCategory(item, category);
+  return ownFolder ? { ...filed, settings: { ...filed.settings, destination: ownFolder } } : filed;
 }
 
 /** Which fetcher to try first for a feed URL.

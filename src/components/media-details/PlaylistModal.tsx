@@ -5,6 +5,7 @@ import { formatDuration } from '@/services';
 import { cn } from '@/lib/utils';
 import { VirtualList } from '@/components/common/VirtualList';
 import { ListMusic, Check, Clock } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 interface PlaylistModalProps {
   open: boolean;
@@ -138,13 +139,15 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
             >
               Cancel
             </button>
-            <button
-              onClick={handleQueue}
-              disabled={selected.size === 0}
-              className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
-            >
-              {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
-            </button>
+            <DisabledReason reason={selected.size === 0 ? 'Select at least one video' : null}>
+              <button
+                onClick={handleQueue}
+                disabled={selected.size === 0}
+                className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
+              >
+                {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
+              </button>
+            </DisabledReason>
           </div>
         </div>
       </DialogContent>

@@ -4,6 +4,7 @@ import { useService } from '@/services/ServiceProvider';
 import { extractLinks } from '@/lib/add-links';
 import { toast } from 'sonner';
 import { ClipboardPaste, FileText, Magnet } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 export const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -118,15 +119,17 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
           <span className="ml-auto text-xs text-muted-foreground tabular-nums" aria-live="polite">
             {links.length === 0 ? '' : `${links.length} link${links.length === 1 ? '' : 's'}`}
           </span>
-          <button
-            type="button"
-            disabled={links.length === 0}
-            onClick={() => submit(links)}
-            title={`${MOD_KEY}Enter`}
-            className="px-4 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
-          >
-            {links.length > 1 ? `Add ${links.length}` : 'Add'}
-          </button>
+          <DisabledReason reason={links.length === 0 ? 'Paste a link first' : null}>
+            <button
+              type="button"
+              disabled={links.length === 0}
+              onClick={() => submit(links)}
+              title={`${MOD_KEY}Enter`}
+              className="px-4 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+            >
+              {links.length > 1 ? `Add ${links.length}` : 'Add'}
+            </button>
+          </DisabledReason>
         </div>
       </DialogContent>
     </Dialog>

@@ -12,6 +12,7 @@ import {
   FolderOpen, FileText, Music, Subtitles,
 } from 'lucide-react';
 import { buildItem } from '@/stores/build-item';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 const SUBTITLE_LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -357,13 +358,15 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               >
                 Cancel
               </button>
-              <button
-                onClick={handleAdd}
-                disabled={!audioOnly && !selectedFormat}
-                className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
-              >
-                Add to queue
-              </button>
+              <DisabledReason reason={!audioOnly && !selectedFormat ? 'Choose a quality first' : null}>
+                <button
+                  onClick={handleAdd}
+                  disabled={!audioOnly && !selectedFormat}
+                  className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
+                >
+                  Add to queue
+                </button>
+              </DisabledReason>
             </div>
           </div>
         </div>

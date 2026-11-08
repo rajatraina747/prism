@@ -12,6 +12,7 @@ import { formatDuration } from '@/services/utils';
 import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
 import { playerFailureHint } from '@/lib/player-failure';
 import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 // The in-app player. Runs in its own transparent "player" window: mpv embeds
 // into the window's native view and renders *beneath* the webview, so this
@@ -611,27 +612,31 @@ export default function Player() {
 
           {playlistCount > 1 && (
             <>
-              <button
-                onClick={() => step(false)}
-                disabled={!hasPrev}
-                className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                title="Previous file in this folder (P)"
-                aria-label="Previous file"
-              >
-                <ChevronsLeft className="w-4 h-4" />
-              </button>
+              <DisabledReason reason={hasPrev ? null : 'This is the first file in the folder'}>
+                <button
+                  onClick={() => step(false)}
+                  disabled={!hasPrev}
+                  className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                  title="Previous file in this folder (P)"
+                  aria-label="Previous file"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+              </DisabledReason>
               <span className="text-xs tabular-nums text-white/80" title="Files in this folder">
                 {(playlistPos ?? 0) + 1}/{playlistCount}
               </span>
-              <button
-                onClick={() => step(true)}
-                disabled={!hasNext}
-                className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                title="Next file in this folder (N)"
-                aria-label="Next file"
-              >
-                <ChevronsRight className="w-4 h-4" />
-              </button>
+              <DisabledReason reason={hasNext ? null : 'This is the last file in the folder'}>
+                <button
+                  onClick={() => step(true)}
+                  disabled={!hasNext}
+                  className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                  title="Next file in this folder (N)"
+                  aria-label="Next file"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </DisabledReason>
             </>
           )}
 

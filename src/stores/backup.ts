@@ -73,7 +73,10 @@ export function parseBackup(text: string): ParsedBackup {
     ? raw.history.filter((h): h is HistoryItem => isObject(h) && typeof h.id === 'string' && typeof h.completedAt === 'string' && isObject(h.metadata))
     : [];
   const subscriptions = Array.isArray(raw.subscriptions)
-    ? raw.subscriptions.filter((s): s is Subscription => isObject(s) && typeof s.id === 'string' && typeof s.url === 'string')
+    ? raw.subscriptions
+        .filter((s): s is Subscription => isObject(s) && typeof s.id === 'string' && typeof s.url === 'string')
+        // A folder is a path on the computer that made the backup.
+        .map(s => ({ ...s, destination: undefined }))
     : [];
   return {
     ok: true,

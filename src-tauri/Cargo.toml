@@ -1,6 +1,6 @@
 [package]
 name = "prism"
-version = "2.6.2"
+version = "2.6.3"
 description = "Prism — Premium Video Downloader"
 authors = ["RainaCorp"]
 license = "MIT"

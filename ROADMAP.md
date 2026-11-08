@@ -19,8 +19,8 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
   v2.6.0, also that day, was the interface overhaul in one
   release (the 2.5.0–2.6.1 stages below), Open With Prism on macOS, and the
   player file-picker fix.
-- **Still open from the overhaul:** disabled actions with a reason as a tooltip
-  (2.5.0) and per-subscription options (2.6.1).
+- **Overhaul finished in v2.6.3:** disabled actions say why in a tooltip, and
+  each subscription has its own quality, category and folder.
 
 Last full review: 2026-11-05. No High or Critical security findings. The design
 held up where tested: Rust owns every trust decision, the page is untrusted,
@@ -170,7 +170,7 @@ next one starts.
 
 **Stages:**
 
-- [ ] **2.5.0 Foundations.** Visible straight away, low risk; the structure
+- [x] **2.5.0 Foundations.** Visible straight away, low risk; the structure
   isn't changed yet.
   - Type tokens and the eslint rule.
   - `<Page>` layout and the single title.
@@ -196,7 +196,7 @@ next one starts.
   - From Player round 2: Recent files and folder/playlist playback
     (next/previous), so the Library is where watching starts.
   - Library keyboard support and ⌘F.
-- [ ] **2.6.1 Settings.**
+- [x] **2.6.1 Settings.**
   - 5 tabs, search, About and legal moved inside.
   - Per-subscription options.
 - [ ] **Then:**
