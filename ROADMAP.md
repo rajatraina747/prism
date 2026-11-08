@@ -13,7 +13,8 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Latest release:** v2.6.0 (2026-11-08): the interface overhaul in one
+- **Latest release:** v2.6.1 (2026-11-08): the torrent space check counts only
+  the selected files. v2.6.0, the same day, was the interface overhaul in one
   release (the 2.5.0–2.6.1 stages below), Open With Prism on macOS, and the
   player file-picker fix.
 - **Still open from the overhaul:** disabled actions with a reason as a tooltip
