@@ -1,11 +1,11 @@
 [package]
 name = "prism"
-version = "2.6.1"
+version = "2.6.2"
 description = "Prism — Premium Video Downloader"
 authors = ["RainaCorp"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.90"
 
 [lib]
 name = "app_lib"

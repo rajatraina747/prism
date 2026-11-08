@@ -1091,7 +1091,7 @@ impl TorrentManager {
 
                 // The file list and pieces bitmap are re-sent periodically (and
                 // when finished) rather than every second.
-                let periodic = ticks % FILE_LIST_EMIT_EVERY_SECS == 0 || stats.finished;
+                let periodic = ticks.is_multiple_of(FILE_LIST_EMIT_EVERY_SECS) || stats.finished;
                 let files = if periodic {
                     file_breakdown(&handle, &stats.file_progress)
                 } else {
@@ -1862,7 +1862,7 @@ fn cache_torrent_bytes(dir: Option<&std::path::Path>, info_hash: &str, bytes: &[
 
 fn human_minutes(d: Duration) -> String {
     let m = d.as_secs() / 60;
-    if m >= 120 && m % 60 == 0 {
+    if m >= 120 && m.is_multiple_of(60) {
         format!("{} hours", m / 60)
     } else {
         format!("{} minutes", m)

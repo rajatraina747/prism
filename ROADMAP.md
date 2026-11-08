@@ -13,8 +13,10 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Latest release:** v2.6.1 (2026-11-08): the torrent space check counts only
-  the selected files. v2.6.0, the same day, was the interface overhaul in one
+- **Latest release:** v2.6.2 (2026-11-08): public links, feeds and thumbnails
+  stay off the private network, and the updater and Tauri are current. v2.6.1,
+  the same day, made the torrent space check count only the selected files.
+  v2.6.0, also that day, was the interface overhaul in one
   release (the 2.5.0–2.6.1 stages below), Open With Prism on macOS, and the
   player file-picker fix.
 - **Still open from the overhaul:** disabled actions with a reason as a tooltip
@@ -56,46 +58,42 @@ nothing.
   hash was recorded. It now lives in `engine/`, and a copy left inside is
   ignored. Leftover `ytdlp.staging-*` folders (~124 MB each) are cleared before
   each update.
-- [ ] **Filtering DNS resolver for URLs a remote server chooses** (Low–Med). A
+- [x] **Filtering DNS resolver for URLs a remote server chooses** (Low–Med). A
   redirect or DNS answer can still point direct downloads, RSS fetches or
   thumbnails into the LAN or loopback. Where:
   `http_engine.rs build_client`, `rss.rs client_for`, `thumbnails.rs`.
   - Add a `reqwest::dns::Resolve` that drops non-public IPs (`is_public_ip`).
   - Links the user pasted with a LAN address (a NAS) keep the plain client.
   - Behind a proxy, keep the literal-IP check.
-- [ ] **Dev server on loopback only.** `vite.config.ts`: change `host: "::"`
+- [x] **Dev server on loopback only.** `vite.config.ts`: change `host: "::"`
   to `"127.0.0.1"`. Update vite/esbuild: esbuild ≤0.24.2 lets websites read the
   dev server. Release builds aren't affected.
-- [ ] **CI on Node 22 or 24.** Every `node-version: 20` line in ci, build and
+- [x] **CI on Node 22 or 24.** Every `node-version: 20` line in ci, build and
   deploy-web.
-- [ ] **No Rust cache in signed release jobs.** Remove `Swatinem/rust-cache`
+- [x] **No Rust cache in signed release jobs.** Remove `Swatinem/rust-cache`
   from the `environment: release` jobs in `build.yml`.
-- [ ] **Clear the cargo-audit ignores.** In `src-tauri/.cargo/audit.toml`:
-  - Raise `rust-version` from 1.80 to 1.90.
-  - Update `tauri-plugin-updater` from 2.11 to 2.14 or later, then drop the zip-4
-    ignores (RUSTSEC-2026-0367 to -0369).
-  - Drop crypto-bigint (RUSTSEC-2026-0387) when `pgp` moves to 0.7.
-  - Leave ringbuf (RUSTSEC-2026-0293) until librqbit-utp updates.
-  - Status 2026-11-05: 0 vulnerabilities, 14 allowed warnings. npm: 0 in
-    production; 6 dev-only.
-- [ ] **Drop next-themes.** It triggers a script-tag warning under React 19
+- [x] **Clear the cargo-audit ignores.** `rust-version` is 1.90 and
+  `tauri-plugin-updater` is 2.14, which took Tauri to 2.12 and dropped zip 4 and
+  its ignores. Three remain in `src-tauri/.cargo/audit.toml`, each waiting on
+  upstream: ringbuf (librqbit-utp), and rsa and crypto-bigint (pgp).
+- [x] **Drop next-themes.** It triggers a script-tag warning under React 19
   (`App.tsx`, `ui/sonner.tsx`, `use-theme-sync.ts`). Set the theme class in
   `main.tsx` before first render.
-- [ ] **Library "Clear" calls `removeFromHistory` once per row.** Add a
+- [x] **Library "Clear" calls `removeFromHistory` once per row.** Add a
   `removeManyFromHistory(ids)` (`Library.tsx` ~188).
-- [ ] **Synchronous `std::fs` in async paths.** In `http_engine.rs`
+- [x] **Synchronous `std::fs` in async paths.** In `http_engine.rs`
   (`choose_destination`, `still_needed`, `saved_segments`).
-- [ ] **Free-space check before a torrent.** In `start_torrent`/`parse_torrent`:
+- [x] **Free-space check before a torrent.** In `start_torrent`/`parse_torrent`:
   compare the selected size with `fs2::available_space` and return the free
   space to the file picker.
-- [ ] **A way to forget playback positions.** `player-state.json` stores file
+- [x] **A way to forget playback positions.** `player-state.json` stores file
   names (titles), now for any local file you play. Add a Settings button to
   clear it.
 - [ ] Vite 7 and Tailwind 4, one commit each (still on Vite 5 / Tailwind 3).
 
 ### Player, round 2 (2.5)
 
-- [ ] **Folder and playlist playback, next and previous.** Pick several files
+- [x] **Folder and playlist playback, next and previous.** Pick several files
   or a folder and queue them with mpv's `append`; never hand mpv a directory.
   Validate the folder and collect media with `is_openable_media`, naturally
   sorted and capped. Add Next/Prev and N/P keys, and auto-advance to the next
@@ -107,8 +105,8 @@ nothing.
 - [ ] **"Open with" on Windows, without claiming the default.** Register under
   `OpenWithProgids` with an NSIS hook instead of `fileAssociations`. Arguments
   are already handled.
-- [ ] **Recent files.** Up to 10, stored in Rust, and clearable.
-- [ ] **Everyday controls:** audio delay, frame step (`,` `.`), screenshot,
+- [x] **Recent files.** Up to 10, stored in Rust, and clearable.
+- [x] **Everyday controls:** audio delay, frame step (`,` `.`), screenshot,
   A-B loop, aspect/zoom, and a `?` shortcut sheet. Each one goes through
   `validate_player_property`; no general passthrough.
 - [ ] **Linux player.** Measure the effort before promising it.
@@ -199,7 +197,7 @@ next one starts.
     (next/previous), so the Library is where watching starts.
   - Library keyboard support and ⌘F.
 - [ ] **2.6.1 Settings.**
-  - 6 tabs, search, About and legal moved inside.
+  - 5 tabs, search, About and legal moved inside.
   - Per-subscription options.
 - [ ] **Then:**
   - Add-time options (clip, start-after, checksum, hold).

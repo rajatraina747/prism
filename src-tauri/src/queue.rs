@@ -939,7 +939,7 @@ async fn flush(app: &AppHandle) {
             inner.seq += 1;
             Patch { seq: inner.seq, items, removed: std::mem::take(&mut inner.removed), order }
         });
-        let due = inner.save_now || (inner.save_soon && inner.last_save.map_or(true, |t| t.elapsed() >= PROGRESS_SAVE_EVERY));
+        let due = inner.save_now || (inner.save_soon && inner.last_save.is_none_or(|t| t.elapsed() >= PROGRESS_SAVE_EVERY));
         (patch, due)
     };
     if let Some(patch) = patch {

@@ -24,12 +24,19 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// should go through the same proxy and address family as the downloads it
 /// queues, or a user behind a proxy gets subscriptions that silently never
 /// update.
-fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
+///
+/// A public feed stays on the public internet. A feed the user pointed at
+/// their own network (a local indexer, say) can reach it.
+fn client_for(app: &AppHandle, url: &str) -> Result<reqwest::Client, PrismError> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("Prism/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(REQUEST_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(10));
+        .timeout(REQUEST_TIMEOUT);
+    builder = if crate::http_engine::names_local_network(url) {
+        builder.redirect(reqwest::redirect::Policy::limited(10))
+    } else {
+        crate::http_engine::stay_on_public_internet(builder, crate::proxy_url(app).is_some())
+    };
     if crate::force_ipv4(app) {
         builder = builder.local_address(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
     }
@@ -52,6 +59,9 @@ fn client_for(app: &AppHandle) -> Result<reqwest::Client, PrismError> {
 /// or simply wrong.
 async fn fetch_capped(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, PrismError> {
     let mut resp = client.get(url).send().await.map_err(|e| {
+        if crate::http_engine::refused_private_address(&e) {
+            return PrismError::new(ErrorCode::InvalidInput, "This feed leads to an address on a private network, so Prism didn't follow it");
+        }
         let code = if e.is_timeout() { ErrorCode::Timeout } else { ErrorCode::Network };
         PrismError::new(code, format!("Couldn't reach the feed: {e}"))
     })?;
@@ -201,7 +211,7 @@ pub async fn rss_fetch(
     url: String,
     limit: Option<u32>,
 ) -> Result<PlaylistInfo, PrismError> {
-    let client = client_for(&app)?;
+    let client = client_for(&app, &url)?;
     let body = fetch_capped(&client, &url).await?;
     let feed = feed_rs::parser::parse(&body[..]).map_err(|e| {
         PrismError::new(

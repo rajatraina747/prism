@@ -1866,7 +1866,7 @@ fn program_dir_containing(resolved: &std::path::Path, path_dirs: &[PathBuf], hom
     path_dirs
         .iter()
         .filter(|d| d.parent().is_some())
-        .filter(|d| !home.is_some_and(|h| strip_prefix_fs(h, d).is_some()))
+        .filter(|d| home.is_none_or(|h| strip_prefix_fs(h, d).is_none()))
         .find(|d| strip_prefix_fs(resolved, d).is_some())
         .cloned()
 }
