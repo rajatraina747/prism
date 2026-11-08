@@ -13,12 +13,11 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Released:** v2.3.6 (2026-11-05). Convert's H.264/HEVC presets work with the
-  LGPL ffmpeg: encoders are picked in `src-tauri/src/encoders.rs`.
-- **In review:** PR #28, `feature/play-any-file`. Play any audio or video file:
-  Library button, ⌘O, drag onto the player, subtitles from anywhere. Tests pass,
-  but it hasn't been GUI-checked yet.
-- **Next release:** 2.4.0 = PR #28 + the "Before 2.4.0" list below.
+- **Latest release:** v2.6.0 (2026-11-08): the interface overhaul in one
+  release (the 2.5.0–2.6.1 stages below), Open With Prism on macOS, and the
+  player file-picker fix.
+- **Still open from the overhaul:** disabled actions with a reason as a tooltip
+  (2.5.0) and per-subscription options (2.6.1).
 
 Last full review: 2026-11-05. No High or Critical security findings. The design
 held up where tested: Rust owns every trust decision, the page is untrusted,
@@ -182,7 +181,7 @@ next one starts.
     actions with the reason as a tooltip.
   - Check with Playwright screenshots of every page at 1200×800 and 900×600,
     in both themes.
-- [ ] **2.5.1 Downloads home.**
+- [x] **2.5.1 Downloads home.**
   - Merge Dashboard and Transfers into `/`, with one add pipeline (Dashboard
     box = Add sheet).
   - The status strip and the Needs-attention filter; failed and cancelled
@@ -193,7 +192,7 @@ next one starts.
     three or fewer transfers are listed, large sidebar logo.
   - Also from the old UX list: the torrent picker's "Selected X · Y free"
     (needs the torrent free-space check in Hygiene).
-- [ ] **2.6.0 Library as media + player.**
+- [x] **2.6.0 Library as media + player.**
   - Poster grid default and the Activity strip (Statistics retired).
   - From Player round 2: Recent files and folder/playlist playback
     (next/previous), so the Library is where watching starts.
