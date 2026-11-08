@@ -281,6 +281,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [pathname]);
   const [addOpen, setAddOpen] = React.useState(false);
   React.useEffect(() => onAddRequest(() => setAddOpen(true)), []);
+  // Files opened with Prism from Finder / Explorer (Rust queues them, so a
+  // cold start's arrive before this listens).
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let live = true;
+    (async () => {
+      const { isTauri } = await import('@tauri-apps/api/core');
+      if (!isTauri() || !live) return;
+      const { playOpenedMedia } = await import('@/lib/player-window');
+      const { listen } = await import('@tauri-apps/api/event');
+      const play = () => playOpenedMedia().catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+      unlisten = await listen('open-media-file', play);
+      if (!live) { unlisten(); return; }
+      play();
+    })();
+    return () => { live = false; unlisten?.(); };
+  }, []);
 
   // The application menu names an intent; deciding what it means belongs here,
   // with the rest of the navigation, rather than in Rust.

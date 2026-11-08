@@ -75,15 +75,19 @@ export async function openInPlayer(raw: PlayerSource): Promise<void> {
   });
 }
 
+/** Not every build has libmpv (Linux, some dev builds): say so rather than
+ * opening a player window that can't start. */
+async function requirePlayer(): Promise<void> {
+  if (!(await invoke<boolean>('player_available'))) {
+    throw new Error("the built-in player isn't available in this build");
+  }
+}
+
 /** "Play a File…" (⌘O, Library): Rust shows the picker and remembers the
  * choice, so the player accepts it from any folder or drive. Resolves to
  * false when the user cancels. */
 export async function pickAndPlay(): Promise<boolean> {
-  // ⌘O works on every page, but not every build has libmpv (Linux, some dev
-  // builds): say so rather than opening a player window that can't start.
-  if (!(await invoke<boolean>('player_available'))) {
-    throw new Error("the built-in player isn't available in this build");
-  }
+  await requirePlayer();
   const picked = await invoke<{ path: string; title: string } | null>('pick_media_file');
   if (!picked) return false;
   await openInPlayer({ path: picked.path, title: picked.title });
@@ -108,4 +112,14 @@ export async function recentMedia(): Promise<RecentMedia[]> {
 
 export async function clearRecentMedia(): Promise<void> {
   await invoke('clear_recent_media');
+}
+
+/** A file the OS opened with Prism ("Open With → Prism"), accepted by Rust;
+ * anything opened with it queues behind it. Called when the main window
+ * starts and whenever Rust says more arrived. */
+export async function playOpenedMedia(): Promise<void> {
+  const opened = await invoke<{ path: string; title: string } | null>('take_opened_media');
+  if (!opened) return;
+  await requirePlayer();
+  await openInPlayer({ path: opened.path, title: opened.title });
 }

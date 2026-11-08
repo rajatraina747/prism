@@ -2549,6 +2549,8 @@ pub fn run() {
             for arg in args.iter().skip(1).filter(|a| is_torrent_file_arg(a)) {
                 let _ = app.emit("open-torrent-file", arg.clone());
             }
+            // A video or audio file opened with Prism while it runs.
+            player::queue_opened(app, args.iter().skip(1).map(PathBuf::from));
             // Same helper as the tray and the global shortcut: a second launch
             // should raise Prism even when the first one is minimised, which a
             // bare set_focus doesn't do.
@@ -2561,6 +2563,7 @@ pub fn run() {
         .manage(stream_server::StreamServer::new())
         .manage(player_state::PlayerState::new())
         .manage(player::UserPicked::default())
+        .manage(player::OpenedMedia::default())
         .manage(store::Store::new())
         .manage(queue::QueueManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
@@ -2628,6 +2631,9 @@ pub fn run() {
             // Re-take the user's global hotkeys, if they assigned any. Reads
             // settings.json, so it belongs after the directory above exists.
             shortcuts::apply_saved(app.handle());
+
+            // Windows / Linux: a video or audio file Prism was launched to open.
+            player::queue_opened(app.handle(), std::env::args().skip(1).map(PathBuf::from));
 
             // The queue: loaded from the database and scheduled from Rust,
             // whatever the window is doing (queue.rs).
@@ -2766,6 +2772,7 @@ pub fn run() {
             player_queue::clear_recent_media,
             player_state::forget_playback_history,
             free_space,
+            player::take_opened_media,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -2794,6 +2801,15 @@ pub fn run() {
                 api.prevent_exit();
                 lifecycle::request_quit(app);
                 return;
+            }
+            // macOS hands files opened with Prism over as an event (Windows
+            // and Linux pass them as arguments, handled at setup and in the
+            // single-instance callback). Torrents go through the deep-link
+            // plugin; playable files are accepted here, in Rust.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                player::queue_opened(app, urls.iter().filter_map(|u| u.to_file_path().ok()));
+                show_main_window(app);
             }
             // The Dock icon brings a hidden window back.
             #[cfg(target_os = "macos")]

@@ -19,7 +19,7 @@ use tauri::{AppHandle, Manager};
 
 /// How many files a folder playlist holds at most. A folder of 5,000 clips
 /// shouldn't stall the player while mpv queues them.
-const MAX_PLAYLIST: usize = 200;
+pub const MAX_PLAYLIST: usize = 200;
 /// How many recent files are remembered.
 const MAX_RECENT: usize = 10;
 

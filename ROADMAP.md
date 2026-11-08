@@ -100,10 +100,13 @@ nothing.
   Validate the folder and collect media with `is_openable_media`, naturally
   sorted and capped. Add Next/Prev and N/P keys, and auto-advance to the next
   episode. This also brings back "Play" for multi-file torrents.
-- [ ] **"Open With Prism" for video and audio.** `bundle.fileAssociations` only
-  lists `.torrent`. Add media types with role `Viewer`, not as the default
-  handler. Handle macOS `RunEvent::Opened`, treating the paths as user-picked
-  (`accept_user_pick`), and accept drops on the Dock icon.
+- [x] **"Open With Prism" for video and audio (macOS).** Media types are in
+  `tauri.macos.conf.json` only, ranked `Alternate`. Tauri's Windows installer
+  ignores `rank` and takes over every listed type, so they must stay out of the
+  shared config (a test enforces this). Files opened together become the playlist.
+- [ ] **"Open with" on Windows, without claiming the default.** Register under
+  `OpenWithProgids` with an NSIS hook instead of `fileAssociations`. Arguments
+  are already handled.
 - [ ] **Recent files.** Up to 10, stored in Rust, and clearable.
 - [ ] **Everyday controls:** audio delay, frame step (`,` `.`), screenshot,
   A-B loop, aspect/zoom, and a `?` shortcut sheet. Each one goes through
