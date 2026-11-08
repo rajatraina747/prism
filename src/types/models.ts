@@ -314,6 +314,12 @@ export const QUALITY_CHOICES: { value: DefaultQuality; label: string }[] = [
   { value: '480p', label: '480p (smaller files)' },
 ];
 
+/** How the videos in a list or batch are downloaded. */
+export interface BatchChoice {
+  audioOnly: boolean;
+  quality: DefaultQuality;
+}
+
 /** A remembered per-site quality. Before 2.4 these were preset ids, so the
  * old ones are translated; anything unknown is ignored. */
 export function qualityFromStored(value: string | undefined): DefaultQuality | undefined {

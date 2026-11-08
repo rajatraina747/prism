@@ -8,6 +8,7 @@ import { useThemeSync } from '@/hooks/use-theme-sync';
 import { useDropToAdd } from '@/hooks/use-drop-to-add';
 import { usePlayerAvailable } from '@/hooks/use-player-available';
 import { pushDeepLink } from '@/lib/deep-link-bus';
+import type { BatchChoice } from '@/types/models';
 import { setRemoteImagesAllowed } from '@/lib/remote-images';
 import { onNavigateRequest, onAddRequest } from '@/lib/nav-bus';
 import { onStoreProblem, describeStoreProblem } from '@/lib/store-problems';
@@ -236,8 +237,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; clearInterval(timer); };
   }, [service, engineAutoCheck, engineAutoUpdate]);
 
-  const addLinks = React.useCallback((links: string[]) => {
-    pushDeepLink(links, 'app');
+  const addLinks = React.useCallback((links: string[], choice?: BatchChoice) => {
+    pushDeepLink(links, 'app', choice);
     navigateRef.current('/');
   }, []);
 

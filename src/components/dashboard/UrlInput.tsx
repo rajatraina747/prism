@@ -29,7 +29,6 @@ function extractUrls(text: string): string[] {
 export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint, errorAction, onErrorClear, clearSignal }: UrlInputProps) {
   const [url, setUrl] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
-  const [batchCount, setBatchCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   React.useEffect(() => {
@@ -45,8 +44,6 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
     if (urls.length > 1 && onBatchSubmit) {
       onBatchSubmit(urls);
       setUrl('');
-      setBatchCount(urls.length);
-      setTimeout(() => setBatchCount(null), 3000);
     } else if (trimmed) {
       onSubmit(trimmed);
     }
@@ -59,8 +56,6 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
       const urls = extractUrls(text);
       if (urls.length > 1 && onBatchSubmit) {
         onBatchSubmit(urls);
-        setBatchCount(urls.length);
-        setTimeout(() => setBatchCount(null), 3000);
       } else if (text.trim()) {
         setUrl(text.trim());
         onSubmit(text.trim());
@@ -79,8 +74,6 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
       const urls = extractUrls(text);
       if (urls.length > 0 && onBatchSubmit) {
         onBatchSubmit(urls);
-        setBatchCount(urls.length);
-        setTimeout(() => setBatchCount(null), 3000);
       } else if (urls.length === 1) {
         setUrl(urls[0]);
         onSubmit(urls[0]);
@@ -210,13 +203,6 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
               {errorAction.label}
             </button>
           )}
-        </div>
-      )}
-
-      {batchCount && (
-        <div className="flex items-center gap-2 mt-2.5 px-1 animate-fade-in">
-          <ListPlus className="w-3.5 h-3.5 text-primary shrink-0" />
-          <span className="text-xs text-primary">Queued {batchCount} URLs for parsing</span>
         </div>
       )}
 

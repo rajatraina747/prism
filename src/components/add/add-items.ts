@@ -1,7 +1,7 @@
 // What the Dashboard's add paths are built from: turning a link, a list
 // entry or a quality into a queue item.
 import type { DefaultQuality, DownloadItem, FormatOption, PlaylistEntry } from '@/types/models';
-import { isTorrentUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
+import { isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
 import { referrerFor } from '@/lib/referrers';
 import { buildItem, linkMetadata } from '@/stores/build-item';
 
@@ -34,6 +34,11 @@ export function qualityToFormat(quality: DefaultQuality): FormatOption | null {
     fileSize: 0,
     quality: h >= 2160 ? 'best' : h >= 1080 ? 'high' : h >= 720 ? 'medium' : 'low',
   };
+}
+
+/** Whether a link goes to yt-dlp, so video or audio and quality mean anything. */
+export function mayBeVideo(url: string): boolean {
+  return !isTorrentUrl(url) && !isDirectFileUrl(url);
 }
 
 /** Build a queue item for a direct file link. Skips yt-dlp; the engine takes
@@ -84,10 +89,11 @@ export function playlistEntryItem(
   format: FormatOption | null,
   destination: string,
   speedLimit: number | undefined,
+  audioOnly = false,
 ): DownloadItem {
   return buildItem({
     metadata: linkMetadata(entry.url, entry.title, siteKey(entry.url) ?? 'unknown', { duration: entry.duration, thumbnail: entry.thumbnail }),
-    settings: { format, destination, filename: sanitizeFilename(entry.title), speedLimit },
+    settings: { format: audioOnly ? null : format, destination, filename: sanitizeFilename(entry.title), speedLimit, audioOnly: audioOnly || undefined },
   });
 }
 

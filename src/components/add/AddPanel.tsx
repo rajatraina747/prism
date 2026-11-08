@@ -8,7 +8,7 @@ import { SetupCard } from '@/components/dashboard/SetupCard';
 import { MediaDetailsModal } from '@/components/media-details/MediaDetailsModal';
 import { PlaylistModal } from '@/components/media-details/PlaylistModal';
 import { TorrentFilesModal } from '@/components/media-details/TorrentFilesModal';
-import { qualityFromStored, type DefaultQuality, type MediaMetadata, type DownloadItem, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
+import { qualityFromStored, type BatchChoice, type DefaultQuality, type MediaMetadata, type DownloadItem, type PlaylistInfo, type PlaylistEntry, type InspectResult, type TorrentFileEntry } from '@/types/models';
 import { buildTorrentItem } from '@/stores/torrent-item';
 import { findDuplicate, findMediaDuplicate } from '@/stores/dedupe';
 import { isTorrentUrl, isDirectFileUrl, isFormatlessLookup, torrentDisplayName, siteKey, sanitizeFilename, mixVideoUrl } from '@/services';
@@ -21,7 +21,8 @@ import { classifyError, conciseError, errorText, type ErrorText } from '@/servic
 import { Loader2, Film, ListMusic } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { buildItem } from '@/stores/build-item';
-import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem } from './add-items';
+import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem, mayBeVideo } from './add-items';
+import { BatchOptions } from './BatchOptions';
 
 /** Everything that adds things: the link box, the first-run setup card, the
  * batch progress line, and the dialogs a lookup opens (quality, playlist,
@@ -42,6 +43,9 @@ export function AddPanel() {
   // its link is open, else Settings → Default quality.
   const [siteQuality, setSiteQuality] = useState<DefaultQuality | null>(null);
   const quality: DefaultQuality = siteQuality ?? preferences.defaultQuality ?? '1080p';
+  // Several links that haven't been told how to download yet.
+  const [pendingBatch, setPendingBatch] = useState<string[] | null>(null);
+  const [batchChoice, setBatchChoice] = useState<BatchChoice>({ audioOnly: false, quality });
 
   // Playlist state
   const [parsedPlaylist, setParsedPlaylist] = useState<PlaylistInfo | null>(null);
@@ -71,7 +75,7 @@ export function AddPanel() {
   const downloadAsFileRef = useRef<(url: string) => Promise<void>>(async () => {});
   // The link behind the current parse error, for its Retry action.
   const lastParsedUrlRef = useRef('');
-  const handleBatchSubmitRef = useRef<(urls: string[]) => void>(() => {});
+  const handleBatchSubmitRef = useRef<(urls: string[], choice?: BatchChoice) => void>(() => {});
   // Monotonic token so a slow parseTorrent (up to ~45s) can't populate or close a
   // modal the user has since moved on from. Bumped on new parse / close / confirm.
   const torrentParseIdRef = useRef(0);
@@ -86,7 +90,7 @@ export function AddPanel() {
   // joins the swarm for metadata; a URL runs yt-dlp with the user's browser
   // cookies). In-app links (tray paste, drops) go straight in.
   const [externalLinks, setExternalLinks] = useState<string[]>([]);
-  React.useEffect(() => consumeDeepLinks((urls, origin) => {
+  React.useEffect(() => consumeDeepLinks((urls, origin, choice) => {
     if (origin === 'external') {
       setExternalLinks(q => [...q, ...urls.filter(u => !q.includes(u))]);
       return;
@@ -94,7 +98,7 @@ export function AddPanel() {
     // Several links at once (Add sheet, a drop): the batch flow, which
     // parses and queues each with the selected preset.
     if (urls.length > 1) {
-      handleBatchSubmitRef.current(urls);
+      handleBatchSubmitRef.current(urls, choice);
       return;
     }
     handleUrlSubmitRef.current(urls[0]);
@@ -238,7 +242,7 @@ export function AddPanel() {
   }, [service, preferences.defaultSaveFolder, preferences.bandwidthLimit, addToQueue]);
   downloadAsFileRef.current = downloadAsFile;
 
-  const handleBatchSubmit = useCallback(async (urls: string[]) => {
+  const runBatch = useCallback(async (urls: string[], { audioOnly, quality: batchQuality }: BatchChoice) => {
     setParseError(null);
     setBatchProgress({ total: urls.length, done: 0 });
     abortBulkRef.current = false;
@@ -290,13 +294,13 @@ export function AddPanel() {
         const found = await (lookups.get(i) ?? service.inspectUrl(mixVideoUrl(urls[i]) ?? urls[i]));
         if (found.kind === 'playlist') {
           // A list in a batch: every entry, as if chosen in the list dialog.
-          const listFormat = qualityToFormat(quality);
+          const listFormat = qualityToFormat(batchQuality);
           for (const entry of found.playlist.entries) {
             if (findDuplicate(entry.url, [...queueItems, ...added], []) === 'queue') {
               skipped++;
               continue;
             }
-            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, speedLimitBytes || undefined);
+            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, speedLimitBytes || undefined, audioOnly);
             added.push(item);
             addToQueue(item);
           }
@@ -326,7 +330,7 @@ export function AddPanel() {
           setBatchProgress({ total: urls.length, done: i + 1 });
           continue;
         }
-        const format = pickFormatForQuality(metadata.formats, quality) || metadata.formats[0];
+        const format = audioOnly ? null : pickFormatForQuality(metadata.formats, batchQuality) || metadata.formats[0];
         const item = buildItem({
           metadata,
           settings: {
@@ -334,6 +338,7 @@ export function AddPanel() {
             destination: preferences.defaultSaveFolder,
             filename: sanitizeFilename(metadata.title),
             speedLimit: speedLimitBytes || undefined,
+            audioOnly: audioOnly || undefined,
           },
           totalBytes: format?.fileSize,
         });
@@ -351,7 +356,27 @@ export function AddPanel() {
     if (failed > 0) parts.push(`${failed} failed to parse`);
     if (abortBulkRef.current) parts.push('stopped early');
     (failed > 0 ? toast.warning : toast.info)(parts.join(' · '));
-  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, quality, queueItems]);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, queueItems]);
+
+  // Every way of adding several links comes through here. Nothing starts
+  // until the list has been told how to download, unless there's nothing to
+  // choose (only torrents and file links).
+  const defaultQuality = preferences.defaultQuality ?? '1080p';
+  const handleBatchSubmit = useCallback((urls: string[], choice?: BatchChoice) => {
+    if (choice || !urls.some(mayBeVideo)) {
+      void runBatch(urls, choice ?? { audioOnly: false, quality: defaultQuality });
+      return;
+    }
+    // Deferred past the current click or Enter, which a Radix dialog opened
+    // in the same event can take as a click outside and close itself.
+    setTimeout(() => {
+      setPendingBatch(prev => [...new Set([...(prev ?? []), ...urls])]);
+    }, 0);
+  }, [runBatch, defaultQuality]);
+  // The next list starts from the defaults, not from the last one's choice.
+  React.useEffect(() => {
+    if (!pendingBatch) setBatchChoice({ audioOnly: false, quality: defaultQuality });
+  }, [pendingBatch, defaultQuality]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     // The page the link came from, if the extension said (lib/referrers.ts).
@@ -390,14 +415,14 @@ export function AddPanel() {
   // thumbnail are already known). No per-video yt-dlp round-trips — the selected
   // preset becomes a synthesized format filter, and each item resolves the rest
   // when its download starts. A 100-video playlist queues in one click.
-  const handlePlaylistQueue = useCallback((entries: PlaylistEntry[]) => {
+  const handlePlaylistQueue = useCallback((entries: PlaylistEntry[], choice: BatchChoice) => {
     const speedLimitBytes = preferences.bandwidthLimit > 0
       ? preferences.bandwidthLimit * 1024 * 1024
       : 0;
-    const format = qualityToFormat(quality);
+    const format = qualityToFormat(choice.quality);
 
     for (const entry of entries) {
-      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined));
+      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined, choice.audioOnly));
     }
 
     setShowPlaylistModal(false);
@@ -405,7 +430,7 @@ export function AddPanel() {
     setParsedPlaylist(null);
     toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
     navigate('/queue');
-  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, quality, navigate]);
+  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, navigate]);
 
   handleBatchSubmitRef.current = handleBatchSubmit;
 
@@ -474,7 +499,42 @@ export function AddPanel() {
         onClose={() => { setShowPlaylistModal(false); setParsedPlaylist(null); }}
         playlist={parsedPlaylist}
         onQueueSelected={handlePlaylistQueue}
+        defaultQuality={quality}
       />
+
+      {/* Several links from the link box, a drop or the tray: how to get them. */}
+      <Dialog open={!!pendingBatch} onOpenChange={(open) => { if (!open) setPendingBatch(null); }}>
+        <DialogContent className="glass-strong max-w-sm border-border/40 bg-card/95">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Add {pendingBatch?.length ?? 0} link{pendingBatch?.length === 1 ? '' : 's'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Choose how to download the videos. Torrents and file links are added as they are.
+            </DialogDescription>
+          </DialogHeader>
+          <BatchOptions value={batchChoice} onChange={setBatchChoice} />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingBatch(null)}
+              className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (pendingBatch) void runBatch(pendingBatch, batchChoice);
+                setPendingBatch(null);
+              }}
+              className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
+            >
+              Add {pendingBatch?.length ?? 0}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Video-or-playlist choice for ambiguous watch?v=…&list=… links */}
       <Dialog open={!!listChoice} onOpenChange={(open) => { if (!open) setListChoice(null); }}>
