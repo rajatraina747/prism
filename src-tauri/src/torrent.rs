@@ -29,7 +29,7 @@ use librqbit::limits::LimitsConfig;
 use librqbit::{
     torrent_from_bytes, AddTorrent, AddTorrentOptions, AddTorrentResponse, ConnectionOptions,
     ListenerMode, ListenerOptions, Magnet, ManagedTorrent, Session, SessionOptions,
-    SessionPersistenceConfig, TorrentStatsState,
+    SessionPersistenceConfig, TorrentStats, TorrentStatsState,
 };
 
 use crate::download_manager::DownloadComplete;
@@ -999,9 +999,8 @@ impl TorrentManager {
                 // Once the size is known, refuse up front if what's left won't
                 // fit, rather than fail on a full disk at 99% (the check
                 // yt-dlp downloads already get).
-                if !space_checked && stats.total_bytes > 0 && !stats.finished {
+                if let Some(remaining) = bytes_still_needed(&stats).filter(|_| !space_checked) {
                     space_checked = true;
-                    let remaining = stats.total_bytes.saturating_sub(stats.progress_bytes);
                     if let Some(free) = crate::free_space_near(Path::new(&output_dir)) {
                         if free < remaining {
                             active.lock().await.remove(&id);
@@ -2060,6 +2059,16 @@ fn file_breakdown(handle: &ManagedTorrentHandle, file_progress: &[u64]) -> Vec<T
 /// Take a torrent that failed out of the session, keeping its files for a
 /// Retry to resume. Left in, it kept announcing and downloading with no row
 /// to show or stop it until the next launch pruned it (REVIEW 2026-09-28 D-3).
+/// How much more disk the files chosen for this torrent need, or `None` until
+/// the engine can say. While a torrent initializes, librqbit reports the whole
+/// torrent as `total_bytes` whatever was selected, so a 25 GB pick from a
+/// 150 GB torrent looks like 150 GB.
+fn bytes_still_needed(stats: &TorrentStats) -> Option<u64> {
+    let selection_known = matches!(stats.state, TorrentStatsState::Live | TorrentStatsState::Paused);
+    (selection_known && stats.total_bytes > 0 && !stats.finished)
+        .then(|| stats.total_bytes.saturating_sub(stats.progress_bytes))
+}
+
 async fn leave_session(session: &Session, handle: &ManagedTorrentHandle, id: &str) {
     if let Err(e) = session.delete(TorrentIdOrHash::from(handle.id()), false).await {
         log::warn!("torrent {id}: could not leave the session after failing: {e}");
@@ -2625,6 +2634,84 @@ mod tests {
         )
         .await
         .expect("session")
+    }
+
+    fn stats_in(state: TorrentStatsState, total_bytes: u64, progress_bytes: u64, finished: bool) -> TorrentStats {
+        TorrentStats {
+            state,
+            file_progress: Vec::new(),
+            error: None,
+            progress_bytes,
+            uploaded_bytes: 0,
+            total_bytes,
+            finished,
+            live: None,
+        }
+    }
+
+    // Regression (2.6.0): picking 25 GB from a 150 GB torrent failed with "Not
+    // enough disk space", because the check read the whole torrent's size
+    // while the engine was still initializing.
+    #[test]
+    fn the_space_check_waits_until_the_selection_is_known() {
+        const GB: u64 = 1_000_000_000;
+        let initializing = TorrentStatsState::Initializing { paused: false };
+        assert_eq!(bytes_still_needed(&stats_in(initializing, 150 * GB, 0, false)), None);
+        assert_eq!(bytes_still_needed(&stats_in(TorrentStatsState::Error, 150 * GB, 0, false)), None);
+        assert_eq!(bytes_still_needed(&stats_in(TorrentStatsState::Live, 25 * GB, 5 * GB, false)), Some(20 * GB));
+        assert_eq!(bytes_still_needed(&stats_in(TorrentStatsState::Paused, 25 * GB, 0, false)), Some(25 * GB));
+        assert_eq!(bytes_still_needed(&stats_in(TorrentStatsState::Live, 25 * GB, 25 * GB, true)), None);
+    }
+
+    // What the fix relies on, against the real engine: once initialized, the
+    // size it reports is the files that were picked.
+    #[tokio::test]
+    async fn the_engine_reports_only_the_selected_files_once_initialized() {
+        const FILE: usize = 2 * 1024 * 1024;
+        const PIECE: u32 = 16 * 1024;
+        let dir = std::env::temp_dir().join(format!("prism-selected-size-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let source = dir.join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("a.bin"), vec![1u8; FILE]).unwrap();
+        std::fs::write(source.join("b.bin"), vec![2u8; FILE]).unwrap();
+
+        let created = librqbit::create_torrent(
+            &source,
+            librqbit::CreateTorrentOptions { name: None, trackers: vec![], piece_length: Some(PIECE) },
+            &librqbit::spawn_utils::BlockingSpawner::new(1),
+        )
+        .await
+        .expect("torrent");
+        let session = offline_session(&dir).await;
+        let handle = session
+            .add_torrent(
+                AddTorrent::from_bytes(created.as_bytes().unwrap()),
+                Some(AddTorrentOptions {
+                    paused: true,
+                    only_files: Some(vec![0]),
+                    output_folder: Some(dir.join("out").to_string_lossy().into_owned()),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .expect("added")
+            .into_handle()
+            .expect("handle");
+
+        let mut needed = None;
+        for _ in 0..200 {
+            needed = bytes_still_needed(&handle.stats());
+            if needed.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let needed = needed.expect("the engine finished initializing") as usize;
+        // A piece on the boundary between the two files counts towards both.
+        assert!((FILE..=FILE + PIECE as usize).contains(&needed), "needed {needed} of two {FILE}-byte files");
+        session.stop().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // Regression (REVIEW 2026-09-26): a listen port already in use meant no
