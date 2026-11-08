@@ -21,22 +21,22 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/app-dark.png" alt="Prism dashboard with active downloads" width="800" />
+  <img src="docs/screenshots/app-dark.png" alt="Prism Downloads page with active and recent downloads" width="800" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/queue-dark.png" alt="Prism download queue" width="800" />
+  <img src="docs/screenshots/library-dark.png" alt="Prism Library poster grid" width="800" />
 </p>
 
 ## Features
 
-- **Built-in player (macOS & Windows)** — Play any download inside Prism, or any audio or video file on your computer (⌘O, or drop it on the player), powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching, resume where you left off. Plays files inside torrents while they're still downloading.
+- **Built-in player (macOS & Windows)** — Play any download inside Prism, or any audio or video file on your computer (⌘O, or drop it on the player), powered by embedded mpv: every codec and container, true HDR on HDR displays, multichannel audio, subtitle/audio track switching, resume where you left off. Previous/Next through a folder or playlist, frame step, screenshots and A-B loop. Plays files inside torrents while they're still downloading. On a Mac, open video and audio from Finder with Open With → Prism.
 - **Multi-format quality selection** — Choose between 4K, 1080p, 720p, or 480p — and the resolution you pick is what you get, with a warning if a site delivers less.
 - **BitTorrent downloads** — Paste a magnet link or `.torrent` file and download it in the same queue as your videos. Pick which files to grab, watch peers and share ratio live, and control seeding (stop at 100%, seed to ratio 1.0, or seed until you stop). UPnP port forwarding for peers behind a router; Quiet Hours throttles torrents too.
 - **One place to add anything** — The Add button (⌘N / ⌘L from any page) takes video links, magnets, `.torrent` files and lists of links; or drop any of them anywhere in the window. Links opened from your browser ask before Prism fetches anything.
 - **Direct downloads** — Plain file links (disk images, archives, documents) download over several connections, resume after a pause or a crash, and can be checked against a SHA-256.
 - **Convert** — Turn a finished download into MP4 (H.264 or HEVC), MP3, M4A or Opus, using your Mac's or PC's hardware encoder where there is one.
-- **Plays on your iPhone** — On a Mac, the few downloads QuickTime, iMessage and iOS can't open (VP9/AV1, Opus) are re-encoded to H.264/AAC automatically (Settings → Files).
-- **Download queue** — True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder, full keyboard control. Configurable concurrent downloads and speed limits.
+- **Plays on your iPhone** — On a Mac, the few downloads QuickTime, iMessage and iOS can't open (VP9/AV1, Opus) are re-encoded to H.264/AAC automatically (Settings → Downloads).
+- **Downloads page** — Add links, see your totals and recent downloads, and follow what's running, all on one page. True pause/resume (picks up partial files where they left off), cancel, retry, drag-to-reorder, full keyboard control. Configurable concurrent downloads and speed limits.
 - **Quiet hours** — Hold or throttle downloads during part of the day, with a banner saying until when; full speed the rest of the time.
 - **Self-updating engine** — Update the bundled yt-dlp from Settings when sites change, no app update needed.
 - **Batch downloads** — Paste multiple URLs at once or import entire playlists with per-video selection.
@@ -44,7 +44,7 @@
 - **Browser cookie support** — Use cookies from Safari, Chrome, Firefox, Edge, or Brave for sign-in-required and age-restricted videos.
 - **Rich media files** — Thumbnails, metadata, and chapter markers embedded in downloads.
 - **SponsorBlock** — Optionally mark sponsor segments as chapters or cut them out entirely, using crowd-sourced data.
-- **Library** — Searchable record of every download with one-click replay; stays fast with thousands of entries.
+- **Library** — A searchable poster grid of everything you've downloaded, with Play first and an Activity strip for your totals over time; stays fast with thousands of entries.
 - **Subscriptions** — Watch channels, playlists, and RSS/Atom feeds (podcasts, torrent feeds); new items are queued automatically on a configurable interval, with keyword rules.
 - **Clipboard auto-detect** — Copy a video URL, focus Prism, and get a one-click fetch prompt.
 - **Menu bar quick-add** — Tray icon with Paste & Download; drag a URL onto the window to fetch it.
@@ -81,7 +81,7 @@ Use the full name. Homebrew's own catalogue has a different app called
 `prism` (GraphPad Prism), and a bare `brew install --cask prism` or
 `brew upgrade --cask prism` installs that instead. To update:
 `brew upgrade --cask rajatraina747/prism/prism-downloader`, or
-**Settings → Updates** inside Prism.
+**Settings → General → Updates** inside Prism.
 
 Or get the latest release for your platform:
 
@@ -134,9 +134,9 @@ file picker. You can also just paste a magnet into the URL box any time.
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, TypeScript, Tailwind CSS, shadcn/ui |
+| Frontend | React 19, TypeScript, Tailwind CSS, shadcn/ui |
 | Desktop | Tauri v2 (Rust backend) |
-| Download Engines | yt-dlp + Deno (bundled sidecars) · librqbit (embedded BitTorrent) |
+| Download Engines | yt-dlp + Deno (bundled) · librqbit (embedded BitTorrent) |
 | Build | Vite 5 |
 
 ## Development
@@ -188,18 +188,18 @@ upstream releases, run `scripts/update-sidecars.sh`, review the lockfile diff, a
 
 Found a security issue? Please **don't open a public issue**. Report it privately:
 **[Report a vulnerability](https://github.com/rajatraina747/prism/security/advisories/new)**.
-Include the Prism version (Settings → About), your OS, what an attacker can do and what they
+Include the Prism version (Settings → Privacy & advanced → About & legal), your OS, what an attacker can do and what they
 need first (a web page, a crafted `.torrent`, local access…), and steps to reproduce. You'll
 hear back within a week. Only the latest release gets fixes; Prism updates itself from
-Settings → Updates. Problems in yt-dlp, librqbit, mpv or Tauri themselves belong upstream.
+Settings → General → Updates. Problems in yt-dlp, librqbit, mpv or Tauri themselves belong upstream.
 
 ## Project Structure
 
 ```
 src/
-├── components/     # React components (layout, dashboard, queue, media-details)
+├── components/     # React components (layout, add, queue, library, media-details)
 ├── hooks/          # Custom React hooks
-├── pages/          # Route page components (Dashboard, Queue, Subscriptions, History, Settings, …)
+├── pages/          # Route page components (Queue is the Downloads home, Library, Player, Subscriptions, Settings, …)
 ├── services/       # Service abstraction layer (mock + Tauri implementations)
 ├── stores/         # State: queue reducer + providers (Queue, History, Settings, Subscriptions)
 ├── types/          # TypeScript type definitions
@@ -207,7 +207,8 @@ src/
 
 src-tauri/
 ├── src/            # Rust backend (commands, download manager, engine updater)
-├── binaries/       # Bundled sidecars (yt-dlp, deno)
+├── binaries/       # Bundled Deno sidecar
+├── ytdlp/          # Bundled yt-dlp
 └── icons/          # App icons (macOS, Windows, iOS, Android)
 ```
 
@@ -226,7 +227,7 @@ As the LGPL requires, the corresponding source for the macOS libraries is publis
 binaries on the `media-toolchain-*` release pinned in `scripts/sidecars.lock`: every upstream
 tarball byte for byte, together with the script that patches and builds them. License texts ship
 inside the app (`resources/lib/licenses`, with `VERSIONS.txt`), and the full list is under
-Settings → Legal → Open Source Licenses.
+Settings → Privacy & advanced → About & legal → Open Source Licenses.
 
 ---
 
