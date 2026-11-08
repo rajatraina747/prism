@@ -96,4 +96,13 @@ test.describe('Library', () => {
     await expect(dialog.getByText('Episode 2.mkv')).toBeVisible();
     await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
   });
+
+  test('⌘F puts the cursor in the search box', async ({ page }) => {
+    await page.goto('/library');
+    await expect(page.getByRole('textbox', { name: 'Search library' })).toBeVisible();
+    // After clicking a card, too: the selectable list handles its own keys.
+    await page.getByRole('option').first().click();
+    await page.keyboard.press('ControlOrMeta+f');
+    await expect(page.getByRole('textbox', { name: 'Search library' })).toBeFocused();
+  });
 });

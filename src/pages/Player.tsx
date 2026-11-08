@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Play, Pause, RotateCcw, Volume2, VolumeX, Maximize2, Minimize2, AlertTriangle, FolderOpen,
-  SkipBack, SkipForward, Captions, PictureInPicture2,
+  SkipBack, SkipForward, Captions, PictureInPicture2, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { formatDuration } from '@/services/utils';
@@ -42,6 +42,9 @@ const OBSERVED = [
   ['chapter', 'int64', 'none'],
   ['sub-delay', 'double'],
   ['sub-visibility', 'flag'],
+  ['audio-delay', 'double'],
+  ['playlist-pos', 'int64'],
+  ['playlist-count', 'int64'],
 ] as const satisfies MpvObservableProperty[];
 
 interface MpvTrack {
@@ -97,6 +100,11 @@ export default function Player() {
   const [chapters, setChapters] = useState<MpvChapter[]>([]);
   const [chapter, setChapter] = useState<number | null>(null);
   const [subDelay, setSubDelay] = useState(0);
+  const [audioDelay, setAudioDelay] = useState(0);
+  // The folder playlist Rust queued (player_queue.rs): Previous/Next show
+  // when there is more than one file.
+  const [playlistPos, setPlaylistPos] = useState<number | null>(null);
+  const [playlistCount, setPlaylistCount] = useState(0);
   const [subVisible, setSubVisible] = useState(true);
   const [siblingSubs, setSiblingSubs] = useState<string[]>([]);
   const [mini, setMini] = useState(false);
@@ -183,6 +191,9 @@ export default function Player() {
           case 'chapter-list': setChapters((data as MpvChapter[] | null) ?? []); break;
           case 'chapter': setChapter(data); break;
           case 'sub-delay': setSubDelay(data ?? 0); break;
+          case 'audio-delay': setAudioDelay(data ?? 0); break;
+          case 'playlist-pos': setPlaylistPos(data ?? null); break;
+          case 'playlist-count': setPlaylistCount(data ?? 0); break;
           case 'sub-visibility': setSubVisible(data ?? true); break;
         }
       }));
@@ -347,6 +358,35 @@ export default function Player() {
   }, []);
   const showControls = !ready || initError !== null || loadError !== null || paused || eof || controlsVisible;
 
+  // The playlist moved on (Next, Previous, or the end of an episode). Rust
+  // reads what mpv is playing now, so resume positions, subtitles beside it
+  // and Recent files follow; then pick up where that one was left.
+  const firstPos = useRef<number | null>(null);
+  useEffect(() => {
+    if (playlistPos === null || playlistPos < 0) return;
+    if (firstPos.current === null) { firstPos.current = playlistPos; return; }
+    let live = true;
+    (async () => {
+      try {
+        const name = await invoke<string | null>('player_now_playing');
+        if (!live || !name) return;
+        setTitle(name);
+        getCurrentWindow().setTitle(name).catch(() => {});
+        setEof(false);
+        const at = await invoke<number | null>('player_resume_position');
+        if (live && at && at > 0) await invoke('player_seek', { seconds: at, relative: false });
+        setResumedFrom(at && at > 0 ? at : null);
+        invoke<string[]>('player_sibling_subtitles').then(setSiblingSubs).catch(() => setSiblingSubs([]));
+      } catch { /* the next tick tries again */ }
+    })();
+    return () => { live = false; };
+  }, [playlistPos]);
+  const step = useCallback((forward: boolean) => {
+    invoke('player_playlist_step', { forward }).catch(() => {});
+  }, []);
+  const hasPrev = playlistCount > 1 && (playlistPos ?? 0) > 0;
+  const hasNext = playlistCount > 1 && playlistPos !== null && playlistPos < playlistCount - 1;
+
   // Keyboard parity with normal players.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -359,13 +399,15 @@ export default function Player() {
         case 'ArrowDown': setProp('volume', Math.max(0, Math.round(volume) - 5)).catch(() => {}); break;
         case 'm': setProp('mute', muted ? 'no' : 'yes').catch(() => {}); break;
         case 'f': toggleFullscreen(); break;
+        case 'n': case 'N': step(true); break;
+        case 'p': case 'P': step(false); break;
         // Simple fullscreen has no OS-level Escape handling — provide it.
         case 'Escape': if (fullscreen) toggleFullscreen(); break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePause, toggleFullscreen, volume, muted, fullscreen]);
+  }, [togglePause, toggleFullscreen, volume, muted, fullscreen, step]);
 
   const audioTracks = tracks.filter((t) => t.type === 'audio');
   const subTracks = tracks.filter((t) => t.type === 'sub');
@@ -482,6 +524,32 @@ export default function Player() {
             {eof ? <RotateCcw className="w-5 h-5" /> : paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
 
+          {playlistCount > 1 && (
+            <>
+              <button
+                onClick={() => step(false)}
+                disabled={!hasPrev}
+                className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                title="Previous file in this folder (P)"
+                aria-label="Previous file"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs tabular-nums text-white/80" title="Files in this folder">
+                {(playlistPos ?? 0) + 1}/{playlistCount}
+              </span>
+              <button
+                onClick={() => step(true)}
+                disabled={!hasNext}
+                className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                title="Next file in this folder (N)"
+                aria-label="Next file"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
           {chapters.length > 1 && (
             <>
               <button
@@ -547,6 +615,27 @@ export default function Player() {
                   <option key={t.id} value={t.id}>{trackLabel(t)}</option>
                 ))}
               </select>
+              <span className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setProp('audio-delay', Math.max(-10, Number((audioDelay - 0.1).toFixed(1)))).catch(() => {})}
+                  className="px-1 rounded hover:bg-white/15 transition-colors"
+                  title="Sound earlier"
+                  aria-label="Sound earlier"
+                >
+                  −
+                </button>
+                <span className="tabular-nums text-white/70 w-10 text-center" title="Audio delay (sync)">
+                  {audioDelay.toFixed(1)}s
+                </span>
+                <button
+                  onClick={() => setProp('audio-delay', Math.min(10, Number((audioDelay + 0.1).toFixed(1)))).catch(() => {})}
+                  className="px-1 rounded hover:bg-white/15 transition-colors"
+                  title="Sound later"
+                  aria-label="Sound later"
+                >
+                  +
+                </button>
+              </span>
             </label>
           )}
 
