@@ -1,3 +1,4 @@
+import { SettingsQuery, SettingsGroupTitle, matchesQuery } from './query';
 import React from 'react';
 import type { StorageSummary } from '@/services/types';
 import { CommitInput } from '@/components/common';
@@ -45,10 +46,13 @@ export function SettingRow({ label, description, help, children }: {
   children: React.ReactNode;
 }) {
   const id = React.useId();
+  const query = React.useContext(SettingsQuery);
+  const group = React.useContext(SettingsGroupTitle);
   const labelId = `${id}-label`;
   const descId = description ? `${id}-desc` : undefined;
+  if (!matchesQuery(query, label, description, help?.[0], help?.[1], group)) return null;
   return (
-    <div className="flex items-center justify-between py-2.5 min-h-[40px]">
+    <div data-setting-row className="flex items-center justify-between py-2.5 min-h-[40px]">
       <div className="flex-1 min-w-0 mr-4">
         <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
           <span id={labelId}>{label}</span>
@@ -65,16 +69,22 @@ export function SettingRow({ label, description, help, children }: {
 
 export function SettingGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="pt-3 first:pt-0">
+    // A group with no matching rows hides while searching.
+    <section aria-label={title} className="pt-3 first:pt-0 [&:not(:has([data-setting-row]))]:hidden">
       <h3 className="panel-header mb-1">{title}</h3>
-      <div className="divide-y divide-border/30">{children}</div>
+      <div className="divide-y divide-border/30">
+        <SettingsGroupTitle.Provider value={title}>{children}</SettingsGroupTitle.Provider>
+      </div>
     </section>
   );
 }
 
 /** Progressive disclosure for settings most people never need. */
 export function Advanced({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+  const [openState, setOpen] = React.useState(false);
+  // Searching looks inside advanced settings too.
+  const query = React.useContext(SettingsQuery);
+  const open = openState || query.trim() !== '';
   const id = React.useId();
   return (
     <div className="pt-3">

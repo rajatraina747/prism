@@ -18,7 +18,6 @@ import {
   Library as LibraryIcon,
   Rss,
   Settings2,
-  Info,
   Plus,
   PlayCircle,
 } from 'lucide-react';
@@ -41,7 +40,6 @@ const NAV_ITEMS = [
 
 const BOTTOM_ITEMS = [
   { path: '/settings', icon: Settings2, label: 'Settings' },
-  { path: '/about', icon: Info, label: 'About' },
 ] as const;
 
 function SidebarNav({ onAdd }: { onAdd: () => void }) {
