@@ -873,6 +873,18 @@ export default function Settings() {
                 <SettingRow label="Crash reporting" description="Send anonymous crash reports to help fix bugs. Off by default; no personal data or download history is included">
                   <Toggle checked={p.crashReportingEnabled} onChange={v => updatePreference('crashReportingEnabled', v)} />
                 </SettingRow>
+                <SettingRow label="Forget playback history" description="Clear where you stopped in each video (with its file name) and the recent files list. Your files and the Library aren't touched">
+                  <button
+                    type="button"
+                    onClick={() => import('@tauri-apps/api/core')
+                      .then(({ isTauri, invoke }) => (isTauri() ? invoke('forget_playback_history') : undefined))
+                      .then(() => toast.success('Playback history cleared'))
+                      .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
+                    className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
+                  >
+                    Forget
+                  </button>
+                </SettingRow>
                 <SettingRow label="Export logs" description="Save the in-app diagnostic log as JSON, to attach to a bug report">
                   <button
                     type="button"

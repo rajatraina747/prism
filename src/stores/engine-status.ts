@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { EngineInfo } from '@/services/types';
 
 // What the engine check last found, shared by the sidebar nudge and
-// Settings → Updates. AppShell runs the daily check; Settings refreshes it when
+// Settings → General → Updates. AppShell runs the daily check; Settings refreshes it when
 // opened and after an update.
 
 let current: EngineInfo | null = null;

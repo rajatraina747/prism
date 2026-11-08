@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useService } from '@/services/ServiceProvider';
 import { Panel, OutboundLink } from '@/components/common';
-import { ExternalLink, Heart, Shield, BookOpen, Sparkles, Bug } from 'lucide-react';
+import { ExternalLink, Heart, Shield, BookOpen, Sparkles, Bug, ArrowLeft } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
 
 export default function About() {
@@ -15,17 +15,28 @@ export default function About() {
   }, [service]);
 
   return (
-    <div className="page-container max-w-lg">
-      <div className="page-header text-center">
-        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-16 h-16 mx-auto mb-4 object-contain" />
-        <h1 className="page-title">Prism</h1>
-        <p className="page-subtitle">Downloads, plays and converts video</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          by{' '}
-          <OutboundLink href="https://www.rainacorp.co.uk" className="hover:text-muted-foreground transition-colors">
-            RainaCorp
-          </OutboundLink>
-        </p>
+    <div className="page-container max-w-2xl">
+      <div className="page-header">
+        <button
+          onClick={() => navigate('/settings?section=privacy')}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Settings
+        </button>
+        <div className="flex items-center gap-4">
+          <img src={publicAsset("logo-nobg.webp")} alt="" className="w-16 h-16 object-contain shrink-0" />
+          <div>
+            <h1 className="page-title">Prism</h1>
+            <p className="page-subtitle">Downloads, plays and converts video</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              by{' '}
+              <OutboundLink href="https://www.rainacorp.co.uk" className="text-foreground hover:text-primary transition-colors">
+                RainaCorp
+              </OutboundLink>
+            </p>
+          </div>
+        </div>
       </div>
 
       <Panel className="animate-fade-in">
@@ -47,7 +58,7 @@ export default function About() {
           <LinkRow
             icon={Bug}
             label="Report a bug"
-            description="Opens a bug report on GitHub — Settings → Diagnostics → Export logs helps"
+            description="Opens a bug report on GitHub — Settings → Privacy & advanced → Diagnostics → Export logs helps"
             href={`https://github.com/rajatraina747/prism/issues/new?template=bug_report.yml&version=${encodeURIComponent(version)}`}
           />
           <button onClick={() => navigate('/privacy')} className="w-full text-left">
@@ -65,9 +76,9 @@ export default function About() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-2.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-medium text-foreground tabular-nums">{value}</span>
+    <div className="flex items-start justify-between gap-6 py-2.5">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className="text-xs font-medium text-foreground tabular-nums text-right">{value}</span>
     </div>
   );
 }

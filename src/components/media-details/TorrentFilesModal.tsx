@@ -12,11 +12,24 @@ interface TorrentFilesModalProps {
   title: string;
   files: TorrentFileEntry[] | null; // null = still loading
   onConfirm: (selectedIndices: number[]) => void;
+  /** Where it will download to, for "Y free" and refusing what won't fit. */
+  destination?: string;
 }
 
 /** Pick which files inside a torrent to download. All are selected by default;
  * deselecting some passes only the chosen indices to the engine. */
-export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: TorrentFilesModalProps) {
+export function TorrentFilesModal({ open, onClose, title, files, onConfirm, destination }: TorrentFilesModalProps) {
+  // Free space on the destination's disk (null: not known, e.g. web demo).
+  const [free, setFree] = useState<number | null>(null);
+  React.useEffect(() => {
+    if (!open || !destination) return;
+    let live = true;
+    import('@tauri-apps/api/core')
+      .then(({ isTauri, invoke }) => (isTauri() ? invoke<number | null>('free_space', { path: destination }) : null))
+      .then(f => { if (live) setFree(typeof f === 'number' ? f : null); })
+      .catch(() => { if (live) setFree(null); });
+    return () => { live = false; };
+  }, [open, destination]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const seededFor = useRef<string | null>(null);
 
@@ -33,6 +46,9 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
     () => (files ?? []).filter(f => selected.has(f.index)).reduce((sum, f) => sum + f.size, 0),
     [files, selected],
   );
+  // What's already on disk from an earlier run isn't counted off; close enough
+  // to stop a selection that plainly won't fit.
+  const tooBig = free !== null && totalSelectedBytes > free;
 
   const toggle = (index: number) => {
     setSelected(prev => {
@@ -80,8 +96,9 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
                   Select all ({selected.size}/{files.length})
                 </span>
               </label>
-              <span className="text-xs text-muted-foreground tabular-nums">
+              <span className={cn('text-xs tabular-nums', tooBig ? 'text-destructive' : 'text-muted-foreground')}>
                 {formatBytes(totalSelectedBytes)} selected
+                {free !== null && <> · {formatBytes(free)} free</>}
               </span>
             </div>
 
@@ -133,10 +150,11 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm }: To
               </button>
               <button
                 onClick={() => onConfirm([...selected])}
-                disabled={selected.size === 0}
+                disabled={selected.size === 0 || tooBig}
+                title={tooBig ? `That's more than the ${free !== null ? formatBytes(free) : ''} free on this disk` : undefined}
                 className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
               >
-                Download {selected.size} File{selected.size !== 1 ? 's' : ''}
+                Download {selected.size} file{selected.size !== 1 ? 's' : ''}
               </button>
             </div>
           </div>

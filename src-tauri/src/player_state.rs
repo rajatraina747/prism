@@ -92,6 +92,20 @@ fn state_file(app: &AppHandle) -> Option<PathBuf> {
     Some(app.path().app_data_dir().ok()?.join("player-state.json"))
 }
 
+/// Settings → Privacy & advanced → Forget playback history: the resume
+/// positions (which carry file names) and the recent files list.
+#[tauri::command]
+pub async fn forget_playback_history(app: AppHandle) -> Result<(), String> {
+    if let Some(file) = state_file(&app) {
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("Couldn't forget playback positions: {e}")),
+        }
+    }
+    crate::player_queue::clear_recent_media(app).await
+}
+
 pub fn read_entries(file: &Path) -> Vec<Entry> {
     std::fs::read_to_string(file)
         .ok()

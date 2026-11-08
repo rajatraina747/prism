@@ -312,6 +312,9 @@ fn player_mpv_config(app: &AppHandle) -> Result<MpvConfig, String> {
         "audio-delay": "double",
         "playlist-pos": "int64",
         "playlist-count": "int64",
+        "ab-loop-a": "string",
+        "ab-loop-b": "string",
+        "video-aspect-override": "string",
     });
     serde_json::from_value(serde_json::json!({
         "initialOptions": initial,
@@ -444,7 +447,7 @@ async fn pick_playable(app: &AppHandle) -> Result<Option<std::path::PathBuf>, St
 }
 
 /// A file the main window wants played, picked in a Rust dialog.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
 pub struct PickedMedia {
     pub path: String,
     pub title: String,
@@ -462,6 +465,78 @@ pub async fn pick_media_file(app: AppHandle) -> Result<Option<PickedMedia>, Stri
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     Ok(Some(PickedMedia { path, title }))
+}
+
+/// Files the OS asked Prism to open ("Open With → Prism", a double-click
+/// once Prism is the chosen app), waiting for the main window to play them.
+/// Held here because a cold start delivers them before the page listens.
+#[derive(Default)]
+pub struct OpenedMedia(std::sync::Mutex<OpenedState>);
+
+#[derive(Default)]
+struct OpenedState {
+    waiting: Vec<PickedMedia>,
+    /// Canonical paths of files opened together, kept for the load of the
+    /// first one so they become its playlist instead of its folder.
+    together: Vec<String>,
+}
+
+impl OpenedState {
+    /// The file to play from everything waiting, in reading order (Finder's
+    /// selection order is arbitrary). With nothing waiting, changes nothing:
+    /// the page asks at startup and on every event, so it can ask twice.
+    fn next(&mut self) -> Option<PickedMedia> {
+        let mut files = std::mem::take(&mut self.waiting);
+        files.sort_by(|a, b| crate::player_queue::natural_cmp(&a.title, &b.title));
+        files.dedup_by(|a, b| a.path == b.path);
+        files.truncate(crate::player_queue::MAX_PLAYLIST);
+        if !files.is_empty() {
+            self.together = if files.len() > 1 { files.iter().map(|f| f.path.clone()).collect() } else { Vec::new() };
+        }
+        files.into_iter().next()
+    }
+
+    /// The playlist for `current` if it was opened with others. Good for one
+    /// load: any later load is an ordinary one.
+    fn playlist_for(&mut self, current: &str) -> Option<(Vec<std::path::PathBuf>, usize)> {
+        let together = std::mem::take(&mut self.together);
+        let at = together.iter().position(|p| p == current)?;
+        Some((together.into_iter().map(std::path::PathBuf::from).collect(), at))
+    }
+}
+
+/// Accept the playable files among `paths` as the user's choice and queue
+/// them for the main window, which `take_opened_media` hands them to. Tells
+/// the main window when something was queued.
+pub fn queue_opened(app: &AppHandle, paths: impl IntoIterator<Item = std::path::PathBuf>) {
+    use tauri::{Emitter, Manager};
+    let accepted: Vec<PickedMedia> = paths
+        .into_iter()
+        .filter(|p| is_playable(p))
+        .filter_map(|p| accept_user_pick(app, &p).ok())
+        .map(|path| {
+            let title = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            PickedMedia { path, title }
+        })
+        .collect();
+    if accepted.is_empty() {
+        return;
+    }
+    if let Some(state) = app.try_state::<OpenedMedia>() {
+        if let Ok(mut opened) = state.0.lock() {
+            opened.waiting.extend(accepted);
+        }
+    }
+    let _ = app.emit_to("main", "open-media-file", ());
+}
+
+/// The file to play from what the OS opened since the last call (main
+/// window). Anything opened with it queues behind it when it loads.
+#[tauri::command]
+pub fn take_opened_media(app: AppHandle) -> Option<PickedMedia> {
+    use tauri::Manager;
+    app.try_state::<OpenedMedia>()
+        .and_then(|s| s.0.lock().ok().and_then(|mut opened| opened.next()))
 }
 
 /// A file dropped on the player window. The paths come from the OS drop
@@ -513,17 +588,27 @@ async fn load_validated(app: &AppHandle, validated: String) -> Result<(), String
     // season plays through. Built from the validated file's own folder, off
     // the async workers (a big folder is a directory walk).
     let current = std::path::PathBuf::from(&validated);
-    let queue = {
-        let current = current.clone();
-        tauri::async_runtime::spawn_blocking(move || crate::player_queue::folder_playlist(&current))
-            .await
-            .ok()
-            .flatten()
+    let opened_together = {
+        use tauri::Manager;
+        app.try_state::<OpenedMedia>()
+            .and_then(|s| s.0.lock().ok().and_then(|mut opened| opened.playlist_for(&validated)))
     };
-    let episode = current
-        .file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(crate::player_queue::looks_like_episode);
+    let plays_through = opened_together.is_some();
+    let queue = match opened_together {
+        Some(list) => Some(list),
+        None => {
+            let current = current.clone();
+            tauri::async_runtime::spawn_blocking(move || crate::player_queue::folder_playlist(&current))
+                .await
+                .ok()
+                .flatten()
+        }
+    };
+    let episode = plays_through
+        || current
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(crate::player_queue::looks_like_episode);
     {
         let (app, path) = (app.clone(), validated.clone());
         tauri::async_runtime::spawn_blocking(move || crate::player_queue::record(&app, &path));
@@ -531,7 +616,7 @@ async fn load_validated(app: &AppHandle, validated: String) -> Result<(), String
     mpv_worker(app)
         .run("loadfile", LOAD_TIMEOUT, move |mpv| {
             mpv.command("loadfile", vec![serde_json::json!(validated)], PLAYER_LABEL)?;
-            // Episodes go on to the next one by themselves; anything else
+            // Episodes, and files opened together, go on to the next one by themselves; anything else
             // waits for Next ("always": never advance at the end of a file).
             mpv.set_property("keep-open", &serde_json::json!(if episode { "yes" } else { "always" }), PLAYER_LABEL)?;
             if let Some((list, at)) = queue {
@@ -637,6 +722,57 @@ pub async fn player_load_stream(
             mpv.set_property("pause", &serde_json::json!("no"), PLAYER_LABEL)
         })
         .await
+}
+
+/// The few mpv actions the player's keys and buttons need beyond seeking,
+/// each named here rather than passed through: frame step, the A-B loop.
+#[tauri::command]
+pub async fn player_action(app: AppHandle, window: tauri::Window, action: String) -> Result<(), String> {
+    ensure_player_window(&window)?;
+    let command = match action.as_str() {
+        "frame-step" => "frame-step",
+        "frame-back-step" => "frame-back-step",
+        "ab-loop" => "ab-loop",
+        _ => return Err(format!("Unknown player action '{action}'")),
+    };
+    mpv_worker(&app)
+        .run("player action", CALL_TIMEOUT, move |mpv| mpv.command(command, vec![], PLAYER_LABEL))
+        .await
+}
+
+/// A screenshot of the current frame, saved to Pictures/Prism. The folder and
+/// name are Rust's (the video's name and the time), never the page's.
+/// Returns where it went.
+#[tauri::command]
+pub async fn player_screenshot(app: AppHandle, window: tauri::Window) -> Result<String, String> {
+    use tauri::Manager;
+    ensure_player_window(&window)?;
+    let dir = dirs::picture_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Pictures")))
+        .ok_or("No Pictures folder")?
+        .join("Prism");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't create {}: {e}", dir.display()))?;
+    let base = app
+        .state::<crate::player_state::PlayerState>()
+        .current()
+        .and_then(|c| c.title)
+        .map(|t| std::path::Path::new(&t).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(t))
+        .unwrap_or_else(|| "Prism".into());
+    let safe: String = base
+        .chars()
+        .map(|c| if c.is_alphanumeric() || " ._-()".contains(c) { c } else { '_' })
+        .take(80)
+        .collect();
+    let stamp = chrono::Local::now().format("%Y-%m-%d at %H.%M.%S");
+    let file = dir.join(format!("{} {}.png", safe.trim(), stamp));
+    let target = file.to_string_lossy().into_owned();
+    let arg = target.clone();
+    mpv_worker(&app)
+        .run("screenshot", LOAD_TIMEOUT, move |mpv| {
+            mpv.command("screenshot-to-file", vec![serde_json::json!(arg), serde_json::json!("video")], PLAYER_LABEL)
+        })
+        .await?;
+    Ok(target)
 }
 
 #[tauri::command]
@@ -848,6 +984,11 @@ pub(crate) fn validate_player_property(
             .filter(|v| (-60.0..=60.0).contains(v))
             .map(|v| serde_json::json!(v))
             .ok_or_else(bad),
+        // Picture shape: mpv's own values only.
+        "video-aspect-override" => match value.as_str() {
+            Some("-1" | "16:9" | "4:3" | "21:9" | "2.39:1" | "1:1") => Ok(value.clone()),
+            _ => Err(bad()),
+        },
         // Audio timing nudge, for a file whose sound runs early or late.
         "audio-delay" => value
             .as_f64()
@@ -932,6 +1073,59 @@ pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    fn picked(path: &str) -> super::PickedMedia {
+        super::PickedMedia { path: path.into(), title: path.rsplit('/').next().unwrap().into() }
+    }
+
+    #[test]
+    fn files_opened_together_play_in_reading_order() {
+        let mut opened = super::OpenedState { waiting: vec![picked("/a/Ep 10.mkv"), picked("/a/Ep 2.mkv"), picked("/a/Ep 2.mkv")], ..Default::default() };
+        assert_eq!(opened.next(), Some(picked("/a/Ep 2.mkv")));
+        // The page asks again on the event that follows; that must not lose them.
+        assert_eq!(opened.next(), None);
+        let (list, at) = opened.playlist_for("/a/Ep 2.mkv").unwrap();
+        assert_eq!(list, [std::path::PathBuf::from("/a/Ep 2.mkv"), "/a/Ep 10.mkv".into()]);
+        assert_eq!(at, 0);
+        assert!(opened.playlist_for("/a/Ep 2.mkv").is_none(), "good for one load");
+    }
+
+    #[test]
+    fn one_opened_file_keeps_its_folder_playlist() {
+        let mut opened = super::OpenedState { waiting: vec![picked("/a/b.mp4")], ..Default::default() };
+        assert_eq!(opened.next(), Some(picked("/a/b.mp4")));
+        assert!(opened.playlist_for("/a/b.mp4").is_none());
+    }
+
+    #[test]
+    fn an_unrelated_load_drops_a_stale_opened_list() {
+        let mut opened = super::OpenedState { waiting: vec![picked("/a/1.mp4"), picked("/a/2.mp4")], ..Default::default() };
+        opened.next();
+        assert!(opened.playlist_for("/other.mp4").is_none());
+        assert!(opened.playlist_for("/a/1.mp4").is_none());
+    }
+
+    // Tauri's Windows installer ignores `rank` and makes itself the handler
+    // for every listed type, so media types belong in the macOS config only.
+    #[test]
+    fn only_macos_declares_media_file_types() {
+        let exts = |json: &str| -> Vec<String> {
+            let v: serde_json::Value = serde_json::from_str(json).unwrap();
+            v["bundle"]["fileAssociations"]
+                .as_array()
+                .map(|a| a.iter().flat_map(|f| f["ext"].as_array().unwrap().iter().map(|e| e.as_str().unwrap().to_string())).collect())
+                .unwrap_or_default()
+        };
+        assert_eq!(exts(include_str!("../tauri.conf.json")), ["torrent"]);
+        assert!(exts(include_str!("../tauri.windows.conf.json")).is_empty());
+        assert!(exts(include_str!("../tauri.linux.conf.json")).is_empty());
+        let mut mac = exts(include_str!("../tauri.macos.conf.json"));
+        mac.retain(|e| e != "torrent");
+        let mut playable: Vec<String> = super::PLAYABLE_EXTENSIONS.iter().map(|e| e.to_string()).collect();
+        mac.sort();
+        playable.sort();
+        assert_eq!(mac, playable);
+    }
+
     // Picked files skip the download roots, so the type check is what keeps
     // "Play a File…" to media: no scripts, apps, images or documents.
     #[test]

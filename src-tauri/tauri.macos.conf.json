@@ -1,6 +1,29 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "bundle": {
-    "resources": ["lib/**/*", "ytdlp/**/*"]
+    "resources": ["lib/**/*", "ytdlp/**/*"],
+    "fileAssociations": [
+      {
+        "ext": ["torrent"],
+        "name": "BitTorrent Metadata",
+        "description": "BitTorrent metainfo file",
+        "mimeType": "application/x-bittorrent",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["mp4", "m4v", "mkv", "webm", "mov", "avi", "flv", "wmv", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv", "vob"],
+        "name": "Video",
+        "description": "Video file",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["mp3", "m4a", "aac", "opus", "ogg", "oga", "wav", "flac", "aiff", "aif", "wma", "alac"],
+        "name": "Audio",
+        "description": "Audio file",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
   }
 }

@@ -10,7 +10,7 @@ export default function TermsOfService() {
     <div className="page-container max-w-2xl">
       <div className="page-header">
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/settings?section=privacy')}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -69,7 +69,7 @@ export default function TermsOfService() {
               Prism's own source code is open source under the MIT License — you may use, copy, modify and
               redistribute it under that license's terms. The application also bundles third-party
               components under their own licenses (including LGPL- and GPL-licensed media libraries in the
-              macOS build); those terms govern the bundled builds and are listed under Settings → Legal →
+              macOS build); those terms govern the bundled builds and are listed under Settings → Privacy & advanced → About & legal →
               Open Source Licenses. The Prism name, logo and RainaCorp branding are not covered by the MIT
               License and may not be used to imply endorsement of modified versions.
             </p>

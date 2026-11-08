@@ -1345,17 +1345,31 @@ fn summarize_storage(expanded: String) -> Result<StorageSummary, String> {
     let (files, bytes, partial) = if path.is_dir() { walk_storage(&path) } else { (0, 0, false) };
     // Free space comes from the nearest existing ancestor, so the figure is
     // still right before the folder has been created.
-    let mut probe = path.as_path();
-    let free_bytes = loop {
-        match fs2::available_space(probe) {
-            Ok(free) => break free,
-            Err(_) => match probe.parent() {
-                Some(parent) => probe = parent,
-                None => break 0,
-            },
-        }
-    };
+    let free_bytes = free_space_near(&path).unwrap_or(0);
     Ok(StorageSummary { folder: expanded, files, bytes, free_bytes, partial })
+}
+
+/// Free space on the disk that holds `path`, measured at its nearest
+/// existing ancestor, so it is right before the folder has been created.
+pub(crate) fn free_space_near(path: &std::path::Path) -> Option<u64> {
+    let mut probe = path;
+    loop {
+        match fs2::available_space(probe) {
+            Ok(free) => return Some(free),
+            Err(_) => probe = probe.parent()?,
+        }
+    }
+}
+
+/// Free space where a download would go, for the torrent file picker's
+/// "Selected X · Y free". None when it can't be told.
+#[tauri::command]
+async fn free_space(app: AppHandle, path: String) -> Option<u64> {
+    let dir = validate_download_path(&path, &picked_dirs(&app)).ok()?;
+    tauri::async_runtime::spawn_blocking(move || free_space_near(std::path::Path::new(&dir)))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Most items one call may trash. A bulk action over a selection, not a way
@@ -2535,6 +2549,8 @@ pub fn run() {
             for arg in args.iter().skip(1).filter(|a| is_torrent_file_arg(a)) {
                 let _ = app.emit("open-torrent-file", arg.clone());
             }
+            // A video or audio file opened with Prism while it runs.
+            player::queue_opened(app, args.iter().skip(1).map(PathBuf::from));
             // Same helper as the tray and the global shortcut: a second launch
             // should raise Prism even when the first one is minimised, which a
             // bare set_focus doesn't do.
@@ -2547,6 +2563,7 @@ pub fn run() {
         .manage(stream_server::StreamServer::new())
         .manage(player_state::PlayerState::new())
         .manage(player::UserPicked::default())
+        .manage(player::OpenedMedia::default())
         .manage(store::Store::new())
         .manage(queue::QueueManager::new())
         .manage(PickedDirs(std::sync::Mutex::new(load_picked_dirs())))
@@ -2614,6 +2631,9 @@ pub fn run() {
             // Re-take the user's global hotkeys, if they assigned any. Reads
             // settings.json, so it belongs after the directory above exists.
             shortcuts::apply_saved(app.handle());
+
+            // Windows / Linux: a video or audio file Prism was launched to open.
+            player::queue_opened(app.handle(), std::env::args().skip(1).map(PathBuf::from));
 
             // The queue: loaded from the database and scheduled from Rust,
             // whatever the window is doing (queue.rs).
@@ -2746,8 +2766,13 @@ pub fn run() {
             player::pick_media_file,
             player::player_playlist_step,
             player::player_now_playing,
+            player::player_action,
+            player::player_screenshot,
             player_queue::recent_media,
             player_queue::clear_recent_media,
+            player_state::forget_playback_history,
+            free_space,
+            player::take_opened_media,
             player::player_save_position,
             player::player_resume_position,
             player::player_add_subtitle,
@@ -2777,6 +2802,15 @@ pub fn run() {
                 lifecycle::request_quit(app);
                 return;
             }
+            // macOS hands files opened with Prism over as an event (Windows
+            // and Linux pass them as arguments, handled at setup and in the
+            // single-instance callback). Torrents go through the deep-link
+            // plugin; playable files are accepted here, in Rust.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                player::queue_opened(app, urls.iter().filter_map(|u| u.to_file_path().ok()));
+                show_main_window(app);
+            }
             // The Dock icon brings a hidden window back.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
@@ -2802,6 +2836,15 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    // The torrent picker and preflight ask about a folder that may not exist
+    // yet (Prism creates it on the first download).
+    #[test]
+    fn free_space_is_measured_at_the_nearest_existing_folder() {
+        let missing = std::env::temp_dir().join("prism-free-space-probe/not/yet/made");
+        assert!(!missing.exists());
+        assert!(free_space_near(&missing).is_some_and(|f| f > 0));
+    }
+
     #[test]
     fn a_stale_proxy_config_is_removed() {
         let dir = std::env::temp_dir().join(format!("prism-proxyconf-{}", std::process::id()));
@@ -3249,7 +3292,7 @@ mod tests {
         const PLAYER_ONLY: &[&str] = &[
             "fixup_player_video", "player_init", "player_destroy", "player_load", "player_load_stream",
             "player_save_position", "player_resume_position", "player_add_subtitle", "player_open_file",
-            "player_pick_subtitle", "player_playlist_step", "player_now_playing",
+            "player_pick_subtitle", "player_playlist_step", "player_now_playing", "player_action", "player_screenshot",
             "player_sibling_subtitles", "player_set_mini", "player_seek", "player_set",
         ];
         // Engine commands the queue (queue.rs) calls from Rust. Since the page

@@ -205,7 +205,7 @@ function LibraryActivity() {
 }
 
 export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?: boolean }) {
-  const { items: allItems, removeFromHistory, restoreHistory } = useHistory();
+  const { items: allItems, removeFromHistory, removeManyFromHistory, restoreHistory } = useHistory();
   const items = useMemo(() => allItems.filter(i => inMode(i, mode)), [allItems, mode]);
   const { addToQueue } = useQueueActions();
   const { preferences, updatePreference } = useSettings();
@@ -316,8 +316,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
   // Only this mode's entries in this tab: the Library's Clear never removes
   // what's waiting under Needs attention, or the other way round.
   const clearCurrent = useCallback(() => {
-    inTab.forEach(i => removeFromHistory(i.id));
-  }, [inTab, removeFromHistory]);
+    removeManyFromHistory(inTab.map(i => i.id));
+  }, [inTab, removeManyFromHistory]);
 
   const toggleExpanded = useCallback((id: string) => setExpandedId(cur => (cur === id ? null : id)), []);
 
@@ -345,7 +345,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
   const removeSelected = useCallback(() => {
     const count = selectedItems.length;
     const removed = selectedItems;
-    removed.forEach(i => removeFromHistory(i.id));
+    removeManyFromHistory(removed.map(i => i.id));
     clearSelection();
     // Records only — the files are untouched, so an undo can simply put the
     // entries back rather than having to restore anything from disk.
@@ -353,7 +353,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       action: { label: 'Undo', onClick: () => removed.forEach(restoreHistory) },
       duration: 8000,
     });
-  }, [selectedItems, removeFromHistory, restoreHistory, clearSelection]);
+  }, [selectedItems, removeManyFromHistory, restoreHistory, clearSelection]);
 
   // A real file, or a torrent's own folder, never the folder a download was
   // saved into (see trashTarget): that is the whole download folder, and
@@ -375,7 +375,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
     const removed = trashable.map(t => t.item);
     try {
       const count = await service.moveToTrash(trashTargets);
-      removed.forEach(i => removeFromHistory(i.id));
+      removeManyFromHistory(removed.map(i => i.id));
       clearSelection();
       // No Undo offered: the files are in the OS Trash now, and restoring the
       // entries would leave them pointing at paths that have moved. The Trash
@@ -384,7 +384,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
     } catch (e) {
       toast.error(e instanceof Error ? e.message : `Could not move those to the ${TRASH_NAME}`);
     }
-  }, [trashable, trashTargets, service, removeFromHistory, clearSelection]);
+  }, [trashable, trashTargets, service, removeManyFromHistory, clearSelection]);
 
   return (
     <div className={embedded ? 'mt-4' : 'page-container'}>

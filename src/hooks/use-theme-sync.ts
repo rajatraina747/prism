@@ -1,16 +1,11 @@
 import { useEffect } from 'react';
-import { useTheme } from 'next-themes';
 import { useSettings } from '@/stores/AppProvider';
+import { applyTheme } from '@/lib/theme';
 
-/**
- * Syncs the app preferences theme setting with next-themes.
- * Call once in AppShell or a top-level layout component.
- */
+/** Applies the Theme setting to the page. Call once, in AppShell. */
 export function useThemeSync() {
   const { preferences } = useSettings();
-  const { setTheme } = useTheme();
-
   useEffect(() => {
-    setTheme(preferences.theme);
-  }, [preferences.theme, setTheme]);
+    applyTheme(preferences.theme);
+  }, [preferences.theme]);
 }

@@ -61,9 +61,9 @@ const BY_CODE: Partial<Record<EngineErrorCode, ClassifiedError>> = {
   unavailable: { category: 'parse', suggestion: 'This video is no longer available', action: 'none' },
   geo: { category: 'parse', suggestion: 'Not available in your region', action: 'none' },
   rate_limited: { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes, then retry', action: 'retry' },
-  forbidden: { category: 'unknown', suggestion: 'The site refused the download — retry; if it keeps happening, update the engine in Settings → Updates', action: 'engine' },
+  forbidden: { category: 'unknown', suggestion: 'The site refused the download — retry; if it keeps happening, update the engine in Settings → General → Updates', action: 'engine' },
   disk_full: { category: 'storage', suggestion: 'Free up disk space, then retry', action: 'retry' },
-  permission: { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' },
+  permission: { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Downloads → Storage', action: 'none' },
   format: { category: 'unknown', suggestion: 'Try a different quality', action: 'retry' },
   timeout: CHECK_CONNECTION,
   network: CHECK_CONNECTION,
@@ -102,9 +102,9 @@ export function classifyError(msg: string, code?: EngineErrorCode): ClassifiedEr
     return { category: 'network', suggestion: 'Rate limited by the site — wait a few minutes, then retry', action: 'retry' };
   // The site refused the request: usually extraction changed under the engine
   if (lower.includes('403') || lower.includes('forbidden'))
-    return { category: 'unknown', suggestion: 'The site refused the download — retry; if it keeps happening, update the engine in Settings → Updates', action: 'engine' };
+    return { category: 'unknown', suggestion: 'The site refused the download — retry; if it keeps happening, update the engine in Settings → General → Updates', action: 'engine' };
   if (lower.includes('permission') || lower.includes('access denied'))
-    return { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Storage', action: 'none' };
+    return { category: 'permission', suggestion: 'Prism can\'t write there — pick another download folder in Settings → Downloads → Storage', action: 'none' };
   // Whole phrases: "space" matched "namespace", "full" matched "fully"
   // (REVIEW 2026-09-28 A-3).
   if (lower.includes('no space') || lower.includes('disk full') || lower.includes('disk is full') || lower.includes('not enough disk') || lower.includes('not enough space'))

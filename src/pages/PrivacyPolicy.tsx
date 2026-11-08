@@ -10,7 +10,7 @@ export default function PrivacyPolicy() {
     <div className="page-container max-w-2xl">
       <div className="page-header">
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/settings?section=privacy')}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -52,7 +52,7 @@ export default function PrivacyPolicy() {
             <p>Prism connects to the internet only for:</p>
             <ul className="list-disc pl-4 space-y-1 mt-2">
               <li>Fetching metadata and media for URLs you provide (or that a subscription you created has found)</li>
-              <li>BitTorrent transfers you start — a peer-to-peer protocol: other participants in a swarm can see your IP address, and by default Prism joins the DHT and asks your router to forward a port (both can be turned off in Settings → BitTorrent)</li>
+              <li>BitTorrent transfers you start — a peer-to-peer protocol: other participants in a swarm can see your IP address, and by default Prism joins the DHT and asks your router to forward a port (both can be turned off in Settings → Torrents)</li>
               <li>Checking for application updates and, when you ask, updating the yt-dlp engine (both from GitHub)</li>
               <li>Fetching a torrent IP blocklist, if you configured one</li>
               <li>Opt-in crash reporting (below)</li>
@@ -66,7 +66,7 @@ export default function PrivacyPolicy() {
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Crash reporting (off by default)</h3>
             <p>
-              Settings → Diagnostics → Crash reporting sends a report to Sentry (a third-party error-tracking
+              Settings → Privacy & advanced → Diagnostics → Crash reporting sends a report to Sentry (a third-party error-tracking
               service) when Prism crashes. It is <strong className="text-foreground">off</strong> unless you turn it
               on. A report contains the error type and message, a stack trace of Prism's own code, the app version
               and your operating system. Before sending, Prism removes anything that looks like a URL or a file
@@ -78,7 +78,7 @@ export default function PrivacyPolicy() {
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Clipboard</h3>
             <p>
-              With "Clipboard link detection" on (Settings → Notifications), Prism reads the clipboard when its
+              With "Clipboard link detection" on (Settings → General → Notifications), Prism reads the clipboard when its
               window regains focus to offer a one-click fetch of a video link it finds there. The clipboard
               contents are never stored or transmitted. Turn the setting off and Prism never reads the clipboard
               on its own; the tray's "Paste &amp; Download" reads it only when you click it.
@@ -88,7 +88,7 @@ export default function PrivacyPolicy() {
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-2">Browser cookies</h3>
             <p>
-              If you choose a browser under Settings → Video → Browser cookies, the yt-dlp engine reads
+              If you choose a browser under Settings → Downloads → Browser cookies, the yt-dlp engine reads
               that browser's cookie store locally so sign-in-required videos work. Cookies are sent only to the
               site the video is on, exactly as your browser would send them, and never to RainaCorp or anyone else.
             </p>

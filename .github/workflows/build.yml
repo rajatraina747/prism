@@ -64,14 +64,14 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: src-tauri
+      # No Rust cache here: these jobs hold the signing key, and a cache is
+      # written by other jobs (PR CI), so a signed build would run on what
+      # they left behind. Slower release builds are the price.
 
       - run: npm ci
 
@@ -125,14 +125,14 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: src-tauri
+      # No Rust cache here: these jobs hold the signing key, and a cache is
+      # written by other jobs (PR CI), so a signed build would run on what
+      # they left behind. Slower release builds are the price.
 
       - run: npm ci
 
@@ -180,14 +180,14 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: src-tauri
+      # No Rust cache here: these jobs hold the signing key, and a cache is
+      # written by other jobs (PR CI), so a signed build would run on what
+      # they left behind. Slower release builds are the price.
 
       - name: Install Tauri system dependencies
         run: |
@@ -244,7 +244,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Build and lint the extension
         run: |

@@ -565,6 +565,7 @@ export function AddPanel() {
         title={torrentDisplayName(torrentUrl)}
         files={torrentFiles}
         onConfirm={handleTorrentConfirm}
+        destination={preferences.defaultSaveFolder}
       />
     </div>
   );

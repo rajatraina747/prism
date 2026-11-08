@@ -1,7 +1,6 @@
 import { useState, useCallback, lazy, Suspense } from "react";
 import { useService } from "@/services/ServiceProvider";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { ThemeProvider } from "next-themes";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceProvider } from "@/services/ServiceProvider";
@@ -66,7 +65,7 @@ const App = () => {
   }
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+    <>
       <ServiceProvider>
         <FirstRunSplash />
         <TooltipProvider>
@@ -104,7 +103,7 @@ const App = () => {
           </BrowserRouter>
         </TooltipProvider>
       </ServiceProvider>
-    </ThemeProvider>
+    </>
   );
 };
 

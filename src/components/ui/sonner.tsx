@@ -1,14 +1,15 @@
-import { useTheme } from "next-themes";
+import { useSyncExternalStore } from "react";
+import { resolvedTheme, subscribeTheme } from "@/lib/theme";
 import { Toaster as Sonner, toast } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  const theme = useSyncExternalStore(subscribeTheme, resolvedTheme, resolvedTheme);
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={theme}
       className="toaster group"
       toastOptions={{
         classNames: {
