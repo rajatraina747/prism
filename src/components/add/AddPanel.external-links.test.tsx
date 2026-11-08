@@ -58,4 +58,47 @@ describe('Dashboard links from outside the app', () => {
     await waitFor(() => expect(parseUrl).toHaveBeenCalledWith(URL_FROM_WEB));
     expect(screen.queryByText('Download from this link?')).not.toBeInTheDocument();
   });
+
+  describe('several links at once', () => {
+    const LINKS = ['https://example.com/watch/1', 'https://example.com/watch/2'];
+
+    it('asks how to download before looking anything up', async () => {
+      const { parseUrl } = renderDashboard();
+      act(() => pushDeepLink(LINKS, 'app'));
+
+      expect(await screen.findByRole('dialog', { name: 'Add 2 links' })).toBeInTheDocument();
+      expect(parseUrl).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Audio only' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add 2' }));
+      await waitFor(() => expect(parseUrl).toHaveBeenCalledTimes(2));
+    });
+
+    it('adds nothing when cancelled', async () => {
+      const { parseUrl } = renderDashboard();
+      act(() => pushDeepLink(LINKS, 'app'));
+      await screen.findByRole('dialog', { name: 'Add 2 links' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(parseUrl).not.toHaveBeenCalled();
+    });
+
+    it("doesn't ask again when the Add sheet already did", async () => {
+      const { parseUrl } = renderDashboard();
+      act(() => pushDeepLink(LINKS, 'app', { audioOnly: true, quality: '1080p' }));
+
+      await waitFor(() => expect(parseUrl).toHaveBeenCalledTimes(2));
+      expect(screen.queryByRole('dialog', { name: 'Add 2 links' })).not.toBeInTheDocument();
+    });
+
+    it("doesn't ask about torrents", async () => {
+      renderDashboard();
+      const hash = (c: string) => c.repeat(40);
+      act(() => pushDeepLink([`magnet:?xt=urn:btih:${hash('a')}`, `magnet:?xt=urn:btih:${hash('b')}`], 'app'));
+
+      await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
 });

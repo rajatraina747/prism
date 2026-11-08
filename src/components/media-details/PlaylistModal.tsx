@@ -1,10 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { PlaylistInfo, PlaylistEntry } from '@/types/models';
+import type { BatchChoice, DefaultQuality, PlaylistInfo, PlaylistEntry } from '@/types/models';
 import { formatDuration } from '@/services';
 import { cn } from '@/lib/utils';
 import { VirtualList } from '@/components/common/VirtualList';
 import { ListMusic, Check, Clock } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
+import { BatchOptions } from '@/components/add/BatchOptions';
 
 interface PlaylistModalProps {
   open: boolean;
@@ -12,14 +14,17 @@ interface PlaylistModalProps {
   playlist: PlaylistInfo | null;
   /** Queueing is instant (items are built from the flat-parse data), so the
    * modal closes as soon as this is called. */
-  onQueueSelected: (entries: PlaylistEntry[]) => void;
+  onQueueSelected: (entries: PlaylistEntry[], choice: BatchChoice) => void;
+  /** The quality the dialog starts on. */
+  defaultQuality?: DefaultQuality;
 }
 
 /** Lists up to this long open with every entry ticked. */
 export const PRESELECT_LIMIT = 100;
 
-export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: PlaylistModalProps) {
+export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaultQuality = '1080p' }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [choice, setChoice] = useState<BatchChoice>({ audioOnly: false, quality: defaultQuality });
   const prevPlaylistRef = useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -31,9 +36,10 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
         // Blender) are not — one click queued them all (Windows test run
         // 2026-09-26). Big lists start empty; "Select all" is still there.
         setSelected(playlist.entries.length <= PRESELECT_LIMIT ? new Set(playlist.entries.map((_, i) => i)) : new Set());
+        setChoice({ audioOnly: false, quality: defaultQuality });
       }
     }
-  }, [playlist]);
+  }, [playlist, defaultQuality]);
 
   if (!playlist) return null;
 
@@ -56,7 +62,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
 
   const handleQueue = () => {
     const entries = playlist.entries.filter((_, i) => selected.has(i));
-    onQueueSelected(entries);
+    onQueueSelected(entries, choice);
   };
 
   return (
@@ -130,6 +136,8 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
             )}
           />
 
+          <BatchOptions value={choice} onChange={setChoice} />
+
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/30">
             <button
@@ -138,13 +146,15 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected }: Play
             >
               Cancel
             </button>
-            <button
-              onClick={handleQueue}
-              disabled={selected.size === 0}
-              className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
-            >
-              {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
-            </button>
+            <DisabledReason reason={selected.size === 0 ? 'Select at least one video' : null}>
+              <button
+                onClick={handleQueue}
+                disabled={selected.size === 0}
+                className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
+              >
+                {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
+              </button>
+            </DisabledReason>
           </div>
         </div>
       </DialogContent>

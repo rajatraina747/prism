@@ -122,8 +122,51 @@ describe('entryToDownloadItem', () => {
     expect(item.settings.filename).toBe('My Video!');
   });
 
+  it('caps the quality when the subscription asks for one', () => {
+    const item = entryToDownloadItem(entry('https://y/1'), makeSub({ quality: '720p' }), prefs);
+    expect(item.settings.format?.resolution).toBe('720p');
+    expect(item.settings.format?.id).toContain('height<=720');
+  });
+
+  it('keeps the best available when no quality is set, or it makes no sense', () => {
+    expect(entryToDownloadItem(entry('https://y/1'), makeSub(), prefs).settings.format).toBeNull();
+    expect(entryToDownloadItem(entry('https://y/1'), makeSub({ quality: 'best' }), prefs).settings.format).toBeNull();
+    expect(entryToDownloadItem(entry('https://y/1'), makeSub({ quality: '720p', audioOnly: true }), prefs).settings.format).toBeNull();
+    expect(entryToDownloadItem(entry('magnet:?xt=urn:btih:abc'), makeSub({ quality: '720p' }), prefs).settings.format).toBeNull();
+    // A value from a hand-edited or newer backup never reaches yt-dlp.
+    const odd = makeSub({ quality: '720]+evil' as Subscription['quality'] });
+    expect(entryToDownloadItem(entry('https://y/1'), odd, prefs).settings.format).toBeNull();
+  });
+
+  describe('folders and categories', () => {
+    const music = { id: 'music', name: 'Music', destination: '/media/music', filenameTemplate: '{uploader}/{title}', domains: [], kinds: [] };
+    const withCategory = { ...prefs, categories: [music] };
+
+    it('uses the default folder when nothing else is set', () => {
+      expect(entryToDownloadItem(entry('https://y/1'), makeSub(), prefs).settings.destination).toBe(prefs.defaultSaveFolder);
+    });
+
+    it('uses the category folder and name template', () => {
+      const { settings } = entryToDownloadItem(entry('https://y/1'), makeSub({ categoryId: 'music' }), withCategory);
+      expect(settings.destination).toBe('/media/music');
+      expect(settings.filenameTemplate).toBe('{uploader}/{title}');
+      expect(settings.categoryName).toBe('Music');
+    });
+
+    it("puts the subscription's own folder ahead of its category's", () => {
+      const sub = makeSub({ categoryId: 'music', destination: '/talks' });
+      const { settings } = entryToDownloadItem(entry('https://y/1'), sub, withCategory);
+      expect(settings.destination).toBe('/talks');
+      expect(settings.categoryId).toBe('music');
+    });
+
+    it('ignores a category that has been deleted', () => {
+      expect(entryToDownloadItem(entry('https://y/1'), makeSub({ categoryId: 'gone' }), prefs).settings.categoryId).toBeUndefined();
+    });
+  });
+
   it("files the download under the feed's category, and leaves it unset otherwise", () => {
-    const filed = entryToDownloadItem(entry('https://y/1'), makeSub({ categoryId: 'music' }), prefs);
+    const filed = entryToDownloadItem(entry('https://y/1'), makeSub({ categoryId: 'music' }), { ...prefs, categories: [{ id: 'music', name: 'Music', destination: '', filenameTemplate: '', domains: [], kinds: [] }] });
     // addToQueue only auto-sorts when no category is already set, so this
     // wins over the site and engine rules.
     expect(filed.settings.categoryId).toBe('music');

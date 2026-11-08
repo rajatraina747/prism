@@ -5,6 +5,7 @@ import { formatBytes } from '@/services';
 import { cn } from '@/lib/utils';
 import { VirtualList } from '@/components/common/VirtualList';
 import { FolderTree, Check, Loader2 } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 interface TorrentFilesModalProps {
   open: boolean;
@@ -148,14 +149,15 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm, dest
               >
                 Cancel
               </button>
-              <button
-                onClick={() => onConfirm([...selected])}
-                disabled={selected.size === 0 || tooBig}
-                title={tooBig ? `That's more than the ${free !== null ? formatBytes(free) : ''} free on this disk` : undefined}
-                className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
-              >
-                Download {selected.size} file{selected.size !== 1 ? 's' : ''}
-              </button>
+              <DisabledReason reason={selected.size === 0 ? 'Select at least one file' : tooBig ? `That's more than the ${free !== null ? formatBytes(free) : ''} free on this disk` : null}>
+                <button
+                  onClick={() => onConfirm([...selected])}
+                  disabled={selected.size === 0 || tooBig}
+                  className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
+                >
+                  Download {selected.size} file{selected.size !== 1 ? 's' : ''}
+                </button>
+              </DisabledReason>
             </div>
           </div>
         )}

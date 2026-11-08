@@ -2,7 +2,11 @@ import React, { useState, useCallback } from 'react';
 import { useSubscriptions } from '@/stores/SubscriptionsProvider';
 import { EmptyState } from '@/components/common';
 import { toast } from 'sonner';
-import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play, Filter } from 'lucide-react';
+import { useSettings } from '@/stores/AppProvider';
+import { useService } from '@/services/ServiceProvider';
+import { QUALITY_CHOICES, type DefaultQuality, type Subscription } from '@/types/models';
+import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play, SlidersHorizontal, FolderOpen } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 /** A comma-separated list of words, edited as plain text.
  *
@@ -35,6 +39,112 @@ function KeywordField({ label, placeholder, words, onChange }: {
   );
 }
 
+const selectClass = 'mt-0.5 w-full px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none cursor-pointer';
+const optionLabelClass = 'text-xs uppercase tracking-wider text-muted-foreground';
+
+/** One subscription's own settings. Each starts out following the app's. */
+function SubscriptionOptions({ sub, onChange }: {
+  sub: Subscription;
+  onChange: (patch: Partial<Subscription>) => void;
+}) {
+  const { preferences } = useSettings();
+  const service = useService();
+  const category = preferences.categories.find(c => c.id === sub.categoryId);
+  const folder = sub.destination || category?.destination.trim() || preferences.defaultSaveFolder;
+  // Only channels go through yt-dlp's quality choice; a feed's enclosures are
+  // single files. Audio-only has no video quality to choose.
+  const showQuality = (sub.type ?? 'channel') === 'channel' && !sub.audioOnly;
+
+  const chooseFolder = async () => {
+    const dir = await service.pickDirectory().catch(() => null);
+    if (dir) onChange({ destination: dir });
+  };
+
+  return (
+    <div className="mt-2 space-y-1.5" onClick={e => e.stopPropagation()}>
+      <div className="grid grid-cols-2 gap-2">
+        {showQuality && (
+          <label className="block">
+            <span className={optionLabelClass}>Quality</span>
+            <select
+              value={sub.quality ?? 'best'}
+              onChange={e => {
+                const quality = e.target.value as DefaultQuality;
+                onChange({ quality: quality === 'best' ? undefined : quality });
+              }}
+              className={selectClass}
+            >
+              {QUALITY_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </label>
+        )}
+        {preferences.categories.length > 0 && (
+          <label className="block">
+            <span className={optionLabelClass}>Category</span>
+            <select
+              value={category?.id ?? ''}
+              onChange={e => onChange({ categoryId: e.target.value || undefined })}
+              className={selectClass}
+            >
+              <option value="">Sort automatically</option>
+              {preferences.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <div>
+        <span className={optionLabelClass}>Save to</span>
+        <div className="mt-0.5 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void chooseFolder()}
+            title="Choose a folder for this subscription"
+            className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors"
+          >
+            <FolderOpen className="w-3 h-3 shrink-0" />
+            <span className="truncate">{folder}</span>
+          </button>
+          {sub.destination && (
+            <button
+              type="button"
+              onClick={() => onChange({ destination: undefined })}
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Use default
+            </button>
+          )}
+        </div>
+      </div>
+      <KeywordField
+        label="Only download titles containing"
+        placeholder="review, episode — leave empty for everything"
+        words={sub.includeKeywords}
+        onChange={words => onChange({ includeKeywords: words })}
+      />
+      <KeywordField
+        label="Never download titles containing"
+        placeholder="trailer, shorts"
+        words={sub.excludeKeywords}
+        onChange={words => onChange({ excludeKeywords: words })}
+      />
+      <p className="text-xs text-muted-foreground/80">
+        These apply to new videos. Keywords match the title and the link, ignoring case. A video
+        they turn down is still remembered, so changing them later won't pull in the back catalogue.
+      </p>
+    </div>
+  );
+}
+
+/** What a row's summary line says about its options, when they're set. */
+function optionSummary(sub: Subscription, categoryName?: string): string[] {
+  const quality = !sub.audioOnly && (sub.type ?? 'channel') === 'channel' && sub.quality;
+  return [
+    ...(quality ? [quality] : []),
+    ...(categoryName ? [categoryName] : []),
+    ...(sub.destination ? [`To ${sub.destination.split(/[/\\]/).filter(Boolean).pop() ?? sub.destination}`] : []),
+  ];
+}
+
 function formatRelative(iso?: string): string {
   if (!iso) return 'never';
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -47,8 +157,9 @@ function formatRelative(iso?: string): string {
 
 export default function Subscriptions() {
   const { items, addSubscription, removeSubscription, restoreSubscription, toggleSubscription, setAudioOnly, updateSubscription, checkNow, checking } = useSubscriptions();
-  // Which row has its rules open, if any — one at a time keeps the list tidy.
-  const [editingRules, setEditingRules] = useState<string | null>(null);
+  const { preferences } = useSettings();
+  // Which row has its options open, if any — one at a time keeps the list tidy.
+  const [editingOptions, setEditingOptions] = useState<string | null>(null);
 
   // Per-item destructive action → undo toast rather than a confirm dialog.
   const unsubscribeWithUndo = useCallback((sub: (typeof items)[number]) => {
@@ -89,14 +200,16 @@ export default function Subscriptions() {
           </p>
         </div>
         {items.length > 0 && (
-          <button
-            onClick={() => checkNow()}
-            disabled={checking}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
-          >
-            {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            {checking ? 'Checking…' : 'Check All Now'}
-          </button>
+          <DisabledReason reason={checking ? 'A check is already running' : null}>
+            <button
+              onClick={() => checkNow()}
+              disabled={checking}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
+            >
+              {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {checking ? 'Checking…' : 'Check All Now'}
+            </button>
+          </DisabledReason>
         )}
       </div>
 
@@ -112,14 +225,16 @@ export default function Subscriptions() {
             className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
             disabled={adding}
           />
-          <button
-            onClick={handleAdd}
-            disabled={adding || !url.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-50"
-          >
-            {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rss className="w-3 h-3" />}
-            {adding ? 'Adding…' : 'Subscribe'}
-          </button>
+          <DisabledReason reason={adding ? 'Already adding this feed' : !url.trim() ? 'Paste a feed link first' : null}>
+            <button
+              onClick={handleAdd}
+              disabled={adding || !url.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-50"
+            >
+              {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rss className="w-3 h-3" />}
+              {adding ? 'Adding…' : 'Subscribe'}
+            </button>
+          </DisabledReason>
         </div>
         {addError && (
           <p className="mt-2 text-xs text-destructive">{addError}</p>
@@ -160,26 +275,12 @@ export default function Subscriptions() {
                     {(sub.includeKeywords?.length || sub.excludeKeywords?.length) ? (
                       <><span>·</span><span>Filtered</span></>
                     ) : null}
+                    {optionSummary(sub, preferences.categories.find(c => c.id === sub.categoryId)?.name).map(text => (
+                      <React.Fragment key={text}><span>·</span><span className="truncate">{text}</span></React.Fragment>
+                    ))}
                   </div>
-                  {editingRules === sub.id && (
-                    <div className="mt-2 space-y-1.5" onClick={e => e.stopPropagation()}>
-                      <KeywordField
-                        label="Only download titles containing"
-                        placeholder="review, episode — leave empty for everything"
-                        words={sub.includeKeywords}
-                        onChange={words => updateSubscription(sub.id, { includeKeywords: words })}
-                      />
-                      <KeywordField
-                        label="Never download titles containing"
-                        placeholder="trailer, shorts"
-                        words={sub.excludeKeywords}
-                        onChange={words => updateSubscription(sub.id, { excludeKeywords: words })}
-                      />
-                      <p className="text-xs text-muted-foreground/80">
-                        Matched against the title and the link, ignoring case. A video the rules turn
-                        down is still remembered, so changing them later won't pull in the back catalogue.
-                      </p>
-                    </div>
+                  {editingOptions === sub.id && (
+                    <SubscriptionOptions sub={sub} onChange={patch => updateSubscription(sub.id, patch)} />
                   )}
                   {sub.lastError && (
                     <div className="mt-1.5 flex items-center gap-1.5 text-xs text-destructive">
@@ -198,25 +299,27 @@ export default function Subscriptions() {
                     {sub.audioOnly ? <Music className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
                   </button>
                   <button
-                    onClick={() => setEditingRules(id => (id === sub.id ? null : sub.id))}
-                    title="Which videos to take"
-                    aria-label="Which videos to take"
-                    aria-expanded={editingRules === sub.id}
+                    onClick={() => setEditingOptions(id => (id === sub.id ? null : sub.id))}
+                    title="Download options"
+                    aria-label="Download options"
+                    aria-expanded={editingOptions === sub.id}
                     className={`p-1.5 rounded-md hover:bg-secondary transition-colors active:scale-[0.95] ${
-                      editingRules === sub.id ? 'text-foreground bg-secondary' : 'text-muted-foreground hover:text-foreground'
+                      editingOptions === sub.id ? 'text-foreground bg-secondary' : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    <Filter className="w-3.5 h-3.5" />
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
                   </button>
-                  <button
-                    onClick={() => checkNow(sub.id)}
-                    disabled={checking}
-                    title="Check now"
-                    aria-label="Check now"
-                    className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95] disabled:opacity-50"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
+                  <DisabledReason reason={checking ? 'A check is already running' : null}>
+                    <button
+                      onClick={() => checkNow(sub.id)}
+                      disabled={checking}
+                      title="Check now"
+                      aria-label="Check now"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95] disabled:opacity-50"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </DisabledReason>
                   <button
                     onClick={() => toggleSubscription(sub.id)}
                     title={sub.enabled ? 'Pause subscription' : 'Resume subscription'}

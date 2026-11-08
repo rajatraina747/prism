@@ -6,15 +6,19 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-### Security
+### Subscriptions
 
-- **Public links stay on the public internet.** A direct download, feed or
-  thumbnail can no longer be redirected to your computer or other devices on
-  your network by a remote server. Links you give Prism that use a local
-  address, such as a NAS, keep working.
+- **Each subscription has its own options.** Open Download options on a
+  subscription to choose its quality, category and save folder, next to its
+  keyword rules. Existing subscriptions keep working as they did.
 
-### Under the hood
+### Adding several links
 
-- The app updater and the Tauri framework are up to date.
-- Starting a direct download no longer does its disk checks on the network
-  threads.
+- **Choose video or audio, and the quality, before a batch starts.** Pasting
+  or dropping several links, or adding a playlist, now lets you pick audio
+  only or a quality first. Nothing starts until you press Add.
+
+### Interface
+
+- **Disabled buttons tell you why.** Hover over one, or tab to it, to see what
+  it's waiting for.

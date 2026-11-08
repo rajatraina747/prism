@@ -314,6 +314,12 @@ export const QUALITY_CHOICES: { value: DefaultQuality; label: string }[] = [
   { value: '480p', label: '480p (smaller files)' },
 ];
 
+/** How the videos in a list or batch are downloaded. */
+export interface BatchChoice {
+  audioOnly: boolean;
+  quality: DefaultQuality;
+}
+
 /** A remembered per-site quality. Before 2.4 these were preset ids, so the
  * old ones are translated; anything unknown is ignored. */
 export function qualityFromStored(value: string | undefined): DefaultQuality | undefined {
@@ -555,6 +561,12 @@ export interface Subscription {
   /** File everything from this feed under a category, as if it had been
    * added by hand with that category chosen. */
   categoryId?: string;
+  /** The quality to take from this channel. Absent means the best available,
+   * which is what every subscription before 2.6.3 did. */
+  quality?: DefaultQuality;
+  /** This feed's own folder, ahead of its category's and the default one. A
+   * path on this computer, so it doesn't come across in a backup. */
+  destination?: string;
   /** YouTube: the channel's or playlist's RSS feed, polled first — when it
    * shows nothing new, the slower yt-dlp check is skipped. */
   feedUrl?: string;

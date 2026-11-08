@@ -4,6 +4,11 @@ import { useService } from '@/services/ServiceProvider';
 import { extractLinks } from '@/lib/add-links';
 import { toast } from 'sonner';
 import { ClipboardPaste, FileText, Magnet } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
+import { useSettings } from '@/stores/AppProvider';
+import type { BatchChoice } from '@/types/models';
+import { BatchOptions } from './BatchOptions';
+import { mayBeVideo } from './add-items';
 
 export const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -13,18 +18,31 @@ export const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.tes
 export function AddSheet({ open, onOpenChange, onAdd }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (links: string[]) => void;
+  /** `choice` is set when several links were added at once. */
+  onAdd: (links: string[], choice?: BatchChoice) => void;
 }) {
   const service = useService();
   const [text, setText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const links = extractLinks(text);
+  const { preferences } = useSettings();
+  const defaultChoice = React.useMemo<BatchChoice>(
+    () => ({ audioOnly: false, quality: preferences.defaultQuality ?? '1080p' }),
+    [preferences.defaultQuality],
+  );
+  const [choice, setChoice] = useState(defaultChoice);
+  const askHow = links.length > 1 && links.some(mayBeVideo);
 
-  React.useEffect(() => { if (!open) setText(''); }, [open]);
+  React.useEffect(() => {
+    if (!open) {
+      setText('');
+      setChoice(defaultChoice);
+    }
+  }, [open, defaultChoice]);
 
   const submit = (list: string[]) => {
     if (list.length === 0) return;
-    onAdd(list);
+    onAdd(list, list.length > 1 ? choice : undefined);
     onOpenChange(false);
   };
 
@@ -83,6 +101,8 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
           }}
         />
 
+        {askHow && <BatchOptions value={choice} onChange={setChoice} />}
+
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
@@ -118,15 +138,17 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
           <span className="ml-auto text-xs text-muted-foreground tabular-nums" aria-live="polite">
             {links.length === 0 ? '' : `${links.length} link${links.length === 1 ? '' : 's'}`}
           </span>
-          <button
-            type="button"
-            disabled={links.length === 0}
-            onClick={() => submit(links)}
-            title={`${MOD_KEY}Enter`}
-            className="px-4 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
-          >
-            {links.length > 1 ? `Add ${links.length}` : 'Add'}
-          </button>
+          <DisabledReason reason={links.length === 0 ? 'Paste a link first' : null}>
+            <button
+              type="button"
+              disabled={links.length === 0}
+              onClick={() => submit(links)}
+              title={`${MOD_KEY}Enter`}
+              className="px-4 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+            >
+              {links.length > 1 ? `Add ${links.length}` : 'Add'}
+            </button>
+          </DisabledReason>
         </div>
       </DialogContent>
     </Dialog>

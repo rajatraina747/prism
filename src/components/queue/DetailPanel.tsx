@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { X, RefreshCw, FolderOpen, Play, MonitorPlay, Folder, ChevronRight } from 'lucide-react';
+import { DisabledReason } from '@/components/common/DisabledReason';
 
 export interface DetailPanelProps {
   item: DownloadItem | null;
@@ -609,9 +610,11 @@ function TrackersTab({ item, onReannounce }: { item: DownloadItem; onReannounce?
     <ScrollArea className="h-full pr-2">
       <div className="flex items-center gap-2 mb-2">
         {onReannounce && (
-          <button disabled={!live} onClick={() => onReannounce(item.id)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50">
-            <RefreshCw className="w-3 h-3" /> Update tracker
-          </button>
+          <DisabledReason reason={live ? null : 'Only while the torrent is downloading or seeding'}>
+            <button disabled={!live} onClick={() => onReannounce(item.id)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50">
+              <RefreshCw className="w-3 h-3" /> Update tracker
+            </button>
+          </DisabledReason>
         )}
         <button onClick={() => navigate('/settings')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Add trackers in Settings →</button>
       </div>

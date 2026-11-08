@@ -20,7 +20,7 @@ interface SubscriptionActions {
   importSubscriptions: (subs: Subscription[]) => void;
   toggleSubscription: (id: string) => void;
   setAudioOnly: (id: string, audioOnly: boolean) => void;
-  /** Change a subscription's own options — its keyword rules and category. */
+  /** Change a subscription's own options: keyword rules, category, quality, folder. */
   updateSubscription: (id: string, patch: Partial<Subscription>) => void;
   /** Check one subscription (or all enabled ones) immediately. */
   checkNow: (id?: string) => Promise<void>;

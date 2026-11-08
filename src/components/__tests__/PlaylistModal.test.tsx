@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { PlaylistModal, PRESELECT_LIMIT } from '../media-details/PlaylistModal';
 import type { PlaylistInfo } from '@/types/models';
 
@@ -27,5 +27,14 @@ describe('PlaylistModal selection', () => {
     open(list(n));
     expect(screen.getByText(`Select all (0/${n})`)).toBeTruthy();
     expect((screen.getByRole('button', { name: /Queue 0 Videos/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('hands over audio only when that is chosen', () => {
+    const onQueue = vi.fn();
+    render(<PlaylistModal open onClose={vi.fn()} playlist={list(2)} onQueueSelected={onQueue} defaultQuality="720p" />);
+    expect((screen.getByLabelText('Quality') as HTMLSelectElement).value).toBe('720p');
+    fireEvent.click(screen.getByRole('button', { name: 'Audio only' }));
+    fireEvent.click(screen.getByRole('button', { name: /Queue 2 Videos/ }));
+    expect(onQueue).toHaveBeenCalledWith(expect.any(Array), { audioOnly: true, quality: '720p' });
   });
 });

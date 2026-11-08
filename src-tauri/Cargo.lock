@@ -5047,7 +5047,7 @@ dependencies = [
 
 [[package]]
 name = "prism"
-version = "2.6.2"
+version = "2.6.3"
 dependencies = [
  "anyhow",
  "axum",
