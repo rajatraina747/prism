@@ -429,12 +429,16 @@ fn user_picked_media(app: &AppHandle, path: &str) -> Option<String> {
         .then_some(canonical)
 }
 
-/// Show the "play a file" dialog and return what was chosen.
-async fn pick_playable(app: &AppHandle) -> Result<Option<std::path::PathBuf>, String> {
+/// Show the "play a file" dialog on `window` and return what was chosen.
+/// Every picker here names its window: without one, the dialog library
+/// attaches a sheet to whichever window AppKit calls main at that moment,
+/// which can leave it on screen but dead while clicks reach the video.
+async fn pick_playable(app: &AppHandle, window: &tauri::Window) -> Result<Option<std::path::PathBuf>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
+        .set_parent(window)
         .set_title("Play a file")
         .add_filter("Audio and video", PLAYABLE_EXTENSIONS)
         .pick_file(move |picked| {
@@ -457,8 +461,8 @@ pub struct PickedMedia {
 /// and remembers the choice, so the `player_load` that follows accepts it.
 /// None if the user cancelled.
 #[tauri::command]
-pub async fn pick_media_file(app: AppHandle) -> Result<Option<PickedMedia>, String> {
-    let Some(path) = pick_playable(&app).await? else { return Ok(None) };
+pub async fn pick_media_file(app: AppHandle, window: tauri::Window) -> Result<Option<PickedMedia>, String> {
+    let Some(path) = pick_playable(&app, &window).await? else { return Ok(None) };
     let path = accept_user_pick(&app, &path)?;
     let title = std::path::Path::new(&path)
         .file_name()
@@ -565,7 +569,7 @@ pub fn on_player_drop(app: &AppHandle, paths: &[std::path::PathBuf]) {
 #[tauri::command]
 pub async fn player_open_file(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
     ensure_player_window(&window)?;
-    let Some(path) = pick_playable(&app).await? else { return Ok(None) };
+    let Some(path) = pick_playable(&app, &window).await? else { return Ok(None) };
     let validated = accept_user_pick(&app, &path)?;
     let name = std::path::Path::new(&validated).file_name().map(|n| n.to_string_lossy().into_owned());
     load_validated(&app, validated).await?;
@@ -861,6 +865,7 @@ pub async fn player_pick_subtitle(app: AppHandle, window: tauri::Window) -> Resu
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
+        .set_parent(&window)
         .set_title("Add subtitles")
         .add_filter("Subtitles", SUBTITLE_EXTENSIONS)
         .pick_file(move |picked| {

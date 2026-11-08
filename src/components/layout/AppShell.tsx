@@ -59,10 +59,10 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   return (
     <aside aria-label="Navigation" className="w-[220px] min-w-[220px] max-[999px]:w-16 max-[999px]:min-w-16 h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand. Below 1000px the sidebar is icons only, and this is the logo. */}
-      <div className="flex items-center gap-3 px-4 h-[72px] border-b border-border/30 max-[999px]:justify-center max-[999px]:px-0">
-        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-11 h-11 rounded-xl object-contain shrink-0" />
-        <div className="min-w-0 max-[999px]:sr-only">
-          <p className="text-base font-semibold tracking-tight text-foreground leading-tight whitespace-nowrap flex items-center gap-2">
+      <div className="flex flex-col items-center gap-1.5 px-4 py-5 border-b border-border/30 max-[999px]:h-[72px] max-[999px]:justify-center max-[999px]:px-0 max-[999px]:py-0">
+        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-24 h-24 rounded-2xl object-contain shrink-0 max-[999px]:w-11 max-[999px]:h-11 max-[999px]:rounded-xl" />
+        <div className="min-w-0 text-center max-[999px]:sr-only">
+          <p className="text-base font-semibold tracking-tight text-foreground leading-tight whitespace-nowrap flex items-center justify-center gap-2">
             Prism
             {service.isDemo && (
               <span

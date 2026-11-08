@@ -26,8 +26,7 @@ import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, 
 /** Everything that adds things: the link box, the first-run setup card, the
  * batch progress line, and the dialogs a lookup opens (quality, playlist,
  * torrent files, external links). Shown at the top of Downloads; it was the
- * Dashboard until 2.5.1, whose stat tiles, mini queue and recent list only
- * repeated Downloads and the Library. */
+ * Dashboard until 2.5.1. */
 export function AddPanel() {
   const { items: queueItems, addToQueue } = useQueue();
   const { items: historyItems } = useHistory();
