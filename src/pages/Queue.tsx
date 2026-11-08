@@ -13,10 +13,10 @@ import { AddPanel } from '@/components/add/AddPanel';
 import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { DetailPanel } from '@/components/queue/DetailPanel';
 import { SessionFooter } from '@/components/queue/SessionFooter';
+import { RecentDownloads, StatTiles } from '@/components/queue/HomeSummary';
 import { EmptyState, ConfirmDialog, BulkButton } from '@/components/common';
 import { QuietHoursBanner, useMinuteClock } from '@/components/common/QuietHoursBanner';
 import { quietHoursStatus } from '@/stores/schedule';
-import { formatSpeed } from '@/services';
 import { FILTERS, SORTS, filterCounts, visibleTransfers, nextSelection, isTransfer, categoriesInUse, labelsInUse } from '@/stores/transfers';
 import { useTransferShortcuts, type TransferShortcutHandlers } from '@/hooks/use-transfer-shortcuts';
 import {
@@ -27,6 +27,10 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ArrowDownToLine, Pause, Play, Search, ArrowUpDown, RefreshCw, Trash2, Tag, Tags, X } from 'lucide-react';
 import type { TransfersFilter, TransfersSort } from '@/types/models';
+
+/** Up to this many transfers, the page has room for Recent Downloads too. */
+const SHORT_QUEUE = 3;
+const RECENT_COUNT = 3;
 
 export default function Queue() {
   const {
@@ -206,11 +210,15 @@ export default function Queue() {
   const hasPaused = items.some(i => i.status === 'paused' || i.status === 'queued');
   const hasTorrents = activeItems.some(i => i.kind === 'torrent');
   const totalSpeed = downloading.reduce((sum, i) => sum + (i.speed || 0), 0);
-  const subtitle = [
-    activeItems.length === 0 ? 'Paste a link, a magnet or a .torrent to start' : `${activeItems.length} in the list`,
-    downloading.length > 0 && `${downloading.length} downloading`,
-    totalSpeed > 0 && formatSpeed(totalSpeed),
-  ].filter(Boolean).join(' · ');
+  const subtitle = activeItems.length === 0 ? 'Paste a link, a magnet or a .torrent to start' : `${activeItems.length} in the list`;
+
+  const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
+  const totalDownloadedBytes = useMemo(() => completedHistory.reduce((s, i) => s + (i.fileSize || 0), 0), [completedHistory]);
+  const recentDownloads = useMemo(() => completedHistory.slice(0, RECENT_COUNT), [completedHistory]);
+  // With nothing in the list the filter bar is hidden, so a leftover search
+  // can't be seen or cleared and mustn't decide what shows.
+  const showRecent = recentDownloads.length > 0 && filter !== 'errored'
+    && (activeItems.length === 0 || (activeItems.length <= SHORT_QUEUE && !search));
 
   const removeSelectedNow = () => {
     selectedItems.forEach(i => {
@@ -222,13 +230,11 @@ export default function Queue() {
   };
 
   return (
-    <div className="page-container flex flex-col">
-      <div className="flex items-center justify-between page-header">
-        <div>
-          <h1 className="page-title">Downloads</h1>
-          <p className="page-subtitle tabular-nums">{subtitle}</p>
-        </div>
-        <div className="flex gap-1.5">
+    <div className="page-container flex flex-col max-w-4xl mx-auto">
+      <div className="relative page-header text-center">
+        <h1 className="page-title">Downloads</h1>
+        <p className="page-subtitle tabular-nums">{subtitle}</p>
+        <div className="absolute right-0 top-0 flex gap-1.5">
           {hasActive && (
             <button onClick={pauseAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
               <Pause className="w-3 h-3" /> Pause all
@@ -245,6 +251,13 @@ export default function Queue() {
       <AddPanel />
 
       <QuietHoursBanner className="mb-3" />
+
+      <StatTiles
+        active={downloading.length}
+        speed={totalSpeed}
+        completed={completedHistory.length}
+        totalBytes={totalDownloadedBytes}
+      />
 
       {/* `contents` keeps the page's flex layout: the Tabs root only ties the
           filter tabs to the list panel for assistive tech. */}
@@ -341,8 +354,8 @@ export default function Queue() {
         </div>
       )}
 
-      <div className="flex-1 min-h-[360px] flex flex-col">
-        {filter === 'errored' && visibleItems.length === 0 ? null : activeItems.length === 0 ? (
+      <div className={cn('flex flex-col', !showRecent && 'flex-1 min-h-[360px]')}>
+        {(filter === 'errored' && visibleItems.length === 0) || (showRecent && activeItems.length === 0) ? null : activeItems.length === 0 ? (
           <EmptyState
             icon={ArrowDownToLine}
             title="Nothing downloading"
@@ -404,6 +417,8 @@ export default function Queue() {
             playerAvailable={playerAvailable}
           />
         )}
+
+        {showRecent && <RecentDownloads items={recentDownloads} playerAvailable={playerAvailable} />}
 
         <SessionFooter hasTorrents={hasTorrents} />
       </div>

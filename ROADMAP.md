@@ -188,6 +188,9 @@ next one starts.
   - The status strip and the Needs-attention filter; failed and cancelled
     items leave the Library.
   - Redirects; e2e flows updated.
+  - Hybrid home (Nov 2026): keeps the single page but brings back the 2.4
+    feel: centred column and heading, four stat tiles, Recent Downloads while
+    three or fewer transfers are listed, large sidebar logo.
   - Also from the old UX list: the torrent picker's "Selected X · Y free"
     (needs the torrent free-space check in Hygiene).
 - [ ] **2.6.0 Library as media + player.**
