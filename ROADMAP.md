@@ -208,7 +208,7 @@ next one starts.
 
 ### Features (later, roughly in order)
 
-- [ ] Free-space forecast on the Dashboard (queued and active remaining bytes
+- [ ] Free-space forecast on Downloads (queued and active remaining bytes
   against each destination's free space).
 - [ ] Library: "Re-download" and "Locate…" for missing entries. Locate goes
   through a Rust picker that records the new path in the ledger.
@@ -216,7 +216,7 @@ next one starts.
   priorities yet; the stream already prioritizes what it reads.
 - [ ] Copy magnet / source link from the Library row menu.
 - [ ] Subscriptions: a per-feed regex filter and a dry run.
-- [ ] Speed history chart (24h/7d) in Statistics.
+- [ ] Speed history chart (24h/7d) in the Library's Activity strip.
 - [ ] Capture for unsupported pages (a webview that sniffs media requests).
 - [ ] Safari Web Extension (free to build, needs Xcode).
 - [ ] Optional LAN web UI: off by default, token-guarded.

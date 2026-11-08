@@ -4,7 +4,7 @@
 //   npm run dev            # in another terminal (serves http://localhost:8080)
 //   node scripts/readme-screenshots.mjs
 //
-// The browser demo simulates downloads, so Transfers shows live progress. Its
+// The browser demo simulates downloads, so Downloads shows live progress. Its
 // "Demo" badge is hidden for the capture; everything else is the shipped UI.
 
 import { chromium } from '@playwright/test';
@@ -41,12 +41,12 @@ function item(i, [id, title, duration, height], extra) {
   };
 }
 
-const history = FILMS.slice(3).map((f, i) => item(10 + i, f, (size) => ({
+const history = FILMS.slice(2).map((f, i) => item(10 + i, f, (size) => ({
   status: 'completed', completedAt: ago(90 + i * 45), fileSize: size, actualHeight: f[3],
 })));
 
-const queue = FILMS.slice(0, 3).map((f, i) => item(i, f, (size) => ({
-  status: 'downloading', progress: [62, 35, 8][i], downloadedBytes: Math.round(size * [0.62, 0.35, 0.08][i]),
+const queue = FILMS.slice(0, 2).map((f, i) => item(i, f, (size) => ({
+  status: 'downloading', progress: [62, 35][i], downloadedBytes: Math.round(size * [0.62, 0.35][i]),
   speed: 0, eta: 0, retryAttempt: 0,
 })));
 
@@ -75,7 +75,7 @@ try {
     };
 
     await shoot('/', `app-${theme}.png`);
-    if (theme === 'dark') await shoot('/queue', 'queue-dark.png');
+    if (theme === 'dark') await shoot('/library', 'library-dark.png');
     await page.close();
   }
 } finally {
