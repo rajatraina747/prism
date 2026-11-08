@@ -6,10 +6,15 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-### Fixes
+### Security
 
-- **Downloading part of a large torrent no longer fails for lack of space.**
-  Prism checked the size of the whole torrent instead of the files you picked,
-  so 25 GB from a 150 GB torrent could stop with "Not enough disk space". It
-  now checks only what you selected. If a torrent failed this way, retry it
-  after updating.
+- **Public links stay on the public internet.** A direct download, feed or
+  thumbnail can no longer be redirected to your computer or other devices on
+  your network by a remote server. Links you give Prism that use a local
+  address, such as a NAS, keep working.
+
+### Under the hood
+
+- The app updater and the Tauri framework are up to date.
+- Starting a direct download no longer does its disk checks on the network
+  threads.

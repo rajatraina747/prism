@@ -361,7 +361,7 @@ fn is_newer(candidate: &str, than: &str) -> bool {
 fn prefer_managed(managed: &Path, bundled_version: &str) -> bool {
     managed.exists()
         && managed_binary_verified(managed)
-        && managed_version(managed).map_or(true, |v| !is_newer(bundled_version, &v))
+        && managed_version(managed).is_none_or(|v| !is_newer(bundled_version, &v))
 }
 
 /// Flags every invocation gets, ahead of anything else: ignore the user's and

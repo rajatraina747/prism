@@ -865,6 +865,9 @@ pub(crate) fn free_destination(wanted: &Path) -> PathBuf {
 }
 
 fn network_error(e: &reqwest::Error) -> PrismError {
+    if refused_private_address(e) {
+        return PrismError::new(ErrorCode::InvalidInput, PRIVATE_ADDRESS_HELP);
+    }
     let code = if e.is_timeout() { ErrorCode::Timeout } else { ErrorCode::Network };
     PrismError::new(code, format!("Connection problem: {e}"))
 }
@@ -942,32 +945,142 @@ pub(crate) fn client_public_only(app: &AppHandle) -> Result<reqwest::Client, Pri
 
 /// Whether `ip` is an address on the public internet: not this machine, the
 /// LAN, link-local (cloud metadata lives at 169.254.169.254), carrier NAT,
-/// or unique-local IPv6.
+/// unique-local IPv6, multicast or reserved space. An IPv4 address carried
+/// inside IPv6 (mapped, compatible or NAT64) is judged as that IPv4 address.
 pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
-            let [a, b, ..] = v4.octets();
+            let [a, b, c, _] = v4.octets();
             !(v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_documentation()
-                || (a == 100 && (64..128).contains(&b)))
+                || v4.is_multicast()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..128).contains(&b))
+                || (a == 192 && b == 0 && c == 0)
+                || (a == 198 && (18..20).contains(&b)))
         }
         IpAddr::V6(v6) => {
+            let seg = v6.segments();
+            let embedded = |high: u16, low: u16| Ipv4Addr::new((high >> 8) as u8, high as u8, (low >> 8) as u8, low as u8);
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_public_ip(IpAddr::V4(v4));
             }
-            let first = v6.segments()[0];
-            !(v6.is_loopback() || v6.is_unspecified() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
+            // NAT64 (64:ff9b::/96), and the old IPv4-compatible form.
+            if seg[..6] == [0x64, 0xff9b, 0, 0, 0, 0] || (seg[..6] == [0; 6] && !v6.is_loopback() && !v6.is_unspecified()) {
+                return is_public_ip(IpAddr::V4(embedded(seg[6], seg[7])));
+            }
+            let first = seg[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (first & 0xfe00) == 0xfc00 // unique local
+                || (first & 0xffc0) == 0xfe80 // link local
+                || (first & 0xffc0) == 0xfec0) // site local
         }
     }
 }
 
-/// The direct engine's client, sending `referer` with every request.
-fn client_with(app: &AppHandle, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
-    build_client(app, referer, false)
+/// Why a connection was refused. A type of its own so `network_error` can
+/// find it behind reqwest's wrapping and say what happened.
+#[derive(Debug)]
+struct PrivateAddress;
+
+impl std::fmt::Display for PrivateAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a public link led to a private network address")
+    }
+}
+
+impl std::error::Error for PrivateAddress {}
+
+const PRIVATE_ADDRESS_HELP: &str =
+    "This link leads to an address on a private network, so Prism didn't follow it. If the device is yours, paste a link that uses its local address";
+
+/// Whether this request failed because it was refused a private address.
+pub(crate) fn refused_private_address(e: &reqwest::Error) -> bool {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(err) = source {
+        if err.is::<PrivateAddress>() {
+            return true;
+        }
+        source = err.source();
+    }
+    false
+}
+
+/// Looks names up as usual, then drops every answer that isn't on the public
+/// internet. Checking a name before connecting isn't enough: it can resolve
+/// differently the second time, and this is the lookup the connection uses.
+struct PublicOnlyResolver;
+
+impl reqwest::dns::Resolve for PublicOnlyResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(async move {
+            let public: Vec<std::net::SocketAddr> =
+                tokio::net::lookup_host((name.as_str(), 0)).await?.filter(|a| is_public_ip(a.ip())).collect();
+            if public.is_empty() {
+                return Err(Box::new(PrivateAddress) as Box<dyn std::error::Error + Send + Sync>);
+            }
+            Ok(Box::new(public.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+/// Keeps a client on the public internet, however a remote server answers:
+/// no redirect to a private address and no DNS answer pointing at one. Behind
+/// a proxy, the proxy does the lookups (and may itself be on the LAN), so only
+/// addresses written out in a redirect can be checked.
+pub(crate) fn stay_on_public_internet(builder: reqwest::ClientBuilder, behind_proxy: bool) -> reqwest::ClientBuilder {
+    let builder = builder.redirect(reqwest::redirect::Policy::custom(|attempt| {
+        let private = attempt.url().host().is_some_and(|h| match h {
+            url::Host::Ipv4(ip) => !is_public_ip(IpAddr::V4(ip)),
+            url::Host::Ipv6(ip) => !is_public_ip(IpAddr::V6(ip)),
+            url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
+        });
+        if private {
+            attempt.error(PrivateAddress)
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    }));
+    if behind_proxy {
+        builder
+    } else {
+        builder.dns_resolver(Arc::new(PublicOnlyResolver))
+    }
+}
+
+/// Whether a link the user gave Prism plainly names something on their own
+/// network: a private address, or a name only a local network can answer.
+/// Decided from the text alone. What a name resolves to can't show intent,
+/// because whoever runs a public domain chooses its DNS answers.
+pub(crate) fn names_local_network(url: &str) -> bool {
+    let Ok(url) = url::Url::parse(url) else { return false };
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => !is_public_ip(ip.into()),
+        Some(url::Host::Ipv6(ip)) => !is_public_ip(ip.into()),
+        Some(url::Host::Domain(name)) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            !name.contains('.')
+                || [".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".home.arpa"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+        }
+        None => false,
+    }
+}
+
+/// The direct engine's client for a link the user gave it, sending `referer`
+/// with every request. A public link stays public; a NAS link can reach the NAS.
+fn client_with(app: &AppHandle, url: &str, referer: Option<&str>) -> Result<reqwest::Client, PrismError> {
+    build_client(app, referer, !names_local_network(url))
 }
 
 fn build_client(app: &AppHandle, referer: Option<&str>, public_only: bool) -> Result<reqwest::Client, PrismError> {
@@ -979,27 +1092,17 @@ fn build_client(app: &AppHandle, referer: Option<&str>, public_only: bool) -> Re
     let mut builder = reqwest::Client::builder()
         .user_agent(agent)
         .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
-        .redirect(if public_only {
-            reqwest::redirect::Policy::custom(|attempt| {
-                let private = attempt.url().host().is_some_and(|h| match h {
-                    url::Host::Ipv4(ip) => !is_public_ip(IpAddr::V4(ip)),
-                    url::Host::Ipv6(ip) => !is_public_ip(IpAddr::V6(ip)),
-                    url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost"),
-                });
-                if private || attempt.previous().len() >= 10 {
-                    attempt.stop()
-                } else {
-                    attempt.follow()
-                }
-            })
-        } else {
-            reqwest::redirect::Policy::limited(10)
-        });
+        .read_timeout(READ_TIMEOUT);
+    let proxy = crate::proxy_url(app);
+    builder = if public_only {
+        stay_on_public_internet(builder, proxy.is_some())
+    } else {
+        builder.redirect(reqwest::redirect::Policy::limited(10))
+    };
     if crate::force_ipv4(app) {
         builder = builder.local_address(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     }
-    if let Some(proxy) = crate::proxy_url(app) {
+    if let Some(proxy) = proxy {
         builder = builder.proxy(proxy_for(&proxy)?);
     }
     if let Some(value) = referer.and_then(|r| reqwest::header::HeaderValue::from_str(r).ok()) {
@@ -1044,7 +1147,7 @@ impl HttpEngine {
 pub async fn probe_direct_link(app: AppHandle, url: String, referer: Option<String>) -> Result<LinkProbe, PrismError> {
     let url = checked_url(&url)?;
     let referer = referer.as_deref().and_then(valid_referer);
-    probe(&client_with(&app, referer.as_deref())?, url.as_str()).await
+    probe(&client_with(&app, url.as_str(), referer.as_deref())?, url.as_str()).await
 }
 
 #[tauri::command]
@@ -1076,7 +1179,7 @@ pub async fn start_http_download(
     tokio::fs::create_dir_all(&dir).await.map_err(io_error)?;
 
     let referer = referer.as_deref().and_then(valid_referer);
-    let client = client_with(&app, referer.as_deref())?;
+    let client = client_with(&app, source.as_str(), referer.as_deref())?;
     let link = probe(&client, source.as_str()).await?;
     if link.is_web_page() {
         return Err(PrismError::new(ErrorCode::Unsupported, "That link opens a web page, not a file"));
@@ -1114,21 +1217,36 @@ pub async fn start_http_download(
         let mut reserved = engine.reserved.lock().await;
         let previous = reserved.remove(&id);
         let taken: Vec<PathBuf> = reserved.values().cloned().collect();
-        let dest = choose_destination(&wanted, source.as_str(), previous.as_deref(), &taken);
+        // Disk checks, off the async workers. The lock is held throughout so
+        // two downloads with one name can't both be given the same path.
+        let (candidate, link_source) = (wanted.clone(), source.as_str().to_owned());
+        let dest = tauri::async_runtime::spawn_blocking(move || {
+            choose_destination(&candidate, &link_source, previous.as_deref(), &taken)
+        })
+        .await
+        .map_err(|e| PrismError::new(ErrorCode::Unknown, format!("Couldn't choose where to save: {e}")))?;
         reserved.insert(id.clone(), dest.clone());
         dest
     };
     // Space for what is still to come: a resumed download already holds the
     // bytes it has, and a 90%-done file used to be refused for want of room
     // for all of it (REVIEW 2026-09-26).
-    if let (Some(size), Ok(available)) = (link.size, fs2::available_space(&dir)) {
-        let needed = still_needed(size, &dest, source.as_str());
-        if available < needed {
-            // The path stays reserved: freeing space and retrying resumes it.
-            return Err(PrismError::new(
-                ErrorCode::DiskFull,
-                format!("Not enough disk space: need {} MB free, have {} MB", needed / 1_048_576, available / 1_048_576),
-            ));
+    if let Some(size) = link.size {
+        let (folder, file, link_source) = (dir.clone(), dest.clone(), source.as_str().to_owned());
+        let space = tauri::async_runtime::spawn_blocking(move || {
+            fs2::available_space(&folder).ok().map(|available| (available, still_needed(size, &file, &link_source)))
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some((available, needed)) = space {
+            if available < needed {
+                // The path stays reserved: freeing space and retrying resumes it.
+                return Err(PrismError::new(
+                    ErrorCode::DiskFull,
+                    format!("Not enough disk space: need {} MB free, have {} MB", needed / 1_048_576, available / 1_048_576),
+                ));
+            }
         }
     }
     let transfer_state = Transfer::new(speed_limit.unwrap_or(0), engine.global.clone());
@@ -1484,7 +1602,7 @@ mod tests {
             };
             let len = server.body.len();
             let etag = server.etag.lock().unwrap().clone();
-            let if_range_ok = header("if-range").map_or(true, |v| v == etag.to_ascii_lowercase());
+            let if_range_ok = header("if-range").is_none_or(|v| v == etag.to_ascii_lowercase());
             let range = header("range").filter(|_| server.ranges && if_range_ok).and_then(|r| {
                 let (a, b) = r.strip_prefix("bytes=")?.split_once('-')?;
                 let start: usize = a.parse().ok()?;
@@ -1541,6 +1659,91 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn only_addresses_on_the_public_internet_count_as_public() {
+        for private in [
+            "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0",
+            "0.1.2.3", "224.0.0.1", "240.0.0.1", "255.255.255.255", "192.0.0.8", "198.18.0.1", "192.0.2.1",
+            "::1", "::", "fc00::1", "fd12::1", "fe80::1", "fec0::1", "ff02::1",
+            "::ffff:192.168.1.1", "::192.168.1.1", "64:ff9b::a00:1",
+        ] {
+            assert!(!is_public_ip(private.parse().unwrap()), "{private}");
+        }
+        for public in ["1.1.1.1", "8.8.8.8", "100.128.0.1", "198.20.0.1", "2606:4700:4700::1111", "::ffff:8.8.8.8", "64:ff9b::808:808"] {
+            assert!(is_public_ip(public.parse().unwrap()), "{public}");
+        }
+    }
+
+    #[test]
+    fn a_link_names_the_local_network_only_in_its_own_text() {
+        for local in [
+            "http://192.168.1.20/film.mkv", "http://[fd12::1]/x", "http://localhost:9117/feed", "http://nas/x",
+            "http://nas.local/x", "http://NAS.LAN./x", "http://server.home.arpa/x", "http://a.internal/x",
+        ] {
+            assert!(names_local_network(local), "{local}");
+        }
+        for public in ["https://example.com/x", "https://8.8.8.8/x", "https://evil.example/localhost", "https://local.example.com/x", "not a url"] {
+            assert!(!names_local_network(public), "{public}");
+        }
+    }
+
+    /// Answers every connection with `response`, returning the port.
+    async fn answering(response: String) -> u16 {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let response = response.clone();
+                tokio::spawn(async move {
+                    use tokio::io::AsyncReadExt;
+                    let mut request = [0u8; 2048];
+                    let _ = stream.read(&mut request).await;
+                    let _ = stream.write_all(response.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        port
+    }
+
+    const OK: &str = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+
+    fn public_client() -> reqwest::Client {
+        stay_on_public_internet(reqwest::Client::builder().no_proxy(), false).build().unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_name_answering_only_with_private_addresses_is_refused() {
+        let port = answering(OK.to_string()).await;
+        let url = format!("http://localhost:{port}/x");
+        let err = public_client().get(&url).send().await.expect_err("refused");
+        assert!(refused_private_address(&err), "{err:?}");
+        assert_eq!(network_error(&err).summary, PRIVATE_ADDRESS_HELP);
+        assert_eq!(test_client().get(&url).send().await.unwrap().status(), 200, "the plain client still reaches it");
+    }
+
+    #[tokio::test]
+    async fn a_redirect_to_a_private_address_is_refused() {
+        let target = answering(OK.to_string()).await;
+        let bounce = answering(format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{target}/secret\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ))
+        .await;
+        let url = format!("http://127.0.0.1:{bounce}/x");
+        let err = public_client().get(&url).send().await.expect_err("refused");
+        assert!(refused_private_address(&err), "{err:?}");
+        assert_eq!(test_client().get(&url).send().await.unwrap().status(), 200, "a NAS link may redirect within the LAN");
+    }
+
+    // Reaches the real internet: the guard must not get in the way of normal
+    // links. `cargo test --lib -- --ignored public_names`.
+    #[tokio::test]
+    #[ignore]
+    async fn public_names_still_work_through_the_guard() {
+        let status = public_client().get("https://example.com/").send().await.unwrap().status();
+        assert!(status.is_success(), "{status}");
     }
 
     fn test_client() -> reqwest::Client {
