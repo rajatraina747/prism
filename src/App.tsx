@@ -36,6 +36,10 @@ const SPLASH_SEEN_KEY = 'prism_splash_seen';
 const PlayerWindow = lazy(() => import("@/pages/Player"));
 const isPlayerWindow = window.location.pathname.endsWith("/player");
 
+// The About window, for the same reason: this panel and nothing else.
+const AboutWindow = lazy(() => import("@/pages/AboutWindow"));
+const isAboutWindow = window.location.pathname.endsWith("/about-window");
+
 /** The splash, on a first launch only: nothing saved yet. The webview-storage
  * flag alone isn't enough, because that storage belongs to the bundle
  * identifier, which changed in 2.0 — upgraded users arrive with their
@@ -60,6 +64,14 @@ const App = () => {
     return (
       <Suspense fallback={null}>
         <PlayerWindow />
+      </Suspense>
+    );
+  }
+
+  if (isAboutWindow) {
+    return (
+      <Suspense fallback={null}>
+        <AboutWindow />
       </Suspense>
     );
   }

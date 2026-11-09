@@ -100,6 +100,7 @@ const COMMANDS: &[&str] = &[
     "open_backup_file",
     "import_torrent_client",
     "get_app_version",
+    "about_show_in_main",
     "ffmpeg_available",
     "get_ytdlp_version",
     "update_ytdlp",

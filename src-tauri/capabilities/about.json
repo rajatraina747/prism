@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "about",
+  "description": "About window: reads the version, checks for an update, opens links in the browser, and hands the main window a fixed list of pages. Nothing that touches files or downloads.",
+  "windows": [
+    "about"
+  ],
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "allow-get-app-version",
+    "allow-check-app-update",
+    "allow-open-external",
+    "allow-about-show-in-main"
+  ]
+}

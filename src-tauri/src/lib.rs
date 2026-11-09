@@ -1,3 +1,4 @@
+mod about;
 mod app_menu;
 mod client_import;
 mod clip;
@@ -2753,6 +2754,7 @@ pub fn run() {
             engine::reset_ytdlp,
             engine::get_engine_info,
             engine::check_engine_update,
+            about::about_show_in_main,
             updater::check_app_update,
             updater::install_app_update,
             player::fixup_player_video,
@@ -3305,8 +3307,11 @@ mod tests {
             "update_torrent_files", "set_torrent_rate_limit", "convert_file", "cancel_convert",
             "restart_torrent_engine",
         ];
+        const ABOUT_ONLY: &[&str] = &["about_show_in_main"];
+        // What the About window may call, and nothing else of Prism's.
+        const ABOUT_GRANTED: &[&str] = &["get_app_version", "check_app_update", "open_external", "about_show_in_main"];
         let build = include_str!("../build.rs");
-        let (main, player) = (capability("default"), capability("player"));
+        let (main, player, about) = (capability("default"), capability("player"), capability("about"));
         let allow = |c: &str| format!("allow-{}", c.replace('_', "-"));
         let registered = registered_commands();
         assert!(registered.len() > 40, "parsed the handler list");
@@ -3314,13 +3319,15 @@ mod tests {
             assert!(build.contains(&format!("\"{command}\"")), "{command} is missing from build.rs COMMANDS");
             let only_player = PLAYER_ONLY.contains(&command.as_str());
             let only_queue = QUEUE_ONLY.contains(&command.as_str());
-            assert_eq!(main.contains(&allow(command)), !only_player && !only_queue, "main window and {command}");
+            let only_about = ABOUT_ONLY.contains(&command.as_str());
+            assert_eq!(main.contains(&allow(command)), !only_player && !only_queue && !only_about, "main window and {command}");
             assert_eq!(player.contains(&allow(command)), only_player, "player window and {command}");
+            assert_eq!(about.contains(&allow(command)), ABOUT_GRANTED.contains(&command.as_str()), "about window and {command}");
         }
-        for id in &player {
+        for id in player.iter().chain(&about) {
             assert!(
                 !matches!(id.as_str(), "core:default" | "core:event:default" | "core:event:allow-emit" | "core:event:allow-emit-to"),
-                "the player window may not emit events ({id})"
+                "this window may not emit events ({id})"
             );
         }
     }
