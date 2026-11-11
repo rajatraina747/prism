@@ -6,19 +6,17 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-### Subscriptions
+### Fixes
 
-- **Each subscription has its own options.** Open Download options on a
-  subscription to choose its quality, category and save folder, next to its
-  keyword rules. Existing subscriptions keep working as they did.
-
-### Adding several links
-
-- **Choose video or audio, and the quality, before a batch starts.** Pasting
-  or dropping several links, or adding a playlist, now lets you pick audio
-  only or a quality first. Nothing starts until you press Add.
+- **No more crash after using the player with AirPods (macOS).** After you
+  played something on AirPods, Prism could quit unexpectedly the next time your
+  audio device changed, such as when you took them out, even with the player
+  long closed.
 
 ### Interface
 
-- **Disabled buttons tell you why.** Hover over one, or tab to it, to see what
-  it's waiting for.
+- **A new About window.** About Prism now opens a window in Prism's own design,
+  with the version, an update check, and links to release notes, bug reports
+  and licenses.
+- **Steadier Transfers.** The stats under a running download stay on one line
+  instead of making the row jump, and the peers table now fits its panel.

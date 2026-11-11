@@ -13,14 +13,27 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Latest release:** v2.6.2 (2026-11-08): public links, feeds and thumbnails
-  stay off the private network, and the updater and Tauri are current. v2.6.1,
-  the same day, made the torrent space check count only the selected files.
-  v2.6.0, also that day, was the interface overhaul in one
-  release (the 2.5.0–2.6.1 stages below), Open With Prism on macOS, and the
-  player file-picker fix.
-- **Overhaul finished in v2.6.3:** disabled actions say why in a tooltip, and
-  each subscription has its own quality, category and folder.
+- **Latest release:** v2.6.3 (2026-11-09) finished the overhaul: disabled
+  actions say why in a tooltip, each subscription has its own quality, category
+  and folder, and a batch or playlist can be set to audio or a quality before
+  it starts. v2.6.2 (2026-11-08) kept public links, feeds and thumbnails off the
+  private network and brought the updater and Tauri up to date. v2.6.1, the same
+  day, made the torrent space check count only the selected files. v2.6.0, also
+  that day, was the interface overhaul in one release (the 2.5.0–2.6.1 stages
+  below), Open With Prism on macOS, and the player file-picker fix.
+- **Next release: v2.6.4 (not tagged yet),** on `fix/transfer-layout`:
+  - [x] AirPods crash fixed. mpv 0.41's CoreAudio output leaves a device-change
+    listener behind when its setup fails, and the next audio device change
+    crashes Prism, even with the player closed. macOS now starts with
+    `ao=avfoundation,coreaudio`, so that listener is never registered. mpv's
+    master branch registers it after the steps that can fail: once the media
+    toolchain moves to a release with that change, reconsider the order.
+  - [x] Prism's own About window (`about.rs`, `capabilities/about.json`,
+    `/about-window`) in place of the system panel.
+  - [ ] Commit the Transfers layout changes after a look in the real window
+    (the stats row stays on one line, the peers table fits).
+  - [ ] In a real build: play on AirPods, close the player, take the AirPods out.
+  - [ ] About window on Windows and Linux, which can't be run from this Mac.
 
 Last full review: 2026-11-05. No High or Critical security findings. The design
 held up where tested: Rust owns every trust decision, the page is untrusted,

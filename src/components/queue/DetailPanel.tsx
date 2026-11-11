@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { X, RefreshCw, FolderOpen, Play, MonitorPlay, Folder, ChevronRight } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { shortPeerAddress } from './peer-address';
 
 export interface DetailPanelProps {
   item: DownloadItem | null;
@@ -564,27 +565,30 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
   }
   const liveCount = peers.filter(p => p.state === 'live').length;
   return (
-    <ScrollArea className="h-full pr-2">
-      <table className="w-full text-xs tabular-nums">
+    // ScrollArea's inner wrapper grows to fit its content; made a block here so
+    // the table is held to the panel's width and can't run off the edge.
+    <ScrollArea className="h-full pr-2 [&_[data-radix-scroll-area-viewport]>div]:!block">
+      {/* Fixed columns: long addresses and client names truncate, numbers stay on one line. */}
+      <table className="w-full table-fixed text-xs tabular-nums [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
         <thead className="text-muted-foreground">
           <tr className="text-left">
             <th className="font-medium py-1 pr-2">Address</th>
             <th className="font-medium py-1 pr-2">Client</th>
-            <th className="font-medium py-1 pr-2">Via</th>
-            <th className="font-medium py-1 pr-2">State</th>
-            <th className="font-medium py-1 pr-2 text-right">↓ speed</th>
-            <th className="font-medium py-1 pr-2 text-right">↑ speed</th>
-            <th className="font-medium py-1 pr-2 text-right">Downloaded</th>
-            <th className="font-medium py-1 text-right">Uploaded</th>
+            <th className="w-10 font-medium py-1 pr-2">Via</th>
+            <th className="w-20 font-medium py-1 pr-2">State</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">↓ speed</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">↑ speed</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">Downloaded</th>
+            <th className="w-[4.5rem] font-medium py-1 text-right">Uploaded</th>
           </tr>
         </thead>
         <tbody>
           {peers.map(p => (
             <tr key={p.addr} className={cn('border-t border-border/20', p.state !== 'live' && 'opacity-60')}>
-              <td className="py-1 pr-2 font-mono text-foreground">{p.addr}</td>
-              <td className="py-1 pr-2 truncate max-w-[160px]" title={p.client ?? undefined}>{p.client ?? '—'}</td>
-              <td className="py-1 pr-2">{p.kind}</td>
-              <td className="py-1 pr-2">{p.state}{p.errors > 0 ? ` (${p.errors} err)` : ''}</td>
+              <td className="py-1 pr-2 font-mono text-foreground truncate" title={p.addr}>{shortPeerAddress(p.addr)}</td>
+              <td className="py-1 pr-2 truncate" title={p.client ?? undefined}>{p.client ?? '—'}</td>
+              <td className="py-1 pr-2 truncate">{p.kind}</td>
+              <td className="py-1 pr-2 truncate" title={p.errors > 0 ? `${p.state}, ${p.errors} errors` : undefined}>{p.state}{p.errors > 0 ? ` (${p.errors} err)` : ''}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.downBps)}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.upBps)}</td>
               <td className="py-1 pr-2 text-right">{formatBytes(p.downloaded)}</td>
