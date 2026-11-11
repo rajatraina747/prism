@@ -13,27 +13,19 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Latest release:** v2.6.3 (2026-11-09) finished the overhaul: disabled
-  actions say why in a tooltip, each subscription has its own quality, category
-  and folder, and a batch or playlist can be set to audio or a quality before
-  it starts. v2.6.2 (2026-11-08) kept public links, feeds and thumbnails off the
-  private network and brought the updater and Tauri up to date. v2.6.1, the same
-  day, made the torrent space check count only the selected files. v2.6.0, also
-  that day, was the interface overhaul in one release (the 2.5.0–2.6.1 stages
-  below), Open With Prism on macOS, and the player file-picker fix.
-- **Next release: v2.6.4 (not tagged yet),** on `fix/transfer-layout`:
-  - [x] AirPods crash fixed. mpv 0.41's CoreAudio output leaves a device-change
-    listener behind when its setup fails, and the next audio device change
-    crashes Prism, even with the player closed. macOS now starts with
-    `ao=avfoundation,coreaudio`, so that listener is never registered. mpv's
-    master branch registers it after the steps that can fail: once the media
-    toolchain moves to a release with that change, reconsider the order.
-  - [x] Prism's own About window (`about.rs`, `capabilities/about.json`,
-    `/about-window`) in place of the system panel.
-  - [ ] Commit the Transfers layout changes after a look in the real window
-    (the stats row stays on one line, the peers table fits).
-  - [ ] In a real build: play on AirPods, close the player, take the AirPods out.
-  - [ ] About window on Windows and Linux, which can't be run from this Mac.
+- **Latest release:** v2.6.4 (2026-11-11) fixed a crash after playing on
+  AirPods: mpv 0.41's CoreAudio output left a device-change listener behind,
+  and the next audio device change crashed Prism even with the player closed.
+  macOS now starts with `ao=avfoundation,coreaudio`; verified on a real build.
+  When the media toolchain moves to an mpv release that registers the listener
+  after the steps that can fail, reconsider the order. It also brought Prism's
+  own About window, a steadier Transfers row and peers table, and rusqlite 0.41
+  for the bundled SQLite advisory (RUSTSEC-2026-0459). v2.6.3 (2026-11-09)
+  finished the overhaul: disabled actions say why, per-subscription options,
+  and audio or quality chosen before a batch starts. v2.6.0–2.6.2 (2026-11-08)
+  were the interface overhaul, Open With Prism on macOS, the torrent space
+  check and private-network guards.
+- **Next:** 2.7, below.
 
 Last full review: 2026-11-05. No High or Critical security findings. The design
 held up where tested: Rust owns every trust decision, the page is untrusted,
@@ -66,6 +58,8 @@ nothing.
 
 ### Hygiene (2.4.x)
 
+- [ ] About window on Windows and Linux, which can't be run from this Mac
+  (added in 2.6.4).
 - [x] **The yt-dlp self-update was rejected on every launch** (since 2.3.1,
   every user). `freshness.json` was written into `engine/ytdlp/` after its tree
   hash was recorded. It now lives in `engine/`, and a copy left inside is
@@ -212,10 +206,35 @@ next one starts.
 - [x] **2.6.1 Settings.**
   - 5 tabs, search, About and legal moved inside.
   - Per-subscription options.
-- [ ] **Then:**
-  - Add-time options (clip, start-after, checksum, hold).
-  - Bulk retry and edit, per-item speed limit, custom presets.
-  - i18n scaffold (English only at first).
+- [x] **Then:** moved to [2.7](#27-next-feature-release).
+
+### 2.7 (next feature release)
+
+Agreed 2026-11-11. One feature release, in this order. 2.7.0 ships alone; the
+rest ship as 2.7.x or one 2.7.1, decided after 2.7.0.
+
+- [ ] **2.7.0 i18n scaffold, on its own.** First, so every new screen is
+  written with keys from the start, and alone, so visual regressions are
+  caught before features pile on.
+  - react-i18next, with `src/locales/en/*.json` split by area.
+  - Every JSX, aria and toast string goes through `t()`. Plurals, dates,
+    numbers and byte sizes through i18next/`Intl`, never hand-built.
+  - The UI translates `PrismError.code`; Rust's `summary` stays the English
+    fallback.
+  - Rust-owned text (app menu, notifications, About window) reads the same `en`
+    files through a small Rust catalog.
+  - An ESLint rule fails CI on raw JSX text.
+  - A dev-only pseudo-locale to find missed and clipped strings.
+  - English only; no RTL until a right-to-left language is wanted.
+- [ ] **Audio quality picker.** Per download, defaulting to Settings.
+  - Original (no re-encode), MP3 128/192/256/320/V0, M4A, Opus.
+  - Shows the source stream ("Source: Opus 160 kbps") from the formats
+    already fetched at lookup, so the real ceiling is visible.
+  - No FLAC or WAV: lossless from a lossy source misleads.
+  - The MP3 V0 default stays.
+- [ ] **Add-time options:** clip, start-after, checksum, hold.
+- [ ] **Bulk retry and edit; per-item speed limit.**
+- [ ] **Custom presets.** Last, because they save the choices above.
 
 ### Features (later, roughly in order)
 
