@@ -554,7 +554,7 @@ export default function Settings() {
                   <SettingRow label={t('settings.page.moveThemTo')} description={t('settings.page.whereFinishedDownloadsEndUp')}>
                     <button
                       type="button"
-                      {...{ 'aria-label': `Move finished downloads to: ${p.moveCompletedTo || 'not set yet'}. Choose a folder` }}
+                      {...{ 'aria-label': t('settings.page.moveToLabel', { path: p.moveCompletedTo || t('settings.page.notSet') }) }}
                       onClick={async () => {
                         const dir = await service.pickDirectory('move');
                         if (dir) updatePreference('moveCompletedTo', dir);

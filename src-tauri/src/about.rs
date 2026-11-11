@@ -30,7 +30,7 @@ pub(crate) fn open(app: &AppHandle) {
 
 fn build(app: &AppHandle) -> tauri::Result<()> {
     let builder = WebviewWindowBuilder::new(app, ABOUT_LABEL, WebviewUrl::App("about-window".into()))
-        .title("About Prism")
+        .title(crate::i18n::t("native.windows.about"))
         .inner_size(WIDTH, HEIGHT)
         .resizable(false)
         .minimizable(false)

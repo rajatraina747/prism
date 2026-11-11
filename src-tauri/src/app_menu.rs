@@ -32,10 +32,10 @@ const ABOUT_ID: &str = "app-about";
 /// Where each "Go" entry leads: menu id, label, accelerator. The id after
 /// `nav:` is the route, so the shell needs no table of its own.
 const NAV_ITEMS: [(&str, &str, &str); 4] = [
-    ("nav:/", "Downloads", "CmdOrCtrl+1"),
-    ("nav:/subscriptions", "Subscriptions", "CmdOrCtrl+2"),
-    ("nav:/library", "Library", "CmdOrCtrl+3"),
-    ("nav:/settings", "Settings", "CmdOrCtrl+,"),
+    ("nav:/", "native.menu.downloads", "CmdOrCtrl+1"),
+    ("nav:/subscriptions", "native.menu.subscriptions", "CmdOrCtrl+2"),
+    ("nav:/library", "native.menu.library", "CmdOrCtrl+3"),
+    ("nav:/settings", "native.menu.settings", "CmdOrCtrl+,"),
 ];
 
 /// Whether an id is one this menu emitted, rather than a predefined item
@@ -76,14 +76,14 @@ fn replace_predefined<R: Runtime>(
 /// macOS), so there would be no chance to ask about running downloads (see
 /// lifecycle.rs).
 fn replace_quit<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, QUIT_ID, "Quit Prism", true, Some("CmdOrCtrl+Q"))?;
+    let quit = MenuItem::with_id(app, QUIT_ID, crate::i18n::t("native.menu.quit"), true, Some("CmdOrCtrl+Q"))?;
     replace_predefined(menu, "quit", &quit)
 }
 
 /// The predefined About opens the system's panel, whose layout can't be
 /// changed; Prism's is in about.rs.
 fn replace_about<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
-    let about = MenuItem::with_id(app, ABOUT_ID, "About Prism", true, None::<&str>)?;
+    let about = MenuItem::with_id(app, ABOUT_ID, crate::i18n::t("native.menu.about"), true, None::<&str>)?;
     replace_predefined(menu, "about", &about)
 }
 
@@ -97,13 +97,13 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
         log::warn!("menu: kept the standard About: {e}");
     }
 
-    let add = MenuItem::with_id(app, ADD_ID, "Add Link…", true, Some("CmdOrCtrl+N"))?;
-    let open_media = MenuItem::with_id(app, OPEN_MEDIA_ID, "Play a File…", true, Some("CmdOrCtrl+O"))?;
+    let add = MenuItem::with_id(app, ADD_ID, crate::i18n::t("native.menu.add"), true, Some("CmdOrCtrl+N"))?;
+    let open_media = MenuItem::with_id(app, OPEN_MEDIA_ID, crate::i18n::t("native.menu.playFile"), true, Some("CmdOrCtrl+O"))?;
     let separator = PredefinedMenuItem::separator(app)?;
     let nav: Vec<MenuItem<tauri::Wry>> = NAV_ITEMS
         .iter()
-        .map(|(id, label, accelerator)| {
-            MenuItem::with_id(app, *id, *label, true, Some(*accelerator))
+        .map(|(id, key, accelerator)| {
+            MenuItem::with_id(app, *id, crate::i18n::t(key), true, Some(*accelerator))
         })
         .collect::<tauri::Result<_>>()?;
 
@@ -111,7 +111,7 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
     items.extend(nav.iter().map(|item| item as &dyn IsMenuItem<tauri::Wry>));
 
     // A submenu, not loose items: a root menu's children have to be submenus.
-    let go = Submenu::with_items(app, "Go", true, &items)?;
+    let go = Submenu::with_items(app, crate::i18n::t("native.menu.go"), true, &items)?;
     menu.append(&go)?;
     app.set_menu(menu)?;
 

@@ -44,10 +44,7 @@ pub(crate) async fn active_work(app: &AppHandle) -> usize {
 
 /// The question asked before quitting with `active` transfers running.
 pub(crate) fn quit_prompt(active: usize) -> String {
-    match active {
-        1 => "1 transfer is still running. Quitting stops it; it resumes the next time Prism starts.".into(),
-        n => format!("{n} transfers are still running. Quitting stops them; they resume the next time Prism starts."),
-    }
+    crate::i18n::t_with("native.quit.prompt", &[("count", &active)])
 }
 
 /// Set while the quit question is on screen, so a second Quit (a double ⌘Q)
@@ -71,9 +68,9 @@ pub(crate) fn request_quit(app: &AppHandle) {
         let quit_app = app.clone();
         app.dialog()
             .message(quit_prompt(active))
-            .title("Quit Prism?")
+            .title(crate::i18n::t("native.quit.title"))
             .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancelCustom("Quit".into(), "Keep running".into()))
+            .buttons(MessageDialogButtons::OkCancelCustom(crate::i18n::t("native.quit.confirm"), crate::i18n::t("native.quit.keep")))
             .show(move |quit| {
                 ASKING.store(false, Ordering::SeqCst);
                 if quit {
@@ -100,8 +97,8 @@ pub(crate) fn on_main_close_requested(window: &tauri::Window, api: &tauri::Close
             let _ = app
                 .notification()
                 .builder()
-                .title("Prism is still running")
-                .body("Downloads carry on in the background. Open Prism from the tray icon.")
+                .title(crate::i18n::t("native.background.title"))
+                .body(crate::i18n::t("native.background.body"))
                 .show();
         }
     } else {

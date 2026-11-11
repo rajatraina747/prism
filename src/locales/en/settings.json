@@ -303,7 +303,9 @@
     "terms": "Terms of Service",
     "licenses": "Open Source Licenses",
     "resetDefaults": "Reset to defaults",
-    "resetDone": "Settings reset to defaults"
+    "resetDone": "Settings reset to defaults",
+    "moveToLabel": "Move finished downloads to: {{path}}. Choose a folder",
+    "notSet": "not set yet"
   },
   "help": {
     "cookies": {
