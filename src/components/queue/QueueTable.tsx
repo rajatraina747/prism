@@ -285,7 +285,13 @@ const QueueRow = React.memo(function QueueRow({
           )}
 
           {/* Stats row */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums flex-wrap">
+          {/* While transferring it stays one line: changing numbers mustn't make
+              the row jump, so whatever doesn't fit (the last stats) is hidden.
+              They're all in the details panel. */}
+          <div className={cn(
+            'flex items-center gap-4 text-xs text-muted-foreground tabular-nums flex-wrap',
+            isActive && !item.retryAt && item.stage !== 'processing' && 'h-4 content-start overflow-hidden',
+          )}>
             {item.settings.audioOnly ? (
               <span className="text-primary/80">Audio only</span>
             ) : item.settings.format ? (
@@ -305,9 +311,9 @@ const QueueRow = React.memo(function QueueRow({
                     ? `${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`
                     : isTorrent ? 'size pending' : formatBytes(item.downloadedBytes)}
                 </span>
-                <span>{formatSpeed(item.speed)}</span>
-                {isTorrent && <span title="Upload speed">↑ {formatSpeed(item.uploadSpeed ?? 0)}</span>}
-                <span>ETA {formatEta(item.eta)}</span>
+                <span className="min-w-[4.5rem] whitespace-nowrap">{formatSpeed(item.speed)}</span>
+                {isTorrent && <span title="Upload speed" className="min-w-[5rem] whitespace-nowrap">↑ {formatSpeed(item.uploadSpeed ?? 0)}</span>}
+                <span className="min-w-[5rem] whitespace-nowrap">ETA {formatEta(item.eta)}</span>
                 <span>{item.progress.toFixed(1)}%</span>
                 {isTorrent && <SwarmHealth item={item} />}
                 {isTorrent && (item.ratio ?? 0) > 0 && <span title="Share ratio">ratio {(item.ratio ?? 0).toFixed(2)}</span>}

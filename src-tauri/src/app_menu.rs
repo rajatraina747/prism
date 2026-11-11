@@ -15,7 +15,7 @@ use tauri::menu::{IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, 
 use tauri::{AppHandle, Emitter, Runtime};
 
 /// Carries the chosen item's id to the frontend.
-const EVENT: &str = "menu-action";
+pub(crate) const EVENT: &str = "menu-action";
 
 /// Opens the Add sheet.
 const ADD_ID: &str = "add";
@@ -25,6 +25,9 @@ const OPEN_MEDIA_ID: &str = "open-media";
 
 /// Prism's own Quit, in place of the predefined one (see `replace_quit`).
 const QUIT_ID: &str = "app-quit";
+
+/// Prism's own About, in place of the predefined one.
+const ABOUT_ID: &str = "app-about";
 
 /// Where each "Go" entry leads: menu id, label, accelerator. The id after
 /// `nav:` is the route, so the shell needs no table of its own.
@@ -41,24 +44,27 @@ fn is_ours(id: &str) -> bool {
     id == ADD_ID || id == OPEN_MEDIA_ID || id.starts_with("nav:")
 }
 
-/// Whether a predefined item is the standard Quit. Matched on its label
-/// ("Quit Prism" on macOS, "Quit" elsewhere; `&` marks a Windows mnemonic).
-fn is_quit_label(text: &str) -> bool {
-    text.replace('&', "").trim().to_ascii_lowercase().starts_with("quit")
+/// Whether a predefined item's label starts with `word`, however the platform
+/// spells the rest ("Quit Prism" on macOS, "Quit" elsewhere; `&` marks a
+/// Windows mnemonic).
+fn label_starts_with(text: &str, word: &str) -> bool {
+    text.replace('&', "").trim().to_ascii_lowercase().starts_with(word)
 }
 
-/// Swap the predefined Quit for one of Prism's own. The predefined item ends
-/// the process on the spot (`-[NSApp terminate:]` on macOS), so there would be
-/// no chance to ask about running downloads (see lifecycle.rs).
-fn replace_quit<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
+/// Swap one predefined item, found by the first word of its label, for one of
+/// Prism's own in the same position.
+fn replace_predefined<R: Runtime>(
+    menu: &Menu<R>,
+    word: &str,
+    replacement: &MenuItem<R>,
+) -> tauri::Result<()> {
     for top in menu.items()? {
         let MenuItemKind::Submenu(sub) = top else { continue };
         for (pos, item) in sub.items()?.into_iter().enumerate() {
             let MenuItemKind::Predefined(pre) = &item else { continue };
-            if is_quit_label(&pre.text()?) {
+            if label_starts_with(&pre.text()?, word) {
                 sub.remove_at(pos)?;
-                let quit = MenuItem::with_id(app, QUIT_ID, "Quit Prism", true, Some("CmdOrCtrl+Q"))?;
-                sub.insert(&quit, pos)?;
+                sub.insert(replacement, pos)?;
                 return Ok(());
             }
         }
@@ -66,11 +72,29 @@ fn replace_quit<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result
     Ok(())
 }
 
+/// The predefined Quit ends the process on the spot (`-[NSApp terminate:]` on
+/// macOS), so there would be no chance to ask about running downloads (see
+/// lifecycle.rs).
+fn replace_quit<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
+    let quit = MenuItem::with_id(app, QUIT_ID, "Quit Prism", true, Some("CmdOrCtrl+Q"))?;
+    replace_predefined(menu, "quit", &quit)
+}
+
+/// The predefined About opens the system's panel, whose layout can't be
+/// changed; Prism's is in about.rs.
+fn replace_about<R: Runtime>(app: &AppHandle<R>, menu: &Menu<R>) -> tauri::Result<()> {
+    let about = MenuItem::with_id(app, ABOUT_ID, "About Prism", true, None::<&str>)?;
+    replace_predefined(menu, "about", &about)
+}
+
 pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
     // The standard menu first: everything below is added to it.
     let menu = Menu::default(app)?;
     if let Err(e) = replace_quit(app, &menu) {
         log::warn!("menu: kept the standard Quit: {e}");
+    }
+    if let Err(e) = replace_about(app, &menu) {
+        log::warn!("menu: kept the standard About: {e}");
     }
 
     let add = MenuItem::with_id(app, ADD_ID, "Add Link…", true, Some("CmdOrCtrl+N"))?;
@@ -95,6 +119,8 @@ pub(crate) fn install(app: &AppHandle) -> tauri::Result<()> {
         let id = event.id.as_ref();
         if id == QUIT_ID {
             crate::lifecycle::request_quit(app);
+        } else if id == ABOUT_ID {
+            crate::about::open(app);
         } else if is_ours(id) {
             let _ = app.emit(EVENT, id.to_string());
         }
@@ -134,10 +160,11 @@ mod tests {
 
     #[test]
     fn finds_the_standard_quit_on_every_platform() {
-        assert!(is_quit_label("Quit Prism"));
-        assert!(is_quit_label("&Quit"));
-        assert!(!is_quit_label("Close Window"));
-        assert!(!is_quit_label("Hide Others"));
+        assert!(label_starts_with("Quit Prism", "quit"));
+        assert!(label_starts_with("&Quit", "quit"));
+        assert!(!label_starts_with("Close Window", "quit"));
+        assert!(!label_starts_with("Hide Others", "quit"));
+        assert!(label_starts_with("About Prism", "about"));
     }
 
     #[test]

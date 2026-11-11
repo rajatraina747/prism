@@ -273,6 +273,15 @@ pub(crate) fn fixed_options(has_lua: bool) -> Vec<(&'static str, &'static str)> 
         // itself, not a reference.
         ("access-references", "no"),
     ];
+    // mpv 0.41's CoreAudio output registers a device-change listener, then
+    // leaves it behind if setup fails, as it can on AirPods (it passes a
+    // channel layout where CoreAudio wants a channel map). mpv falls back to
+    // AVFoundation and plays on, but the next device change calls into the
+    // freed output and takes Prism down, even with the player long closed.
+    // Starting with AVFoundation means that listener is never registered.
+    // CoreAudio stays as the fallback so a failure there isn't silence.
+    #[cfg(target_os = "macos")]
+    options.push(("ao", "avfoundation,coreaudio"));
     if has_lua {
         options.push(("osc", "no"));
         options.push(("ytdl", "no"));
@@ -1168,6 +1177,19 @@ mod tests {
             unique.sort();
             unique.dedup();
             assert_eq!(unique.len(), build.len(), "an option is set twice");
+        }
+    }
+
+    // Regression (2.6.3): mpv's CoreAudio output left a dangling device
+    // listener behind when its setup failed on AirPods, and Prism crashed on
+    // the next audio device change.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_audio_starts_with_avfoundation() {
+        for has_lua in [false, true] {
+            let options = super::fixed_options(has_lua);
+            let ao = options.iter().find(|(k, _)| *k == "ao").map(|(_, v)| *v);
+            assert_eq!(ao, Some("avfoundation,coreaudio"));
         }
     }
 
