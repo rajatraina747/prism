@@ -1,0 +1,66 @@
+{
+  "importTorrents": {
+    "noneQbit": "No torrents found there. Pick qBittorrent's BT_backup folder.",
+    "noneTransmission": "No torrents found there. Pick Transmission's folder with torrents and resume in it.",
+    "added_one": "Added {{count}} torrent from {{client}}, paused",
+    "added_other": "Added {{count}} torrents from {{client}}, paused",
+    "startHint": "Start them in Transfers: each checks the files it already has before downloading anything.",
+    "already_one": "{{count}} was already in Prism.",
+    "already_other": "{{count}} were already in Prism.",
+    "skipped_one": "{{count}} file wasn't a torrent.",
+    "skipped_other": "{{count}} files weren't torrents.",
+    "failed": "Couldn't import from {{client}}: {{error}}",
+    "label": "Import torrents",
+    "description": "Add the torrents from qBittorrent or Transmission, pointed at the files they already downloaded. Quit the other app first",
+    "busy": "An import is already running",
+    "qbit": "qBittorrent…",
+    "transmission": "Transmission…"
+  },
+  "restartEngine": {
+    "done": "Torrent engine restarted with these settings",
+    "failed": "Couldn't restart the torrent engine: {{error}}",
+    "label": "Apply now",
+    "description": "Restart the torrent engine with the settings above. Running torrents pause for a moment and carry on, without checking their files again",
+    "busy": "Already restarting",
+    "restarting": "Restarting…",
+    "button": "Restart engine"
+  },
+  "backup": {
+    "saved": "Backed up {{entries}} and {{subscriptions}}",
+    "entries_one": "{{count}} Library entry",
+    "entries_other": "{{count}} Library entries",
+    "subscriptions_one": "{{count}} subscription",
+    "subscriptions_other": "{{count}} subscriptions",
+    "saveFailed": "Couldn't save the backup: {{error}}",
+    "readFailed": "Couldn't read the backup: {{error}}",
+    "imported": "Backup imported",
+    "label": "Back up settings and Library",
+    "description": "Save your settings, Library and subscriptions to a file, or bring them in from one. Download and watch folders stay as they are on this computer",
+    "export": "Export…",
+    "import": "Import…",
+    "confirmTitle": "Import this backup?",
+    "replacesSettings": "Your settings will be replaced by the backup's, except your download and watch folders.",
+    "willAdd": "{{entries}} and {{subscriptions}} will be added; nothing already here is removed.",
+    "newEntries_one": "{{count}} new Library entry",
+    "newEntries_other": "{{count}} new Library entries",
+    "newSubscriptions_one": "{{count}} new subscription",
+    "newSubscriptions_other": "{{count}} new subscriptions",
+    "confirm": "Import"
+  },
+  "whatIs": "What is {{term}}?",
+  "advanced": {
+    "hide": "Hide advanced settings",
+    "show": "Show advanced settings"
+  },
+  "folder": {
+    "inThisFolder": "In this folder",
+    "unreadable": "Couldn't read it",
+    "summary_one": "{{size}} · {{files}} file",
+    "summary_other": "{{size}} · {{files}} files",
+    "summaryAtLeast_one": "≥ {{size}} · {{files}} file",
+    "summaryAtLeast_other": "≥ {{size}} · {{files}} files",
+    "free": " · {{size}} free",
+    "measuring": "Measuring…",
+    "partial": "A big folder — counting stopped early, so this is at least that much."
+  }
+}

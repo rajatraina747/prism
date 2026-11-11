@@ -1,0 +1,25 @@
+{
+  "label": "First-run setup",
+  "dismiss": "Dismiss setup",
+  "title": "Three things before your first download",
+  "subtitle": "Takes a minute. You can change all of these later in Settings.",
+  "folder": {
+    "title": "Where downloads go",
+    "body": "Any folder you pick works — external drives and network shares included."
+  },
+  "ffmpeg": {
+    "found": "ffmpeg found",
+    "notFound": "ffmpeg not found",
+    "checking": "ffmpeg …",
+    "needed": "Needed to merge video + audio above 720p, embed thumbnails and chapters, and for SponsorBlock. Install it, then check again:",
+    "busy": "Already checking",
+    "checkAgain": "Check again",
+    "ok": "High-quality merges, thumbnails and chapters are all available."
+  },
+  "cookies": {
+    "title": "Sign-in-required and age-restricted videos",
+    "body": "Optional. Prism can use a browser's cookies so those videos work. Cookies are read locally and sent only to the video's site.",
+    "macNote": "Safari needs Full Disk Access for Prism (System Settings → Privacy & Security); Chrome will ask for Keychain access once.",
+    "label": "Browser cookies"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "backToSettings": "Back to Settings",
+  "tagline": "Downloads, plays and converts video",
+  "by": "by",
+  "version": "Version",
+  "versionValue": "v{{version}}",
+  "channel": "Channel",
+  "stable": "Stable",
+  "license": "License",
+  "licenseValue": "MIT (Prism source) · bundled player libraries under their own licenses",
+  "releaseNotes": "Release notes",
+  "releaseNotesDescription": "What changed in each version",
+  "reportBug": "Report a bug",
+  "reportBugDescription": "Opens a bug report on GitHub — Settings → Privacy & advanced → Diagnostics → Export logs helps",
+  "privacy": "Privacy Policy",
+  "privacyDescription": "How Prism handles your data — spoiler: it stays on your device",
+  "website": "Visit our website",
+  "credits": "Credits & licenses",
+  "creditsDescription": "Tauri, React, yt-dlp, Deno, librqbit, mpv/FFmpeg and everything else Prism ships with",
+  "versionLine": "Version {{version}}",
+  "more": "More about Prism",
+  "update": {
+    "check": "Check for updates",
+    "checking": "Checking…",
+    "latest": "You're on the latest version",
+    "availableVersion": "Version {{version}} is available",
+    "available": "An update is available",
+    "openSettings": "Open Settings",
+    "failed": "Couldn't check for updates"
+  }
+}

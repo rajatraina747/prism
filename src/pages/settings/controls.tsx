@@ -5,6 +5,7 @@ import { CommitInput } from '@/components/common';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { ChevronRight, ChevronDown, HelpCircle } from 'lucide-react';
+import { t, locale } from '@/i18n';
 
 
 // ── Accessible setting rows ──
@@ -26,7 +27,7 @@ export function HelpTip({ term, text }: { term: string; text: string }) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`What is ${term}?`}
+          aria-label={t('settings.whatIs', { term })}
           className="inline-flex text-muted-foreground hover:text-muted-foreground focus-visible:text-foreground transition-colors"
         >
           <HelpCircle className="w-3 h-3" />
@@ -96,7 +97,7 @@ export function Advanced({ children }: { children: React.ReactNode }) {
         className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        {open ? 'Hide advanced settings' : 'Show advanced settings'}
+        {open ? t('settings.advanced.hide') : t('settings.advanced.show')}
       </button>
       {open && <div id={id} className="mt-1">{children}</div>}
     </div>
@@ -156,21 +157,21 @@ export function StorageTile({ folder, load }: { folder: string; load: () => Prom
   return (
     <div className="mb-3 px-3 py-2.5 rounded-xl bg-secondary/30 border border-border/20">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs text-muted-foreground">In this folder</span>
+        <span className="text-xs text-muted-foreground">{t('settings.folder.inThisFolder')}</span>
         {failed ? (
-          <span className="text-xs text-muted-foreground">Couldn't read it</span>
+          <span className="text-xs text-muted-foreground">{t('settings.folder.unreadable')}</span>
         ) : summary ? (
           <span className="text-xs text-foreground tabular-nums">
-            {summary.partial && '≥ '}{size(summary.bytes)} · {summary.files.toLocaleString()} file{summary.files === 1 ? '' : 's'}
-            <span className="text-muted-foreground"> · {size(summary.freeBytes)} free</span>
+            {t(summary.partial ? 'settings.folder.summaryAtLeast' : 'settings.folder.summary', { size: size(summary.bytes), count: summary.files, files: summary.files.toLocaleString(locale()) })}
+            <span className="text-muted-foreground">{t('settings.folder.free', { size: size(summary.freeBytes) })}</span>
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">Measuring…</span>
+          <span className="text-xs text-muted-foreground">{t('settings.folder.measuring')}</span>
         )}
       </div>
       {summary?.partial && (
         <p className="text-xs text-muted-foreground/80 mt-0.5">
-          A big folder — counting stopped early, so this is at least that much.
+          {t('settings.folder.partial')}
         </p>
       )}
     </div>

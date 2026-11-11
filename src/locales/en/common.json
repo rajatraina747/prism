@@ -41,5 +41,7 @@
     "completed": "Completed",
     "failed": "Failed",
     "canceled": "Cancelled"
-  }
+  },
+  "tryAgainLower": "Try again",
+  "done": "Done"
 }

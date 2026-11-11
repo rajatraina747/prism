@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/common';
 import { toast } from 'sonner';
 import { SettingRow } from './controls';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 export function ClientImportRow() {
   const service = useService();
@@ -26,19 +27,19 @@ export function ClientImportRow() {
       items.forEach(addToQueue);
       const already = result.torrents.length - items.length;
       if (result.torrents.length === 0) {
-        toast.error(`No torrents found there. Pick ${client === 'qbittorrent' ? "qBittorrent's BT_backup folder" : "Transmission's folder with torrents and resume in it"}.`);
+        toast.error(client === 'qbittorrent' ? t('settings.importTorrents.noneQbit') : t('settings.importTorrents.noneTransmission'));
         return;
       }
-      toast.success(`Added ${items.length} ${items.length === 1 ? 'torrent' : 'torrents'} from ${label}, paused`, {
+      toast.success(t('settings.importTorrents.added', { count: items.length, client: label }), {
         description: [
-          'Start them in Transfers: each checks the files it already has before downloading anything.',
-          already > 0 ? `${already} ${already === 1 ? 'was' : 'were'} already in Prism.` : '',
-          result.skipped > 0 ? `${result.skipped} ${result.skipped === 1 ? "file wasn't a torrent" : "files weren't torrents"}.` : '',
+          t('settings.importTorrents.startHint'),
+          already > 0 ? t('settings.importTorrents.already', { count: already }) : '',
+          result.skipped > 0 ? t('settings.importTorrents.skipped', { count: result.skipped }) : '',
         ].filter(Boolean).join(' '),
         duration: 10000,
       });
     } catch (e) {
-      toast.error(`Couldn't import from ${label}: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('settings.importTorrents.failed', { client: label, error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -46,13 +47,13 @@ export function ClientImportRow() {
 
   const button = 'px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50';
   return (
-    <SettingRow label="Import torrents" description="Add the torrents from qBittorrent or Transmission, pointed at the files they already downloaded. Quit the other app first">
+    <SettingRow label={t('settings.importTorrents.label')} description={t('settings.importTorrents.description')}>
       <div className="flex items-center gap-2">
-        <DisabledReason reason={busy ? 'An import is already running' : null}>
-          <button type="button" disabled={busy} onClick={() => importFrom('qbittorrent', 'qBittorrent')} className={button}>qBittorrent…</button>
+        <DisabledReason reason={busy ? t('settings.importTorrents.busy') : null}>
+          <button type="button" disabled={busy} onClick={() => importFrom('qbittorrent', 'qBittorrent')} className={button}>{t('settings.importTorrents.qbit')}</button>
         </DisabledReason>
-        <DisabledReason reason={busy ? 'An import is already running' : null}>
-          <button type="button" disabled={busy} onClick={() => importFrom('transmission', 'Transmission')} className={button}>Transmission…</button>
+        <DisabledReason reason={busy ? t('settings.importTorrents.busy') : null}>
+          <button type="button" disabled={busy} onClick={() => importFrom('transmission', 'Transmission')} className={button}>{t('settings.importTorrents.transmission')}</button>
         </DisabledReason>
       </div>
     </SettingRow>
@@ -67,23 +68,23 @@ export function RestartTorrentEngineRow() {
     setBusy(true);
     try {
       await restartTorrentEngine();
-      toast.success('Torrent engine restarted with these settings');
+      toast.success(t('settings.restartEngine.done'));
     } catch (e) {
-      toast.error(`Couldn't restart the torrent engine: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('settings.restartEngine.failed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <SettingRow label="Apply now" description="Restart the torrent engine with the settings above. Running torrents pause for a moment and carry on, without checking their files again">
-      <DisabledReason reason={busy ? 'Already restarting' : null}>
+    <SettingRow label={t('settings.restartEngine.label')} description={t('settings.restartEngine.description')}>
+      <DisabledReason reason={busy ? t('settings.restartEngine.busy') : null}>
         <button
           type="button"
           disabled={busy}
           onClick={() => void restart()}
           className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
         >
-          {busy ? 'Restarting…' : 'Restart engine'}
+          {busy ? t('settings.restartEngine.restarting') : t('settings.restartEngine.button')}
         </button>
       </DisabledReason>
     </SettingRow>
@@ -104,10 +105,10 @@ export function BackupRow() {
       const backup = buildBackup({ settings: preferences, history, subscriptions, appVersion });
       const day = new Date().toISOString().slice(0, 10);
       if (await service.saveBackup(JSON.stringify(backup, null, 2), `prism-backup-${day}.json`)) {
-        toast.success(`Backed up ${history.length} Library ${history.length === 1 ? 'entry' : 'entries'} and ${subscriptions.length} ${subscriptions.length === 1 ? 'subscription' : 'subscriptions'}`);
+        toast.success(t('settings.backup.saved', { entries: t('settings.backup.entries', { count: history.length }), subscriptions: t('settings.backup.subscriptions', { count: subscriptions.length }) }));
       }
     } catch (e) {
-      toast.error(`Couldn't save the backup: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('settings.backup.saveFailed', { error: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -122,7 +123,7 @@ export function BackupRow() {
       }
       setPending(parsed.backup);
     } catch (e) {
-      toast.error(`Couldn't read the backup: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('settings.backup.readFailed', { error: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -133,38 +134,38 @@ export function BackupRow() {
     importHistory(pending.history);
     importSubscriptions(pending.subscriptions);
     setPending(null);
-    toast.success('Backup imported');
+    toast.success(t('settings.backup.imported'));
   };
 
   return (
     <>
-      <SettingRow label="Back up settings and Library" description="Save your settings, Library and subscriptions to a file, or bring them in from one. Download and watch folders stay as they are on this computer">
+      <SettingRow label={t('settings.backup.label')} description={t('settings.backup.description')}>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={exportBackup}
             className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
-            Export…
+            {t('settings.backup.export')}
           </button>
           <button
             type="button"
             onClick={chooseBackup}
             className="px-2.5 py-1.5 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
           >
-            Import…
+            {t('settings.backup.import')}
           </button>
         </div>
       </SettingRow>
       <ConfirmDialog
         open={pending !== null}
         onOpenChange={open => { if (!open) setPending(null); }}
-        title="Import this backup?"
+        title={t('settings.backup.confirmTitle')}
         description={summary ? [
-          summary.settings ? 'Your settings will be replaced by the backup\'s, except your download and watch folders.' : '',
-          `${summary.newLibraryEntries} new Library ${summary.newLibraryEntries === 1 ? 'entry' : 'entries'} and ${summary.newSubscriptions} new ${summary.newSubscriptions === 1 ? 'subscription' : 'subscriptions'} will be added; nothing already here is removed.`,
+          summary.settings ? t('settings.backup.replacesSettings') : '',
+          t('settings.backup.willAdd', { entries: t('settings.backup.newEntries', { count: summary.newLibraryEntries }), subscriptions: t('settings.backup.newSubscriptions', { count: summary.newSubscriptions }) }),
         ].filter(Boolean).join(' ') : ''}
-        confirmLabel="Import"
+        confirmLabel={t('settings.backup.confirm')}
         onConfirm={applyBackup}
       />
     </>

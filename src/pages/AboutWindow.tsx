@@ -3,6 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { Bug, Check, ChevronRight, ExternalLink, Heart, Loader2, Sparkles } from 'lucide-react';
 import { publicAsset } from '@/lib/public-asset';
 import type { IPrismService } from '@/services/types';
+import { t } from '@/i18n';
 
 type AboutService = Pick<IPrismService, 'getAppVersion' | 'checkForUpdates' | 'openExternal'>;
 type Destination = 'updates' | 'licenses';
@@ -55,35 +56,35 @@ export function AboutPanel({
 
       <section className="flex flex-col items-center px-6 text-center">
         <img src={publicAsset('logo-nobg.webp')} alt="" draggable={false} className="w-36 h-36 object-contain -my-1" />
-        <h1 className="sr-only">Prism</h1>
-        <p className="text-xs text-muted-foreground">Downloads, plays and converts video</p>
+        <h1 className="sr-only">{t('common.appName')}</h1>
+        <p className="text-xs text-muted-foreground">{t('about.tagline')}</p>
         <p className="mt-3 text-sm font-medium text-foreground tabular-nums min-h-5">
-          {version && `Version ${version}`}
+          {version && t('about.versionLine', { version })}
         </p>
         <div className="mt-2 h-14 flex flex-col items-center justify-start gap-1.5" aria-live="polite">
           <UpdateStatus update={update} onCheck={check} onOpenSettings={() => showInMain('updates')} />
         </div>
       </section>
 
-      <nav className="mt-auto mx-3 pt-2 border-t border-border/60" aria-label="More about Prism">
+      <nav className="mt-auto mx-3 pt-2 border-t border-border/60" aria-label={t('about.more')}>
         <Row icon={Sparkles} onClick={() => open(RELEASES_URL)} trailing={<ExternalLink className="w-3 h-3" />}>
-          Release notes
+          {t('about.releaseNotes')}
         </Row>
         <Row icon={Bug} onClick={() => open(bugReportUrl(version ?? ''))} trailing={<ExternalLink className="w-3 h-3" />}>
-          Report a bug
+          {t('about.reportBug')}
         </Row>
         <Row icon={Heart} onClick={() => showInMain('licenses')} trailing={<ChevronRight className="w-3.5 h-3.5" />}>
-          Credits &amp; licenses
+          {t('about.credits')}
         </Row>
       </nav>
 
       <footer className="py-3 text-center text-xs text-muted-foreground">
-        by{' '}
+        {t('about.by')}{' '}
         <button
           onClick={() => open(RAINACORP_URL)}
           className="text-foreground hover:text-primary transition-colors"
         >
-          RainaCorp
+          {t('common.companyName')}
         </button>
       </footer>
     </main>
@@ -101,35 +102,35 @@ function UpdateStatus({
 }) {
   switch (update.kind) {
     case 'idle':
-      return <button onClick={onCheck} className={smallButton}>Check for updates</button>;
+      return <button onClick={onCheck} className={smallButton}>{t('about.update.check')}</button>;
     case 'checking':
       return (
         <span className="h-7 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
-          Checking…
+          {t('about.update.checking')}
         </span>
       );
     case 'current':
       return (
         <span className="h-7 flex items-center gap-1.5 text-xs text-success">
           <Check className="w-3.5 h-3.5" />
-          You're on the latest version
+          {t('about.update.latest')}
         </span>
       );
     case 'available':
       return (
         <>
           <span className="text-xs text-foreground">
-            {update.version ? `Version ${update.version} is available` : 'An update is available'}
+            {update.version ? t('about.update.availableVersion', { version: update.version }) : t('about.update.available')}
           </span>
-          <button onClick={onOpenSettings} className={smallButton}>Open Settings</button>
+          <button onClick={onOpenSettings} className={smallButton}>{t('about.update.openSettings')}</button>
         </>
       );
     case 'error':
       return (
         <>
-          <span className="text-xs text-muted-foreground" title={update.message}>Couldn't check for updates</span>
-          <button onClick={onCheck} className={smallButton}>Try again</button>
+          <span className="text-xs text-muted-foreground" title={update.message}>{t('about.update.failed')}</span>
+          <button onClick={onCheck} className={smallButton}>{t('common.tryAgainLower')}</button>
         </>
       );
   }

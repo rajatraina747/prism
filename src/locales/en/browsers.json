@@ -1,0 +1,8 @@
+{
+  "none": "Don't use browser cookies",
+  "safari": "Safari",
+  "chrome": "Chrome",
+  "firefox": "Firefox",
+  "edge": "Edge",
+  "brave": "Brave"
+}
