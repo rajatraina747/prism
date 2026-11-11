@@ -10,6 +10,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+import { t } from '@/i18n';
 
 // ── Commit Input ──
 // A text box that hands its value on when you leave it or press Enter, not on
@@ -67,7 +68,7 @@ export function OutboundLink({
       style={style}
       onClick={(e) => {
         e.preventDefault();
-        service.openExternal(href).catch(() => toast.error("Couldn't open that link"));
+        service.openExternal(href).catch(() => toast.error(t('common.openLinkFailed')));
       }}
     >
       {children}
@@ -100,7 +101,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel className="px-4 py-2 h-auto rounded-lg bg-secondary border-0 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 hover:text-secondary-foreground">
-            Cancel
+            {t('common.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
@@ -138,7 +139,7 @@ export function EmptyActions({ play = false }: { play?: boolean }) {
         onClick={() => import('@/lib/nav-bus').then(({ requestAdd }) => requestAdd())}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
       >
-        Add a link
+        {t('common.empty.addLink')}
       </button>
       {play && (
         <button
@@ -146,7 +147,7 @@ export function EmptyActions({ play = false }: { play?: boolean }) {
           onClick={() => import('@/lib/player-window').then(({ pickAndPlay }) => pickAndPlay()).catch(() => {})}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
         >
-          Play a file
+          {t('common.empty.playFile')}
         </button>
       )}
     </div>
@@ -168,15 +169,15 @@ export function EmptyState({ icon: Icon, title, description, action, className }
 
 // ── Status Badge ──
 const STATUS_CONFIG: Record<DownloadStatus, { label: string; className: string }> = {
-  queued: { label: 'Queued', className: 'bg-secondary text-secondary-foreground' },
-  parsing: { label: 'Parsing', className: 'bg-warning/15 text-warning animate-pulse-soft' },
-  ready: { label: 'Ready', className: 'bg-primary/15 text-primary' },
-  downloading: { label: 'Downloading', className: 'bg-primary/15 text-primary animate-pulse-soft' },
-  seeding: { label: 'Seeding', className: 'bg-success/15 text-success animate-pulse-soft' },
-  paused: { label: 'Paused', className: 'bg-warning/15 text-warning' },
-  completed: { label: 'Completed', className: 'bg-success/15 text-success' },
-  failed: { label: 'Failed', className: 'bg-destructive/15 text-destructive' },
-  canceled: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
+  queued: { label: t('common.status.queued'), className: 'bg-secondary text-secondary-foreground' },
+  parsing: { label: t('common.status.parsing'), className: 'bg-warning/15 text-warning animate-pulse-soft' },
+  ready: { label: t('common.status.ready'), className: 'bg-primary/15 text-primary' },
+  downloading: { label: t('common.status.downloading'), className: 'bg-primary/15 text-primary animate-pulse-soft' },
+  seeding: { label: t('common.status.seeding'), className: 'bg-success/15 text-success animate-pulse-soft' },
+  paused: { label: t('common.status.paused'), className: 'bg-warning/15 text-warning' },
+  completed: { label: t('common.status.completed'), className: 'bg-success/15 text-success' },
+  failed: { label: t('common.status.failed'), className: 'bg-destructive/15 text-destructive' },
+  canceled: { label: t('common.status.canceled'), className: 'bg-muted text-muted-foreground' },
 };
 
 export function StatusBadge({ status }: { status: DownloadStatus }) {

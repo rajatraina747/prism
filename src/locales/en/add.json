@@ -1,0 +1,39 @@
+{
+  "batch": {
+    "video": "Video",
+    "audioOnly": "Audio only",
+    "quality": "Quality"
+  },
+  "playlist": {
+    "selectAll": "Select all ({{selected}}/{{total}})",
+    "listLabel": "Videos in this playlist",
+    "selectOne": "Select at least one video",
+    "queue_one": "Queue {{count}} Video",
+    "queue_other": "Queue {{count}} Videos"
+  },
+  "url": {
+    "label": "Video URL or magnet link",
+    "placeholder": "Paste a video URL or magnet link...",
+    "waitReading": "Wait for this link to finish reading",
+    "importFile": "Import URLs from text file",
+    "alreadyReading": "Already reading this link",
+    "parsing": "Parsing…",
+    "fetch": "Fetch",
+    "supports": "Supports single or multiple URLs · Drag and drop URLs or text files · Paste from clipboard"
+  },
+  "paste": "Paste",
+  "pasteFirst": "Paste a link first",
+  "dropHint": "Drop links, .torrent files or a text file",
+  "sheet": {
+    "title": "Add downloads",
+    "description": "Video or playlist links and magnet links, one per line. You can also drop links, .torrent files or a text file anywhere in the window.",
+    "linksLabel": "Links to add",
+    "importFile": "Import file…",
+    "importList": "Import list…",
+    "addMany": "Add {{count}}",
+    "add": "Add"
+  },
+  "noLinksInFile": "No links found in {{name}}",
+  "noLinksOnClipboard": "No links on the clipboard",
+  "openTorrent": "Open .torrent…"
+}

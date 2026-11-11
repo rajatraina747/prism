@@ -23,5 +23,23 @@
     "until": "Quiet hours until {{time}}.",
     "pause": "New downloads wait until then; running ones continue.",
     "limit": "Downloads start at up to {{mbps}} MB/s and torrents are capped to it."
+  },
+  "cancel": "Cancel",
+  "openLinkFailed": "Couldn't open that link",
+  "loading": "Loading...",
+  "empty": {
+    "addLink": "Add a link",
+    "playFile": "Play a file"
+  },
+  "status": {
+    "queued": "Queued",
+    "parsing": "Parsing",
+    "ready": "Ready",
+    "downloading": "Downloading",
+    "seeding": "Seeding",
+    "paused": "Paused",
+    "completed": "Completed",
+    "failed": "Failed",
+    "canceled": "Cancelled"
   }
 }

@@ -1,8 +1,10 @@
 /**
  * Translations (2.7). Every string the UI shows lives in `src/locales/<lang>/`,
- * one JSON file per area (`add.json` → keys `add.*`). Components use
- * `useTranslation()`; code outside React (stores, services) imports `t` from
- * here. The Rust side reads the same `en` files for menu and notification text
+ * one JSON file per area (`add.json` → keys `add.*`). The language is fixed
+ * at startup (switching needs a relaunch), so any module, component or not,
+ * can import `t` from here; `useTranslation()` works too. Module-level
+ * constants may call `t` because this file initialises synchronously and
+ * `main.tsx` imports it first. The Rust side reads the same `en` files for menu and notification text
  * (see `src-tauri/src/i18n.rs`), so a key used there must not be renamed
  * without updating it.
  *

@@ -7,6 +7,7 @@ import { VirtualList } from '@/components/common/VirtualList';
 import { ListMusic, Check, Clock } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
 import { BatchOptions } from '@/components/add/BatchOptions';
+import { t } from '@/i18n';
 
 interface PlaylistModalProps {
   open: boolean;
@@ -88,7 +89,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaul
                 className="rounded border-border"
               />
               <span className="text-xs text-muted-foreground">
-                Select all ({selected.size}/{playlist.entries.length})
+                {t('add.playlist.selectAll', { selected: selected.size, total: playlist.entries.length })}
               </span>
             </label>
           </div>
@@ -102,7 +103,7 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaul
             threshold={100}
             scroll="self"
             role="group"
-            aria-label="Videos in this playlist"
+            aria-label={t('add.playlist.listLabel')}
             className="max-h-72 pr-1"
             renderItem={(entry, i) => (
               <button
@@ -144,15 +145,15 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaul
               onClick={onClose}
               className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
-            <DisabledReason reason={selected.size === 0 ? 'Select at least one video' : null}>
+            <DisabledReason reason={selected.size === 0 ? t('add.playlist.selectOne') : null}>
               <button
                 onClick={handleQueue}
                 disabled={selected.size === 0}
                 className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
               >
-                {`Queue ${selected.size} Video${selected.size !== 1 ? 's' : ''}`}
+                {t('add.playlist.queue', { count: selected.size })}
               </button>
             </DisabledReason>
           </div>
