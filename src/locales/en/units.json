@@ -1,0 +1,16 @@
+{
+  "bytes": {
+    "B": "{{n}} B",
+    "KB": "{{n}} KB",
+    "MB": "{{n}} MB",
+    "GB": "{{n}} GB",
+    "TB": "{{n}} TB"
+  },
+  "perSecond": "{{size}}/s",
+  "eta": {
+    "unknown": "--",
+    "seconds": "{{s}}s",
+    "minutes": "{{m}}m",
+    "hoursMinutes": "{{h}}h {{m}}m"
+  }
+}

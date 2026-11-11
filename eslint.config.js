@@ -3,6 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
+import i18next from "eslint-plugin-i18next";
 
 export default tseslint.config(
   { ignores: ["dist", "src-tauri", "test-results", "playwright-report"] },
@@ -51,6 +52,21 @@ export default tseslint.config(
       "@typescript-eslint/no-empty-object-type": "off",
       "@typescript-eslint/no-require-imports": "off",
       "no-empty": ["error", { "allowEmptyCatch": true }],
+    },
+  },
+  // i18n (2.7): visible text goes through t() and src/locales. JSX text only;
+  // attributes, toasts and helpers are reviewed by hand. shadcn primitives
+  // and tests are exempt, and so are the legal pages: a translated privacy
+  // policy or licence is a legal text of its own, not a UI string.
+  {
+    files: ["src/**/*.tsx"],
+    ignores: [
+      "**/*.test.tsx", "src/components/ui/**",
+      "src/pages/PrivacyPolicy.tsx", "src/pages/TermsOfService.tsx", "src/pages/OpenSourceLicenses.tsx",
+    ],
+    plugins: { i18next },
+    rules: {
+      "i18next/no-literal-string": ["error", { mode: "jsx-text-only" }],
     },
   },
 );
