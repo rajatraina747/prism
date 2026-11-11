@@ -33,6 +33,8 @@ pub(crate) struct YtDlpFormat {
     /// for it (the original track ranks highest).
     pub language: Option<String>,
     pub language_preference: Option<i64>,
+    /// Audio bitrate in kbps.
+    pub abr: Option<f64>,
 }
 
 /// One audio track of a video with several (YouTube's dubs).

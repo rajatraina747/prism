@@ -1,14 +1,16 @@
 import { Film, Music } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { QUALITY_CHOICES, type BatchChoice, type DefaultQuality } from '@/types/models';
+import { DEFAULT_PREFERENCES, QUALITY_CHOICES, type BatchChoice, type DefaultQuality } from '@/types/models';
 import { t } from '@/i18n';
+import { AudioQualitySelect } from './AudioQualitySelect';
 
 const kindClass = (on: boolean) => cn(
   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97] border',
   on ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary border-transparent',
 );
 
-/** Video or audio, and the quality, for every video in a list or batch. */
+/** Video or audio, and the quality (or audio quality), for every video in
+ * a list or batch. */
 export function BatchOptions({ value, onChange }: { value: BatchChoice; onChange: (choice: BatchChoice) => void }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -27,6 +29,13 @@ export function BatchOptions({ value, onChange }: { value: BatchChoice; onChange
         >
           {QUALITY_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
+      )}
+      {value.audioOnly && (
+        <AudioQualitySelect
+          className="ml-auto"
+          value={value.audioQuality ?? DEFAULT_PREFERENCES.audioQuality}
+          onChange={audioQuality => onChange({ ...value, audioQuality })}
+        />
       )}
     </div>
   );

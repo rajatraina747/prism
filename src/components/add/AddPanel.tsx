@@ -46,7 +46,7 @@ export function AddPanel() {
   const quality: DefaultQuality = siteQuality ?? preferences.defaultQuality ?? '1080p';
   // Several links that haven't been told how to download yet.
   const [pendingBatch, setPendingBatch] = useState<string[] | null>(null);
-  const [batchChoice, setBatchChoice] = useState<BatchChoice>({ audioOnly: false, quality });
+  const [batchChoice, setBatchChoice] = useState<BatchChoice>({ audioOnly: false, quality, audioQuality: preferences.audioQuality });
 
   // Playlist state
   const [parsedPlaylist, setParsedPlaylist] = useState<PlaylistInfo | null>(null);
@@ -243,7 +243,8 @@ export function AddPanel() {
   }, [service, preferences.defaultSaveFolder, preferences.bandwidthLimit, addToQueue]);
   downloadAsFileRef.current = downloadAsFile;
 
-  const runBatch = useCallback(async (urls: string[], { audioOnly, quality: batchQuality }: BatchChoice) => {
+  const runBatch = useCallback(async (urls: string[], { audioOnly, quality: batchQuality, audioQuality: chosenAudio }: BatchChoice) => {
+    const audioQuality = audioOnly ? chosenAudio ?? preferences.audioQuality : undefined;
     setParseError(null);
     setBatchProgress({ total: urls.length, done: 0 });
     abortBulkRef.current = false;
@@ -301,7 +302,7 @@ export function AddPanel() {
               skipped++;
               continue;
             }
-            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, speedLimitBytes || undefined, audioOnly);
+            const item = playlistEntryItem(entry, listFormat, preferences.defaultSaveFolder, speedLimitBytes || undefined, audioOnly, audioQuality);
             added.push(item);
             addToQueue(item);
           }
@@ -340,6 +341,7 @@ export function AddPanel() {
             filename: sanitizeFilename(metadata.title),
             speedLimit: speedLimitBytes || undefined,
             audioOnly: audioOnly || undefined,
+            audioQuality,
           },
           totalBytes: format?.fileSize,
         });
@@ -357,7 +359,7 @@ export function AddPanel() {
     if (failed > 0) parts.push(t('add.panel.batch.failed', { count: failed }));
     if (abortBulkRef.current) parts.push(t('add.panel.batch.stopped'));
     (failed > 0 ? toast.warning : toast.info)(parts.join(t('common.separator')));
-  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, queueItems]);
+  }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.audioQuality, queueItems]);
 
   // Every way of adding several links comes through here. Nothing starts
   // until the list has been told how to download, unless there's nothing to
@@ -376,8 +378,8 @@ export function AddPanel() {
   }, [runBatch, defaultQuality]);
   // The next list starts from the defaults, not from the last one's choice.
   React.useEffect(() => {
-    if (!pendingBatch) setBatchChoice({ audioOnly: false, quality: defaultQuality });
-  }, [pendingBatch, defaultQuality]);
+    if (!pendingBatch) setBatchChoice({ audioOnly: false, quality: defaultQuality, audioQuality: preferences.audioQuality });
+  }, [pendingBatch, defaultQuality, preferences.audioQuality]);
 
   const handleAddToQueue = useCallback((item: DownloadItem) => {
     // The page the link came from, if the extension said (lib/referrers.ts).
@@ -423,7 +425,7 @@ export function AddPanel() {
     const format = qualityToFormat(choice.quality);
 
     for (const entry of entries) {
-      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined, choice.audioOnly));
+      addToQueue(playlistEntryItem(entry, format, preferences.defaultSaveFolder, speedLimitBytes || undefined, choice.audioOnly, choice.audioQuality ?? preferences.audioQuality));
     }
 
     setShowPlaylistModal(false);
@@ -431,7 +433,7 @@ export function AddPanel() {
     setParsedPlaylist(null);
     toast.success(t('add.panel.playlistAdded', { count: entries.length }));
     navigate('/queue');
-  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, navigate]);
+  }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, preferences.audioQuality, navigate]);
 
   handleBatchSubmitRef.current = handleBatchSubmit;
 
@@ -501,6 +503,7 @@ export function AddPanel() {
         playlist={parsedPlaylist}
         onQueueSelected={handlePlaylistQueue}
         defaultQuality={quality}
+        defaultAudioQuality={preferences.audioQuality}
       />
 
       {/* Several links from the link box, a drop or the tray: how to get them. */}

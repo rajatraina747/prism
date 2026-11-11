@@ -1,6 +1,6 @@
 // What the Dashboard's add paths are built from: turning a link, a list
 // entry or a quality into a queue item.
-import type { DefaultQuality, DownloadItem, FormatOption, PlaylistEntry } from '@/types/models';
+import type { AudioQuality, DefaultQuality, DownloadItem, FormatOption, PlaylistEntry } from '@/types/models';
 import { isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
 import { referrerFor } from '@/lib/referrers';
 import { buildItem, linkMetadata } from '@/stores/build-item';
@@ -91,10 +91,11 @@ export function playlistEntryItem(
   destination: string,
   speedLimit: number | undefined,
   audioOnly = false,
+  audioQuality?: AudioQuality,
 ): DownloadItem {
   return buildItem({
     metadata: linkMetadata(entry.url, entry.title, siteKey(entry.url) ?? 'unknown', { duration: entry.duration, thumbnail: entry.thumbnail }),
-    settings: { format: audioOnly ? null : format, destination, filename: sanitizeFilename(entry.title), speedLimit, audioOnly: audioOnly || undefined },
+    settings: { format: audioOnly ? null : format, destination, filename: sanitizeFilename(entry.title), speedLimit, audioOnly: audioOnly || undefined, audioQuality: audioOnly ? audioQuality : undefined },
   });
 }
 

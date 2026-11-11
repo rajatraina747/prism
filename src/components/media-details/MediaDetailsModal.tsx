@@ -1,7 +1,7 @@
 import { IS_MAC } from '@/lib/platform';
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
+import type { AudioQuality, MediaMetadata, DownloadItem, FormatOption } from '@/types/models';
 import { formatBytes, formatDuration, sanitizeFilename } from '@/services';
 import { useSettings } from '@/stores/AppProvider';
 import { useService } from '@/services/ServiceProvider';
@@ -14,6 +14,8 @@ import {
 import { buildItem } from '@/stores/build-item';
 import { DisabledReason } from '@/components/common/DisabledReason';
 import { t } from '@/i18n';
+import { AudioQualitySelect } from '@/components/add/AudioQualitySelect';
+import { audioExtension, audioHint, sourceLabel } from '@/lib/audio-quality';
 
 const SUBTITLE_LANGUAGES = [
   { value: 'en', label: t('add.details.english') },
@@ -46,6 +48,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
   const [startImmediately, setStartImmediately] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [audioOnly, setAudioOnly] = useState(false);
+  const [audioQuality, setAudioQuality] = useState<AudioQuality>(preferences.audioQuality);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [subtitleLanguage, setSubtitleLanguage] = useState('en');
   // Codes chosen from the uploader's own subtitles, when the site lists them.
@@ -66,6 +69,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       setSelectedFormat(pick || metadata.formats[0] || null);
       setFilename(sanitizeFilename(metadata.title));
       setAudioOnly(false);
+      setAudioQuality(preferences.audioQuality);
       setDownloadSubtitles(false);
       setEmbedSubtitles(false);
       setAudioLanguage('');
@@ -74,11 +78,12 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
       const english = listed.find(l => l.code === 'en' || l.code.startsWith('en-'));
       setSubtitleCodes(english ? [english.code] : listed.slice(0, 1).map(l => l.code));
     }
-  }, [metadata, preferredResolution]);
+  }, [metadata, preferredResolution, preferences.audioQuality]);
 
   if (!metadata) return null;
 
-  const fileExtension = audioOnly ? preferences.audioFormat : (selectedFormat?.container || 'mp4');
+  const fileExtension = audioOnly ? audioExtension(audioQuality, metadata.audioSource) : (selectedFormat?.container || 'mp4');
+  const source = sourceLabel(metadata.audioSource);
   const listedSubtitles = metadata.subtitleLanguages ?? [];
   const audioTracks = metadata.audioTracks ?? [];
 
@@ -96,6 +101,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
         filename,
         startImmediately,
         audioOnly,
+        audioQuality: audioOnly ? audioQuality : undefined,
         downloadSubtitles: downloadSubtitles && (listedSubtitles.length === 0 || subtitleCodes.length > 0),
         subtitleLanguage: downloadSubtitles
           ? (listedSubtitles.length > 0 ? subtitleCodes.join(',') : subtitleLanguage)
@@ -201,14 +207,17 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             </p>
           )}
 
-          {/* Audio format info */}
+          {/* Audio quality: the choice, what the site serves, and what the
+              choice does with it (re-encoding can't add quality). */}
           {audioOnly && (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
-              <Music className="w-4 h-4 text-primary" />
-              <div>
-                <p className="text-xs font-medium text-foreground">{t('add.details.formatAudio', { format: preferences.audioFormat.toUpperCase() })}</p>
-                <p className="text-xs text-muted-foreground">{t('add.details.audioHint')}</p>
+            <div className="space-y-1.5 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
+              <div className="flex items-center gap-3">
+                <Music className="w-4 h-4 text-primary shrink-0" />
+                <span className="text-xs font-medium text-foreground">{t('audio.label')}</span>
+                <AudioQualitySelect className="ml-auto" value={audioQuality} onChange={setAudioQuality} />
               </div>
+              {source && <p className="text-xs text-muted-foreground">{source}</p>}
+              <p className="text-xs text-muted-foreground">{audioHint(audioQuality, metadata.audioSource)}</p>
             </div>
           )}
 

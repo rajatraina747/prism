@@ -13,6 +13,15 @@ const STEPS: ((stored: Stored) => Stored)[] = [
   // rename has somewhere to go, and so that from then on a stored file says
   // plainly which version wrote it.
   (stored) => stored,
+  // 1 → 2 (2.7): the audio format alone became an audio quality. Each old
+  // format was at its best quality, which is what it maps to. audioFormat is
+  // left in place for an older Prism opened on the same file.
+  (stored) => {
+    if (stored.audioQuality !== undefined) return stored;
+    const format = stored.audioFormat;
+    const audioQuality = format === 'm4a' ? 'm4a' : format === 'opus' ? 'opus' : 'mp3-v0';
+    return { ...stored, audioQuality };
+  },
 ];
 
 export function migrateSettings(stored: unknown): Partial<AppPreferences> {

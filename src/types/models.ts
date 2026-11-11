@@ -72,6 +72,16 @@ export interface FormatOption {
   playsEverywhere?: boolean;
 }
 
+/** Audio-only downloads. `original` keeps the site's stream; the rest
+ * re-encode. Rust's `audio::AudioQuality` takes exactly these names. */
+export type AudioQuality = 'original' | 'mp3-v0' | 'mp3-320' | 'mp3-256' | 'mp3-192' | 'mp3-128' | 'm4a' | 'opus';
+
+/** The best audio-only stream a lookup found (codec as people know it). */
+export interface AudioSource {
+  codec: string;
+  kbps?: number;
+}
+
 export interface AudioTrack {
   code: string;
   name: string;
@@ -91,6 +101,8 @@ export interface MediaMetadata {
   mediaKey?: string;
   /** Several audio tracks (YouTube's dubs), original first. Absent: one. */
   audioTracks?: AudioTrack[];
+  /** The best audio-only stream, for the audio quality choice. */
+  audioSource?: AudioSource;
   /** Subtitles the uploader provided (not machine translations). */
   subtitleLanguages?: { code: string; name: string }[];
 }
@@ -104,6 +116,8 @@ export interface DownloadSettings {
   retryCount?: number;
   startImmediately: boolean;
   audioOnly?: boolean;
+  /** Audio-only: fixed when queued (2.7+). Absent = the setting when it starts. */
+  audioQuality?: AudioQuality;
   downloadSubtitles?: boolean;
   /** One code, or several comma-separated (`en,es`). */
   subtitleLanguage?: string;
@@ -319,6 +333,8 @@ export const QUALITY_CHOICES: { value: DefaultQuality; label: string }[] = [
 export interface BatchChoice {
   audioOnly: boolean;
   quality: DefaultQuality;
+  /** Audio-only; absent = the setting. */
+  audioQuality?: AudioQuality;
 }
 
 /** A remembered per-site quality. Before 2.4 these were preset ids, so the
@@ -365,7 +381,9 @@ export interface AppPreferences {
   crashReportingEnabled: boolean;
   // Container/codec for audio-only downloads. Read by the Rust side from
   // settings.json (whitelisted), like cookiesFromBrowser.
-  audioFormat: 'mp3' | 'm4a' | 'opus';
+  /** Audio-only downloads, unless chosen per download. Replaced audioFormat
+   * in 2.7 (settings version 2); read Rust-side as the fallback. */
+  audioQuality: AudioQuality;
   // Video: skip the forced MP4 remux so VP9/AV1 stay in mkv/webm (some
   // players mishandle those codecs inside .mp4). Read Rust-side. Default off.
   keepOriginalContainer: boolean;
@@ -377,7 +395,7 @@ export interface AppPreferences {
   // Torrent seeding: what to do once a torrent finishes downloading.
   // 'stop' = stop uploading immediately, 'ratio' = seed until share ratio 1.0
   // (good swarm citizen, bounded upload), 'seed' = seed until manually stopped.
-  // Read by the Rust side from settings.json (whitelisted), like audioFormat.
+  // Read by the Rust side from settings.json (whitelisted), like audioQuality.
   seedingPolicy: 'stop' | 'ratio' | 'seed';
   // Optional proxy. yt-dlp and direct downloads route everything through
   // http(s)/socks proxies;
@@ -486,7 +504,7 @@ export interface AppPreferences {
 
 /** Bumped whenever a stored setting changes shape, with a matching step in
  * src/stores/settings-migrations.ts. */
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 /** System-wide hotkeys, each an accelerator like "CommandOrControl+Shift+V".
  *
@@ -625,7 +643,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   scheduleMode: 'limit',
   scheduleLimitMBps: 5,
   crashReportingEnabled: false,
-  audioFormat: 'mp3',
+  audioQuality: 'mp3-v0',
   keepOriginalContainer: false,
   setupCardDismissed: false,
   seedingPolicy: 'ratio',

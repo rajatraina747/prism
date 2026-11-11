@@ -438,6 +438,7 @@ fn start_engine(app: &AppHandle, item: Item, quiet_hours_limit: Option<u64>) {
                     Some(flag("embedSubtitles")),
                     Some(flag("useArchive")),
                     st("referer"),
+                    st("audioQuality"),
                 )
                 .await
                 .map_err(|e| (e, None))

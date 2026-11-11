@@ -28,8 +28,8 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
   const links = extractLinks(text);
   const { preferences } = useSettings();
   const defaultChoice = React.useMemo<BatchChoice>(
-    () => ({ audioOnly: false, quality: preferences.defaultQuality ?? '1080p' }),
-    [preferences.defaultQuality],
+    () => ({ audioOnly: false, quality: preferences.defaultQuality ?? '1080p', audioQuality: preferences.audioQuality }),
+    [preferences.defaultQuality, preferences.audioQuality],
   );
   const [choice, setChoice] = useState(defaultChoice);
   const askHow = links.length > 1 && links.some(mayBeVideo);

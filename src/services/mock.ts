@@ -130,6 +130,7 @@ export class MockPrismService implements IPrismService {
       thumbnail: `https://picsum.photos/seed/${generateId()}/640/360`,
       source: { url, domain, addedAt: new Date().toISOString() },
       formats: generateFormats(),
+      audioSource: { codec: 'Opus', kbps: 141 },
       uploader: randomFrom(MOCK_UPLOADERS),
       description: `A comprehensive exploration of ${title.toLowerCase()}, covering key concepts and practical applications.`,
     };

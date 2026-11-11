@@ -40,4 +40,17 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ settingsVersion: Number.NaN }).settingsVersion).toBe(SETTINGS_VERSION);
     expect(migrateSettings({ settingsVersion: -3 }).settingsVersion).toBe(SETTINGS_VERSION);
   });
+
+  it('turns the old audio format into the matching audio quality (2.7)', () => {
+    expect(migrateSettings({ settingsVersion: 1, audioFormat: 'mp3' }).audioQuality).toBe('mp3-v0');
+    expect(migrateSettings({ settingsVersion: 1, audioFormat: 'm4a' }).audioQuality).toBe('m4a');
+    expect(migrateSettings({ settingsVersion: 1, audioFormat: 'opus' }).audioQuality).toBe('opus');
+    expect(migrateSettings({ settingsVersion: 1 }).audioQuality).toBe('mp3-v0');
+    // An older Prism opened on the same file still finds its format.
+    expect(migrateSettings({ settingsVersion: 1, audioFormat: 'opus' })).toMatchObject({ audioFormat: 'opus' });
+  });
+
+  it('keeps an audio quality already chosen', () => {
+    expect(migrateSettings({ settingsVersion: 1, audioFormat: 'opus', audioQuality: 'original' }).audioQuality).toBe('original');
+  });
 });

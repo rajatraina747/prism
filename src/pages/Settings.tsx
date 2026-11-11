@@ -21,6 +21,7 @@ import { ClientImportRow, RestartTorrentEngineRow, BackupRow } from './settings/
 import { DisabledReason } from '@/components/common/DisabledReason';
 import { t } from '@/i18n';
 import { Trans } from 'react-i18next';
+import { AUDIO_QUALITIES, audioQualityLabel } from '@/lib/audio-quality';
 
 /** Five tabs since 2.6 (there were ten). Each holds one or more of the old
  * sections, which keep their own headings, so nothing moved inside them. */
@@ -232,15 +233,11 @@ export default function Settings() {
                     onChange={v => updatePreference('defaultQuality', v)}
                   />
                 </SettingRow>
-                <SettingRow label={t('settings.page.audioFormat')} description={t('settings.page.forAudioOnlyDownloadsMp3')}>
+                <SettingRow label={t('audio.label')} description={t('settings.page.audioQualityDescription')}>
                   <Select
-                    value={p.audioFormat}
-                    options={[
-                      { value: 'mp3', label: t('settings.page.mp3') },
-                      { value: 'm4a', label: t('settings.page.m4aAac') },
-                      { value: 'opus', label: t('settings.page.opus') },
-                    ]}
-                    onChange={v => updatePreference('audioFormat', v)}
+                    value={p.audioQuality}
+                    options={AUDIO_QUALITIES.map(q => ({ value: q, label: audioQualityLabel(q) }))}
+                    onChange={v => updatePreference('audioQuality', v)}
                   />
                 </SettingRow>
                 <SettingRow label={t('settings.page.keepOriginalContainer')} help={HELP.container} description={t('settings.page.offEveryVideoBecomesMp4')}>
