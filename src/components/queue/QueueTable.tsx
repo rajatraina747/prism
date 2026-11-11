@@ -17,6 +17,7 @@ import {
   Pause, Play, X, RotateCcw, Trash2, GripVertical, ArrowDownToLine, Link, Magnet, RefreshCw,
   ShieldCheck, ArrowUpToLine, ArrowDownToLine as ToBottom, FolderOpen, Info, Trash,
 } from 'lucide-react';
+import { t } from '@/i18n';
 
 /** Everything a row can ask the page to do. Torrent-only handlers are optional
  * so the table also works for plain HTTP queues (and older tests). */
@@ -108,7 +109,7 @@ export function QueueTable({ items, selectedIds, onSelect, onReorder, heldUntil,
       gap={6}
       threshold={100}
       role="listbox"
-      aria-label="Transfers"
+      aria-label={t('queue.table.label')}
       aria-multiselectable={onSelect ? true : undefined}
       renderItem={(item, index) => {
         const isDropTarget = overIndex === index && dragIndex !== null && dragIndex !== index;
@@ -175,8 +176,8 @@ const QueueRow = React.memo(function QueueRow({
   const service = useService();
   const copyLink = useCallback(() => {
     service.copyToClipboard(item.metadata.source.url)
-      .then(() => toast.success(item.kind === 'torrent' ? 'Magnet link copied' : 'Link copied'))
-      .catch(() => toast.error('Could not copy link'));
+      .then(() => toast.success(item.kind === 'torrent' ? t('queue.table.magnetCopied') : t('queue.table.linkCopied')))
+      .catch(() => toast.error(t('queue.table.copyFailed')));
   }, [service, item.metadata.source.url, item.kind]);
 
   const isActive = item.status === 'downloading';
@@ -224,8 +225,8 @@ const QueueRow = React.memo(function QueueRow({
             tabIndex={0}
             data-reorder-handle
             className="flex items-center justify-center w-5 h-12 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-muted-foreground focus:text-muted-foreground transition-colors"
-            title="Drag to reorder (or focus and use arrow keys)"
-            aria-label={`Reorder ${item.metadata.title} — position ${index + 1} of ${count}. Use arrow keys to move.`}
+            title={t('queue.table.dragTitle')}
+            aria-label={t('queue.table.reorder', { title: item.metadata.title, position: index + 1, count })}
             onKeyDown={(e) => {
               if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
               // The handle owns the arrows: without this the Transfers
@@ -256,7 +257,7 @@ const QueueRow = React.memo(function QueueRow({
             <h4 className="text-xs font-medium text-foreground truncate">{item.metadata.title}</h4>
             {item.settings.categoryName && (
               <span
-                title={`Category: ${item.settings.categoryName}`}
+                title={t('queue.table.category', { name: item.settings.categoryName })}
                 className="shrink-0 px-1.5 py-0.5 rounded-md bg-secondary/70 text-xs font-medium text-muted-foreground max-w-24 truncate"
               >
                 {item.settings.categoryName}
@@ -265,7 +266,7 @@ const QueueRow = React.memo(function QueueRow({
             {item.settings.labelIds?.map(id => labelNames?.[id]).filter(Boolean).map(name => (
               <span
                 key={name}
-                title={`Label: ${name}`}
+                title={t('queue.table.labelName', { name })}
                 className="shrink-0 px-1.5 py-0.5 rounded-md bg-primary/10 text-xs font-medium text-primary/90 max-w-24 truncate"
               >
                 {name}
@@ -293,39 +294,39 @@ const QueueRow = React.memo(function QueueRow({
             isActive && !item.retryAt && item.stage !== 'processing' && 'h-4 content-start overflow-hidden',
           )}>
             {item.settings.audioOnly ? (
-              <span className="text-primary/80">Audio only</span>
+              <span className="text-primary/80">{t('add.batch.audioOnly')}</span>
             ) : item.settings.format ? (
               <span>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</span>
             ) : null}
             {item.settings.downloadSubtitles && (
-              <span className="text-muted-foreground">+ Subs</span>
+              <span className="text-muted-foreground">{t('queue.table.subs')}</span>
             )}
             {isActive && item.retryAt ? (
               <RetryCountdown at={item.retryAt} reason={item.retryReason} />
             ) : isActive && item.stage === 'processing' ? (
-              <span className="text-primary/80">Processing — merging &amp; finishing up…</span>
+              <span className="text-primary/80">{t('queue.table.processing')}</span>
             ) : isActive && (
               <>
                 <span>
                   {sizeKnown
-                    ? `${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`
-                    : isTorrent ? 'size pending' : formatBytes(item.downloadedBytes)}
+                    ? t('queue.table.progressBytes', { done: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes) })
+                    : isTorrent ? t('queue.table.sizePending') : formatBytes(item.downloadedBytes)}
                 </span>
                 <span className="min-w-[4.5rem] whitespace-nowrap">{formatSpeed(item.speed)}</span>
-                {isTorrent && <span title="Upload speed" className="min-w-[5rem] whitespace-nowrap">↑ {formatSpeed(item.uploadSpeed ?? 0)}</span>}
-                <span className="min-w-[5rem] whitespace-nowrap">ETA {formatEta(item.eta)}</span>
+                {isTorrent && <span title={t('queue.table.uploadSpeed')} className="min-w-[5rem] whitespace-nowrap">{t('queue.table.up', { speed: formatSpeed(item.uploadSpeed ?? 0) })}</span>}
+                <span className="min-w-[5rem] whitespace-nowrap">{t('queue.table.eta', { eta: formatEta(item.eta) })}</span>
                 <span>{item.progress.toFixed(1)}%</span>
                 {isTorrent && <SwarmHealth item={item} />}
-                {isTorrent && (item.ratio ?? 0) > 0 && <span title="Share ratio">ratio {(item.ratio ?? 0).toFixed(2)}</span>}
+                {isTorrent && (item.ratio ?? 0) > 0 && <span title={t('queue.table.shareRatio')}>{t('queue.table.ratio', { ratio: (item.ratio ?? 0).toFixed(2) })}</span>}
               </>
             )}
             {isSeeding && (
               <>
-                <span className="text-success">Seeding</span>
+                <span className="text-success">{t('common.status.seeding')}</span>
                 <span>↑ {formatSpeed(item.uploadSpeed ?? 0)}</span>
-                <span>{item.peers ?? 0} peers</span>
-                <span>ratio {(item.ratio ?? 0).toFixed(2)}</span>
-                {item.uploadedBytes !== undefined && <span>{formatBytes(item.uploadedBytes)} uploaded</span>}
+                <span>{t('queue.session.peers', { count: item.peers ?? 0 })}</span>
+                <span>{t('queue.table.ratio', { ratio: (item.ratio ?? 0).toFixed(2) })}</span>
+                {item.uploadedBytes !== undefined && <span>{t('queue.table.uploaded', { size: formatBytes(item.uploadedBytes) })}</span>}
               </>
             )}
             {isPaused && (
@@ -336,8 +337,8 @@ const QueueRow = React.memo(function QueueRow({
               </span>
             )}
             {isQueued && (heldUntil
-              ? <span className="text-warning">Held for quiet hours · until {heldUntil}</span>
-              : <span>Waiting for a slot</span>)}
+              ? <span className="text-warning">{t('queue.table.held', { time: heldUntil })}</span>
+              : <span>{t('queue.table.waiting')}</span>)}
           </div>
 
           {isFailed && item.error && (
@@ -351,7 +352,7 @@ const QueueRow = React.memo(function QueueRow({
                 onClick={() => setShowFiles(v => !v)}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showFiles ? '▾' : '▸'} {files.length} files
+                {showFiles ? '▾' : '▸'} {t('queue.table.files', { count: files.length })}
               </button>
               {showFiles && (
                 <div className="mt-1 space-y-0.5">
@@ -366,7 +367,7 @@ const QueueRow = React.memo(function QueueRow({
                           <input
                             type="checkbox"
                             checked={fileSelected}
-                            aria-label={`Download ${f.name.split('/').pop()}`}
+                            aria-label={t('queue.table.downloadFile', { name: f.name.split('/').pop() })}
                             className="w-3 h-3 accent-primary shrink-0 cursor-pointer"
                             onChange={() => {
                               const current = item.settings.selectedFiles ?? files.map((_, idx) => idx);
@@ -374,7 +375,7 @@ const QueueRow = React.memo(function QueueRow({
                                 ? current.filter(x => x !== i)
                                 : [...current, i].sort((a, b) => a - b);
                               if (next.length === 0) {
-                                toast.error('At least one file must stay selected');
+                                toast.error(t('queue.table.keepOne'));
                                 return;
                               }
                               onUpdateFiles(item.id, next);
@@ -398,30 +399,30 @@ const QueueRow = React.memo(function QueueRow({
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
           {onOpenDetails && (
-            <ActionButton icon={Info} onClick={() => onOpenDetails(item.id)} tooltip="Details" />
+            <ActionButton icon={Info} onClick={() => onOpenDetails(item.id)} tooltip={t('queue.actions.details')} />
           )}
           <ActionButton
             icon={Link}
             onClick={copyLink}
-            tooltip={isTorrent ? 'Copy magnet link' : 'Copy source link'}
+            tooltip={isTorrent ? t('queue.actions.copyMagnet') : t('queue.actions.copySource')}
           />
           {isTorrent && isLive && onReannounce && (
-            <ActionButton icon={RefreshCw} onClick={() => onReannounce(item.id)} tooltip="Update tracker" />
+            <ActionButton icon={RefreshCw} onClick={() => onReannounce(item.id)} tooltip={t('queue.updateTracker')} />
           )}
           {isLive && (
-            <ActionButton icon={Pause} onClick={() => onPause(item.id)} tooltip="Pause" />
+            <ActionButton icon={Pause} onClick={() => onPause(item.id)} tooltip={t('queue.pause')} />
           )}
           {isPaused && (
-            <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip="Resume" />
+            <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip={t('queue.resume')} />
           )}
           {isHeld && (
-            <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip="Start" />
+            <ActionButton icon={Play} onClick={() => onResume(item.id)} tooltip={t('queue.actions.start')} />
           )}
           {(isActive || isPaused || isSeeding || isQueued || isHeld) && (
-            <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip={isSeeding ? 'Stop seeding' : 'Cancel'} />
+            <ActionButton icon={X} onClick={() => onCancel(item.id)} tooltip={isSeeding ? t('queue.actions.stopSeeding') : t('common.cancel')} />
           )}
           {(isTerminal || isFailed) && (
-            <ActionButton icon={Trash2} onClick={() => onRemove(item.id)} tooltip="Remove" />
+            <ActionButton icon={Trash2} onClick={() => onRemove(item.id)} tooltip={t('queue.remove')} />
           )}
         </div>
       </div>
@@ -432,33 +433,33 @@ const QueueRow = React.memo(function QueueRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       <ContextMenuContent className="w-56">
-        {onOpenDetails && <ContextMenuItem onSelect={() => onOpenDetails(item.id)}><Info className="w-3.5 h-3.5 mr-2" />Details</ContextMenuItem>}
-        {isLive && <ContextMenuItem onSelect={() => onPause(item.id)}><Pause className="w-3.5 h-3.5 mr-2" />Pause</ContextMenuItem>}
-        {isPaused && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />Resume</ContextMenuItem>}
-        {isHeld && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />Start</ContextMenuItem>}
-        {isFailed && <ContextMenuItem onSelect={() => onRetry(item.id)}><RotateCcw className="w-3.5 h-3.5 mr-2" />Retry</ContextMenuItem>}
+        {onOpenDetails && <ContextMenuItem onSelect={() => onOpenDetails(item.id)}><Info className="w-3.5 h-3.5 mr-2" />{t('queue.actions.details')}</ContextMenuItem>}
+        {isLive && <ContextMenuItem onSelect={() => onPause(item.id)}><Pause className="w-3.5 h-3.5 mr-2" />{t('queue.pause')}</ContextMenuItem>}
+        {isPaused && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />{t('queue.resume')}</ContextMenuItem>}
+        {isHeld && <ContextMenuItem onSelect={() => onResume(item.id)}><Play className="w-3.5 h-3.5 mr-2" />{t('queue.actions.start')}</ContextMenuItem>}
+        {isFailed && <ContextMenuItem onSelect={() => onRetry(item.id)}><RotateCcw className="w-3.5 h-3.5 mr-2" />{t('common.retry')}</ContextMenuItem>}
         {isTorrent && isLive && onReannounce && (
-          <ContextMenuItem onSelect={() => onReannounce(item.id)}><RefreshCw className="w-3.5 h-3.5 mr-2" />Update tracker</ContextMenuItem>
+          <ContextMenuItem onSelect={() => onReannounce(item.id)}><RefreshCw className="w-3.5 h-3.5 mr-2" />{t('queue.updateTracker')}</ContextMenuItem>
         )}
         {isTorrent && (isLive || isPaused) && onRecheck && (
-          <ContextMenuItem onSelect={() => onRecheck(item.id)}><ShieldCheck className="w-3.5 h-3.5 mr-2" />Force re-check</ContextMenuItem>
+          <ContextMenuItem onSelect={() => onRecheck(item.id)}><ShieldCheck className="w-3.5 h-3.5 mr-2" />{t('queue.actions.recheck')}</ContextMenuItem>
         )}
         {(onMoveTop || onMoveBottom) && <ContextMenuSeparator />}
-        {onMoveTop && <ContextMenuItem disabled={index === 0} onSelect={() => onMoveTop(item.id)}><ArrowUpToLine className="w-3.5 h-3.5 mr-2" />Move to top</ContextMenuItem>}
-        {onMoveBottom && <ContextMenuItem disabled={index === count - 1} onSelect={() => onMoveBottom(item.id)}><ToBottom className="w-3.5 h-3.5 mr-2" />Move to bottom</ContextMenuItem>}
+        {onMoveTop && <ContextMenuItem disabled={index === 0} onSelect={() => onMoveTop(item.id)}><ArrowUpToLine className="w-3.5 h-3.5 mr-2" />{t('queue.actions.moveTop')}</ContextMenuItem>}
+        {onMoveBottom && <ContextMenuItem disabled={index === count - 1} onSelect={() => onMoveBottom(item.id)}><ToBottom className="w-3.5 h-3.5 mr-2" />{t('queue.actions.moveBottom')}</ContextMenuItem>}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={copyLink}><Link className="w-3.5 h-3.5 mr-2" />{isTorrent ? 'Copy magnet link' : 'Copy source link'}</ContextMenuItem>
-        {onShowInFolder && <ContextMenuItem onSelect={() => onShowInFolder(item.id)}><FolderOpen className="w-3.5 h-3.5 mr-2" />Show in folder</ContextMenuItem>}
+        <ContextMenuItem onSelect={copyLink}><Link className="w-3.5 h-3.5 mr-2" />{isTorrent ? t('queue.actions.copyMagnet') : t('queue.actions.copySource')}</ContextMenuItem>
+        {onShowInFolder && <ContextMenuItem onSelect={() => onShowInFolder(item.id)}><FolderOpen className="w-3.5 h-3.5 mr-2" />{t('queue.actions.showInFolder')}</ContextMenuItem>}
         <ContextMenuSeparator />
         {(isActive || isPaused || isSeeding || isQueued) && (
-          <ContextMenuItem onSelect={() => onCancel(item.id)}><X className="w-3.5 h-3.5 mr-2" />{isSeeding ? 'Stop seeding' : 'Cancel'}</ContextMenuItem>
+          <ContextMenuItem onSelect={() => onCancel(item.id)}><X className="w-3.5 h-3.5 mr-2" />{isSeeding ? t('queue.actions.stopSeeding') : t('common.cancel')}</ContextMenuItem>
         )}
         {(isTerminal || isFailed) && (
-          <ContextMenuItem onSelect={() => onRemove(item.id)}><Trash2 className="w-3.5 h-3.5 mr-2" />Remove</ContextMenuItem>
+          <ContextMenuItem onSelect={() => onRemove(item.id)}><Trash2 className="w-3.5 h-3.5 mr-2" />{t('queue.remove')}</ContextMenuItem>
         )}
         {isTorrent && onRemoveWithData && (
           <ContextMenuItem className="text-destructive focus:text-destructive" onSelect={() => onRemoveWithData(item.id)}>
-            <Trash className="w-3.5 h-3.5 mr-2" />Remove and delete files…
+            <Trash className="w-3.5 h-3.5 mr-2" />{t('queue.actions.removeDelete')}
           </ContextMenuItem>
         )}
       </ContextMenuContent>
@@ -471,8 +472,8 @@ function KindBadge({ torrent }: { torrent: boolean }) {
   return (
     <span
       className="inline-flex items-center justify-center w-4 h-4 rounded bg-secondary/70 text-muted-foreground shrink-0"
-      title={torrent ? 'BitTorrent' : 'Direct download'}
-      aria-label={torrent ? 'BitTorrent' : 'Direct download'}
+      title={torrent ? t('queue.table.bittorrent') : t('queue.table.direct')}
+      aria-label={torrent ? t('queue.table.bittorrent') : t('queue.table.direct')}
     >
       <Icon className="w-2.5 h-2.5" strokeWidth={2} />
     </span>
@@ -495,7 +496,7 @@ function RetryCountdown({ at, reason }: { at: string; reason?: string }) {
   const short = reason?.split(' — ')[0];
   return (
     <span className="text-warning" title={reason}>
-      {secs > 0 ? `Retrying in ${clock}` : 'Retrying…'}{short ? ` — ${short}` : ''}
+      {secs > 0 ? t('queue.table.retryIn', { clock }) : t('queue.table.retrying')}{short ? ` — ${short}` : ''}
     </span>
   );
 }
@@ -510,17 +511,17 @@ export function SwarmHealth({ item }: { item: DownloadItem }) {
   const peerless = item.peerlessSecs ?? 0;
   const since = peerless >= 60 ? ` · ${formatEta(peerless)}` : '';
   if (peers > 0) {
-    return <span title={`${seen} peers discovered in the swarm`}>{peers} peers{seen > peers ? ` · ${seen} seen` : ''}</span>;
+    return <span title={t('queue.swarm.discovered', { count: seen })}>{t('queue.session.peers', { count: peers })}{seen > peers ? t('queue.swarm.seen', { count: seen }) : ''}</span>;
   }
   if (connecting > 0) {
-    return <span className="text-primary/80">connecting to {connecting} peers…</span>;
+    return <span className="text-primary/80">{t('queue.swarm.connecting', { count: connecting })}</span>;
   }
   if (seen > 0) {
-    return <span className="text-warning" title="Peers exist but none are reachable — possible NAT/firewall issue">0 of {seen} peers reachable{since}</span>;
+    return <span className="text-warning" title={t('queue.swarm.unreachableTitle')}>{t('queue.swarm.unreachable', { count: seen })}{since}</span>;
   }
   return (
-    <span className="text-muted-foreground" title="Prism keeps announcing to trackers and the DHT every 5 minutes">
-      searching for peers{since || '…'}
+    <span className="text-muted-foreground" title={t('queue.swarm.searchingTitle')}>
+      {t('queue.swarm.searching')}{since || '…'}
     </span>
   );
 }
