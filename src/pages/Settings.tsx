@@ -19,29 +19,31 @@ import { SettingsQuery } from './settings/query';
 import { useFindShortcut } from '@/hooks/use-find-shortcut';
 import { ClientImportRow, RestartTorrentEngineRow, BackupRow } from './settings/rows';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
+import { Trans } from 'react-i18next';
 
 /** Five tabs since 2.6 (there were ten). Each holds one or more of the old
  * sections, which keep their own headings, so nothing moved inside them. */
 const SECTIONS = [
-  { id: 'general', label: 'General', icon: Palette },
-  { id: 'downloads', label: 'Downloads', icon: Film },
-  { id: 'torrents', label: 'Torrents', icon: Magnet },
-  { id: 'network', label: 'Network', icon: Globe },
-  { id: 'privacy', label: 'Privacy & advanced', icon: Shield },
+  { id: 'general', label: t('settings.page.general'), icon: Palette },
+  { id: 'downloads', label: t('settings.page.downloads'), icon: Film },
+  { id: 'torrents', label: t('settings.page.torrents'), icon: Magnet },
+  { id: 'network', label: t('settings.page.network'), icon: Globe },
+  { id: 'privacy', label: t('settings.page.privacyAdvanced'), icon: Shield },
 ] as const;
 
 /** The old sections, the tab each one now lives in, and its heading there. */
 const PARTS: Record<string, { tab: string; title: string }> = {
-  appearance: { tab: 'general', title: 'Appearance' },
-  notifications: { tab: 'general', title: 'Notifications' },
-  updates: { tab: 'general', title: 'Updates' },
-  video: { tab: 'downloads', title: 'Video' },
-  speed: { tab: 'downloads', title: 'Speed & schedule' },
-  storage: { tab: 'downloads', title: 'Storage' },
-  bittorrent: { tab: 'torrents', title: 'Torrents' },
-  network: { tab: 'network', title: 'Network' },
-  diagnostics: { tab: 'privacy', title: 'Diagnostics' },
-  legal: { tab: 'privacy', title: 'About & legal' },
+  appearance: { tab: 'general', title: t('settings.page.appearance') },
+  notifications: { tab: 'general', title: t('settings.page.notifications') },
+  updates: { tab: 'general', title: t('settings.page.updates') },
+  video: { tab: 'downloads', title: t('settings.page.video') },
+  speed: { tab: 'downloads', title: t('settings.page.speedSchedule') },
+  storage: { tab: 'downloads', title: t('settings.page.storage') },
+  bittorrent: { tab: 'torrents', title: t('settings.page.torrents') },
+  network: { tab: 'network', title: t('settings.page.network') },
+  diagnostics: { tab: 'privacy', title: t('settings.page.diagnostics') },
+  legal: { tab: 'privacy', title: t('settings.page.aboutLegal') },
 };
 
 /** Old links (?section=video, ?section=updates, pre-1.9 ids) still land. */
@@ -62,18 +64,18 @@ const kbpsToMbps = (kbps: number) => Math.round((kbps / 1024) * 100) / 100;
 const mbpsToKbps = (mbps: number) => Math.round(mbps * 1024);
 
 const HELP = {
-  cookies: ['browser cookies', 'Some videos need a signed-in session. Prism lets yt-dlp borrow that browser\'s cookies for the request on this machine; they are never uploaded anywhere else.'],
-  container: ['a container', 'The container (.mp4, .mkv, .webm) wraps the video and audio streams. Remuxing re-wraps them without re-encoding — fast and lossless — but VP9 and AV1, the codecs sites use for 4K and HDR, play poorly inside .mp4 in QuickTime.'],
-  sponsorblock: ['SponsorBlock', 'A community database of sponsor, intro and self-promotion segments in YouTube videos.'],
-  ratio: ['share ratio', 'Uploaded ÷ downloaded. A ratio of 1.0 means you have given the swarm back as much as you took.'],
-  trackers: ['an announce URL', 'A tracker introduces peers to each other; its announce URL is where a client reports in, e.g. udp://tracker.example.org:1337/announce.'],
-  dht: ['DHT', 'Distributed Hash Table: finds peers through other clients instead of a tracker. Most magnet links depend on it.'],
-  lsd: ['LSD', 'Local Service Discovery: finds peers on your own network by multicast.'],
-  utp: ['uTP', 'Micro Transport Protocol: a UDP transport that backs off when your connection is busy, so torrents don\'t swamp everything else.'],
-  upnp: ['UPnP', 'Universal Plug and Play: Prism asks your router to open a port so peers can connect to you directly.'],
-  blocklist: ['a p2p blocklist', 'A list of IP ranges (the P2P/eMule format uTorrent and qBittorrent use) the torrent engine will refuse to connect to.'],
-  proxy: ['socks5h', 'socks5h:// sends DNS lookups through the proxy as well; socks5:// resolves names on this machine first, which can reveal the sites you visit.'],
-  ipv4: ['IPv4-only', 'Many sites throttle or block downloads over IPv6. Turn this off only if your network has no IPv4.'],
+  cookies: [t('settings.help.cookies.term'), t('settings.help.cookies.text')],
+  container: [t('settings.help.container.term'), t('settings.help.container.text')],
+  sponsorblock: [t('settings.help.sponsorblock.term'), t('settings.help.sponsorblock.text')],
+  ratio: [t('settings.help.ratio.term'), t('settings.help.ratio.text')],
+  trackers: [t('settings.help.trackers.term'), t('settings.help.trackers.text')],
+  dht: [t('settings.help.dht.term'), t('settings.help.dht.text')],
+  lsd: [t('settings.help.lsd.term'), t('settings.help.lsd.text')],
+  utp: [t('settings.help.utp.term'), t('settings.help.utp.text')],
+  upnp: [t('settings.help.upnp.term'), t('settings.help.upnp.text')],
+  blocklist: [t('settings.help.blocklist.term'), t('settings.help.blocklist.text')],
+  proxy: [t('settings.help.proxy.term'), t('settings.help.proxy.text')],
+  ipv4: [t('settings.help.ipv4.term'), t('settings.help.ipv4.text')],
 } satisfies Record<string, [string, string]>;
 
 /** Sample values for the file name template preview. */
@@ -131,7 +133,7 @@ export default function Settings() {
         .then(text => setTemplatePreview({ ok: true, text }))
         .catch((e: unknown) => setTemplatePreview({
           ok: false,
-          text: typeof e === 'string' ? e : e instanceof Error ? e.message : 'Invalid template',
+          text: typeof e === 'string' ? e : e instanceof Error ? e.message : t('settings.page.invalidTemplate'),
         }));
     }, 250);
     return () => clearTimeout(timer);
@@ -151,8 +153,8 @@ export default function Settings() {
     <div className="page-container">
       <div className="page-header flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Configure Prism preferences</p>
+          <h1 className="page-title">{t('shell.nav.settings')}</h1>
+          <p className="page-subtitle">{t('settings.page.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-input border border-border/40 w-72">
           <Search className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
@@ -162,15 +164,15 @@ export default function Settings() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape') setQuery(''); }}
-            placeholder="Search settings…"
-            aria-label="Search settings"
+            placeholder={t('settings.page.searchSettings')}
+            aria-label={t('settings.page.searchSettings2')}
             className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
           />
         </div>
       </div>
 
       <Tabs value={activeSection} onValueChange={setActiveSection} orientation="vertical" className="flex gap-6">
-        <TabsList aria-label="Settings sections" className={cn(searching && 'opacity-50 pointer-events-none', 'w-44 shrink-0 h-auto flex flex-col items-stretch justify-start gap-0.5 bg-transparent p-0')}>
+        <TabsList aria-label={t('settings.page.settingsSections')} className={cn(searching && 'opacity-50 pointer-events-none', 'w-44 shrink-0 h-auto flex flex-col items-stretch justify-start gap-0.5 bg-transparent p-0')}>
           {SECTIONS.map(s => (
             <TabsTrigger
               key={s.id}
@@ -184,7 +186,7 @@ export default function Settings() {
               <s.icon className="w-3.5 h-3.5" strokeWidth={1.8} aria-hidden="true" />
               {s.label}
               {s.id === 'general' && engine?.updateAvailable && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" aria-label="Engine update available" />
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" aria-label={t('settings.page.engineUpdateAvailable')} />
               )}
             </TabsTrigger>
           ))}
@@ -194,70 +196,66 @@ export default function Settings() {
           <SettingsQuery.Provider value={query}>
           <Panel className="animate-fade-in" key={searching ? 'search' : activeSection}>
             <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Video</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.video')}</h2>
               {!ffmpegOk && (
                 <div className="flex items-start gap-2.5 px-3 py-2.5 mb-2 rounded-lg bg-warning/10 border border-warning/25">
                   <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-foreground">ffmpeg not found</p>
+                    <p className="text-xs font-medium text-foreground">{t('setup.ffmpeg.notFound')}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Without it, high-quality merges, embedded thumbnails/chapters, and SponsorBlock
-                      won't work. Prism ships its own copy on macOS, so if it's missing there,
-                      reinstalling Prism restores it. On Windows install{' '}
-                      <span className="font-mono">winget install Gyan.FFmpeg</span>, on Linux your
-                      distro's <span className="font-mono">ffmpeg</span> package — then restart Prism.
+                      <Trans i18nKey="settings.page.ffmpegMissing" components={{ code: <span className="font-mono" /> }} />
                     </p>
                   </div>
                 </div>
               )}
-              <SettingGroup title="Access">
-                <SettingRow label="Browser cookies" help={HELP.cookies} description="Use a browser's sign-in for members-only, private and age-restricted videos">
+              <SettingGroup title={t('settings.page.access')}>
+                <SettingRow label={t('settings.page.browserCookies')} help={HELP.cookies} description={t('settings.page.useABrowsersSignIn')}>
                   <Select
                     value={p.cookiesFromBrowser}
                     options={[
-                      { value: 'none', label: 'Off' },
-                      { value: 'safari', label: 'Safari' },
-                      { value: 'chrome', label: 'Chrome' },
-                      { value: 'firefox', label: 'Firefox' },
-                      { value: 'edge', label: 'Edge' },
-                      { value: 'brave', label: 'Brave' },
+                      { value: 'none', label: t('settings.page.off') },
+                      { value: 'safari', label: t('settings.page.safari') },
+                      { value: 'chrome', label: t('settings.page.chrome') },
+                      { value: 'firefox', label: t('settings.page.firefox') },
+                      { value: 'edge', label: t('settings.page.edge') },
+                      { value: 'brave', label: t('settings.page.brave') },
                     ]}
                     onChange={v => updatePreference('cookiesFromBrowser', v)}
                   />
                 </SettingRow>
               </SettingGroup>
-              <SettingGroup title="Files">
-                <SettingRow label="Default quality" description="Used for playlists and batches, and pre-selected in the quality list. A site you've used before starts with the quality you picked there last">
+              <SettingGroup title={t('settings.page.files')}>
+                <SettingRow label={t('settings.page.defaultQuality')} description={t('settings.page.usedForPlaylistsAndBatches')}>
                   <Select
                     value={p.defaultQuality ?? '1080p'}
                     options={QUALITY_CHOICES}
                     onChange={v => updatePreference('defaultQuality', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Audio format" description="For audio-only downloads. MP3 plays everywhere; M4A is smaller at the same quality; Opus is smallest">
+                <SettingRow label={t('settings.page.audioFormat')} description={t('settings.page.forAudioOnlyDownloadsMp3')}>
                   <Select
                     value={p.audioFormat}
                     options={[
-                      { value: 'mp3', label: 'MP3' },
-                      { value: 'm4a', label: 'M4A (AAC)' },
-                      { value: 'opus', label: 'Opus' },
+                      { value: 'mp3', label: t('settings.page.mp3') },
+                      { value: 'm4a', label: t('settings.page.m4aAac') },
+                      { value: 'opus', label: t('settings.page.opus') },
                     ]}
                     onChange={v => updatePreference('audioFormat', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Keep original container" help={HELP.container} description="Off: every video becomes .mp4 for QuickTime and Finder. On: 4K/HDR downloads stay .mkv/.webm as the site serves them — better in VLC and mpv">
+                <SettingRow label={t('settings.page.keepOriginalContainer')} help={HELP.container} description={t('settings.page.offEveryVideoBecomesMp4')}>
                   <Toggle checked={p.keepOriginalContainer} onChange={v => updatePreference('keepOriginalContainer', v)} />
                 </SettingRow>
-                <SettingRow label="Make videos play on Apple devices" description="Re-encodes the few downloads QuickTime, iMessage and iPhone can't open (VP9/AV1 video, Opus audio) to H.264/AAC. Takes extra time and some quality; skipped when Keep original container is on. On by default on Mac">
+                <SettingRow label={t('settings.page.makeVideosPlayOnApple')} description={t('settings.page.reEncodesTheFewDownloads')}>
                   <Toggle checked={p.applePlayable ?? IS_MAC} onChange={v => updatePreference('applePlayable', v)} />
                 </SettingRow>
-                <SettingRow label="SponsorBlock" help={HELP.sponsorblock} description="Mark sponsor segments as chapters, or cut them out (needs ffmpeg)">
+                <SettingRow label={t('settings.page.sponsorblock')} help={HELP.sponsorblock} description={t('settings.page.markSponsorSegmentsAsChapters')}>
                   <Select
                     value={p.sponsorBlock}
                     options={[
-                      { value: 'off', label: 'Off' },
-                      { value: 'mark', label: 'Mark as chapters' },
-                      { value: 'remove', label: 'Remove segments' },
+                      { value: 'off', label: t('settings.page.off') },
+                      { value: 'mark', label: t('settings.page.markAsChapters') },
+                      { value: 'remove', label: t('settings.page.removeSegments') },
                     ]}
                     onChange={v => updatePreference('sponsorBlock', v)}
                   />
@@ -266,129 +264,129 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="torrents" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Torrents</h2>
-              <SettingGroup title="Seeding">
-                <SettingRow label="When a torrent finishes" description="How long to keep uploading to the swarm afterwards">
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.torrents')}</h2>
+              <SettingGroup title={t('settings.page.seeding')}>
+                <SettingRow label={t('settings.page.whenATorrentFinishes')} description={t('settings.page.howLongToKeepUploading')}>
                   <Select
                     value={p.seedingPolicy}
                     options={[
-                      { value: 'stop', label: 'Stop at 100%' },
-                      { value: 'ratio', label: 'Seed to target ratio' },
-                      { value: 'seed', label: 'Seed until stopped' },
+                      { value: 'stop', label: t('settings.page.stopAt100') },
+                      { value: 'ratio', label: t('settings.page.seedToTargetRatio') },
+                      { value: 'seed', label: t('settings.page.seedUntilStopped') },
                     ]}
                     onChange={v => updatePreference('seedingPolicy', v)}
                   />
                 </SettingRow>
                 {p.seedingPolicy === 'ratio' && (
-                  <SettingRow label="Target ratio" help={HELP.ratio} description="Stop seeding once uploaded ÷ downloaded reaches this">
+                  <SettingRow label={t('settings.page.targetRatio')} help={HELP.ratio} description={t('settings.page.stopSeedingOnceUploadedDownloaded')}>
                     <NumberInput value={p.seedRatioTarget} onChange={v => updatePreference('seedRatioTarget', v)} min={0.1} max={10} step={0.1} />
                   </SettingRow>
                 )}
                 {p.seedingPolicy !== 'stop' && (
-                  <SettingRow label="Seed time limit" description="Stop seeding after this long, whatever the ratio (0 = no limit)">
+                  <SettingRow label={t('settings.page.seedTimeLimit')} description={t('settings.page.stopSeedingAfterThisLong')}>
                     <NumberInput value={p.seedTimeLimitMinutes} onChange={v => updatePreference('seedTimeLimitMinutes', v)} min={0} max={525600} unit="min" />
                   </SettingRow>
                 )}
               </SettingGroup>
-              <SettingGroup title="Finding peers">
-                <SettingRow label="Extra trackers" help={HELP.trackers} description="Added to every torrent (comma or newline separated). Helps when a magnet's own trackers are dead">
+              <SettingGroup title={t('settings.page.findingPeers')}>
+                <SettingRow label={t('settings.page.extraTrackers')} help={HELP.trackers} description={t('settings.page.addedToEveryTorrentComma')}>
                   <TextInput value={p.extraTrackers} onChange={v => updatePreference('extraTrackers', v)} placeholder="udp://tracker.example.org:1337/announce" />
                 </SettingRow>
-                <SettingRow label="Give up on peerless torrents after" description="Minutes with no peers before a torrent is marked failed. 0 = never: Prism keeps re-announcing every 5 minutes">
+                <SettingRow label={t('settings.page.giveUpOnPeerlessTorrents')} description={t('settings.page.minutesWithNoPeersBefore')}>
                   <NumberInput value={p.torrentGiveUpMinutes} onChange={v => updatePreference('torrentGiveUpMinutes', v)} min={0} max={10080} unit="min" />
                 </SettingRow>
               </SettingGroup>
               <Advanced>
-                <SettingGroup title="Engine (applies when the engine restarts)">
-                  <SettingRow label="DHT" help={HELP.dht} description={p.proxyUrl ? "Off while a proxy is set: DHT can't go through it" : 'Find peers without a tracker. Off = tracker-only'}>
+                <SettingGroup title={t('settings.page.engineAppliesWhenTheEngine')}>
+                  <SettingRow label={t('settings.page.dht')} help={HELP.dht} description={p.proxyUrl ? t('settings.page.dhtProxyOff') : t('settings.page.dhtDescription')}>
                     <Toggle checked={p.torrentDht} onChange={v => updatePreference('torrentDht', v)} />
                   </SettingRow>
-                  <SettingRow label="Local peer discovery" help={HELP.lsd} description="Find peers on your own network">
+                  <SettingRow label={t('settings.page.localPeerDiscovery')} help={HELP.lsd} description={t('settings.page.findPeersOnYourOwn')}>
                     <Toggle checked={p.torrentLsd} onChange={v => updatePreference('torrentLsd', v)} />
                   </SettingRow>
-                  <SettingRow label="uTP transport" help={HELP.utp} description={p.proxyUrl ? "Off while a proxy is set: uTP can't go through it" : 'Accept and make uTP connections alongside TCP (still maturing in the engine)'}>
+                  <SettingRow label={t('settings.page.utpTransport')} help={HELP.utp} description={p.proxyUrl ? t('settings.page.utpProxyOff') : t('settings.page.utpDescription')}>
                     <Toggle checked={p.torrentUtp} onChange={v => updatePreference('torrentUtp', v)} />
                   </SettingRow>
-                  <SettingRow label="UPnP port forwarding" help={HELP.upnp} description="Faster swarms, but it tells your network this machine accepts connections. Always off while a proxy is set">
+                  <SettingRow label={t('settings.page.upnpPortForwarding')} help={HELP.upnp} description={t('settings.page.fasterSwarmsButItTells')}>
                     <Toggle checked={p.torrentUpnp} onChange={v => updatePreference('torrentUpnp', v)} />
                   </SettingRow>
-                  <SettingRow label="Listen port" description="Incoming peer connections (and the UPnP mapping) use this port">
+                  <SettingRow label={t('settings.page.listenPort')} description={t('settings.page.incomingPeerConnectionsAndThe')}>
                     <NumberInput value={p.torrentListenPort} onChange={v => updatePreference('torrentListenPort', v)} min={1024} max={65535} />
                   </SettingRow>
-                  <SettingRow label="Max peers per torrent" description="0 = engine default. Lower it on slow or metered connections">
+                  <SettingRow label={t('settings.page.maxPeersPerTorrent')} description={t('settings.page.n0EngineDefaultLowerIt')}>
                     <NumberInput value={p.torrentPeerLimit} onChange={v => updatePreference('torrentPeerLimit', v)} min={0} max={10000} />
                   </SettingRow>
-                  <SettingRow label="IP blocklist" help={HELP.blocklist} description="URL of a blocklist (https, gz supported). Empty = off">
+                  <SettingRow label={t('settings.page.ipBlocklist')} help={HELP.blocklist} description={t('settings.page.urlOfABlocklistHttps')}>
                     <TextInput value={p.blocklistUrl} onChange={v => updatePreference('blocklistUrl', v)} placeholder="https://example.com/blocklist.p2p.gz" />
                   </SettingRow>
                   <RestartTorrentEngineRow />
                 </SettingGroup>
               </Advanced>
-              <SettingGroup title="Move from another client">
+              <SettingGroup title={t('settings.page.moveFromAnotherClient')}>
                 <ClientImportRow />
               </SettingGroup>
             </TabsContent>
 
             <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Speed &amp; schedule</h2>
-              <SettingGroup title="Queue">
-                <SettingRow label="Max concurrent downloads" description="Videos and direct downloads running at the same time">
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.speedSchedule')}</h2>
+              <SettingGroup title={t('settings.page.queue')}>
+                <SettingRow label={t('settings.page.maxConcurrentDownloads')} description={t('settings.page.videosAndDirectDownloadsRunning')}>
                   <NumberInput value={p.maxConcurrentDownloads} onChange={v => updatePreference('maxConcurrentDownloads', v)} min={1} max={10} />
                 </SettingRow>
-                <SettingRow label="Max concurrent torrents" description="Torrents downloading at the same time. One with no peers or no speed for five minutes stops counting, so the next can start">
+                <SettingRow label={t('settings.page.maxConcurrentTorrents')} description={t('settings.page.torrentsDownloadingAtTheSame')}>
                   <NumberInput value={p.maxConcurrentTorrents} onChange={v => updatePreference('maxConcurrentTorrents', v)} min={1} max={20} />
                 </SettingRow>
-                <SettingRow label="Keep running when the window is closed" description="Downloads carry on in the background; open Prism again from the tray or Dock. Quitting asks first while anything is running">
+                <SettingRow label={t('settings.page.keepRunningWhenTheWindow')} description={t('settings.page.downloadsCarryOnInThe')}>
                   <Toggle checked={p.closeToTray} onChange={v => updatePreference('closeToTray', v)} />
                 </SettingRow>
-                <SettingRow label="Retries on failure" description="Automatic retries after a dropped connection or a site's rate limit (rate limits wait minutes, not seconds)">
+                <SettingRow label={t('settings.page.retriesOnFailure')} description={t('settings.page.automaticRetriesAfterADropped')}>
                   <NumberInput value={p.defaultRetryCount} onChange={v => updatePreference('defaultRetryCount', v)} min={0} max={10} />
                 </SettingRow>
-                <SettingRow label="Subscription check interval" description="How often subscribed channels and playlists are checked for new videos">
+                <SettingRow label={t('settings.page.subscriptionCheckInterval')} description={t('settings.page.howOftenSubscribedChannelsAnd')}>
                   <NumberInput value={p.subscriptionCheckIntervalMinutes} onChange={v => updatePreference('subscriptionCheckIntervalMinutes', v)} min={5} max={1440} unit="min" />
                 </SettingRow>
               </SettingGroup>
-              <SettingGroup title="Speed limits (0 = unlimited)">
-                <SettingRow label="Video downloads" description="Per download; applies when a download starts">
+              <SettingGroup title={t('settings.page.speedLimits0Unlimited')}>
+                <SettingRow label={t('settings.page.videoDownloads')} description={t('settings.page.perDownloadAppliesWhenA')}>
                   <NumberInput value={p.bandwidthLimit} onChange={v => updatePreference('bandwidthLimit', v)} min={0} max={10000} step={0.5} unit="MB/s" />
                 </SettingRow>
-                <SettingRow label="Torrent download" description="All torrents together; applies immediately">
+                <SettingRow label={t('settings.page.torrentDownload')} description={t('settings.page.allTorrentsTogetherAppliesImmediately')}>
                   <NumberInput value={kbpsToMbps(p.torrentDownloadLimitKBps)} onChange={v => updatePreference('torrentDownloadLimitKBps', mbpsToKbps(v))} min={0} max={10000} step={0.1} unit="MB/s" />
                 </SettingRow>
-                <SettingRow label="Torrent upload" description="All seeding and uploading together; applies immediately">
+                <SettingRow label={t('settings.page.torrentUpload')} description={t('settings.page.allSeedingAndUploadingTogether')}>
                   <NumberInput value={kbpsToMbps(p.torrentUploadLimitKBps)} onChange={v => updatePreference('torrentUploadLimitKBps', mbpsToKbps(v))} min={0} max={10000} step={0.1} unit="MB/s" />
                 </SettingRow>
               </SettingGroup>
-              <SettingGroup title="Quiet hours">
-                <SettingRow label="Quiet hours" description="Hold or slow down downloads during part of the day">
+              <SettingGroup title={t('settings.page.quietHours')}>
+                <SettingRow label={t('settings.page.quietHours')} description={t('settings.page.holdOrSlowDownDownloads')}>
                   <Toggle checked={p.scheduleEnabled} onChange={v => updatePreference('scheduleEnabled', v)} />
                 </SettingRow>
                 {p.scheduleEnabled && (
                   <>
-                    <SettingRow label="From" description="Hour the window starts (24-hour clock)">
+                    <SettingRow label={t('settings.page.from')} description={t('settings.page.hourTheWindowStarts24')}>
                       <NumberInput value={p.scheduleStartHour} onChange={v => updatePreference('scheduleStartHour', v)} min={0} max={23} unit=":00" />
                     </SettingRow>
-                    <SettingRow label="Until" description="Hour the window ends; wraps past midnight">
+                    <SettingRow label={t('settings.page.until')} description={t('settings.page.hourTheWindowEndsWraps')}>
                       <NumberInput value={p.scheduleEndHour} onChange={v => updatePreference('scheduleEndHour', v)} min={0} max={23} unit=":00" />
                     </SettingRow>
-                    <SettingRow label="During quiet hours" description="Hold new downloads entirely, or start them slower (torrents are slowed too)">
+                    <SettingRow label={t('settings.page.duringQuietHours')} description={t('settings.page.holdNewDownloadsEntirelyOr')}>
                       <Select
                         value={p.scheduleMode}
                         options={[
-                          { value: 'limit', label: 'Slow down' },
-                          { value: 'pause', label: 'Hold downloads' },
+                          { value: 'limit', label: t('settings.page.slowDown') },
+                          { value: 'pause', label: t('settings.page.holdDownloads') },
                         ]}
                         onChange={v => updatePreference('scheduleMode', v)}
                       />
                     </SettingRow>
                     {p.scheduleMode === 'limit' && (
-                      <SettingRow label="Quiet-hours speed" description="Cap for downloads started, and torrents running, during the window">
+                      <SettingRow label={t('settings.page.quietHoursSpeed')} description={t('settings.page.capForDownloadsStartedAnd')}>
                         <NumberInput value={p.scheduleLimitMBps} onChange={v => updatePreference('scheduleLimitMBps', v)} min={1} max={1000} unit="MB/s" />
                       </SettingRow>
                     )}
                     <SettingRow
-                      label="Days"
-                      description="Which days the window applies on. None chosen means every day. A window that runs past midnight belongs to the evening it started on"
+                      label={t('settings.page.days')}
+                      description={t('settings.page.whichDaysTheWindowApplies')}
                     >
                       <div className="flex items-center gap-1">
                         {DAY_NAMES.map((name, day) => {
@@ -424,41 +422,41 @@ export default function Settings() {
                 )}
               </SettingGroup>
 
-              <SettingGroup title="When a download finishes">
-                <SettingRow label="Then" description="For every download, unless one is set differently in its details">
+              <SettingGroup title={t('settings.page.whenADownloadFinishes')}>
+                <SettingRow label={t('settings.page.then')} description={t('settings.page.forEveryDownloadUnlessOne')}>
                   <Select
                     value={p.defaultWhenComplete}
                     options={[
-                      { value: 'nothing', label: 'Do nothing' },
-                      { value: 'notify', label: 'Notify me' },
-                      { value: 'open', label: 'Open the file' },
-                      { value: 'reveal', label: 'Show in folder' },
+                      { value: 'nothing', label: t('settings.page.doNothing') },
+                      { value: 'notify', label: t('settings.page.notifyMe') },
+                      { value: 'open', label: t('settings.page.openTheFile') },
+                      { value: 'reveal', label: t('settings.page.showInFolder') },
                     ]}
                     onChange={v => updatePreference('defaultWhenComplete', v)}
                   />
                 </SettingRow>
               </SettingGroup>
 
-              <SettingGroup title="When everything finishes">
-                <SettingRow label="Then" description="Happens a minute after the last download ends, and only after Prism has actually been working — with a countdown you can call off">
+              <SettingGroup title={t('settings.page.whenEverythingFinishes')}>
+                <SettingRow label={t('settings.page.then')} description={t('settings.page.happensAMinuteAfterThe')}>
                   <Select
                     value={p.whenDoneAction}
                     options={[
-                      { value: 'nothing', label: 'Do nothing' },
-                      { value: 'sleep', label: 'Sleep' },
-                      { value: 'shutdown', label: 'Shut down' },
-                      { value: 'quit', label: 'Quit Prism' },
+                      { value: 'nothing', label: t('settings.page.doNothing') },
+                      { value: 'sleep', label: t('settings.page.sleep') },
+                      { value: 'shutdown', label: t('settings.page.shutDown') },
+                      { value: 'quit', label: t('settings.page.quitPrism') },
                     ]}
                     onChange={v => updatePreference('whenDoneAction', v)}
                   />
                 </SettingRow>
                 {p.whenDoneAction !== 'nothing' && (
-                  <SettingRow label="Seeding torrents" description="Uploading counts as work, so nothing happens while a torrent is still seeding">
+                  <SettingRow label={t('settings.page.seedingTorrents')} description={t('settings.page.uploadingCountsAsWorkSo')}>
                     <Select
                       value={p.whenDoneIgnoresSeeding ? 'ignore' : 'wait'}
                       options={[
-                        { value: 'wait', label: 'Wait for seeding' },
-                        { value: 'ignore', label: "Don't wait" },
+                        { value: 'wait', label: t('settings.page.waitForSeeding') },
+                        { value: 'ignore', label: t('settings.page.dontWait') },
                       ]}
                       onChange={v => updatePreference('whenDoneIgnoresSeeding', v === 'ignore')}
                     />
@@ -466,57 +464,57 @@ export default function Settings() {
                 )}
               </SettingGroup>
 
-              <SettingGroup title="Global shortcuts">
-                <SettingRow label="Add from clipboard" description="Queues whatever link is on the clipboard. Leave empty for none — a shortcut set here is taken from every other app while Prism runs">
+              <SettingGroup title={t('settings.page.globalShortcuts')}>
+                <SettingRow label={t('settings.page.addFromClipboard')} description={t('settings.page.queuesWhateverLinkIsOn')}>
                   <TextInput
                     value={p.shortcuts.addFromClipboard}
                     onChange={v => updatePreference('shortcuts', { ...p.shortcuts, addFromClipboard: v })}
-                    placeholder="e.g. CmdOrCtrl+Shift+V"
+                    placeholder={t('settings.page.eGCmdorctrlShiftV')}
                   />
                 </SettingRow>
-                <SettingRow label="Show Prism" description="Brings the window to the front from wherever you are">
+                <SettingRow label={t('settings.page.showPrism')} description={t('settings.page.bringsTheWindowToThe')}>
                   <TextInput
                     value={p.shortcuts.showPrism}
                     onChange={v => updatePreference('shortcuts', { ...p.shortcuts, showPrism: v })}
-                    placeholder="e.g. CmdOrCtrl+Shift+P"
+                    placeholder={t('settings.page.eGCmdorctrlShiftP')}
                   />
                 </SettingRow>
-                <SettingRow label="Pause everything" description="Pauses every running download">
+                <SettingRow label={t('settings.page.pauseEverything')} description={t('settings.page.pausesEveryRunningDownload')}>
                   <TextInput
                     value={p.shortcuts.pauseAll}
                     onChange={v => updatePreference('shortcuts', { ...p.shortcuts, pauseAll: v })}
-                    placeholder="e.g. CmdOrCtrl+Shift+Period"
+                    placeholder={t('settings.page.eGCmdorctrlShiftPeriod')}
                   />
                 </SettingRow>
               </SettingGroup>
             </TabsContent>
 
             <TabsContent value="network" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Network</h2>
-              <SettingGroup title="Connection">
-                <SettingRow label="Proxy" help={HELP.proxy} description="Video and direct downloads, feeds and update checks go fully through it — use socks5h:// so DNS does too. Torrents send only peer connections through a socks5 proxy (DHT and trackers stay direct), and UPnP is switched off. Thumbnails are fetched through it too, and kept on this machine. Empty = direct">
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.network')}</h2>
+              <SettingGroup title={t('settings.page.connection')}>
+                <SettingRow label={t('settings.page.proxy')} help={HELP.proxy} description={t('settings.page.videoAndDirectDownloadsFeeds')}>
                   <TextInput value={p.proxyUrl} onChange={v => updatePreference('proxyUrl', v)} placeholder="socks5h://127.0.0.1:9050" />
                 </SettingRow>
-                <SettingRow label="Use IPv4 only" help={HELP.ipv4} description="For video downloads and link lookups. On by default">
+                <SettingRow label={t('settings.page.useIpv4Only')} help={HELP.ipv4} description={t('settings.page.forVideoDownloadsAndLink')}>
                   <Toggle checked={p.forceIpv4} onChange={v => updatePreference('forceIpv4', v)} />
                 </SettingRow>
-                <SettingRow label="Identify as a browser" description="Direct downloads introduce themselves as a web browser, which many file hosts require. Off = as Prism">
+                <SettingRow label={t('settings.page.identifyAsABrowser')} description={t('settings.page.directDownloadsIntroduceThemselvesAs')}>
                   <Toggle checked={p.browserUserAgent} onChange={v => updatePreference('browserUserAgent', v)} />
                 </SettingRow>
               </SettingGroup>
             </TabsContent>
 
             <TabsContent value="downloads" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Storage</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.storage')}</h2>
               <StorageTile
                 folder={p.defaultSaveFolder}
                 load={() => service.storageSummary(p.defaultSaveFolder)}
               />
               <div className="divide-y divide-border/30">
-                <SettingRow label="Download location" description="Any folder you pick — including external drives and network shares — is allowed; system folders (Library, AppData, dotfiles) never are">
+                <SettingRow label={t('settings.page.downloadLocation')} description={t('settings.page.anyFolderYouPickIncluding')}>
                   <button
                     type="button"
-                    {...{ 'aria-label': `Download location: ${p.defaultSaveFolder}. Choose a folder` }}
+                    {...{ 'aria-label': t('settings.page.downloadLocationLabel', { path: p.defaultSaveFolder }) }}
                     onClick={async () => {
                       const dir = await service.pickDirectory();
                       if (dir) updatePreference('defaultSaveFolder', dir);
@@ -527,7 +525,7 @@ export default function Settings() {
                     {p.defaultSaveFolder}
                   </button>
                 </SettingRow>
-                <SettingRow label="File names" description="How new downloads are named. Placeholders: {title} {uploader} {site} {resolution} {date} (the day it was added); a / makes a subfolder. Torrents keep their own names">
+                <SettingRow label={t('settings.page.fileNames')} description={t('settings.page.howNewDownloadsAreNamed')}>
                   <div className="flex flex-col items-end gap-1">
                     <input
                       type="text"
@@ -536,7 +534,7 @@ export default function Settings() {
                       placeholder="{title}"
                       spellCheck={false}
                       autoComplete="off"
-                      aria-label="File name template"
+                      aria-label={t('settings.page.fileNameTemplate')}
                       className="w-56 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground"
                     />
                     {templatePreview && (
@@ -549,11 +547,11 @@ export default function Settings() {
                     )}
                   </div>
                 </SettingRow>
-                <SettingRow label="Move finished downloads" description="Take each finished download out of the working folder. Torrents move once seeding ends, and nothing is ever overwritten">
+                <SettingRow label={t('settings.page.moveFinishedDownloads')} description={t('settings.page.takeEachFinishedDownloadOut')}>
                   <Toggle checked={p.moveCompletedEnabled} onChange={v => updatePreference('moveCompletedEnabled', v)} />
                 </SettingRow>
                 {p.moveCompletedEnabled && (
-                  <SettingRow label="Move them to" description="Where finished downloads end up">
+                  <SettingRow label={t('settings.page.moveThemTo')} description={t('settings.page.whereFinishedDownloadsEndUp')}>
                     <button
                       type="button"
                       {...{ 'aria-label': `Move finished downloads to: ${p.moveCompletedTo || 'not set yet'}. Choose a folder` }}
@@ -564,11 +562,11 @@ export default function Settings() {
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
                     >
                       <FolderOpen className="w-3 h-3 shrink-0" />
-                      {p.moveCompletedTo || 'Choose a folder…'}
+                      {p.moveCompletedTo || t('settings.page.chooseFolder')}
                     </button>
                   </SettingRow>
                 )}
-                <SettingRow label="Categories" description="Sort downloads as they arrive: the first category whose rules match gives a download its folder and file names. Leave a box empty to use the defaults">
+                <SettingRow label={t('settings.page.categories')} description={t('settings.page.sortDownloadsAsTheyArrive')}>
                   <div className="flex flex-col items-end gap-2">
                     {p.categories.map((category, index) => (
                       <div key={category.id} className="flex flex-col items-end gap-1 p-2 rounded-lg bg-input/60 border border-border/40">
@@ -577,8 +575,8 @@ export default function Settings() {
                             type="text"
                             value={category.name}
                             onChange={e => updateCategory(category.id, { name: e.target.value })}
-                            placeholder="Name"
-                            aria-label={`Category ${index + 1} name`}
+                            placeholder={t('settings.page.name')}
+                            aria-label={t('settings.page.categoryName', { n: index + 1 })}
                             className="w-28 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
                           />
                           <CommitInput
@@ -586,16 +584,16 @@ export default function Settings() {
                             onCommit={v => updateCategory(category.id, { domains: v.split(',').map(d => d.trim()).filter(Boolean) })}
                             placeholder="youtube.com"
                             spellCheck={false}
-                            aria-label={`Category ${index + 1} sites`}
+                            aria-label={t('settings.page.categorySites', { n: index + 1 })}
                             className="w-36 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono"
                           />
                           <button
                             type="button"
-                            aria-label={`Remove category ${category.name || index + 1}`}
+                            aria-label={t('settings.page.removeCategory', { name: category.name || index + 1 })}
                             onClick={() => updatePreference('categories', p.categories.filter(c => c.id !== category.id))}
                             className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                           >
-                            Remove
+                            {t('queue.remove')}
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -603,14 +601,14 @@ export default function Settings() {
                             type="text"
                             value={category.filenameTemplate}
                             onChange={e => updateCategory(category.id, { filenameTemplate: e.target.value })}
-                            placeholder="File names, e.g. {uploader}/{title}"
+                            placeholder={t('settings.page.fileNamesEGUploader')}
                             spellCheck={false}
-                            aria-label={`Category ${index + 1} file names`}
+                            aria-label={t('settings.page.categoryFileNames', { n: index + 1 })}
                             className="w-44 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none font-mono placeholder:text-muted-foreground"
                           />
                           <button
                             type="button"
-                            aria-label={`Category ${index + 1} folder: ${category.destination || 'the default download folder'}. Choose a folder`}
+                            aria-label={t('settings.page.categoryFolder', { n: index + 1, path: category.destination || t('settings.page.defaultFolder') })}
                             onClick={async () => {
                               const dir = await service.pickDirectory('category');
                               if (dir) updateCategory(category.id, { destination: dir });
@@ -631,11 +629,11 @@ export default function Settings() {
                       ])}
                       className="px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
                     >
-                      Add a category
+                      {t('settings.page.addCategory')}
                     </button>
                   </div>
                 </SettingRow>
-                <SettingRow label="Labels" description="Tags you put on a download by hand, several at a time. They group things after the fact and change nothing about where a download goes">
+                <SettingRow label={t('settings.page.labels')} description={t('settings.page.tagsYouPutOnA')}>
                   <div className="flex flex-col items-end gap-1.5">
                     {p.labels.map((label, index) => (
                       <div key={label.id} className="flex items-center gap-1.5">
@@ -643,17 +641,17 @@ export default function Settings() {
                           type="text"
                           value={label.name}
                           onChange={e => updatePreference('labels', p.labels.map(l => (l.id === label.id ? { ...l, name: e.target.value } : l)))}
-                          placeholder="Name"
-                          aria-label={`Label ${index + 1} name`}
+                          placeholder={t('settings.page.name')}
+                          aria-label={t('settings.page.labelName', { n: index + 1 })}
                           className="w-36 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
                         />
                         <button
                           type="button"
-                          aria-label={`Remove label ${label.name || index + 1}`}
+                          aria-label={t('settings.page.removeLabel', { name: label.name || index + 1 })}
                           onClick={() => updatePreference('labels', p.labels.filter(l => l.id !== label.id))}
                           className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                         >
-                          Remove
+                          {t('queue.remove')}
                         </button>
                       </div>
                     ))}
@@ -662,22 +660,22 @@ export default function Settings() {
                       onClick={() => updatePreference('labels', [...p.labels, { id: generateId(), name: '' }])}
                       className="px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
                     >
-                      Add a label
+                      {t('settings.page.addLabel')}
                     </button>
                   </div>
                 </SettingRow>
-                <SettingRow label="Watch folders" description="Drop a .torrent file into one of these and Prism offers to add it. Other files are left alone; handled .torrent files are renamed, never deleted">
+                <SettingRow label={t('settings.page.watchFolders')} description={t('settings.page.dropATorrentFileInto')}>
                   <div className="flex flex-col items-end gap-1.5">
                     {p.watchFolders.map(folder => (
                       <div key={folder.path} className="flex items-center gap-1.5">
                         <span className="text-xs text-muted-foreground max-w-48 truncate" title={folder.path}>{folder.path}</span>
                         <button
                           type="button"
-                          aria-label={`Stop watching ${folder.path}`}
+                          aria-label={t('settings.page.stopWatching', { path: folder.path })}
                           onClick={() => updatePreference('watchFolders', p.watchFolders.filter(f => f.path !== folder.path))}
                           className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                         >
-                          Remove
+                          {t('queue.remove')}
                         </button>
                       </div>
                     ))}
@@ -689,7 +687,7 @@ export default function Settings() {
                         // re-add every .torrent or link list it downloads.
                         // Rust skips such a folder too; this says why.
                         if (dir && isSameFolder(dir, p.defaultSaveFolder)) {
-                          toast.error('That’s where Prism saves downloads. Pick a different folder to watch.');
+                          toast.error(t('settings.page.watchIsDownloads'));
                           return;
                         }
                         if (dir && !p.watchFolders.some(f => f.path === dir)) {
@@ -699,7 +697,7 @@ export default function Settings() {
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer"
                     >
                       <FolderOpen className="w-3 h-3 shrink-0" />
-                      Add a folder…
+                      {t('settings.page.addFolder')}
                     </button>
                   </div>
                 </SettingRow>
@@ -708,27 +706,27 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Notifications</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.notifications')}</h2>
               <div className="divide-y divide-border/30">
-                <SettingRow label="Notifications" description="Show notifications for download events">
+                <SettingRow label={t('settings.page.notifications')} description={t('settings.page.showNotificationsForDownloadEvents')}>
                   <Toggle checked={p.notificationsEnabled} onChange={v => updatePreference('notificationsEnabled', v)} />
                 </SettingRow>
-                <SettingRow label="Sound effects" description="Play a sound when a download finishes">
+                <SettingRow label={t('settings.page.soundEffects')} description={t('settings.page.playASoundWhenA')}>
                   <Toggle checked={p.soundEnabled} onChange={v => updatePreference('soundEnabled', v)} />
                 </SettingRow>
-                <SettingRow label="Clipboard link detection" description="When Prism regains focus, check the clipboard for a video link and offer a one-click fetch. Off = Prism never reads the clipboard on its own">
+                <SettingRow label={t('settings.page.clipboardLinkDetection')} description={t('settings.page.whenPrismRegainsFocusCheck')}>
                   <Toggle checked={p.clipboardWatchEnabled} onChange={v => updatePreference('clipboardWatchEnabled', v)} />
                 </SettingRow>
               </div>
             </TabsContent>
 
             <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Appearance</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.appearance')}</h2>
               <div className="divide-y divide-border/30">
-                <SettingRow label="Theme" description="Application color scheme">
+                <SettingRow label={t('settings.page.theme')} description={t('settings.page.applicationColorScheme')}>
                   <Select
                     value={p.theme}
-                    options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]}
+                    options={[{ value: 'dark', label: t('settings.page.dark') }, { value: 'light', label: t('settings.page.light') }, { value: 'system', label: t('settings.page.system') }]}
                     onChange={v => updatePreference('theme', v)}
                   />
                 </SettingRow>
@@ -736,16 +734,16 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="general" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Updates</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.updates')}</h2>
               <div className="divide-y divide-border/30">
-                <SettingRow label="Auto-update" description="Check for a new version on launch and offer to install it">
+                <SettingRow label={t('settings.page.autoUpdate')} description={t('settings.page.checkForANewVersion')}>
                   <Toggle checked={p.autoUpdate} onChange={v => updatePreference('autoUpdate', v)} />
                 </SettingRow>
-                <SettingRow label="Check for updates" description={
-                  updateState === 'installing' ? `Downloading the update: ${formatUpdateProgress(updateInstall)}` :
-                  updateState === 'available' ? `Version ${updateVersion} is available` :
-                  updateState === 'up-to-date' ? 'You are on the latest version' :
-                  updateState === 'error' ? `Could not check for updates${updateError ? ` — ${updateError}` : ''}` :
+                <SettingRow label={t('settings.page.checkForUpdates')} description={
+                  updateState === 'installing' ? t('settings.page.updateDownloading', { progress: formatUpdateProgress(updateInstall) }) :
+                  updateState === 'available' ? t('about.update.availableVersion', { version: updateVersion }) :
+                  updateState === 'up-to-date' ? t('settings.page.upToDate') :
+                  updateState === 'error' ? (updateError ? t('settings.page.updateErrorDetail', { error: updateError }) : t('settings.page.updateError')) :
                   undefined
                 }>
                   <div className="flex items-center gap-2" aria-live="polite">
@@ -753,22 +751,22 @@ export default function Settings() {
                       <button
                         type="button"
                         onClick={async () => {
-                          toast.info('Downloading and installing update — Prism will restart shortly...');
+                          toast.info(t('settings.page.installing'));
                           try {
                             await installAppUpdate(onProgress => service.installUpdate(onProgress));
                             // relaunch() is called inside installUpdate — if we reach here it didn't restart
-                            toast.success('Update installed! Please restart Prism to apply.');
+                            toast.success(t('settings.page.installed'));
                           } catch (e) {
-                            toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
+                            toast.error(t('settings.page.updateFailed', { error: e instanceof Error ? e.message : String(e) }));
                             setUpdateState('available');
                           }
                         }}
                         className="px-3 py-1.5 rounded-lg bg-primary text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
                       >
-                        Install Update
+                        {t('settings.page.installUpdate')}
                       </button>
                     )}
-                    <DisabledReason reason={updateState === 'checking' ? 'Already checking' : updateState === 'installing' ? 'An update is installing' : null}>
+                    <DisabledReason reason={updateState === 'checking' ? t('setup.ffmpeg.busy') : updateState === 'installing' ? t('settings.page.updateInstalling') : null}>
                       <button
                         type="button"
                         disabled={updateState === 'checking' || updateState === 'installing'}
@@ -780,13 +778,13 @@ export default function Settings() {
                             setUpdateState('available');
                             setUpdateVersion(result.version);
                             setUpdateNotes(result.notes);
-                            toast.success(`Update ${result.version} available!`);
+                            toast.success(t('settings.page.updateFound', { version: result.version }));
                           } else if (result.error) {
                             setUpdateState('error');
-                            toast.error('Could not check for updates');
+                            toast.error(t('settings.page.updateError'));
                           } else {
                             setUpdateState('up-to-date');
-                            toast.success('You are on the latest version');
+                            toast.success(t('settings.page.upToDate'));
                           }
                         }}
                         className={cn(
@@ -799,31 +797,31 @@ export default function Settings() {
                         {updateState === 'checking' ? (
                           <span className="flex items-center gap-1.5">
                             <Loader2 className="w-3 h-3 animate-spin" />
-                            Checking...
+                            {t('settings.page.checking')}
                           </span>
                         ) : updateState === 'installing' ? (
                           <span className="flex items-center gap-1.5">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             {formatUpdateProgress(updateInstall)}
                           </span>
-                        ) : 'Check now'}
+                        ) : t('settings.page.checkNow')}
                       </button>
                     </DisabledReason>
                   </div>
                 </SettingRow>
                 {updateState === 'available' && updateNotes && (
                   <div className="py-2.5">
-                    <p className="text-xs text-muted-foreground font-medium mb-1">Release notes</p>
+                    <p className="text-xs text-muted-foreground font-medium mb-1">{t('about.releaseNotes')}</p>
                     <p className="text-xs text-muted-foreground whitespace-pre-line">{formatReleaseNotes(updateNotes)}</p>
                   </div>
                 )}
                 <SettingRow
-                  label="Downloader engine"
+                  label={t('settings.page.downloaderEngine')}
                   description={engine?.updateAvailable
-                    ? `yt-dlp ${engineVersion ?? engine.activeVersion ?? ''} — ${engine.latest} is available`
-                    : engineVersion ? `yt-dlp ${engineVersion} — update when sites stop working` : 'Update the yt-dlp engine when sites stop working'}
+                    ? t('settings.page.engineAvailable', { current: engineVersion ?? engine.activeVersion ?? '', latest: engine.latest })
+                    : engineVersion ? t('settings.page.engineCurrent', { version: engineVersion }) : t('settings.page.engineHint')}
                 >
-                  <DisabledReason reason={engineUpdating ? 'Already updating' : null}>
+                  <DisabledReason reason={engineUpdating ? t('settings.page.alreadyUpdating') : null}>
                     <button
                       type="button"
                       disabled={engineUpdating}
@@ -833,9 +831,9 @@ export default function Settings() {
                           const v = await service.updateEngine();
                           setEngineVersion(v);
                           service.getEngineInfo().then(publishEngineInfo).catch(() => {});
-                          toast.success(`Downloader engine updated to ${v}`);
+                          toast.success(t('shell.engineUpdated', { version: v }));
                         } catch (e) {
-                          toast.error('Engine update failed: ' + (e instanceof Error ? e.message : String(e)));
+                          toast.error(t('settings.page.engineFailed', { error: e instanceof Error ? e.message : String(e) }));
                         } finally {
                           setEngineUpdating(false);
                         }
@@ -850,69 +848,69 @@ export default function Settings() {
                       {engineUpdating ? (
                         <span className="flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Updating...
+                          {t('settings.page.updating')}
                         </span>
-                      ) : 'Update Engine'}
+                      ) : t('settings.page.updateEngine')}
                     </button>
                   </DisabledReason>
                 </SettingRow>
-                <SettingRow label="Check for engine updates" description="Once a day, compare the downloader engine with the newest yt-dlp release">
+                <SettingRow label={t('settings.page.checkForEngineUpdates')} description={t('settings.page.onceADayCompareThe')}>
                   <Toggle checked={p.engineAutoCheck} onChange={v => updatePreference('engineAutoCheck', v)} />
                 </SettingRow>
-                <SettingRow label="Update the engine automatically" description="Install a newer yt-dlp as soon as the daily check finds one">
+                <SettingRow label={t('settings.page.updateTheEngineAutomatically')} description={t('settings.page.installANewerYtDlp')}>
                   <Toggle checked={p.engineAutoUpdate} onChange={v => updatePreference('engineAutoUpdate', v)} />
                 </SettingRow>
               </div>
             </TabsContent>
 
             <TabsContent value="privacy" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Diagnostics</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.diagnostics')}</h2>
               <div className="divide-y divide-border/30">
-                <SettingRow label="Log level" description="Verbosity of diagnostic logs">
+                <SettingRow label={t('settings.page.logLevel')} description={t('settings.page.verbosityOfDiagnosticLogs')}>
                   <Select
                     value={p.logLevel}
-                    options={[{ value: 'error', label: 'Error' }, { value: 'warn', label: 'Warning' }, { value: 'info', label: 'Info' }, { value: 'debug', label: 'Debug' }]}
+                    options={[{ value: 'error', label: t('settings.page.error') }, { value: 'warn', label: t('settings.page.warning') }, { value: 'info', label: t('settings.page.info') }, { value: 'debug', label: t('settings.page.debug') }]}
                     onChange={v => updatePreference('logLevel', v)}
                   />
                 </SettingRow>
-                <SettingRow label="Crash reporting" description="Send anonymous crash reports to help fix bugs. Off by default; no personal data or download history is included">
+                <SettingRow label={t('settings.page.crashReporting')} description={t('settings.page.sendAnonymousCrashReportsTo')}>
                   <Toggle checked={p.crashReportingEnabled} onChange={v => updatePreference('crashReportingEnabled', v)} />
                 </SettingRow>
-                <SettingRow label="Forget playback history" description="Clear where you stopped in each video (with its file name) and the recent files list. Your files and the Library aren't touched">
+                <SettingRow label={t('settings.page.forgetPlaybackHistory')} description={t('settings.page.clearWhereYouStoppedIn')}>
                   <button
                     type="button"
                     onClick={() => import('@tauri-apps/api/core')
                       .then(({ isTauri, invoke }) => (isTauri() ? invoke('forget_playback_history') : undefined))
-                      .then(() => toast.success('Playback history cleared'))
+                      .then(() => toast.success(t('settings.page.historyCleared')))
                       .catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
                     className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                   >
-                    Forget
+                    {t('settings.page.forget')}
                   </button>
                 </SettingRow>
-                <SettingRow label="Export logs" description="Save the in-app diagnostic log as JSON, to attach to a bug report">
+                <SettingRow label={t('settings.page.exportLogs')} description={t('settings.page.saveTheInAppDiagnostic')}>
                   <button
                     type="button"
                     onClick={async () => {
                       await service.exportLogs(diagnostics.getLogs());
-                      toast.success('Logs exported');
+                      toast.success(t('settings.page.logsExported'));
                     }}
                     className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
                   >
-                    Export
+                    {t('settings.page.export')}
                   </button>
                 </SettingRow>
               </div>
             </TabsContent>
 
             <TabsContent value="privacy" forceMount={searching || undefined} className="mt-0 mb-6 last:mb-0 [&:not(:has([data-setting-row]))]:data-[searching=true]:hidden" data-searching={searching}>
-              <h2 className="text-sm font-semibold text-foreground mb-2">About &amp; legal</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">{t('settings.page.aboutLegal')}</h2>
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground text-pretty leading-relaxed">
-                  Prism is a general-purpose video download utility. Users are responsible for ensuring they have the right to download any content. Do not use Prism to circumvent DRM or access restrictions.
+                  {t('settings.page.disclaimer')}
                 </p>
                 <div className="divide-y divide-border/30">
-                  {([['About Prism', '/about'], ['Privacy Policy', '/privacy'], ['Terms of Service', '/terms'], ['Open Source Licenses', '/licenses']] as const).map(([label, path]) => (
+                  {([[t('settings.page.aboutPrism'), '/about'], [t('about.privacy'), '/privacy'], [t('settings.page.terms'), '/terms'], [t('settings.page.licenses'), '/licenses']] as const).map(([label, path]) => (
                     <button key={path} type="button" onClick={() => navigate(path)} className="w-full flex items-center justify-between py-2.5 min-h-[40px] text-left">
                       <span className="text-xs font-medium text-foreground">{label}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
@@ -930,7 +928,7 @@ export default function Settings() {
               onClick={() => setConfirmReset(true)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive transition-colors active:scale-[0.97]"
             >
-              Reset to defaults
+              {t('settings.page.resetDefaults')}
             </button>
           </div>
         </div>
@@ -939,11 +937,11 @@ export default function Settings() {
       <ConfirmDialog
         open={confirmReset}
         onOpenChange={setConfirmReset}
-        title="Reset all settings?"
-        description="Every preference — download location, proxy, quiet hours, per-site quality memory — goes back to its default. This can't be undone."
-        confirmLabel="Reset Everything"
+        title={t('settings.page.resetAllSettings')}
+        description={t('settings.page.everyPreferenceDownloadLocationProxy')}
+        confirmLabel={t('settings.page.resetEverything')}
         destructive
-        onConfirm={() => { resetToDefaults(); toast.success('Settings reset to defaults'); }}
+        onConfirm={() => { resetToDefaults(); toast.success(t('settings.page.resetDone')); }}
       />
     </div>
   );
