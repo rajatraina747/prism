@@ -3,6 +3,7 @@ import { Moon } from 'lucide-react';
 import { useSettings } from '@/stores/AppProvider';
 import { quietHoursStatus } from '@/stores/schedule';
 import { requestNavigate } from '@/lib/nav-bus';
+import { useTranslation } from 'react-i18next';
 
 /** The current time, re-read every minute (quiet hours change on the hour). */
 export function useMinuteClock(): Date {
@@ -17,6 +18,7 @@ export function useMinuteClock(): Date {
 /** Says plainly that quiet hours are holding or slowing downloads, and until
  * when — otherwise a held queue reads exactly like one waiting for a slot. */
 export function QuietHoursBanner({ className }: { className?: string }) {
+  const { t } = useTranslation();
   const { preferences } = useSettings();
   const now = useMinuteClock();
   const status = quietHoursStatus(preferences, now);
@@ -28,11 +30,11 @@ export function QuietHoursBanner({ className }: { className?: string }) {
     >
       <Moon className="w-3.5 h-3.5 text-warning shrink-0" aria-hidden="true" />
       <p className="flex-1 min-w-0 text-foreground">
-        <span className="font-medium">Quiet hours until {status.until}.</span>{' '}
+        <span className="font-medium">{t('common.quietHours.until', { time: status.until })}</span>{' '}
         <span className="text-muted-foreground">
           {status.mode === 'pause'
-            ? 'New downloads wait until then; running ones continue.'
-            : `Downloads start at up to ${status.limitMBps} MB/s and torrents are capped to it.`}
+            ? t('common.quietHours.pause')
+            : t('common.quietHours.limit', { mbps: status.limitMBps })}
         </span>
       </p>
       <button
@@ -40,7 +42,7 @@ export function QuietHoursBanner({ className }: { className?: string }) {
         onClick={() => requestNavigate('/settings?section=speed')}
         className="shrink-0 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
       >
-        Change
+        {t('common.change')}
       </button>
     </div>
   );

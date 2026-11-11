@@ -1,0 +1,20 @@
+{
+  "session": {
+    "label": "Torrent engine status",
+    "port": "Port {{port}}",
+    "noPort": "No listen port",
+    "upnpOn": "UPnP on",
+    "upnpOff": "UPnP off",
+    "dhtNodes_one": "DHT {{count}} node",
+    "dhtNodes_other": "DHT {{count}} nodes",
+    "dhtOff": "DHT off",
+    "utpOn": "uTP on",
+    "down": "Session download speed",
+    "up": "Session upload speed",
+    "peersTitle": "{{seen}} peers discovered, {{connecting}} connecting",
+    "peers_one": "{{count}} peer",
+    "peers_other": "{{count}} peers",
+    "dhtTitle": "DHT routing table size",
+    "incoming": "Incoming connections"
+  }
+}

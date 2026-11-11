@@ -1,0 +1,27 @@
+{
+  "appName": "Prism",
+  "companyName": "RainaCorp",
+  "byCompany": "by RainaCorp",
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "fallback": "An unexpected error occurred."
+  },
+  "tryAgain": "Try Again",
+  "retry": "Retry",
+  "change": "Change",
+  "separator": " · ",
+  "notFound": {
+    "code": "404",
+    "title": "Oops! Page not found",
+    "home": "Return to Home"
+  },
+  "failure": {
+    "setCookies": "Set browser cookies",
+    "updateEngine": "Update engine"
+  },
+  "quietHours": {
+    "until": "Quiet hours until {{time}}.",
+    "pause": "New downloads wait until then; running ones continue.",
+    "limit": "Downloads start at up to {{mbps}} MB/s and torrents are capped to it."
+  }
+}

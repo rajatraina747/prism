@@ -1,17 +1,19 @@
 import type { DownloadError } from '@/types/models';
 import { classifyError, conciseError } from '@/services/errors';
 import { requestNavigate, COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
+import { useTranslation } from 'react-i18next';
 
 /** Why a download failed and what to do about it: the suggestion first, the
  * engine's own words (one line; full text on hover) beneath, then the fix.
  * Retry is always offered — classification is a best guess — but the fix that
  * matters (browser cookies) comes first. Used on Transfers rows and in the
  * Library. */
-export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
+export function FailureNote({ error, onRetry, retryLabel }: {
   error: DownloadError;
   onRetry: () => void;
   retryLabel?: string;
 }) {
+  const { t } = useTranslation();
   const { suggestion, action } = classifyError(error.message, error.engineCode);
   return (
     <div className="mt-1.5 space-y-1">
@@ -24,7 +26,7 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
             onClick={() => requestNavigate(COOKIES_SETTINGS_PATH)}
             className="px-2 py-1 rounded-md bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
           >
-            Set browser cookies
+            {t('common.failure.setCookies')}
           </button>
         )}
         {action === 'engine' && (
@@ -33,7 +35,7 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
             onClick={() => requestNavigate(ENGINE_SETTINGS_PATH)}
             className="px-2 py-1 rounded-md bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 transition-colors active:scale-[0.97]"
           >
-            Update engine
+            {t('common.failure.updateEngine')}
           </button>
         )}
         <button
@@ -41,7 +43,7 @@ export function FailureNote({ error, onRetry, retryLabel = 'Retry' }: {
           onClick={onRetry}
           className="px-2 py-1 rounded-md bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
         >
-          {retryLabel}
+          {retryLabel ?? t('common.retry')}
         </button>
       </div>
     </div>
