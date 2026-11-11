@@ -21,8 +21,8 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
   day, made the torrent space check count only the selected files. v2.6.0, also
   that day, was the interface overhaul in one release (the 2.5.0–2.6.1 stages
   below), Open With Prism on macOS, and the player file-picker fix.
-- **Next release: v2.6.4 (not tagged yet),** on `fix/transfer-layout`:
-  - [x] AirPods crash fixed. mpv 0.41's CoreAudio output leaves a device-change
+- **v2.6.4 RELEASED 2026-11-11** (cask bumped):
+  - [x] AirPods crash fixed (first seen on 2.6.3, crash log 2026-11-11). mpv 0.41's CoreAudio output leaves a device-change
     listener behind when its setup fails, and the next audio device change
     crashes Prism, even with the player closed. macOS now starts with
     `ao=avfoundation,coreaudio`, so that listener is never registered. mpv's
@@ -30,9 +30,8 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
     toolchain moves to a release with that change, reconsider the order.
   - [x] Prism's own About window (`about.rs`, `capabilities/about.json`,
     `/about-window`) in place of the system panel.
-  - [ ] Commit the Transfers layout changes after a look in the real window
-    (the stats row stays on one line, the peers table fits).
-  - [ ] In a real build: play on AirPods, close the player, take the AirPods out.
+  - [x] Transfers layout committed.
+  - [x] Verified in a real build 2026-11-11: AirPods out after closing the player, no crash.
   - [ ] About window on Windows and Linux, which can't be run from this Mac.
 
 Last full review: 2026-11-05. No High or Critical security findings. The design
