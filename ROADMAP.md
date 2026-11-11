@@ -13,7 +13,9 @@ such as `REVIEW 2026-09-26 M4` refer to findings in those reviews.
 
 ## Status
 
-- **Latest release:** v2.6.4 (2026-11-11) fixed a crash after playing on
+- **Latest release:** v2.7.0 (2026-11-11) made Prism ready for translation:
+  every string comes from `src/locales/en`, still English only. v2.6.4 (the
+  same day) fixed a crash after playing on
   AirPods: mpv 0.41's CoreAudio output left a device-change listener behind,
   and the next audio device change crashed Prism even with the player closed.
   macOS now starts with `ao=avfoundation,coreaudio`; verified on a real build.
@@ -213,8 +215,8 @@ next one starts.
 Agreed 2026-11-11. One feature release, in this order. 2.7.0 ships alone; the
 rest ship as 2.7.x or one 2.7.1, decided after 2.7.0.
 
-- [x] **2.7.0 i18n scaffold, on its own.** Done 2026-11-11 on
-  `feat/i18n-scaffold`. Every new screen is written with keys from now on.
+- [x] **2.7.0 i18n scaffold, on its own.** Released as v2.7.0
+  on 2026-11-11. Every new screen is written with keys from now on.
   - react-i18next; `src/locales/en/<area>.json` (`add.json` → `add.*`).
     Language is fixed at startup, so any module imports `t` from `src/i18n.ts`.
   - All UI text, aria labels, tooltips, toasts and store messages go through
