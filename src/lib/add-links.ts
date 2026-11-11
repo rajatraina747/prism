@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 // Turning whatever the user hands Prism — pasted text, a text file, a link
 // dragged from a browser, a .torrent file — into a list of addable links.
 
@@ -51,7 +52,7 @@ export async function linksFromDrop(
       } else if (TEXT_FILE_RE.test(file.name) || file.type === 'text/plain') {
         links.push(...extractLinks(await file.text()));
       } else {
-        errors.push(`Prism can't add ${file.name} — drop links, .torrent files or a text file of links`);
+        errors.push(t('add.cantAddFile', { name: file.name }));
       }
     }
   } else {

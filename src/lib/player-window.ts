@@ -1,6 +1,7 @@
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { t } from '@/i18n';
 
 // Opens (or reuses) the dedicated "player" window. The player is a separate
 // transparent window because mpv embeds into a window's native view *beneath*
@@ -56,7 +57,7 @@ export async function openInPlayer(raw: PlayerSource): Promise<void> {
 
   const win = new WebviewWindow('player', {
     url: `/player?${params.toString()}`,
-    title: src.title ?? 'Prism Player',
+    title: src.title ?? t('player.windowTitle'),
     width: 1024,
     height: 640,
     minWidth: 480,

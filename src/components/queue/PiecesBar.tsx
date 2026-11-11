@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { t } from '@/i18n';
 
 /**
  * Have-pieces bar: one thin strip whose fill per bucket shows how much of
@@ -23,7 +24,7 @@ export function PiecesBar({ pieces, className, height = 'h-1' }: { pieces?: numb
   return (
     <div
       role="img"
-      aria-label="Downloaded pieces map"
+      aria-label={t('details.pieces2.downloadedPiecesMap')}
       className={cn('w-full rounded-full bg-secondary overflow-hidden', height, className)}
       style={{ background: `${background}, hsl(var(--secondary))` }}
     />

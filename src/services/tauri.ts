@@ -16,6 +16,7 @@ import type { IPrismService, UpdateCheckResult, LinkOrigin, EngineInfo, LinkProb
 import type { QueuePatch, ArchivedEntry, QueueNotice } from '@/stores/remote-queue';
 import { isTorrentUrl, parsePrismDeepLink } from './utils';
 import { createWriteQueue } from '@/lib/write-queue';
+import { t } from '@/i18n';
 
 // Persistence file names (stored in app data directory). The webview's fs
 // capability covers exactly `$APPDATA/*.json` (+ `.json.tmp`), top level only —
@@ -368,7 +369,7 @@ export class TauriPrismService implements IPrismService {
     const picked = await dialogOpen({
       multiple: false,
       directory: false,
-      filters: [{ name: 'Torrent', extensions: ['torrent'] }],
+      filters: [{ name: t('notices.filters.torrent'), extensions: ['torrent'] }],
     });
     return typeof picked === 'string' ? picked : null;
   }
@@ -386,7 +387,7 @@ export class TauriPrismService implements IPrismService {
   async saveBackup(json: string, suggestedName: string): Promise<boolean> {
     const path = await dialogSave({
       defaultPath: suggestedName,
-      filters: [{ name: 'Prism backup', extensions: ['json'] }],
+      filters: [{ name: t('notices.filters.backup'), extensions: ['json'] }],
     });
     if (!path) return false;
     await writeTextFile(path, json);
@@ -456,7 +457,7 @@ export class TauriPrismService implements IPrismService {
     // The check runs in Rust (`check_app_update`) so its HTTP client can carry
     // a connect timeout — see src-tauri/src/updater.rs. One retry for a
     // transient failure; the error text is the real cause, not a generic line.
-    let lastError = 'Check failed';
+    let lastError = t('subscriptions.checkFailed');
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const info = await invoke<{ available: boolean; version: string | null; notes: string | null }>('check_app_update');

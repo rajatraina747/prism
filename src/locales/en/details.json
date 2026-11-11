@@ -81,5 +81,8 @@
   "extraTrackers": "Added to every torrent (Settings)",
   "announceNote": "Prism announces to every tracker on start and re-announces automatically every 5 minutes while no peers are connected. Per-tracker status (last announce, seeders/leechers) isn't reported by the engine.",
   "peak": "peak {{speed}} · last {{seconds}} s",
-  "speedChart": "Transfer speed over the last minute"
+  "speedChart": "Transfer speed over the last minute",
+  "pieces2": {
+    "downloadedPiecesMap": "Downloaded pieces map"
+  }
 }

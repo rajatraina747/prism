@@ -106,5 +106,7 @@
     "fromPage": "From the page: {{page}}",
     "moreWaiting": "{{count}} more waiting",
     "ignore": "Ignore"
-  }
+  },
+  "cantAddFile": "Prism can't add {{name}} — drop links, .torrent files or a text file of links",
+  "externalTorrent": "Torrent · {{name}}"
 }

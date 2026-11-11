@@ -218,7 +218,7 @@ export function torrentDisplayName(url: string): string {
   } catch {
     /* fall through */
   }
-  return 'Torrent download';
+  return t('notices.torrentDownload');
 }
 
 /** A YouTube watch URL inside a Mix (`list=RD…`): the video alone. A Mix is

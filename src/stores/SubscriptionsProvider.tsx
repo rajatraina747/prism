@@ -8,6 +8,7 @@ import { mergeSubscriptions } from '@/stores/backup';
 import { generateId } from '@/services/utils';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
+import { t } from '@/i18n';
 
 interface SubscriptionActions {
   items: Subscription[];
@@ -132,7 +133,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
               : s
           ));
         } catch (e) {
-          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Check failed';
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('subscriptions.checkFailed');
           diagnostics.log('warn', `Subscription check failed: ${sub.title}`, { error: msg });
           setSubs(prev => prev.map(s =>
             s.id === sub.id ? { ...s, lastCheckedAt: checkedAt, lastError: msg } : s

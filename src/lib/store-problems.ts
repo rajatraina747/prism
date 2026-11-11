@@ -6,6 +6,7 @@
 // nobody.
 
 import type { StoreProblem } from './json-store';
+import { t } from '@/i18n';
 
 let listener: ((p: StoreProblem) => void) | null = null;
 const pending: StoreProblem[] = [];
@@ -37,26 +38,26 @@ export function onStoreProblem(cb: (p: StoreProblem) => void): () => void {
 }
 
 const LABELS: Record<string, string> = {
-  'queue.json': 'your transfers',
-  'history.json': 'your Library',
-  'settings.json': 'your settings',
-  'subscriptions.json': 'your subscriptions',
-  'stats.json': 'your statistics',
-  'prism.db': 'your queue and Library',
+  'queue.json': t('notices.store.files.queue'),
+  'history.json': t('notices.store.files.history'),
+  'settings.json': t('notices.store.files.settings'),
+  'subscriptions.json': t('notices.store.files.subscriptions'),
+  'stats.json': t('notices.store.files.stats'),
+  'prism.db': t('notices.store.files.db'),
 };
 
 /** What to tell the user, as a toast title and description. */
 export function describeStoreProblem(p: StoreProblem): { title: string; description: string } {
   const what = LABELS[p.file] ?? p.file;
-  const kept = 'keptAs' in p && p.keptAs ? ` The damaged file was kept as ${p.keptAs}.` : '';
+  const kept = 'keptAs' in p && p.keptAs ? t('notices.store.kept', { file: p.keptAs }) : '';
   switch (p.kind) {
     case 'recovered':
-      return { title: `Restored ${what} from a backup`, description: `The saved copy was damaged, so Prism loaded the one before it.${kept}` };
+      return { title: t('notices.store.recoveredTitle', { what }), description: t('notices.store.recovered') + kept };
     case 'rebuilt':
-      return { title: `Rebuilt ${what} from an older copy`, description: `The saved copy was damaged and there was no recent backup, so Prism loaded the one from before version 2.3 — anything since may be missing.${kept}` };
+      return { title: t('notices.store.rebuiltTitle', { what }), description: t('notices.store.rebuilt') + kept };
     case 'reset':
-      return { title: `Couldn't read ${what}`, description: `The saved copy was damaged and there was no backup, so Prism started it fresh.${kept}` };
+      return { title: t('notices.store.resetTitle', { what }), description: t('notices.store.reset') + kept };
     case 'save-failed':
-      return { title: `Couldn't save ${what}`, description: 'Check free disk space. Recent changes may not survive a restart until a save succeeds.' };
+      return { title: t('notices.store.saveFailedTitle', { what }), description: t('notices.store.saveFailed') };
   }
 }

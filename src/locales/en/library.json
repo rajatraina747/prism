@@ -139,5 +139,11 @@
     "folders_other": "These folders go with everything in them: {{names}}.",
     "noFile_one": "{{count}} selected item has no file of its own on disk and will be left alone.",
     "noFile_other": "{{count}} selected items have no file of its own on disk and will be left alone."
+  },
+  "sorts": {
+    "newestFirst": "Newest first",
+    "oldestFirst": "Oldest first",
+    "title": "Title",
+    "largestFirst": "Largest first"
   }
 }

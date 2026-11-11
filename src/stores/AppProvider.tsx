@@ -15,6 +15,7 @@ import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
 import { classifyError, errorText } from '@/services/errors';
 import { requestNavigate, COOKIES_SETTINGS_PATH, ENGINE_SETTINGS_PATH } from '@/lib/nav-bus';
+import { t } from '@/i18n';
 
 let audioCtx: AudioContext | null = null;
 function playNotificationSound() {
@@ -37,7 +38,7 @@ function playNotificationSound() {
 
 /** A queue action Rust refused (see src-tauri/src/queue.rs). */
 function reportQueueError(e: unknown) {
-  toast.error(errorText(e, 'The queue could not do that').message);
+  toast.error(errorText(e, t('notices.queueFailed')).message);
 }
 
 // ── Types ──
@@ -227,19 +228,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const result = await service.checkForUpdates();
         if (result.available) {
           diagnostics.log('info', `Update available: ${result.version}`);
-          toast('Update available', {
-            description: `Version ${result.version} is ready to install`,
+          toast(t('notices.updateAvailable'), {
+            description: t('notices.updateReady', { version: result.version }),
             action: {
-              label: 'Install',
+              label: t('notices.install'),
               onClick: async () => {
-                toast.info('Downloading and installing — Prism will restart shortly...');
+                toast.info(t('notices.installing'));
                 try {
                   // Joins an install already running from Settings rather
                   // than starting a second download.
                   await installAppUpdate(onProgress => service.installUpdate(onProgress));
-                  toast.success('Update installed! Please restart Prism to apply.');
+                  toast.success(t('settings.page.installed'));
                 } catch (e) {
-                  toast.error('Update failed: ' + (e instanceof Error ? e.message : String(e)));
+                  toast.error(t('settings.page.updateFailed', { error: e instanceof Error ? e.message : String(e) }));
                 }
               },
             },
@@ -300,7 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (item.status !== 'completed' || !item.filePath) continue;
           void serviceRef.current
             .indexDownload(item.filePath, item.metadata.title)
-            .then(existing => { if (existing) toast.info(`You already had this: ${existing.title}`, { duration: 8000 }); })
+            .then(existing => { if (existing) toast.info(t('notices.alreadyHad', { title: existing.title }), { duration: 8000 }); })
             .catch(() => {});
         }
       },
@@ -308,40 +309,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const current = settingsRef.current;
         if (n.kind === 'completed') {
           diagnostics.log('info', `Download completed: ${n.title}`);
-          if (current.notificationsEnabled) toast.success(`Downloaded: ${n.title}`);
+          if (current.notificationsEnabled) toast.success(t('notices.downloaded', { title: n.title }));
           if (current.soundEnabled) playNotificationSound();
         } else if (n.kind === 'quality' && n.actual && n.requested) {
           diagnostics.log('warn', `Quality mismatch: requested ${n.requested}p, got ${n.actual}p`, { title: n.title });
-          toast.warning(`Downloaded at ${n.actual}p — ${n.requested}p wasn't delivered`, { description: n.title, duration: 8000 });
+          toast.warning(t('notices.shortfall', { actual: n.actual, requested: n.requested }), { description: n.title, duration: 8000 });
         } else if (n.kind === 'failed') {
-          const message = n.message ?? 'Download failed';
+          const message = n.message ?? t('notices.failedGeneric');
           diagnostics.log('error', `Download failed: ${n.title}`, { error: message });
           if (!current.notificationsEnabled) return;
           const { suggestion, action } = classifyError(message, n.engineCode);
-          toast.error(`Failed: ${n.title}`, {
+          toast.error(t('notices.failed', { title: n.title }), {
             description: suggestion,
             action: action === 'cookies'
-              ? { label: 'Set browser cookies', onClick: () => requestNavigate(COOKIES_SETTINGS_PATH) }
+              ? { label: t('common.failure.setCookies'), onClick: () => requestNavigate(COOKIES_SETTINGS_PATH) }
               : action === 'engine'
-                ? { label: 'Update engine', onClick: () => requestNavigate(ENGINE_SETTINGS_PATH) }
+                ? { label: t('common.failure.updateEngine'), onClick: () => requestNavigate(ENGINE_SETTINGS_PATH) }
                 : action === 'retry'
-                  ? { label: 'Retry', onClick: () => retryRef.current(n.id) }
+                  ? { label: t('common.retry'), onClick: () => retryRef.current(n.id) }
                   : undefined,
             duration: 10000,
           });
         }
       },
       whenDone: ({ action, seconds }) => {
-        toast(`${whenDoneLabel(action)} in ${seconds} seconds`, {
+        toast(t('notices.whenDone', { action: whenDoneLabel(action), count: seconds }), {
           id: WHEN_DONE_TOAST,
-          description: 'Everything has finished downloading.',
+          description: t('notices.allFinished'),
           duration: seconds * 1000,
-          action: { label: 'Cancel', onClick: () => { void remote.cancelWhenDone(); } },
+          action: { label: t('common.cancel'), onClick: () => { void remote.cancelWhenDone(); } },
         });
       },
       whenDoneCalledOff: () => {
         toast.dismiss(WHEN_DONE_TOAST);
-        toast('Called off: there is more to download');
+        toast(t('notices.calledOff'));
       },
     });
     // A torrent removed along with its files leaves the Library too.
@@ -373,7 +374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // a category can't move a download that is already under way.
     const category = stamped.settings.categoryId ? null : categoryFor(settings.categories, stamped);
     const filed = category ? applyCategory(stamped, category) : stamped;
-    remote.add(filed).catch(e => toast.error(`Couldn't add ${item.metadata.title}: ${errorText(e).message}`));
+    remote.add(filed).catch(e => toast.error(t('notices.addFailed', { title: item.metadata.title, error: errorText(e).message })));
   }, [settings.filenameTemplate, settings.categories, remote]);
 
   const removeFromQueue = useCallback((id: string) => {
@@ -414,7 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [remote]);
 
   const updateTorrentFiles = useCallback((id: string, onlyFiles: number[]) => {
-    remote.updateTorrentFiles(id, onlyFiles).catch((e) => toast.error(`Couldn't update file selection: ${errorText(e).message}`));
+    remote.updateTorrentFiles(id, onlyFiles).catch((e) => toast.error(t('notices.filesFailed', { error: errorText(e).message })));
   }, [remote]);
 
   // Changes to one item's settings. The rules for each are the reducer's
@@ -457,21 +458,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reannounceTorrent = useCallback((id: string) => {
     service.reannounceTorrent(id)
-      .then(() => toast.success('Asked trackers and DHT for peers'))
-      .catch((e) => toast.error(`Couldn't update tracker: ${e instanceof Error ? e.message : e}`));
+      .then(() => toast.success(t('notices.reannounced')))
+      .catch((e) => toast.error(t('notices.reannounceFailed', { error: e instanceof Error ? e.message : String(e) })));
   }, [service]);
 
   const recheckTorrent = useCallback((id: string) => {
     service.recheckTorrent(id)
-      .then(() => toast.success('Re-checking files on disk'))
-      .catch((e) => toast.error(`Couldn't re-check: ${e instanceof Error ? e.message : e}`));
+      .then(() => toast.success(t('notices.rechecking')))
+      .catch((e) => toast.error(t('notices.recheckFailed', { error: e instanceof Error ? e.message : String(e) })));
   }, [service]);
 
   const removeWithData = useCallback((id: string) => {
     const item = queueRef.current.find(i => i.id === id);
     remote.removeWithData(id)
-      .then(() => toast.success(`Removed ${item?.metadata.title ?? 'torrent'} and deleted its files`))
-      .catch((e) => toast.error(`Couldn't delete files: ${errorText(e).message}`));
+      .then(() => toast.success(t('notices.deleted', { title: item?.metadata.title ?? t('notices.torrent') })))
+      .catch((e) => toast.error(t('notices.deleteFailed', { error: errorText(e).message })));
   }, [remote]);
 
   const moveToTop = useCallback((id: string) => {

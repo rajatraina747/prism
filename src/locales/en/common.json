@@ -48,5 +48,11 @@
   "trash": {
     "windows": "Recycle Bin",
     "other": "Trash"
+  },
+  "quality": {
+    "bestAvailable": "Best available",
+    "n4k2160p": "4K (2160p)",
+    "n1080pFullHd": "1080p (Full HD)",
+    "n480pSmallerFiles": "480p (smaller files)"
   }
 }

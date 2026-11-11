@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { formatBytes } from '@/services/utils';
+import { t } from '@/i18n';
 
 // The app update being installed, kept outside any page. It used to live in
 // the Settings page's state: leaving the page and coming back showed "Install
@@ -56,7 +57,7 @@ export function installAppUpdate(
 export function formatUpdateProgress({ downloaded, total }: UpdateInstall): string {
   if (total && total > 0) {
     const pct = Math.min(100, Math.floor((downloaded / total) * 100));
-    return `${pct}% · ${formatBytes(downloaded)} of ${formatBytes(total)}`;
+    return t('notices.updateProgress', { pct, done: formatBytes(downloaded), total: formatBytes(total) });
   }
-  return downloaded > 0 ? `${formatBytes(downloaded)} downloaded` : 'Starting download…';
+  return downloaded > 0 ? t('notices.updateBytes', { done: formatBytes(downloaded) }) : t('notices.updateStarting');
 }

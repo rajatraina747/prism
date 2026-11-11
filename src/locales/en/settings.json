@@ -45,7 +45,10 @@
     "newEntries_other": "{{count}} new Library entries",
     "newSubscriptions_one": "{{count}} new subscription",
     "newSubscriptions_other": "{{count}} new subscriptions",
-    "confirm": "Import"
+    "confirm": "Import",
+    "notJson": "That file isn't a Prism backup (it isn't valid JSON).",
+    "notBackup": "That file isn't a Prism backup.",
+    "newer": "That backup is from a newer Prism. Update Prism, then import it."
   },
   "whatIs": "What is {{term}}?",
   "advanced": {

@@ -99,7 +99,8 @@
     "bittorrent": "BitTorrent",
     "direct": "Direct download",
     "retryIn": "Retrying in {{clock}}",
-    "retrying": "Retrying…"
+    "retrying": "Retrying…",
+    "rowLabel": "{{title}}, {{status}}"
   },
   "actions": {
     "details": "Details",
@@ -124,5 +125,16 @@
     "unreachable_other": "0 of {{count}} peers reachable",
     "searchingTitle": "Prism keeps announcing to trackers and the DHT every 5 minutes",
     "searching": "searching for peers"
+  },
+  "home": {
+    "active": "Active",
+    "currentSpeed": "Current speed",
+    "completed": "Completed",
+    "totalDownloaded": "Total downloaded",
+    "recentDownloads": "Recent Downloads",
+    "playInPrism": "Play in Prism",
+    "play": "Play",
+    "showInFolder": "Show in folder",
+    "playLabel": "Play {{name}}"
   }
 }

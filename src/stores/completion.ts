@@ -1,6 +1,7 @@
 import type {
   AppPreferences, DownloadItem, WhenDoneAction, PostCompletionAction,
 } from '@/types/models';
+import { t } from '@/i18n';
 
 // Re-exported so callers of this module have one place to import from, while
 // the type itself stays in models.ts — settings need it too, and the two
@@ -105,9 +106,9 @@ export function evaluateWhenDone(
 /** What the countdown toast says. */
 export function whenDoneLabel(action: WhenDoneAction): string {
   switch (action) {
-    case 'sleep': return 'Sleeping';
-    case 'shutdown': return 'Shutting down';
-    case 'quit': return 'Quitting Prism';
+    case 'sleep': return t('notices.whenDoneAction.sleep');
+    case 'shutdown': return t('notices.whenDoneAction.shutdown');
+    case 'quit': return t('notices.whenDoneAction.quit');
     case 'nothing': return '';
   }
 }

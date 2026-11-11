@@ -39,5 +39,6 @@
   "toVideo": "Switch to video downloads",
   "toAudio": "Switch to audio-only downloads",
   "pause": "Pause subscription",
-  "resume": "Resume subscription"
+  "resume": "Resume subscription",
+  "checkFailed": "Check failed"
 }
