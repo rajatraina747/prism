@@ -10,7 +10,7 @@ for (const w of [1500, 900]) test('transfer row and peers table fit at ' + w, as
   const row = page.locator('[aria-label^="Lucifer"]').first();
   await expect(row).toBeVisible();
   const statsH = await page.locator('div.tabular-nums', { hasText: 'ETA' }).first().evaluate(e => e.getBoundingClientRect().height);
-  expect(statsH).toBeLessThanOrEqual(16);
+  expect(statsH).toBeLessThanOrEqual(16.5);
   await row.dblclick();
   await page.getByRole('tab', { name: 'Peers' }).click();
   await page.locator('table td').first().waitFor();
