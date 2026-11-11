@@ -6,6 +6,7 @@ import { test, expect, type Page } from '@playwright/test';
 const ALLOWED = [
   /^[\d\s.,:%/·×↑↓—–+\-()≥~…⟦⟧▾▸]*$/, // numbers, units' punctuation
   /^(B|KB|MB|GB|TB|s|m|h|p|ETA)$/,
+  /^(Ctrl|Alt|Shift)\+/, // the shortcut modifier off macOS (MOD_KEY)
   /^(\d+p|4K|HDR|SDR|MP3|M4A|OPUS|MKV|MP4|H\.264|HEVC|AV1|VP9)$/i,
   /youtube|https?:|~\/|\/Users\//i,
   /Lucifer|BluRay|x265|magnet:|torrent$|\[[0-9a-f:.]+\]|^[\w.-]+\/[\d.]+/i, // seeded user data, peer addresses, client ids
