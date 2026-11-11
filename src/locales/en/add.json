@@ -35,5 +35,14 @@
   },
   "noLinksInFile": "No links found in {{name}}",
   "noLinksOnClipboard": "No links on the clipboard",
-  "openTorrent": "Open .torrent…"
+  "openTorrent": "Open .torrent…",
+  "torrent": {
+    "fetching": "Fetching file list from peers…",
+    "selected": "{{size}} selected",
+    "listLabel": "Files in this torrent",
+    "selectOne": "Select at least one file",
+    "tooBig": "That's more than the {{size}} free on this disk",
+    "download_one": "Download {{count}} file",
+    "download_other": "Download {{count}} files"
+  }
 }

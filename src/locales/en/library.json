@@ -1,0 +1,38 @@
+{
+  "activity": {
+    "periods": {
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "year": "1 year",
+      "all": "All time"
+    },
+    "engines": {
+      "ytdlp": "Video sites",
+      "torrent": "Torrents",
+      "direct": "Direct files"
+    },
+    "nothingYet": "Nothing has finished downloading yet",
+    "summary": "{{completed}} completed · {{size}} since {{since}}",
+    "title": "Activity",
+    "period": "Period",
+    "reset": "Reset statistics…",
+    "downloaded": "Downloaded · {{period}}",
+    "completed": "Completed · {{period}}",
+    "failedAllTime": "Failed · all time",
+    "canceledAllTime": "Cancelled · all time",
+    "uploaded": "Uploaded (torrents)",
+    "uploadedHint": "Counted from {{since}} — earlier uploads weren't recorded",
+    "chartEmpty": "Finished downloads will show up here.",
+    "chartLabel": "Bytes downloaded, {{period}}",
+    "bar_one": "{{label}}: {{size}} · {{count}} item",
+    "bar_other": "{{label}}: {{size}} · {{count}} items",
+    "byEngine": "By engine · all time",
+    "engineEmpty": "Nothing finished yet.",
+    "bySite": "By site · all time",
+    "siteEmpty": "Sites appear once downloads finish.",
+    "byCategory": "By category · all time",
+    "footnote": "These counters are kept separately from the Library, so removing entries from the Library doesn't change the totals above.",
+    "resetTitle": "Reset statistics?",
+    "resetDescription": "Every counter starts again from zero today. Your Library and your files are not touched, and downloads already finished aren't counted again."
+  }
+}

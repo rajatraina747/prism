@@ -43,5 +43,6 @@
     "canceled": "Cancelled"
   },
   "tryAgainLower": "Try again",
-  "done": "Done"
+  "done": "Done",
+  "undo": "Undo"
 }

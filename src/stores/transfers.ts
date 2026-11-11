@@ -1,26 +1,27 @@
 import type { DownloadItem, DownloadSettings, TransfersFilter, TransfersSort } from '@/types/models';
+import { t } from '@/i18n';
 
 // Pure helpers for the Transfers page: status filtering, sorting and the
 // counts shown on the filter tabs. Kept out of the component so they're
 // unit-testable and reusable (context menu, shortcuts, bulk bar).
 
 export const FILTERS: { id: TransfersFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'downloading', label: 'Downloading' },
-  { id: 'seeding', label: 'Seeding' },
-  { id: 'paused', label: 'Paused' },
-  { id: 'queued', label: 'Queued' },
-  { id: 'errored', label: 'Needs attention' },
+  { id: 'all', label: t('queue.filters.all') },
+  { id: 'downloading', label: t('queue.filters.downloading') },
+  { id: 'seeding', label: t('queue.filters.seeding') },
+  { id: 'paused', label: t('queue.filters.paused') },
+  { id: 'queued', label: t('queue.filters.queued') },
+  { id: 'errored', label: t('queue.filters.errored') },
 ];
 
 export const SORTS: { id: TransfersSort; label: string }[] = [
-  { id: 'added', label: 'Added' },
-  { id: 'name', label: 'Name' },
-  { id: 'progress', label: 'Progress' },
-  { id: 'speed', label: 'Down speed' },
-  { id: 'eta', label: 'ETA' },
-  { id: 'size', label: 'Size' },
-  { id: 'ratio', label: 'Ratio' },
+  { id: 'added', label: t('queue.sorts.added') },
+  { id: 'name', label: t('queue.sorts.name') },
+  { id: 'progress', label: t('queue.sorts.progress') },
+  { id: 'speed', label: t('queue.sorts.speed') },
+  { id: 'eta', label: t('queue.sorts.eta') },
+  { id: 'size', label: t('queue.sorts.size') },
+  { id: 'ratio', label: t('queue.sorts.ratio') },
 ];
 
 /** Items the Transfers page shows at all: everything not yet archived. */

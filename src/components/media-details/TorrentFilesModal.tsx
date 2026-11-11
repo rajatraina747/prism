@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { VirtualList } from '@/components/common/VirtualList';
 import { FolderTree, Check, Loader2 } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 interface TorrentFilesModalProps {
   open: boolean;
@@ -81,7 +82,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm, dest
         {files === null ? (
           <div className="p-10 min-w-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-xs">Fetching file list from peers…</span>
+            <span className="text-xs">{t('add.torrent.fetching')}</span>
           </div>
         ) : (
           <div className="p-5 min-w-0 space-y-4">
@@ -94,12 +95,12 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm, dest
                   className="rounded border-border"
                 />
                 <span className="text-xs text-muted-foreground">
-                  Select all ({selected.size}/{files.length})
+                  {t('add.playlist.selectAll', { selected: selected.size, total: files.length })}
                 </span>
               </label>
               <span className={cn('text-xs tabular-nums', tooBig ? 'text-destructive' : 'text-muted-foreground')}>
-                {formatBytes(totalSelectedBytes)} selected
-                {free !== null && <> · {formatBytes(free)} free</>}
+                {t('add.torrent.selected', { size: formatBytes(totalSelectedBytes) })}
+                {free !== null && t('settings.folder.free', { size: formatBytes(free) })}
               </span>
             </div>
 
@@ -111,7 +112,7 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm, dest
               threshold={100}
               scroll="self"
               role="group"
-              aria-label="Files in this torrent"
+              aria-label={t('add.torrent.listLabel')}
               className="max-h-72 pr-1"
               renderItem={file => (
                 <button
@@ -147,15 +148,15 @@ export function TorrentFilesModal({ open, onClose, title, files, onConfirm, dest
                 onClick={onClose}
                 className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
-              <DisabledReason reason={selected.size === 0 ? 'Select at least one file' : tooBig ? `That's more than the ${free !== null ? formatBytes(free) : ''} free on this disk` : null}>
+              <DisabledReason reason={selected.size === 0 ? t('add.torrent.selectOne') : tooBig ? t('add.torrent.tooBig', { size: free !== null ? formatBytes(free) : '' }) : null}>
                 <button
                   onClick={() => onConfirm([...selected])}
                   disabled={selected.size === 0 || tooBig}
                   className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
                 >
-                  Download {selected.size} file{selected.size !== 1 ? 's' : ''}
+                  {t('add.torrent.download', { count: selected.size })}
                 </button>
               </DisabledReason>
             </div>
