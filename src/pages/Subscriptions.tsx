@@ -195,8 +195,8 @@ export default function Subscriptions() {
           <h1 className="page-title">{t('shell.nav.subscriptions')}</h1>
           <p className="page-subtitle">
             {items.length === 0
-              ? 'Watch channels and playlists — new videos download automatically'
-              : `${items.length} subscription${items.length !== 1 ? 's' : ''} · new videos are queued automatically`}
+              ? t('subscriptions.subtitleEmpty')
+              : t('subscriptions.subtitle', { count: items.length })}
           </p>
         </div>
         {items.length > 0 && (

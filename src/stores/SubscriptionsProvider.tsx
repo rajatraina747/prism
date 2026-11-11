@@ -112,7 +112,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
           if (newEntries.length > 0) {
             diagnostics.log('info', `Subscription "${sub.title}": queued ${newEntries.length} new video(s)`);
             if (prefsRef.current.notificationsEnabled) {
-              toast(`${sub.title}: ${newEntries.length} new video${newEntries.length !== 1 ? 's' : ''} queued`);
+              toast(t('subscriptions.queued', { title: sub.title, count: newEntries.length }));
             }
           }
           if (pendingUrls.length > 0) {

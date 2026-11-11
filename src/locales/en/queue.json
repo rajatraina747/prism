@@ -100,7 +100,9 @@
     "direct": "Direct download",
     "retryIn": "Retrying in {{clock}}",
     "retrying": "Retrying…",
-    "rowLabel": "{{title}}, {{status}}"
+    "rowLabel": "{{title}}, {{status}}",
+    "pausedProgress": "{{done}} / {{total}} · {{percent}}%",
+    "pausedPending": "{{done}} · size pending"
   },
   "actions": {
     "details": "Details",

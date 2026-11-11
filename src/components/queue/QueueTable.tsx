@@ -332,8 +332,8 @@ const QueueRow = React.memo(function QueueRow({
             {isPaused && (
               <span>
                 {sizeKnown
-                  ? `${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)} · ${item.progress.toFixed(1)}%`
-                  : `${formatBytes(item.downloadedBytes)} · size pending`}
+                  ? t('queue.table.pausedProgress', { done: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes), percent: item.progress.toFixed(1) })
+                  : t('queue.table.pausedPending', { done: formatBytes(item.downloadedBytes) })}
               </span>
             )}
             {isQueued && (heldUntil

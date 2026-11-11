@@ -428,12 +428,12 @@ export default function Player() {
   }, []);
   const screenshot = useCallback(() => {
     invoke<string>('player_screenshot')
-      .then(path => say(`Screenshot saved to ${path.split(/[\\/]/).slice(-2).join('/')}`))
+      .then(path => say(t('player.screenshotSaved', { path: path.split(/[\\/]/).slice(-2).join('/') })))
       .catch(e => say(e instanceof Error ? e.message : String(e)));
   }, [say]);
   const cycleAspect = useCallback(() => {
     const next = ASPECTS[(ASPECTS.indexOf(aspect as typeof ASPECTS[number]) + 1) % ASPECTS.length];
-    setProp('video-aspect-override', next).then(() => say(next === '-1' ? 'Picture: original shape' : `Picture: ${next}`)).catch(() => {});
+    setProp('video-aspect-override', next).then(() => say(next === '-1' ? t('player.pictureOriginal') : t('player.picture', { shape: next }))).catch(() => {});
   }, [aspect, say]);
 
   // Keyboard parity with normal players.
@@ -540,7 +540,7 @@ export default function Player() {
               className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-primary/80 text-white hover:bg-primary transition-colors"
               title={t('player.page.aBLoopLClick')}
             >
-              {loopB ? `Looping ${formatDuration(Number(loopA))}–${formatDuration(Number(loopB))}` : `Loop from ${formatDuration(Number(loopA))} · L to set the end`}
+              {loopB ? t('player.looping', { from: formatDuration(Number(loopA)), to: formatDuration(Number(loopB)) }) : t('player.loopFrom', { from: formatDuration(Number(loopA)) })}
             </button>
           )}
           {notice && (

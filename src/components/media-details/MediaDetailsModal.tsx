@@ -196,8 +196,8 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {!audioOnly && selectedFormat?.playsEverywhere === false && selectedFormat.codec !== 'Video' && (
             <p className="text-xs text-muted-foreground -mt-2">
               {IS_MAC
-                ? `${selectedFormat.codec} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.`
-                : `${selectedFormat.codec} video plays in VLC and browsers, but not in every player or editor. Pick an H.264 option for the widest support.`}
+                ? t('add.details.codecMac', { codec: selectedFormat.codec })
+                : t('add.details.codecOther', { codec: selectedFormat.codec })}
             </p>
           )}
 

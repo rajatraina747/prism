@@ -137,7 +137,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
             <FileText className="w-3.5 h-3.5" /> {service.isDemo ? t('add.sheet.importFile') : t('add.sheet.importList')}
           </button>
           <span className="ml-auto text-xs text-muted-foreground tabular-nums" aria-live="polite">
-            {links.length === 0 ? '' : `${links.length} link${links.length === 1 ? '' : 's'}`}
+            {links.length === 0 ? '' : t('add.sheet.linkCount', { count: links.length })}
           </span>
           <DisabledReason reason={links.length === 0 ? t('add.pasteFirst') : null}>
             <button

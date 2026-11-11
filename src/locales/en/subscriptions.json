@@ -40,5 +40,10 @@
   "toAudio": "Switch to audio-only downloads",
   "pause": "Pause subscription",
   "resume": "Resume subscription",
-  "checkFailed": "Check failed"
+  "checkFailed": "Check failed",
+  "subtitleEmpty": "Watch channels and playlists — new videos download automatically",
+  "subtitle_one": "{{count}} subscription · new videos are queued automatically",
+  "subtitle_other": "{{count}} subscriptions · new videos are queued automatically",
+  "queued_one": "{{title}}: {{count}} new video queued",
+  "queued_other": "{{title}}: {{count}} new videos queued"
 }

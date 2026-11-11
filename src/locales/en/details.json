@@ -84,5 +84,16 @@
   "speedChart": "Transfer speed over the last minute",
   "pieces2": {
     "downloadedPiecesMap": "Downloaded pieces map"
+  },
+  "categoryWhileRunning": " · label only while it runs",
+  "peerErrorsTitle_one": "{{state}}, {{count}} error",
+  "peerErrorsTitle_other": "{{state}}, {{count}} errors",
+  "peerErrors": " ({{count}} err)",
+  "peerStates": {
+    "queued": "queued",
+    "connecting": "connecting",
+    "live": "live",
+    "dead": "dead",
+    "not_needed": "not needed"
   }
 }

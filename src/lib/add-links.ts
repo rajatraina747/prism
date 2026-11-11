@@ -41,7 +41,7 @@ export async function linksFromDrop(
     for (const file of files) {
       if (/\.torrent$/i.test(file.name)) {
         if (file.size > MAX_TORRENT_DROP_BYTES) {
-          errors.push(`${file.name} is too large to be a .torrent file`);
+          errors.push(t('add.torrentTooLarge', { name: file.name }));
           continue;
         }
         try {

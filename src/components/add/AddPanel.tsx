@@ -352,11 +352,11 @@ export function AddPanel() {
     }
 
     setBatchProgress(null);
-    const parts = [`${added.length} added`];
-    if (skipped > 0) parts.push(`${skipped} already in queue`);
-    if (failed > 0) parts.push(`${failed} failed to parse`);
-    if (abortBulkRef.current) parts.push('stopped early');
-    (failed > 0 ? toast.warning : toast.info)(parts.join(' · '));
+    const parts = [t('add.panel.batch.added', { count: added.length })];
+    if (skipped > 0) parts.push(t('add.panel.batch.skipped', { count: skipped }));
+    if (failed > 0) parts.push(t('add.panel.batch.failed', { count: failed }));
+    if (abortBulkRef.current) parts.push(t('add.panel.batch.stopped'));
+    (failed > 0 ? toast.warning : toast.info)(parts.join(t('common.separator')));
   }, [addToQueue, service, preferences.bandwidthLimit, preferences.defaultSaveFolder, queueItems]);
 
   // Every way of adding several links comes through here. Nothing starts
@@ -429,7 +429,7 @@ export function AddPanel() {
     setShowPlaylistModal(false);
     setQueuedCount(n => n + 1);
     setParsedPlaylist(null);
-    toast.success(`${entries.length} video${entries.length !== 1 ? 's' : ''} added to queue`);
+    toast.success(t('add.panel.playlistAdded', { count: entries.length }));
     navigate('/queue');
   }, [addToQueue, preferences.bandwidthLimit, preferences.defaultSaveFolder, navigate]);
 

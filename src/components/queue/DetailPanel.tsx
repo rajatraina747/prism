@@ -232,7 +232,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                   <option value={item.settings.categoryId}>{item.settings.categoryName ?? t('details.deletedCategory')}</option>
                 )}
               </select>
-              {item.status === 'queued' ? '' : ' · label only while it runs'}
+              {item.status === 'queued' ? '' : t('details.categoryWhileRunning')}
             </Row>
           )}
           {/* Only before it starts, and only for a plain file download: the
@@ -565,6 +565,8 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
     );
   }
   const liveCount = peers.filter(p => p.state === 'live').length;
+  // librqbit's peer states (`PeerState::name`); anything new shows as-is.
+  const peerState = (s: string) => (['queued', 'connecting', 'live', 'dead', 'not needed'].includes(s) ? t(`details.peerStates.${s.replace(' ', '_')}`) : s);
   return (
     // ScrollArea's inner wrapper grows to fit its content; made a block here so
     // the table is held to the panel's width and can't run off the edge.
@@ -589,7 +591,7 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
               <td className="py-1 pr-2 font-mono text-foreground truncate" title={p.addr}>{shortPeerAddress(p.addr)}</td>
               <td className="py-1 pr-2 truncate" title={p.client ?? undefined}>{p.client ?? '—'}</td>
               <td className="py-1 pr-2 truncate">{p.kind}</td>
-              <td className="py-1 pr-2 truncate" title={p.errors > 0 ? `${p.state}, ${p.errors} errors` : undefined}>{p.state}{p.errors > 0 ? ` (${p.errors} err)` : ''}</td>
+              <td className="py-1 pr-2 truncate" title={p.errors > 0 ? t('details.peerErrorsTitle', { state: peerState(p.state), count: p.errors }) : undefined}>{peerState(p.state)}{p.errors > 0 ? t('details.peerErrors', { count: p.errors }) : ''}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.downBps)}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.upBps)}</td>
               <td className="py-1 pr-2 text-right">{formatBytes(p.downloaded)}</td>

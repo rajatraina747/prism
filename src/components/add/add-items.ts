@@ -28,7 +28,7 @@ export function qualityToFormat(quality: DefaultQuality): FormatOption | null {
   const h = parseInt(quality, 10);
   return {
     id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`,
-    label: `${quality} · H.264 when available`,
+    label: t('add.h264When', { quality }),
     resolution: quality,
     container: 'mp4',
     codec: 'H.264',

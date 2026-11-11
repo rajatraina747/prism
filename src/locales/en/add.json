@@ -31,7 +31,9 @@
     "importFile": "Import file…",
     "importList": "Import list…",
     "addMany": "Add {{count}}",
-    "add": "Add"
+    "add": "Add",
+    "linkCount_one": "{{count}} link",
+    "linkCount_other": "{{count}} links"
   },
   "noLinksInFile": "No links found in {{name}}",
   "noLinksOnClipboard": "No links on the clipboard",
@@ -70,7 +72,9 @@
     "speedLimited": "Speed limited to {{mbps}} MB/s (from Settings)",
     "startNow": "Start immediately",
     "chooseQuality": "Choose a quality first",
-    "addToQueue": "Add to queue"
+    "addToQueue": "Add to queue",
+    "codecMac": "{{codec}} video plays in VLC, IINA and browsers, but not in QuickTime or Photos. Pick an H.264 option for those.",
+    "codecOther": "{{codec}} video plays in VLC and browsers, but not in every player or editor. Pick an H.264 option for the widest support."
   },
   "panel": {
     "fetch": "Fetch",
@@ -105,8 +109,18 @@
     "externalHint": "A web page or another app sent this to Prism. Nothing is fetched until you choose Add.",
     "fromPage": "From the page: {{page}}",
     "moreWaiting": "{{count}} more waiting",
-    "ignore": "Ignore"
+    "ignore": "Ignore",
+    "batch": {
+      "added": "{{count}} added",
+      "skipped": "{{count}} already in queue",
+      "failed": "{{count}} failed to parse",
+      "stopped": "stopped early"
+    },
+    "playlistAdded_one": "{{count}} video added to queue",
+    "playlistAdded_other": "{{count}} videos added to queue"
   },
   "cantAddFile": "Prism can't add {{name}} — drop links, .torrent files or a text file of links",
-  "externalTorrent": "Torrent · {{name}}"
+  "externalTorrent": "Torrent · {{name}}",
+  "h264When": "{{quality}} · H.264 when available",
+  "torrentTooLarge": "{{name}} is too large to be a .torrent file"
 }
