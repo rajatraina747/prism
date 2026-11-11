@@ -305,7 +305,8 @@
     "resetDefaults": "Reset to defaults",
     "resetDone": "Settings reset to defaults",
     "moveToLabel": "Move finished downloads to: {{path}}. Choose a folder",
-    "notSet": "not set yet"
+    "notSet": "not set yet",
+    "audioQualityDescription": "For audio-only downloads, unless you pick another in the download's details. Original keeps the site's own audio; MP3 plays everywhere; M4A and Opus are smaller at the same quality"
   },
   "help": {
     "cookies": {

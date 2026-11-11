@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { BatchChoice, DefaultQuality, PlaylistInfo, PlaylistEntry } from '@/types/models';
+import type { AudioQuality, BatchChoice, DefaultQuality, PlaylistInfo, PlaylistEntry } from '@/types/models';
 import { formatDuration } from '@/services';
 import { cn } from '@/lib/utils';
 import { VirtualList } from '@/components/common/VirtualList';
@@ -18,14 +18,16 @@ interface PlaylistModalProps {
   onQueueSelected: (entries: PlaylistEntry[], choice: BatchChoice) => void;
   /** The quality the dialog starts on. */
   defaultQuality?: DefaultQuality;
+  /** The audio quality it starts on (Settings). */
+  defaultAudioQuality?: AudioQuality;
 }
 
 /** Lists up to this long open with every entry ticked. */
 export const PRESELECT_LIMIT = 100;
 
-export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaultQuality = '1080p' }: PlaylistModalProps) {
+export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaultQuality = '1080p', defaultAudioQuality }: PlaylistModalProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [choice, setChoice] = useState<BatchChoice>({ audioOnly: false, quality: defaultQuality });
+  const [choice, setChoice] = useState<BatchChoice>({ audioOnly: false, quality: defaultQuality, audioQuality: defaultAudioQuality });
   const prevPlaylistRef = useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -37,10 +39,10 @@ export function PlaylistModal({ open, onClose, playlist, onQueueSelected, defaul
         // Blender) are not — one click queued them all (Windows test run
         // 2026-09-26). Big lists start empty; "Select all" is still there.
         setSelected(playlist.entries.length <= PRESELECT_LIMIT ? new Set(playlist.entries.map((_, i) => i)) : new Set());
-        setChoice({ audioOnly: false, quality: defaultQuality });
+        setChoice({ audioOnly: false, quality: defaultQuality, audioQuality: defaultAudioQuality });
       }
     }
-  }, [playlist, defaultQuality]);
+  }, [playlist, defaultQuality, defaultAudioQuality]);
 
   if (!playlist) return null;
 

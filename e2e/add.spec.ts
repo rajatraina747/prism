@@ -31,7 +31,8 @@ test.describe('Add sheet', () => {
     await dialog.getByRole('textbox', { name: 'Links to add' })
       .fill('https://youtube.com/watch?v=one\nhttps://youtube.com/watch?v=two');
     await dialog.getByRole('button', { name: 'Audio only' }).click();
-    await expect(dialog.getByLabel('Quality')).toHaveCount(0);
+    await expect(dialog.getByLabel('Quality', { exact: true })).toHaveCount(0);
+    await dialog.getByLabel('Audio quality').selectOption('mp3-192');
     await dialog.getByRole('button', { name: 'Add 2' }).click();
 
     await expect(page.getByText(/2 added/)).toBeVisible({ timeout: 15000 });
@@ -39,6 +40,7 @@ test.describe('Add sheet', () => {
     expect(items).toHaveLength(2);
     for (const item of items) {
       expect(item.settings.audioOnly).toBe(true);
+      expect(item.settings.audioQuality).toBe('mp3-192');
       expect(item.settings.format).toBeNull();
     }
   });

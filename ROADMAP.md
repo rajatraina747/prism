@@ -234,12 +234,20 @@ rest ship as 2.7.x or one 2.7.1, decided after 2.7.0.
     and the catalog. Split per area only if startup is measurably slower.
   - To add a language: copy `src/locales/en` to `src/locales/<code>`, load it
     in `src/i18n.ts` and `src-tauri/src/i18n.rs`, and add a picker.
-- [ ] **Audio quality picker.** Per download, defaulting to Settings.
-  - Original (no re-encode), MP3 128/192/256/320/V0, M4A, Opus.
-  - Shows the source stream ("Source: Opus 160 kbps") from the formats
-    already fetched at lookup, so the real ceiling is visible.
-  - No FLAC or WAV: lossless from a lossy source misleads.
-  - The MP3 V0 default stays.
+- [x] **Audio quality picker.** Done 2026-11-11 on `feat/audio-quality`.
+  - Original (no re-encode), MP3 V0/320/256/192/128, M4A, Opus. Per download
+    in the details dialog and the batch/playlist options; Settings holds the
+    default (`audioQuality`, settings version 2; `audioFormat` migrates and is
+    left in the file for older builds). Fixed per item when queued.
+  - Rust whitelists the names (`src-tauri/src/audio.rs`) and builds the
+    yt-dlp arguments there. Original is `-x` alone, which only remuxes.
+  - The dialog shows the source yt-dlp would take (`requested_formats`'s audio
+    half, else its own codec ranking): "Source: Opus 106 kbps". A fixed MP3
+    rate well above it says "Bigger file, same sound".
+  - Verified with real downloads and ffprobe: Original kept YouTube's Opus
+    stream bit-for-bit in rate; MP3 128/320 came out at exactly those rates.
+  - Not done: per-subscription audio quality (subscriptions use the setting),
+    and the source line describes the original track, not a chosen dub.
 - [ ] **Add-time options:** clip, start-after, checksum, hold.
 - [ ] **Bulk retry and edit; per-item speed limit.**
 - [ ] **Custom presets.** Last, because they save the choices above.

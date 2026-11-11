@@ -125,6 +125,8 @@ pub struct Extras {
     /// The download folder the template's subfolders hang from: "Move
     /// completed" keeps them and tidies up behind the file.
     pub move_root: Option<std::path::PathBuf>,
+    /// Audio-only: the item's own choice; None = the setting.
+    pub audio_quality: Option<crate::audio::AudioQuality>,
 }
 
 pub struct DownloadManager {
@@ -210,17 +212,14 @@ impl DownloadManager {
             ];
 
             if audio_only {
-                // Audio-only: extract to the user's configured format, from
-                // the chosen dub when there is one.
+                // Audio-only: the item's audio quality (else the setting), from
+                // the chosen dub when there is one. See `crate::audio`.
                 if let Some(lang) = &extras.audio_language {
                     args.push("-f".into());
                     args.push(crate::formats::with_audio_language("bestaudio", lang));
                 }
-                args.push("--extract-audio".into());
-                args.push("--audio-format".into());
-                args.push(crate::audio_format(&app));
-                args.push("--audio-quality".into());
-                args.push("0".into());
+                let quality = extras.audio_quality.unwrap_or_else(|| crate::audio_quality(&app));
+                args.extend(quality.args());
             } else {
                 let keep_container = crate::keep_original_container(&app);
                 if !keep_container {

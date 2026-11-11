@@ -1,4 +1,5 @@
 mod about;
+mod audio;
 mod i18n;
 mod app_menu;
 mod client_import;
@@ -97,6 +98,9 @@ pub struct MediaMetadata {
     /// Several audio tracks (dubs), original first; empty when there's one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<formats::AudioTrack>,
+    /// The best audio-only stream on offer, for the audio quality choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_source: Option<audio::AudioSource>,
     /// Subtitles the uploader provided (not machine translations), by code.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subtitle_languages: Vec<SubtitleLanguage>,
@@ -160,6 +164,10 @@ pub(crate) struct YtDlpInfo {
     description: Option<String>,
     uploader: Option<String>,
     formats: Option<Vec<formats::YtDlpFormat>>,
+    /// What yt-dlp's default selection would download (video + audio): its
+    /// audio half is the stream `bestaudio` takes.
+    #[serde(default)]
+    requested_formats: Option<Vec<formats::YtDlpFormat>>,
     #[serde(default)]
     subtitles: Option<std::collections::BTreeMap<String, Vec<YtDlpSubtitle>>>,
     id: Option<String>,
@@ -418,6 +426,7 @@ pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: boo
     let raw_formats = info.formats.unwrap_or_default();
     let unique_formats = formats::options(&raw_formats, keep_container);
     let audio_tracks = formats::audio_tracks(&raw_formats);
+    let audio_source = audio::best_source(&raw_formats, info.requested_formats.as_deref().unwrap_or_default());
     let subtitle_languages = info
         .subtitles
         .unwrap_or_default()
@@ -443,6 +452,7 @@ pub(crate) fn metadata_from_info(info: YtDlpInfo, url: &str, keep_container: boo
         uploader: info.uploader,
         media_key: media_key(info.extractor_key.as_deref(), info.id.as_deref()),
         audio_tracks,
+        audio_source,
         subtitle_languages,
     }
 }
@@ -552,7 +562,13 @@ async fn start_download(
     use_archive: Option<bool>,
     // The page the link came from (embedded players often require it).
     referer: Option<String>,
+    // Audio-only: `audio::AudioQuality`'s names; None = the setting.
+    audio_quality: Option<String>,
 ) -> Result<(), String> {
+    let audio_quality = match audio_quality.as_deref().filter(|q| !q.is_empty()) {
+        Some(q) => Some(audio::AudioQuality::parse(q).ok_or("Unknown audio quality")?),
+        None => None,
+    };
     let referer = referer.as_deref().and_then(http_engine::valid_referer);
     // Both end up inside yt-dlp arguments: codes only, nothing else.
     let audio_language = audio_language.filter(|l| !l.is_empty());
@@ -630,6 +646,7 @@ async fn start_download(
                 .then(|| app.path().app_data_dir().ok().map(|d| d.join("archive.txt")))
                 .flatten(),
             move_root,
+            audio_quality,
         },
     ).await;
     Ok(())
@@ -1661,12 +1678,14 @@ fn crash_reporting_enabled(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Audio-only output format, whitelisted; unknown values fall back to mp3.
-pub fn audio_format(app: &AppHandle) -> String {
-    read_setting(app, "audioFormat")
-        .and_then(|v| v.as_str().map(str::to_string))
-        .filter(|f| matches!(f.as_str(), "mp3" | "m4a" | "opus"))
-        .unwrap_or_else(|| "mp3".to_string())
+/// The audio quality setting, for items queued without their own choice.
+/// Settings from before 2.7 have only `audioFormat` (mp3, m4a or opus, each
+/// at its best quality); anything unknown falls back to MP3 V0.
+pub(crate) fn audio_quality(app: &AppHandle) -> audio::AudioQuality {
+    let text = |key: &str| read_setting(app, key).and_then(|v| v.as_str().map(str::to_string));
+    text("audioQuality")
+        .and_then(|q| audio::AudioQuality::parse(&q))
+        .unwrap_or_else(|| audio::AudioQuality::from_legacy_format(text("audioFormat").as_deref().unwrap_or("mp3")))
 }
 
 /// "Keep original container": skip the forced MP4 remux/merge so VP9/AV1

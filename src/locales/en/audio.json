@@ -1,0 +1,21 @@
+{
+  "label": "Audio quality",
+  "choices": {
+    "original": "Original (no conversion)",
+    "mp3_v0": "MP3 · best (VBR V0)",
+    "mp3_320": "MP3 · 320 kbps",
+    "mp3_256": "MP3 · 256 kbps",
+    "mp3_192": "MP3 · 192 kbps",
+    "mp3_128": "MP3 · 128 kbps",
+    "m4a": "M4A (AAC) · best",
+    "opus": "Opus · best"
+  },
+  "source": "Source: {{codec}} {{kbps}} kbps",
+  "sourceNoRate": "Source: {{codec}}",
+  "extensionUnknown": "audio",
+  "hint": {
+    "original": "Keeps the site's own audio as it is: the best quality there is, and the fastest.",
+    "convert": "Converted from the source. Converting can't add quality the source doesn't have.",
+    "upsample": "Bigger file, same sound: the source is only {{kbps}} kbps."
+  }
+}
