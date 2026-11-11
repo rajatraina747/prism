@@ -1,0 +1,25 @@
+{
+  "page": {
+    "keyboardShortcuts": "Keyboard shortcuts",
+    "aBLoopLClick": "A-B loop (L): click to move to the next step",
+    "seek": "Seek",
+    "previousFileInThisFolder": "Previous file in this folder (P)",
+    "previousFile": "Previous file",
+    "filesInThisFolder": "Files in this folder",
+    "nextFileInThisFolder": "Next file in this folder (N)",
+    "nextFile": "Next file",
+    "previousChapter": "Previous chapter",
+    "nextChapter": "Next chapter",
+    "volume": "Volume",
+    "soundEarlier": "Sound earlier",
+    "audioDelaySync": "Audio delay (sync)",
+    "soundLater": "Sound later",
+    "subtitlesFoundNextToThis": "Subtitles found next to this file",
+    "addASubtitleFile": "Add a subtitle file…",
+    "subtitlesEarlier": "Subtitles earlier",
+    "subtitleDelay": "Subtitle delay",
+    "subtitlesLater": "Subtitles later",
+    "playbackSpeed": "Playback speed",
+    "openFile": "Open file…"
+  }
+}

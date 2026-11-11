@@ -13,6 +13,7 @@ import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
 import { playerFailureHint } from '@/lib/player-failure';
 import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 // The in-app player. Runs in its own transparent "player" window: mpv embeds
 // into the window's native view and renders *beneath* the webview, so this
@@ -504,7 +505,7 @@ export default function Player() {
           className="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
           onClick={() => setShowKeys(false)}
           role="dialog"
-          aria-label="Keyboard shortcuts"
+          aria-label={t('player.page.keyboardShortcuts')}
         >
           <div className="rounded-xl bg-black/85 border border-white/15 p-5 min-w-80" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-white mb-3">Keyboard shortcuts</h2>
@@ -537,7 +538,7 @@ export default function Player() {
             <button
               onClick={() => action('ab-loop')}
               className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-primary/80 text-white hover:bg-primary transition-colors"
-              title="A-B loop (L): click to move to the next step"
+              title={t('player.page.aBLoopLClick')}
             >
               {loopB ? `Looping ${formatDuration(Number(loopA))}–${formatDuration(Number(loopB))}` : `Loop from ${formatDuration(Number(loopA))} · L to set the end`}
             </button>
@@ -584,7 +585,7 @@ export default function Player() {
             step={0.1}
             onValueChange={([v]) => { seekingRef.current = true; setTimePos(v); }}
             onValueCommit={([v]) => { seekingRef.current = false; seekTo(v); }}
-            aria-label="Seek"
+            aria-label={t('player.page.seek')}
           />
           {/* Chapter marks. Decoration only — the slider underneath stays the
               thing you drag. */}
@@ -617,13 +618,13 @@ export default function Player() {
                   onClick={() => step(false)}
                   disabled={!hasPrev}
                   className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                  title="Previous file in this folder (P)"
-                  aria-label="Previous file"
+                  title={t('player.page.previousFileInThisFolder')}
+                  aria-label={t('player.page.previousFile')}
                 >
                   <ChevronsLeft className="w-4 h-4" />
                 </button>
               </DisabledReason>
-              <span className="text-xs tabular-nums text-white/80" title="Files in this folder">
+              <span className="text-xs tabular-nums text-white/80" title={t('player.page.filesInThisFolder')}>
                 {(playlistPos ?? 0) + 1}/{playlistCount}
               </span>
               <DisabledReason reason={hasNext ? null : 'This is the last file in the folder'}>
@@ -631,8 +632,8 @@ export default function Player() {
                   onClick={() => step(true)}
                   disabled={!hasNext}
                   className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                  title="Next file in this folder (N)"
-                  aria-label="Next file"
+                  title={t('player.page.nextFileInThisFolder')}
+                  aria-label={t('player.page.nextFile')}
                 >
                   <ChevronsRight className="w-4 h-4" />
                 </button>
@@ -645,16 +646,16 @@ export default function Player() {
               <button
                 onClick={() => goChapter(-1)}
                 className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-                title="Previous chapter"
-                aria-label="Previous chapter"
+                title={t('player.page.previousChapter')}
+                aria-label={t('player.page.previousChapter')}
               >
                 <SkipBack className="w-4 h-4" />
               </button>
               <button
                 onClick={() => goChapter(1)}
                 className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-                title="Next chapter"
-                aria-label="Next chapter"
+                title={t('player.page.nextChapter')}
+                aria-label={t('player.page.nextChapter')}
               >
                 <SkipForward className="w-4 h-4" />
               </button>
@@ -687,7 +688,7 @@ export default function Player() {
               step={1}
               onValueChange={([v]) => setProp('volume', v).catch(() => {})}
               className="w-20"
-              aria-label="Volume"
+              aria-label={t('player.page.volume')}
             />
           </div>
 
@@ -709,19 +710,19 @@ export default function Player() {
                 <button
                   onClick={() => setProp('audio-delay', Math.max(-10, Number((audioDelay - 0.1).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Sound earlier"
-                  aria-label="Sound earlier"
+                  title={t('player.page.soundEarlier')}
+                  aria-label={t('player.page.soundEarlier')}
                 >
                   −
                 </button>
-                <span className="tabular-nums text-white/70 w-10 text-center" title="Audio delay (sync)">
+                <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.audioDelaySync')}>
                   {audioDelay.toFixed(1)}s
                 </span>
                 <button
                   onClick={() => setProp('audio-delay', Math.min(10, Number((audioDelay + 0.1).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Sound later"
-                  aria-label="Sound later"
+                  title={t('player.page.soundLater')}
+                  aria-label={t('player.page.soundLater')}
                 >
                   +
                 </button>
@@ -759,7 +760,7 @@ export default function Player() {
                   e.target.value = '';
                 }}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-28"
-                aria-label="Subtitles found next to this file"
+                aria-label={t('player.page.subtitlesFoundNextToThis')}
               >
                 <option value="">Nearby…</option>
                 {siblingSubs.map((p) => (
@@ -770,8 +771,8 @@ export default function Player() {
             <button
               onClick={addSubtitle}
               className="p-1 rounded-md hover:bg-white/15 transition-colors"
-              title="Add a subtitle file…"
-              aria-label="Add a subtitle file…"
+              title={t('player.page.addASubtitleFile')}
+              aria-label={t('player.page.addASubtitleFile')}
             >
               <Captions className="w-4 h-4" />
             </button>
@@ -780,19 +781,19 @@ export default function Player() {
                 <button
                   onClick={() => setProp('sub-delay', Math.max(-60, Number((subDelay - 0.5).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Subtitles earlier"
-                  aria-label="Subtitles earlier"
+                  title={t('player.page.subtitlesEarlier')}
+                  aria-label={t('player.page.subtitlesEarlier')}
                 >
                   −
                 </button>
-                <span className="tabular-nums text-white/70 w-10 text-center" title="Subtitle delay">
+                <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.subtitleDelay')}>
                   {subDelay.toFixed(1)}s
                 </span>
                 <button
                   onClick={() => setProp('sub-delay', Math.min(60, Number((subDelay + 0.5).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Subtitles later"
-                  aria-label="Subtitles later"
+                  title={t('player.page.subtitlesLater')}
+                  aria-label={t('player.page.subtitlesLater')}
                 >
                   +
                 </button>
@@ -805,7 +806,7 @@ export default function Player() {
               value={speed}
               onChange={(e) => setProp('speed', Number(e.target.value)).catch(() => {})}
               className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white"
-              aria-label="Playback speed"
+              aria-label={t('player.page.playbackSpeed')}
             >
               {SPEEDS.map((s) => (
                 <option key={s} value={s}>{s}×</option>
@@ -816,8 +817,8 @@ export default function Player() {
           <button
             onClick={pickAndPlay}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title="Open file…"
-            aria-label="Open file…"
+            title={t('player.page.openFile')}
+            aria-label={t('player.page.openFile')}
           >
             <FolderOpen className="w-4 h-4" />
           </button>

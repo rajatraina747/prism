@@ -7,6 +7,7 @@ import { useService } from '@/services/ServiceProvider';
 import { QUALITY_CHOICES, type DefaultQuality, type Subscription } from '@/types/models';
 import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play, SlidersHorizontal, FolderOpen } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 /** A comma-separated list of words, edited as plain text.
  *
@@ -98,7 +99,7 @@ function SubscriptionOptions({ sub, onChange }: {
           <button
             type="button"
             onClick={() => void chooseFolder()}
-            title="Choose a folder for this subscription"
+            title={t('subscriptions.page.chooseAFolderForThis')}
             className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors"
           >
             <FolderOpen className="w-3 h-3 shrink-0" />
@@ -116,14 +117,14 @@ function SubscriptionOptions({ sub, onChange }: {
         </div>
       </div>
       <KeywordField
-        label="Only download titles containing"
-        placeholder="review, episode — leave empty for everything"
+        label={t('subscriptions.page.onlyDownloadTitlesContaining')}
+        placeholder={t('subscriptions.page.reviewEpisodeLeaveEmptyFor')}
         words={sub.includeKeywords}
         onChange={words => onChange({ includeKeywords: words })}
       />
       <KeywordField
-        label="Never download titles containing"
-        placeholder="trailer, shorts"
+        label={t('subscriptions.page.neverDownloadTitlesContaining')}
+        placeholder={t('subscriptions.page.trailerShorts')}
         words={sub.excludeKeywords}
         onChange={words => onChange({ excludeKeywords: words })}
       />
@@ -165,7 +166,7 @@ export default function Subscriptions() {
   const unsubscribeWithUndo = useCallback((sub: (typeof items)[number]) => {
     removeSubscription(sub.id);
     toast(`Unsubscribed from ${sub.title}`, {
-      action: { label: 'Undo', onClick: () => restoreSubscription(sub) },
+      action: { label: t('subscriptions.page.undo'), onClick: () => restoreSubscription(sub) },
       duration: 6000,
     });
   }, [removeSubscription, restoreSubscription]);
@@ -221,7 +222,7 @@ export default function Subscriptions() {
             value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-            placeholder="Paste a channel, playlist, or RSS feed URL to subscribe"
+            placeholder={t('subscriptions.page.pasteAChannelPlaylistOr')}
             className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
             disabled={adding}
           />
@@ -247,8 +248,8 @@ export default function Subscriptions() {
       {items.length === 0 ? (
         <EmptyState
           icon={Rss}
-          title="No subscriptions yet"
-          description="Subscribe to a channel or playlist and Prism will check it periodically, queueing anything new."
+          title={t('subscriptions.page.noSubscriptionsYet')}
+          description={t('subscriptions.page.subscribeToAChannelOr')}
         />
       ) : (
         <div className="space-y-1.5">
@@ -300,8 +301,8 @@ export default function Subscriptions() {
                   </button>
                   <button
                     onClick={() => setEditingOptions(id => (id === sub.id ? null : sub.id))}
-                    title="Download options"
-                    aria-label="Download options"
+                    title={t('subscriptions.page.downloadOptions')}
+                    aria-label={t('subscriptions.page.downloadOptions')}
                     aria-expanded={editingOptions === sub.id}
                     className={`p-1.5 rounded-md hover:bg-secondary transition-colors active:scale-[0.95] ${
                       editingOptions === sub.id ? 'text-foreground bg-secondary' : 'text-muted-foreground hover:text-foreground'
@@ -313,8 +314,8 @@ export default function Subscriptions() {
                     <button
                       onClick={() => checkNow(sub.id)}
                       disabled={checking}
-                      title="Check now"
-                      aria-label="Check now"
+                      title={t('subscriptions.page.checkNow')}
+                      aria-label={t('subscriptions.page.checkNow')}
                       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95] disabled:opacity-50"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -330,8 +331,8 @@ export default function Subscriptions() {
                   </button>
                   <button
                     onClick={() => unsubscribeWithUndo(sub)}
-                    title="Unsubscribe"
-                    aria-label="Unsubscribe"
+                    title={t('subscriptions.page.unsubscribe')}
+                    aria-label={t('subscriptions.page.unsubscribe')}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

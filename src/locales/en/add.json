@@ -44,5 +44,40 @@
     "tooBig": "That's more than the {{size}} free on this disk",
     "download_one": "Download {{count}} file",
     "download_other": "Download {{count}} files"
+  },
+  "details": {
+    "english": "English",
+    "spanish": "Spanish",
+    "french": "French",
+    "german": "German",
+    "portuguese": "Portuguese",
+    "japanese": "Japanese",
+    "korean": "Korean",
+    "chinese": "Chinese",
+    "arabic": "Arabic",
+    "hindi": "Hindi",
+    "italian": "Italian",
+    "russian": "Russian",
+    "qualityFormat": "Quality & format",
+    "formatAudio": "{{format}} Audio",
+    "audioHint": "Best quality audio extracted from video · format set in Settings",
+    "filename": "Filename",
+    "subtitles": "Download subtitles",
+    "embedSubs": "Inside the video",
+    "advanced": "Advanced settings",
+    "destination": "Destination",
+    "change": "Change…",
+    "speedLimited": "Speed limited to {{mbps}} MB/s (from Settings)",
+    "startNow": "Start immediately",
+    "chooseQuality": "Choose a quality first",
+    "addToQueue": "Add to queue"
+  },
+  "panel": {
+    "fetch": "Fetch",
+    "viewQueue": "View queue",
+    "setBrowserCookies": "Set browser cookies",
+    "updateEngine": "Update engine",
+    "downloadAsAFile": "Download as a file",
+    "retry": "Retry"
   }
 }

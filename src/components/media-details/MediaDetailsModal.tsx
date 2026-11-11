@@ -13,20 +13,21 @@ import {
 } from 'lucide-react';
 import { buildItem } from '@/stores/build-item';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 const SUBTITLE_LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'ko', label: 'Korean' },
-  { value: 'zh', label: 'Chinese' },
-  { value: 'ar', label: 'Arabic' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'it', label: 'Italian' },
-  { value: 'ru', label: 'Russian' },
+  { value: 'en', label: t('add.details.english') },
+  { value: 'es', label: t('add.details.spanish') },
+  { value: 'fr', label: t('add.details.french') },
+  { value: 'de', label: t('add.details.german') },
+  { value: 'pt', label: t('add.details.portuguese') },
+  { value: 'ja', label: t('add.details.japanese') },
+  { value: 'ko', label: t('add.details.korean') },
+  { value: 'zh', label: t('add.details.chinese') },
+  { value: 'ar', label: t('add.details.arabic') },
+  { value: 'hi', label: t('add.details.hindi') },
+  { value: 'it', label: t('add.details.italian') },
+  { value: 'ru', label: t('add.details.russian') },
 ];
 
 interface MediaDetailsModalProps {
@@ -141,7 +142,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               )}
             >
               <Film className="w-3 h-3" />
-              Video
+              {t('add.batch.video')}
             </button>
             <button
               onClick={() => setAudioOnly(true)}
@@ -153,14 +154,14 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
               )}
             >
               <Music className="w-3 h-3" />
-              Audio only
+              {t('add.batch.audioOnly')}
             </button>
           </div>
 
           {/* Format Selection — only for video mode */}
           {!audioOnly && (
             <div>
-              <label className="panel-header block">Quality & format</label>
+              <label className="panel-header block">{t('add.details.qualityFormat')}</label>
               {/* Cap the list — some sites return a dozen formats, which would
                   otherwise push the dialog (and its Add button) off-screen. */}
               <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
@@ -205,15 +206,15 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border/30">
               <Music className="w-4 h-4 text-primary" />
               <div>
-                <p className="text-xs font-medium text-foreground">{preferences.audioFormat.toUpperCase()} Audio</p>
-                <p className="text-xs text-muted-foreground">Best quality audio extracted from video · format set in Settings</p>
+                <p className="text-xs font-medium text-foreground">{t('add.details.formatAudio', { format: preferences.audioFormat.toUpperCase() })}</p>
+                <p className="text-xs text-muted-foreground">{t('add.details.audioHint')}</p>
               </div>
             </div>
           )}
 
           {/* Filename */}
           <div>
-            <label className="panel-header block">Filename</label>
+            <label className="panel-header block">{t('add.details.filename')}</label>
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40">
               <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <input
@@ -236,7 +237,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 className="rounded border-border"
               />
               <Subtitles className="w-3 h-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Download subtitles</span>
+              <span className="text-xs text-muted-foreground">{t('add.details.subtitles')}</span>
             </label>
             {downloadSubtitles && listedSubtitles.length === 0 && (
               <select
@@ -257,7 +258,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                   onChange={(e) => setEmbedSubtitles(e.target.checked)}
                   className="rounded border-border"
                 />
-                <span className="text-xs text-muted-foreground">Inside the video</span>
+                <span className="text-xs text-muted-foreground">{t('add.details.embedSubs')}</span>
               </label>
             )}
           </div>
@@ -287,7 +288,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
           {audioTracks.length > 1 && (
             <div className="flex items-center gap-3">
               <Music className="w-3 h-3 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Audio</span>
+              <span className="text-xs text-muted-foreground">{t('library.tabs.audio')}</span>
               <select
                 value={audioLanguage}
                 onChange={e => setAudioLanguage(e.target.value)}
@@ -308,13 +309,13 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            Advanced settings
+            {t('add.details.advanced')}
           </button>
 
           {showAdvanced && (
             <div className="space-y-3 pl-1 animate-fade-in">
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground mb-1 block">Destination</label>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground mb-1 block">{t('add.details.destination')}</label>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-input border border-border/40">
                   <FolderOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
@@ -327,13 +328,13 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                     }}
                     className="shrink-0 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors active:scale-[0.97]"
                   >
-                    Change…
+                    {t('add.details.change')}
                   </button>
                 </div>
               </div>
               {preferences.bandwidthLimit > 0 && (
                 <div className="text-xs text-muted-foreground">
-                  Speed limited to {preferences.bandwidthLimit} MB/s (from Settings)
+                  {t('add.details.speedLimited', { mbps: preferences.bandwidthLimit })}
                 </div>
               )}
             </div>
@@ -348,7 +349,7 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 onChange={(e) => setStartImmediately(e.target.checked)}
                 className="rounded border-border"
               />
-              <span className="text-xs text-muted-foreground">Start immediately</span>
+              <span className="text-xs text-muted-foreground">{t('add.details.startNow')}</span>
             </label>
 
             <div className="flex gap-2">
@@ -356,15 +357,15 @@ export function MediaDetailsModal({ open, onClose, metadata, onAddToQueue, prefe
                 onClick={onClose}
                 className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
-              <DisabledReason reason={!audioOnly && !selectedFormat ? 'Choose a quality first' : null}>
+              <DisabledReason reason={!audioOnly && !selectedFormat ? t('add.details.chooseQuality') : null}>
                 <button
                   onClick={handleAdd}
                   disabled={!audioOnly && !selectedFormat}
                   className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-40"
                 >
-                  Add to queue
+                  {t('add.details.addToQueue')}
                 </button>
               </DisabledReason>
             </div>

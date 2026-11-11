@@ -44,5 +44,9 @@
   },
   "tryAgainLower": "Try again",
   "done": "Done",
-  "undo": "Undo"
+  "undo": "Undo",
+  "trash": {
+    "windows": "Recycle Bin",
+    "other": "Trash"
+  }
 }

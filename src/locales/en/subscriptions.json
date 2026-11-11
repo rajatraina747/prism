@@ -1,0 +1,16 @@
+{
+  "page": {
+    "chooseAFolderForThis": "Choose a folder for this subscription",
+    "onlyDownloadTitlesContaining": "Only download titles containing",
+    "reviewEpisodeLeaveEmptyFor": "review, episode — leave empty for everything",
+    "neverDownloadTitlesContaining": "Never download titles containing",
+    "trailerShorts": "trailer, shorts",
+    "undo": "Undo",
+    "pasteAChannelPlaylistOr": "Paste a channel, playlist, or RSS feed URL to subscribe",
+    "noSubscriptionsYet": "No subscriptions yet",
+    "subscribeToAChannelOr": "Subscribe to a channel or playlist and Prism will check it periodically, queueing anything new.",
+    "downloadOptions": "Download options",
+    "checkNow": "Check now",
+    "unsubscribe": "Unsubscribe"
+  }
+}

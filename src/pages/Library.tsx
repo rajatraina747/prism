@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { TRASH_NAME } from '@/lib/platform';
 import type { HistoryItem, ListDensity } from '@/types/models';
 import { buildItem } from '@/stores/build-item';
+import { t } from '@/i18n';
 
 /** The Library shows finished media ('media'); what didn't finish (failed
  * and cancelled) is the same list in 'attention' mode, shown under
@@ -35,13 +36,13 @@ type Mode = 'media' | 'attention';
 type FilterTab = 'all' | 'video' | 'audio' | 'torrent' | 'missing' | 'failed' | 'canceled';
 
 const TAB_LABELS: Record<FilterTab, string> = {
-  all: 'All',
-  video: 'Video',
-  audio: 'Audio',
-  torrent: 'Torrents',
-  missing: 'Missing',
-  failed: 'Failed',
-  canceled: 'Cancelled',
+  all: t('library.tabs.all'),
+  video: t('library.tabs.video'),
+  audio: t('library.tabs.audio'),
+  torrent: t('library.tabs.torrent'),
+  missing: t('library.tabs.missing'),
+  failed: t('library.tabs.failed'),
+  canceled: t('library.tabs.canceled'),
 };
 
 const MODE_TABS: Record<Mode, FilterTab[]> = {
@@ -83,8 +84,8 @@ function TorrentFiles({ item, playerAvailable }: { item: HistoryItem; playerAvai
             <button
               type="button"
               onClick={() => playInPrism(torrentFilePath(item, f.name), f.name.split('/').pop() ?? f.name)}
-              title="Play in Prism"
-              aria-label={`Play ${f.name} in Prism`}
+              title={t('library.page.playInPrism')}
+              aria-label={t('details.playInPrismLabel', { name: f.name })}
               className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
             >
               <MonitorPlay className="w-3 h-3" />
@@ -93,17 +94,17 @@ function TorrentFiles({ item, playerAvailable }: { item: HistoryItem; playerAvai
           <button
             type="button"
             onClick={() => service.openFile(torrentFilePath(item, f.name)).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-            title="Open in default player"
-            aria-label={`Open ${f.name}`}
+            title={t('library.page.openInDefaultPlayer')}
+            aria-label={t('details.openLabel', { name: f.name })}
             className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Play className="w-3 h-3" />
           </button>
           <button
             type="button"
-            onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-            title="Show in folder"
-            aria-label={`Show ${f.name} in folder`}
+            onClick={() => service.showInFolder(torrentFilePath(item, f.name)).catch(() => toast.error(t('library.page.fileNotFound')))}
+            title={t('library.page.showInFolder')}
+            aria-label={t('details.showLabel', { name: f.name })}
             className="p-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
           >
             <FolderOpen className="w-3 h-3" />
@@ -131,22 +132,22 @@ function formatWhen(iso: string): string {
 function playAFile() {
   import('@/lib/player-window')
     .then(({ pickAndPlay }) => pickAndPlay())
-    .catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => toast.error(t('shell.playFailed', { error: e instanceof Error ? e.message : String(e) })));
 }
 
 function playInPrism(path: string, title: string) {
   // Dynamic import keeps the Tauri window APIs out of the web-demo bundle path.
   import('@/lib/player-window')
     .then(({ openInPlayer }) => openInPlayer({ path, title }))
-    .catch((e) => toast.error(`Couldn't open the player: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => toast.error(t('library.page.playerFailed', { error: e instanceof Error ? e.message : String(e) })));
 }
 
 const iconButton = 'p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]';
 
 function statusIcon(status: string) {
-  if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" aria-label="Completed" />;
-  if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" aria-label="Failed" />;
-  return <Ban className="w-3 h-3 text-muted-foreground" aria-label="Cancelled" />;
+  if (status === 'completed') return <CheckCircle2 className="w-3 h-3 text-success" aria-label={t('library.page.completed')} />;
+  if (status === 'failed') return <XCircle className="w-3 h-3 text-destructive" aria-label={t('library.page.failed')} />;
+  return <Ban className="w-3 h-3 text-muted-foreground" aria-label={t('library.page.cancelled')} />;
 }
 
 /** One page for everything that has finished, one way or another: completed,
@@ -169,17 +170,17 @@ function PlayFileMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          title="Play any audio or video file on this computer (⌘O)"
+          title={t('library.page.playAnyAudioOrVideo')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
         >
-          <FolderOpen className="w-3 h-3" /> Play a file
+          <FolderOpen className="w-3 h-3" /> {t('common.empty.playFile')}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuItem onSelect={playAFile} className="text-xs">Choose a file…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={playAFile} className="text-xs">{t('library.page.chooseFile')}</DropdownMenuItem>
         {recent.length > 0 && (
           <>
-            <div className="px-2 pt-2 pb-1 text-xs text-muted-foreground">Recent</div>
+            <div className="px-2 pt-2 pb-1 text-xs text-muted-foreground">{t('library.page.recent')}</div>
             {recent.map(r => (
               <DropdownMenuItem key={r.path} onSelect={() => playInPrism(r.path, r.title)} className="text-xs" title={r.path}>
                 <span className="truncate">{r.title}</span>
@@ -189,7 +190,7 @@ function PlayFileMenu() {
               onSelect={() => import('@/lib/player-window').then(m => m.clearRecentMedia()).then(() => setRecent([])).catch(() => {})}
               className="text-xs text-muted-foreground"
             >
-              Clear recent files
+              {t('library.page.clearRecent')}
             </DropdownMenuItem>
           </>
         )}
@@ -244,7 +245,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
         : isDirectFileUrl(item.metadata.source.url) ? 'direct' : undefined,
     }));
     if (item.status === 'failed') removeFromHistory(item.id);
-    toast.success(`${item.status === 'failed' ? 'Retrying' : 'Queued again'}: ${item.metadata.title}`);
+    toast.success(item.status === 'failed' ? t('library.page.retrying', { title: item.metadata.title }) : t('library.page.queuedAgain', { title: item.metadata.title }));
   }, [addToQueue, removeFromHistory]);
 
   const categories = useMemo(() => categoriesInUse(items), [items]);
@@ -349,8 +350,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
     clearSelection();
     // Records only — the files are untouched, so an undo can simply put the
     // entries back rather than having to restore anything from disk.
-    toast(`Removed ${count} ${count === 1 ? 'entry' : 'entries'} from the library`, {
-      action: { label: 'Undo', onClick: () => removed.forEach(restoreHistory) },
+    toast(t('library.page.removed', { count }), {
+      action: { label: t('library.page.undo'), onClick: () => removed.forEach(restoreHistory) },
       duration: 8000,
     });
   }, [selectedItems, removeManyFromHistory, restoreHistory, clearSelection]);
@@ -380,9 +381,9 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       // No Undo offered: the files are in the OS Trash now, and restoring the
       // entries would leave them pointing at paths that have moved. The Trash
       // itself is the undo.
-      toast.success(`Moved ${count} ${count === 1 ? 'item' : 'items'} to the ${TRASH_NAME}`);
+      toast.success(t('library.page.trashed', { count, trash: TRASH_NAME }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : `Could not move those to the ${TRASH_NAME}`);
+      toast.error(e instanceof Error ? e.message : t('library.page.trashFailed', { trash: TRASH_NAME }));
     }
   }, [trashable, trashTargets, service, removeManyFromHistory, clearSelection]);
 
@@ -391,8 +392,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       {embedded ? (
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Didn&apos;t finish</h2>
-            <p className="text-xs text-muted-foreground">Failed and cancelled downloads, with the reason and a retry button.</p>
+            <h2 className="text-sm font-semibold text-foreground">{t('library.page.didntFinish')}</h2>
+            <p className="text-xs text-muted-foreground">{t('library.page.didntFinishHint')}</p>
           </div>
           <div className="flex items-center gap-2">
           {inTab.length > 0 && (
@@ -410,8 +411,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       <>
       <div className="flex items-center justify-between page-header">
         <div>
-          <h1 className="page-title">Library</h1>
-          <p className="page-subtitle">Everything you&apos;ve downloaded, ready to play</p>
+          <h1 className="page-title">{t('shell.nav.library')}</h1>
+          <p className="page-subtitle">{t('library.page.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           {items.length > 0 && (
@@ -420,7 +421,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
                 <DropdownMenuTrigger asChild>
                   <button
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
-                    aria-label="Sort library"
+                    aria-label={t('library.page.sortLibrary')}
                   >
                     <ArrowUpDown className="w-3 h-3" />
                     {LIBRARY_SORTS.find(s => s.id === preferences.librarySort)?.label ?? 'Newest'}
@@ -442,8 +443,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
               <button
                 type="button"
                 onClick={() => updatePreference('libraryView', preferences.libraryView === 'grid' ? 'list' : 'grid')}
-                aria-label={preferences.libraryView === 'grid' ? 'Show as a list' : 'Show as a grid'}
-                title={preferences.libraryView === 'grid' ? 'Show as a list' : 'Show as a grid'}
+                aria-label={preferences.libraryView === 'grid' ? t('library.page.asList') : t('library.page.asGrid')}
+                title={preferences.libraryView === 'grid' ? t('library.page.asList') : t('library.page.asGrid')}
                 className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
               >
                 {preferences.libraryView === 'grid'
@@ -454,8 +455,8 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
               <button
                 type="button"
                 onClick={() => updatePreference('listDensity', preferences.listDensity === 'compact' ? 'comfortable' : 'compact')}
-                aria-label={preferences.listDensity === 'compact' ? 'Use comfortable spacing' : 'Use compact spacing'}
-                title={preferences.listDensity === 'compact' ? 'Use comfortable spacing' : 'Use compact spacing'}
+                aria-label={preferences.listDensity === 'compact' ? t('library.page.comfortable') : t('library.page.compact')}
+                title={preferences.listDensity === 'compact' ? t('library.page.comfortable') : t('library.page.compact')}
                 aria-pressed={preferences.listDensity === 'compact'}
                 className={cn(
                   'p-1.5 rounded-lg transition-colors hover:bg-secondary hover:text-secondary-foreground',
@@ -485,7 +486,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       {mode === 'media' && <LibraryActivity />}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
-        <TabsList aria-label="Filter library" className="h-auto gap-1 bg-transparent p-0 mb-4">
+        <TabsList aria-label={t('library.page.filterLibrary')} className="h-auto gap-1 bg-transparent p-0 mb-4">
           {tabs.map(t => (
             <TabsTrigger
               key={t.key}
@@ -512,21 +513,21 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
                 value={search}
                 ref={searchRef}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search library…"
-                aria-label="Search library"
+                placeholder={t('library.page.searchLibrary')}
+                aria-label={t('library.page.searchLibrary2')}
                 className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
               />
             </div>
             {categories.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by category">
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label={t('library.page.filterByCategory')}>
                     <Tag className="w-3 h-3" />
-                    {activeCategory ? categories.find(c => c.id === activeCategory)?.name : 'All categories'}
+                    {activeCategory ? categories.find(c => c.id === activeCategory)?.name : t('queue.allCategories')}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>All categories</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>{t('queue.allCategories')}</DropdownMenuItem>
                   {categories.map(c => (
                     <DropdownMenuItem key={c.id} onSelect={() => setCategory(c.id)} className={cn('text-xs', activeCategory === c.id && 'text-primary')}>{c.name}</DropdownMenuItem>
                   ))}
@@ -536,13 +537,13 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
             {labels.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by label">
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label={t('library.page.filterByLabel')}>
                     <Tags className="w-3 h-3" />
-                    {activeLabel ? labels.find(l => l.id === activeLabel)?.name : 'All labels'}
+                    {activeLabel ? labels.find(l => l.id === activeLabel)?.name : t('queue.allLabels')}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onSelect={() => setLabel(null)} className={cn('text-xs', !activeLabel && 'text-primary')}>All labels</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setLabel(null)} className={cn('text-xs', !activeLabel && 'text-primary')}>{t('queue.allLabels')}</DropdownMenuItem>
                   {labels.map(l => (
                     <DropdownMenuItem key={l.id} onSelect={() => setLabel(l.id)} className={cn('text-xs', activeLabel === l.id && 'text-primary')}>{l.name || 'Unnamed'}</DropdownMenuItem>
                   ))}
@@ -556,16 +557,16 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
             Recycle Bin, and a single row had no way at all. */}
         {selectedItems.length > 0 && (
           <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary/8 border border-primary/20 text-xs animate-fade-in">
-            <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
-            <BulkButton icon={RotateCcw} label="Download again" onClick={() => selectedItems.forEach(requeue)} />
-            <BulkButton icon={FolderOpen} label="Show in folder" onClick={revealSelected} />
-            <BulkButton icon={ListX} label="Remove" onClick={removeSelected} />
+            <span className="text-foreground tabular-nums">{t('queue.selected', { count: selectedItems.length })}</span>
+            <BulkButton icon={RotateCcw} label={t('library.page.downloadAgain')} onClick={() => selectedItems.forEach(requeue)} />
+            <BulkButton icon={FolderOpen} label={t('library.page.showInFolder')} onClick={revealSelected} />
+            <BulkButton icon={ListX} label={t('library.page.remove')} onClick={removeSelected} />
             {trashTargets.length > 0 && (
-              <BulkButton icon={Trash2} label={`Move to ${TRASH_NAME}`} onClick={() => setConfirmTrash(true)} />
+              <BulkButton icon={Trash2} label={t('library.page.moveToTrash', { trash: TRASH_NAME })} onClick={() => setConfirmTrash(true)} />
             )}
             <button
               onClick={clearSelection}
-              aria-label="Clear selection"
+              aria-label={t('library.page.clearSelection')}
               className="ml-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -578,15 +579,15 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
             mode === 'attention' ? (
               <EmptyState
                 icon={XCircle}
-                title="Nothing needs attention"
-                description="Downloads that fail or are cancelled show up here, with the reason and a retry button."
+                title={t('library.page.nothingNeedsAttention')}
+                description={t('library.page.downloadsThatFailOrAre')}
                 className="py-8"
               />
             ) : (
               <EmptyState
                 icon={Clock}
-                title={tab === 'all' ? 'Nothing here yet' : `No ${TAB_LABELS[tab].toLowerCase()} yet`}
-                description="Everything you download ends up here, ready to play."
+                title={t(`library.tabEmpty.${tab}`)}
+                description={t('library.page.everythingYouDownloadEndsUp')}
                 action={<EmptyActions play={playerAvailable} />}
               />
             )
@@ -601,7 +602,7 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
               // wasn't measured for.
               estimateSize={columns > 1 ? GRID_CARD_HEIGHT : preferences.listDensity === 'compact' ? 48 : 64}
               gap={6}
-              aria-label={`${TAB_LABELS[tab]} downloads`}
+              aria-label={t('library.page.tabDownloads', { tab: TAB_LABELS[tab] })}
               role="listbox"
               aria-multiselectable
               renderItem={item => (
@@ -628,11 +629,9 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       <ConfirmDialog
         open={confirmClear}
         onOpenChange={setConfirmClear}
-        title={mode === 'attention'
-          ? "Clear what didn't finish?"
-          : tab === 'all' ? 'Clear the whole library?' : `Clear all ${TAB_LABELS[tab].toLowerCase()} items?`}
-        description={`This removes ${inTab.length} entr${inTab.length === 1 ? 'y' : 'ies'} from ${mode === 'attention' ? 'this list' : 'the Library'}. Downloaded files stay on disk.`}
-        confirmLabel={tab === 'all' ? 'Clear everything' : `Clear ${TAB_LABELS[tab].toLowerCase()}`}
+        title={mode === 'attention' ? t('library.clear.attentionTitle') : t(`library.clearTitle.${tab}`)}
+        description={mode === 'attention' ? t('library.clear.fromList', { count: inTab.length }) : t('library.clear.fromLibrary', { count: inTab.length })}
+        confirmLabel={t(`library.clearConfirm.${tab}`)}
         destructive
         onConfirm={clearCurrent}
       />
@@ -640,17 +639,17 @@ export function LibraryView({ mode, embedded = false }: { mode: Mode; embedded?:
       <ConfirmDialog
         open={confirmTrash}
         onOpenChange={setConfirmTrash}
-        title={`Move ${trashTargets.length} ${trashTargets.length === 1 ? 'download' : 'downloads'} to the ${TRASH_NAME}?`}
+        title={t('library.trash.title', { count: trashTargets.length, trash: TRASH_NAME })}
         description={[
-          `The files go to the ${TRASH_NAME}, where you can put them back. Their library entries are removed too.`,
+          t('library.trash.body', { trash: TRASH_NAME }),
           trashFolders.length > 0
-            ? `${trashFolders.length === 1 ? 'This folder goes' : 'These folders go'} with everything in ${trashFolders.length === 1 ? 'it' : 'them'}: ${trashFolders.map(n => `“${n}”`).join(', ')}.`
+            ? t('library.trash.folders', { count: trashFolders.length, names: trashFolders.map(n => `“${n}”`).join(', ') })
             : '',
           selectedItems.length > trashTargets.length
-            ? `${selectedItems.length - trashTargets.length} selected ${selectedItems.length - trashTargets.length === 1 ? 'item has' : 'items have'} no file of its own on disk and will be left alone.`
+            ? t('library.trash.noFile', { count: selectedItems.length - trashTargets.length })
             : '',
         ].join(' ').trim()}
-        confirmLabel={`Move to ${TRASH_NAME}`}
+        confirmLabel={t('library.page.moveToTrash', { trash: TRASH_NAME })}
         destructive
         onConfirm={trashSelected}
       />
@@ -738,12 +737,12 @@ const LibraryRow = React.memo(function LibraryRow({
               const requested = item.settings.format?.resolution;
               const actual = item.actualHeight ? `${item.actualHeight}p` : undefined;
               if (actual && requested && actual !== requested) {
-                return <span className="text-warning" title={`Requested ${requested}, the site delivered ${actual}`}>{actual} (asked {requested})</span>;
+                return <span className="text-warning" title={t('library.page.shortfallTitle', { requested, actual })}>{t('library.page.shortfall', { requested, actual })}</span>;
               }
               const label = actual ?? requested;
               return label ? <span>{label}</span> : null;
             })()}
-            {item.settings.audioOnly && <span>Audio</span>}
+            {item.settings.audioOnly && <span>{t('library.tabs.audio')}</span>}
             {item.settings.categoryName && (
               <span className="px-1.5 rounded bg-secondary text-secondary-foreground">{item.settings.categoryName}</span>
             )}
@@ -751,10 +750,10 @@ const LibraryRow = React.memo(function LibraryRow({
               <span key={name} className="px-1.5 rounded bg-primary/10 text-primary/90">{name}</span>
             ))}
             {item.seeding && (
-              <span className="px-1.5 rounded bg-primary/10 text-primary/90" title="Finished downloading and still uploading to others; see Transfers">Seeding</span>
+              <span className="px-1.5 rounded bg-primary/10 text-primary/90" title={t('library.page.finishedDownloadingAndStillUploading')}>{t('common.status.seeding')}</span>
             )}
             {missing && (
-              <span className="px-1.5 rounded bg-destructive/10 text-destructive" title="The file has been moved or deleted outside Prism">Missing</span>
+              <span className="px-1.5 rounded bg-destructive/10 text-destructive" title={t('library.page.theFileHasBeenMoved')}>{t('library.tabs.missing')}</span>
             )}
             {item.fileSize > 0 && <span>{formatBytes(item.fileSize)}</span>}
             {grid && item.status === 'completed' && item.files && item.files.length > 0 && (
@@ -762,9 +761,9 @@ const LibraryRow = React.memo(function LibraryRow({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setFilesOpen(true); }}
                 className="underline decoration-dotted underline-offset-2 hover:text-foreground transition-colors"
-                aria-label={`Show the ${item.files.length} files in ${item.metadata.title}`}
+                aria-label={t('library.page.showFiles', { count: item.files.length, title: item.metadata.title })}
               >
-                {item.files.length} file{item.files.length === 1 ? '' : 's'}
+                {t('queue.table.files', { count: item.files.length })}
               </button>
             )}
             <span title={formatWhen(item.completedAt)}>{grid ? formatDay(item.completedAt) : formatWhen(item.completedAt)}</span>
@@ -799,7 +798,7 @@ const LibraryRow = React.memo(function LibraryRow({
                     folder, which the player refuses; its files have their own
                     buttons in the expanded list. */}
                 {playerAvailable && item.filePath && !(isTorrent && (item.files?.length ?? 0) > 1) && (
-                  <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title="Play in Prism" aria-label="Play in Prism" className={iconButton}>
+                  <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title={t('library.page.playInPrism')} aria-label={t('library.page.playInPrism')} className={iconButton}>
                     <MonitorPlay className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -809,8 +808,8 @@ const LibraryRow = React.memo(function LibraryRow({
                   <button
                     type="button"
                     onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                    title="Open in default player"
-                    aria-label="Open in default player"
+                    title={t('library.page.openInDefaultPlayer')}
+                    aria-label={t('library.page.openInDefaultPlayer')}
                     className={iconButton}
                   >
                     <Play className="w-3.5 h-3.5" />
@@ -819,9 +818,9 @@ const LibraryRow = React.memo(function LibraryRow({
                 {revealTarget && (
                   <button
                     type="button"
-                    onClick={() => service.showInFolder(revealTarget).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                    title="Show in folder"
-                    aria-label="Show in folder"
+                    onClick={() => service.showInFolder(revealTarget).catch(() => toast.error(t('library.page.fileNotFound')))}
+                    title={t('library.page.showInFolder')}
+                    aria-label={t('library.page.showInFolder')}
                     className={iconButton}
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
@@ -829,9 +828,9 @@ const LibraryRow = React.memo(function LibraryRow({
                 )}
                 <button
                   type="button"
-                  onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success('URL copied')).catch(() => toast.error('Copy failed'))}
-                  title="Copy source URL"
-                  aria-label="Copy source URL"
+                  onClick={() => service.copyToClipboard(item.metadata.source.url).then(() => toast.success(t('library.page.urlCopied'))).catch(() => toast.error(t('library.page.copyFailed')))}
+                  title={t('library.page.copySourceUrl')}
+                  aria-label={t('library.page.copySourceUrl')}
                   className={iconButton}
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -841,15 +840,15 @@ const LibraryRow = React.memo(function LibraryRow({
           })()}
           {/* Failed rows retry from their failure note. */}
           {!isFailed && (
-            <button type="button" onClick={() => onRequeue(item)} title="Download again" aria-label="Download again" className={iconButton}>
+            <button type="button" onClick={() => onRequeue(item)} title={t('library.page.downloadAgain')} aria-label={t('library.page.downloadAgain')} className={iconButton}>
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             type="button"
             onClick={() => onRemove(item.id)}
-            title="Remove from library"
-            aria-label="Remove from library"
+            title={t('library.page.removeFromLibrary')}
+            aria-label={t('library.page.removeFromLibrary')}
             className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
           >
             <ListX className="w-3.5 h-3.5" />
@@ -863,7 +862,7 @@ const LibraryRow = React.memo(function LibraryRow({
           <DialogContent className="max-w-lg" onClick={(e) => e.stopPropagation()}>
             <DialogHeader>
               <DialogTitle className="truncate pr-6">{item.metadata.title}</DialogTitle>
-              <DialogDescription>{(item.files ?? []).length} files</DialogDescription>
+              <DialogDescription>{t('queue.table.files', { count: (item.files ?? []).length })}</DialogDescription>
             </DialogHeader>
             <div className="max-h-[60vh] overflow-y-auto">
               <TorrentFiles item={item} playerAvailable={!!playerAvailable} />

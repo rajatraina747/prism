@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { buildItem } from '@/stores/build-item';
 import { BATCH_LOOKUPS, pickFormatForQuality, qualityToFormat, buildDirectItem, watchWithListInfo, describeExternalLink, playlistEntryItem, mayBeVideo } from './add-items';
 import { BatchOptions } from './BatchOptions';
+import { t } from '@/i18n';
 
 /** Everything that adds things: the link box, the first-run setup card, the
  * batch progress line, and the dialogs a lookup opens (quality, playlist,
@@ -115,7 +116,7 @@ export function AddPanel() {
   useClipboardWatcher(useCallback((url: string) => {
     toast('Video link on clipboard', {
       description: url,
-      action: { label: 'Fetch', onClick: () => handleUrlSubmitRef.current(url) },
+      action: { label: t('add.panel.fetch'), onClick: () => handleUrlSubmitRef.current(url) },
       duration: 8000,
     });
   }, []), preferences.clipboardWatchEnabled);
@@ -386,7 +387,7 @@ export function AddPanel() {
     setParsedMetadata(null);
     setQueuedCount(n => n + 1);
     toast.success(`Added to queue: ${item.metadata.title}`, {
-      action: { label: 'View queue', onClick: () => navigate('/queue') },
+      action: { label: t('add.panel.viewQueue'), onClick: () => navigate('/queue') },
     });
     // Remember the quality picked on this site for next time. Key through
     // siteKey so the read path (raw input URL) and write path (yt-dlp's
@@ -445,13 +446,13 @@ export function AddPanel() {
         error={parseProblem?.message ?? null}
         errorHint={parseProblem?.suggestion}
         errorAction={parseProblem?.action === 'cookies'
-          ? { label: 'Set browser cookies', onClick: () => navigate(COOKIES_SETTINGS_PATH) }
+          ? { label: t('add.panel.setBrowserCookies'), onClick: () => navigate(COOKIES_SETTINGS_PATH) }
           : parseProblem?.action === 'engine'
-            ? { label: 'Update engine', onClick: () => navigate(ENGINE_SETTINGS_PATH) }
+            ? { label: t('add.panel.updateEngine'), onClick: () => navigate(ENGINE_SETTINGS_PATH) }
             : parseError?.engineCode === 'unsupported' && lastParsedUrlRef.current
-              ? { label: 'Download as a file', onClick: () => void downloadAsFile(lastParsedUrlRef.current) }
+              ? { label: t('add.panel.downloadAsAFile'), onClick: () => void downloadAsFile(lastParsedUrlRef.current) }
               : parseProblem?.action === 'retry' && lastParsedUrlRef.current
-                ? { label: 'Retry', onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
+                ? { label: t('add.panel.retry'), onClick: () => handleUrlSubmit(lastParsedUrlRef.current) }
                 : undefined}
         onErrorClear={() => setParseError(null)}
         clearSignal={queuedCount}
