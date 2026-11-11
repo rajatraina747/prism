@@ -5,6 +5,7 @@ import { Panel, Thumb } from '@/components/common';
 import { useService } from '@/services/ServiceProvider';
 import { formatBytes, formatSpeed } from '@/services';
 import type { HistoryItem } from '@/types/models';
+import { t } from '@/i18n';
 
 function StatTile({ icon: Icon, value, label, delay }: { icon: React.ElementType; value: string; label: string; delay: number }) {
   return (
@@ -32,10 +33,10 @@ export function StatTiles({ active, speed, completed, totalBytes }: {
 }) {
   return (
     <div className="grid grid-cols-4 max-[699px]:grid-cols-2 gap-3 mb-4">
-      <StatTile icon={ArrowDownToLine} value={String(active)} label="Active" delay={40} />
-      <StatTile icon={Gauge} value={speed > 0 ? formatSpeed(speed) : '—'} label="Current speed" delay={70} />
-      <StatTile icon={CheckCircle2} value={String(completed)} label="Completed" delay={100} />
-      <StatTile icon={HardDrive} value={totalBytes > 0 ? formatBytes(totalBytes) : '—'} label="Total downloaded" delay={130} />
+      <StatTile icon={ArrowDownToLine} value={String(active)} label={t('queue.home.active')} delay={40} />
+      <StatTile icon={Gauge} value={speed > 0 ? formatSpeed(speed) : '—'} label={t('queue.home.currentSpeed')} delay={70} />
+      <StatTile icon={CheckCircle2} value={String(completed)} label={t('queue.home.completed')} delay={100} />
+      <StatTile icon={HardDrive} value={totalBytes > 0 ? formatBytes(totalBytes) : '—'} label={t('queue.home.totalDownloaded')} delay={130} />
     </div>
   );
 }
@@ -46,7 +47,7 @@ function playInPrism(path: string, title: string) {
   // Dynamic import keeps the Tauri window APIs out of the web-demo bundle path.
   import('@/lib/player-window')
     .then(({ openInPlayer }) => openInPlayer({ path, title }))
-    .catch((e) => toast.error(`Couldn't open the player: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => toast.error(t('library.page.playerFailed', { error: e instanceof Error ? e.message : String(e) })));
 }
 
 /** The last few finished downloads, so a quiet Downloads page still shows
@@ -54,7 +55,7 @@ function playInPrism(path: string, title: string) {
 export function RecentDownloads({ items, playerAvailable }: { items: HistoryItem[]; playerAvailable: boolean }) {
   const service = useService();
   return (
-    <Panel title="Recent Downloads" className="mt-4 animate-fade-in">
+    <Panel title={t('queue.home.recentDownloads')} className="mt-4 animate-fade-in">
       <div className="space-y-1">
         {items.map(item => (
           <div key={item.id} className="flex items-center gap-3 py-1.5 group">
@@ -72,15 +73,15 @@ export function RecentDownloads({ items, playerAvailable }: { items: HistoryItem
             {item.filePath && (
               <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                 {playerAvailable ? (
-                  <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title="Play in Prism" aria-label={`Play ${item.metadata.title} in Prism`} className={iconButton}>
+                  <button type="button" onClick={() => playInPrism(item.filePath!, item.metadata.title)} title={t('queue.home.playInPrism')} aria-label={t('details.playInPrismLabel', { name: item.metadata.title })} className={iconButton}>
                     <MonitorPlay className="w-3.5 h-3.5" />
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => service.openFile(item.filePath!).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))}
-                    title="Play"
-                    aria-label={`Play ${item.metadata.title}`}
+                    title={t('queue.home.play')}
+                    aria-label={t('queue.home.playLabel', { name: item.metadata.title })}
                     className={iconButton}
                   >
                     <Play className="w-3.5 h-3.5" />
@@ -88,9 +89,9 @@ export function RecentDownloads({ items, playerAvailable }: { items: HistoryItem
                 )}
                 <button
                   type="button"
-                  onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error('File not found — it may have been moved or deleted'))}
-                  title="Show in folder"
-                  aria-label={`Show ${item.metadata.title} in folder`}
+                  onClick={() => service.showInFolder(item.filePath!).catch(() => toast.error(t('library.page.fileNotFound')))}
+                  title={t('queue.home.showInFolder')}
+                  aria-label={t('details.showLabel', { name: item.metadata.title })}
                   className={iconButton}
                 >
                   <FolderOpen className="w-3.5 h-3.5" />

@@ -9,6 +9,7 @@ import { useSettings } from '@/stores/AppProvider';
 import type { BatchChoice } from '@/types/models';
 import { BatchOptions } from './BatchOptions';
 import { mayBeVideo } from './add-items';
+import { t } from '@/i18n';
 
 export const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -55,9 +56,9 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg border-border/40 bg-card">
         <DialogHeader>
-          <DialogTitle className="text-base">Add downloads</DialogTitle>
+          <DialogTitle className="text-base">{t('add.sheet.title')}</DialogTitle>
           <DialogDescription className="text-xs">
-            Video or playlist links and magnet links, one per line. You can also drop links, .torrent files or a text file anywhere in the window.
+            {t('add.sheet.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -71,7 +72,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
               submit(links);
             }
           }}
-          aria-label="Links to add"
+          aria-label={t('add.sheet.linksLabel')}
           placeholder={'https://www.youtube.com/watch?v=…\nmagnet:?xt=urn:btih:…'}
           spellCheck={false}
           rows={5}
@@ -92,7 +93,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
                 append([await service.importTorrentFile(file.name, new Uint8Array(await file.arrayBuffer()))]);
               } else {
                 const found = extractLinks(await file.text());
-                if (found.length === 0) toast.error(`No links found in ${file.name}`);
+                if (found.length === 0) toast.error(t('add.noLinksInFile', { name: file.name }));
                 append(found);
               }
             } catch (err) {
@@ -109,12 +110,12 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
             onClick={async () => {
               const clip = await service.readClipboard().catch(() => '');
               const found = extractLinks(clip);
-              if (found.length === 0) toast.error('No links on the clipboard');
+              if (found.length === 0) toast.error(t('add.noLinksOnClipboard'));
               append(found);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
           >
-            <ClipboardPaste className="w-3.5 h-3.5" /> Paste
+            <ClipboardPaste className="w-3.5 h-3.5" /> {t('add.paste')}
           </button>
           {!service.isDemo && (
             <button
@@ -125,7 +126,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
               }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
             >
-              <Magnet className="w-3.5 h-3.5" /> Open .torrent…
+              <Magnet className="w-3.5 h-3.5" /> {t('add.openTorrent')}
             </button>
           )}
           <button
@@ -133,12 +134,12 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
             onClick={() => fileRef.current?.click()}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
           >
-            <FileText className="w-3.5 h-3.5" /> {service.isDemo ? 'Import file…' : 'Import list…'}
+            <FileText className="w-3.5 h-3.5" /> {service.isDemo ? t('add.sheet.importFile') : t('add.sheet.importList')}
           </button>
           <span className="ml-auto text-xs text-muted-foreground tabular-nums" aria-live="polite">
-            {links.length === 0 ? '' : `${links.length} link${links.length === 1 ? '' : 's'}`}
+            {links.length === 0 ? '' : t('add.sheet.linkCount', { count: links.length })}
           </span>
-          <DisabledReason reason={links.length === 0 ? 'Paste a link first' : null}>
+          <DisabledReason reason={links.length === 0 ? t('add.pasteFirst') : null}>
             <button
               type="button"
               disabled={links.length === 0}
@@ -146,7 +147,7 @@ export function AddSheet({ open, onOpenChange, onAdd }: {
               title={`${MOD_KEY}Enter`}
               className="px-4 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
             >
-              {links.length > 1 ? `Add ${links.length}` : 'Add'}
+              {links.length > 1 ? t('add.sheet.addMany', { count: links.length }) : t('add.sheet.add')}
             </button>
           </DisabledReason>
         </div>

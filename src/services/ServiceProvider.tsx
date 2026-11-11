@@ -3,6 +3,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import type { IPrismService } from './types';
 import { MockPrismService } from './mock';
 import { publicAsset } from "@/lib/public-asset";
+import { t } from '@/i18n';
 
 const ServiceContext = createContext<IPrismService | null>(null);
 
@@ -50,8 +51,8 @@ export function ServiceProvider({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex items-center gap-3">
-          <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-10 h-10 animate-pulse" />
-          <span className="text-sm text-muted-foreground">Loading...</span>
+          <img src={publicAsset("logo-nobg.webp")} alt={t('common.appName')} className="w-10 h-10 animate-pulse" />
+          <span className="text-sm text-muted-foreground">{t('common.loading')}</span>
         </div>
       </div>
     );

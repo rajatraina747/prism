@@ -8,6 +8,7 @@ import { mergeSubscriptions } from '@/stores/backup';
 import { generateId } from '@/services/utils';
 import { diagnostics } from '@/services/diagnostics';
 import { toast } from 'sonner';
+import { t } from '@/i18n';
 
 interface SubscriptionActions {
   items: Subscription[];
@@ -111,7 +112,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
           if (newEntries.length > 0) {
             diagnostics.log('info', `Subscription "${sub.title}": queued ${newEntries.length} new video(s)`);
             if (prefsRef.current.notificationsEnabled) {
-              toast(`${sub.title}: ${newEntries.length} new video${newEntries.length !== 1 ? 's' : ''} queued`);
+              toast(t('subscriptions.queued', { title: sub.title, count: newEntries.length }));
             }
           }
           if (pendingUrls.length > 0) {
@@ -132,7 +133,7 @@ export function SubscriptionsProvider({ children }: { children: ReactNode }) {
               : s
           ));
         } catch (e) {
-          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Check failed';
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('subscriptions.checkFailed');
           diagnostics.log('warn', `Subscription check failed: ${sub.title}`, { error: msg });
           setSubs(prev => prev.map(s =>
             s.id === sub.id ? { ...s, lastCheckedAt: checkedAt, lastError: msg } : s

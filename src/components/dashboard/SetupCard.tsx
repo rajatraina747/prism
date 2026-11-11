@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 
 import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 const FFMPEG_HINT = IS_MAC
   ? 'brew install ffmpeg'
@@ -41,27 +42,27 @@ export function SetupCard() {
 
   return (
     <section
-      aria-label="First-run setup"
+      aria-label={t('setup.label')}
       className="mt-4 glass-strong rounded-xl p-4 animate-fade-in relative"
     >
       <button
         onClick={() => updatePreference('setupCardDismissed', true)}
-        aria-label="Dismiss setup"
+        aria-label={t('setup.dismiss')}
         className="absolute top-3 right-3 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
       >
         <X className="w-3.5 h-3.5" />
       </button>
-      <p className="text-xs font-semibold text-foreground">Three things before your first download</p>
-      <p className="text-xs text-muted-foreground mt-0.5">Takes a minute. You can change all of these later in Settings.</p>
+      <p className="text-xs font-semibold text-foreground">{t('setup.title')}</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{t('setup.subtitle')}</p>
 
       <ol className="mt-3 space-y-2.5">
         {/* 1. Destination */}
         <li className="flex items-start gap-3">
           <StepIcon ok />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-foreground">Where downloads go</p>
+            <p className="text-xs font-medium text-foreground">{t('setup.folder.title')}</p>
             <p className="text-xs text-muted-foreground">
-              Any folder you pick works — external drives and network shares included.
+              {t('setup.folder.body')}
             </p>
             <button
               onClick={async () => {
@@ -80,28 +81,27 @@ export function SetupCard() {
         <li className="flex items-start gap-3">
           <StepIcon ok={ffmpeg === true} pending={ffmpeg === null} />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-foreground">ffmpeg {ffmpeg === true ? 'found' : ffmpeg === false ? 'not found' : '…'}</p>
+            <p className="text-xs font-medium text-foreground">{ffmpeg === true ? t('setup.ffmpeg.found') : ffmpeg === false ? t('setup.ffmpeg.notFound') : t('setup.ffmpeg.checking')}</p>
             {ffmpeg === false ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Needed to merge video + audio above 720p, embed thumbnails and chapters, and for SponsorBlock.
-                  Install it, then check again:
+                  {t('setup.ffmpeg.needed')}
                 </p>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="text-xs font-mono px-2 py-1 rounded-md bg-input border border-border/40 text-foreground">{FFMPEG_HINT}</code>
-                  <DisabledReason reason={checking ? 'Already checking' : null}>
+                  <DisabledReason reason={checking ? t('setup.ffmpeg.busy') : null}>
                     <button
                       onClick={checkFfmpeg}
                       disabled={checking}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
                     >
-                      <RefreshCw className={cn('w-3 h-3', checking && 'animate-spin')} /> Check again
+                      <RefreshCw className={cn('w-3 h-3', checking && 'animate-spin')} /> {t('setup.ffmpeg.checkAgain')}
                     </button>
                   </DisabledReason>
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">High-quality merges, thumbnails and chapters are all available.</p>
+              <p className="text-xs text-muted-foreground">{t('setup.ffmpeg.ok')}</p>
             )}
           </div>
         </li>
@@ -110,26 +110,25 @@ export function SetupCard() {
         <li className="flex items-start gap-3">
           <StepIcon ok={cookies !== 'none'} pending={cookies === 'none'} />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-foreground">Sign-in-required and age-restricted videos</p>
+            <p className="text-xs font-medium text-foreground">{t('setup.cookies.title')}</p>
             <p className="text-xs text-muted-foreground">
-              Optional. Prism can use a browser's cookies so those videos work. Cookies are read locally and sent only
-              to the video's site.
-              {IS_MAC && ' Safari needs Full Disk Access for Prism (System Settings → Privacy & Security); Chrome will ask for Keychain access once.'}
+              {t('setup.cookies.body')}
+              {IS_MAC && ` ${t('setup.cookies.macNote')}`}
             </p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <Cookie className="w-3 h-3 text-muted-foreground" />
               <select
                 value={cookies}
                 onChange={(e) => updatePreference('cookiesFromBrowser', e.target.value as typeof cookies)}
-                aria-label="Browser cookies"
+                aria-label={t('setup.cookies.label')}
                 className="px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-foreground outline-none"
               >
-                <option value="none">Don't use browser cookies</option>
-                <option value="safari">Safari</option>
-                <option value="chrome">Chrome</option>
-                <option value="firefox">Firefox</option>
-                <option value="edge">Edge</option>
-                <option value="brave">Brave</option>
+                <option value="none">{t('browsers.none')}</option>
+                <option value="safari">{t('browsers.safari')}</option>
+                <option value="chrome">{t('browsers.chrome')}</option>
+                <option value="firefox">{t('browsers.firefox')}</option>
+                <option value="edge">{t('browsers.edge')}</option>
+                <option value="brave">{t('browsers.brave')}</option>
               </select>
             </div>
           </div>
@@ -141,7 +140,7 @@ export function SetupCard() {
           onClick={() => updatePreference('setupCardDismissed', true)}
           className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors active:scale-[0.97]"
         >
-          Done
+          {t('common.done')}
         </button>
       </div>
     </section>

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 // What to tell someone whose player failed to start. The screen used to say
 // "reinstalling Prism should restore it" for every failure on macOS and
 // Windows, but a reinstall only helps when the player's library is missing or
@@ -11,8 +12,8 @@ const LIBRARY_MISSING = /dlopen|not loaded|image not found|library load failed|c
 export function playerFailureHint(error: string, platform: Platform): string {
   if (LIBRARY_MISSING.test(error)) {
     return platform === 'linux'
-      ? "Prism's player needs libmpv. Install it from your package manager (e.g. libmpv2), then reopen the player."
-      : 'Part of the player is missing from this copy of Prism. Reinstalling Prism should restore it.';
+      ? t('player.failure.linux')
+      : t('player.failure.missing');
   }
-  return 'This is a problem in Prism, not in your video or your installation. Check Settings → General → Updates for a newer version. If it keeps happening, Settings → Privacy & advanced → Diagnostics → Export logs gives you a file to attach to a bug report.';
+  return t('player.failure.bug');
 }

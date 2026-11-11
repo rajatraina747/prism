@@ -4,6 +4,7 @@ import { useService } from '@/services/ServiceProvider';
 import { Panel, OutboundLink } from '@/components/common';
 import { ExternalLink, Heart, Shield, BookOpen, Sparkles, Bug, ArrowLeft } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
+import { t } from '@/i18n';
 
 export default function About() {
   const service = useService();
@@ -22,17 +23,17 @@ export default function About() {
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Settings
+          {t('about.backToSettings')}
         </button>
         <div className="flex items-center gap-4">
           <img src={publicAsset("logo-nobg.webp")} alt="" className="w-16 h-16 object-contain shrink-0" />
           <div>
-            <h1 className="page-title">Prism</h1>
-            <p className="page-subtitle">Downloads, plays and converts video</p>
+            <h1 className="page-title">{t('common.appName')}</h1>
+            <p className="page-subtitle">{t('about.tagline')}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              by{' '}
+              {t('about.by')}{' '}
               <OutboundLink href="https://www.rainacorp.co.uk" className="text-foreground hover:text-primary transition-colors">
-                RainaCorp
+                {t('common.companyName')}
               </OutboundLink>
             </p>
           </div>
@@ -41,9 +42,9 @@ export default function About() {
 
       <Panel className="animate-fade-in">
         <div className="divide-y divide-border/30">
-          <InfoRow label="Version" value={`v${version}`} />
-          <InfoRow label="Channel" value="Stable" />
-          <InfoRow label="License" value="MIT (Prism source) · bundled player libraries under their own licenses" />
+          <InfoRow label={t('about.version')} value={t('about.versionValue', { version })} />
+          <InfoRow label={t('about.channel')} value={t('about.stable')} />
+          <InfoRow label={t('about.license')} value={t('about.licenseValue')} />
         </div>
       </Panel>
 
@@ -51,22 +52,22 @@ export default function About() {
         <div className="space-y-2">
           <LinkRow
             icon={Sparkles}
-            label="Release notes"
-            description="What changed in each version"
+            label={t('about.releaseNotes')}
+            description={t('about.releaseNotesDescription')}
             href="https://github.com/rajatraina747/prism/releases"
           />
           <LinkRow
             icon={Bug}
-            label="Report a bug"
-            description="Opens a bug report on GitHub — Settings → Privacy & advanced → Diagnostics → Export logs helps"
+            label={t('about.reportBug')}
+            description={t('about.reportBugDescription')}
             href={`https://github.com/rajatraina747/prism/issues/new?template=bug_report.yml&version=${encodeURIComponent(version)}`}
           />
           <button onClick={() => navigate('/privacy')} className="w-full text-left">
-            <LinkRow icon={Shield} label="Privacy Policy" description="How Prism handles your data — spoiler: it stays on your device" />
+            <LinkRow icon={Shield} label={t('about.privacy')} description={t('about.privacyDescription')} />
           </button>
-          <LinkRow icon={BookOpen} label="RainaCorp" description="Visit our website" href="https://www.rainacorp.co.uk" />
+          <LinkRow icon={BookOpen} label={t('common.companyName')} description={t('about.website')} href="https://www.rainacorp.co.uk" />
           <button onClick={() => navigate('/licenses')} className="w-full text-left">
-            <LinkRow icon={Heart} label="Credits & licenses" description="Tauri, React, yt-dlp, Deno, librqbit, mpv/FFmpeg and everything else Prism ships with" />
+            <LinkRow icon={Heart} label={t('about.credits')} description={t('about.creditsDescription')} />
           </button>
         </div>
       </Panel>

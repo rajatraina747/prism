@@ -1,0 +1,27 @@
+{
+  "playFailed": "Couldn't play that file: {{error}}",
+  "nav": {
+    "downloads": "Downloads",
+    "subscriptions": "Subscriptions",
+    "library": "Library",
+    "settings": "Settings"
+  },
+  "navigation": "Navigation",
+  "demoTitle": "Browser demo: downloads are simulated and nothing is saved to disk",
+  "demo": "Demo",
+  "addTitle": "Add ({{key}})",
+  "add": "Add",
+  "playTitle": "Play any video or audio file on this computer ({{key}})",
+  "failedCount_one": "{{count}} failed download",
+  "failedCount_other": "{{count}} failed downloads",
+  "companyLink": "RainaCorp — rainacorp.co.uk",
+  "product": "A RAINACORP PRODUCT",
+  "domain": "rainacorp.co.uk",
+  "engineAvailable": "Downloader engine {{version}} is available",
+  "engineUpdate": "Engine update available",
+  "engineUpdated": "Downloader engine updated to {{version}}",
+  "shortcutFailed": "Could not register that shortcut",
+  "clipboardEmpty": "Nothing on the clipboard to add",
+  "clipboardFailed": "Could not read the clipboard",
+  "dropToAdd": "Drop to add links, .torrent files or a list"
+}

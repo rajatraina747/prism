@@ -13,6 +13,7 @@ import { PLAYER_LOAD_EVENT, type PlayerSource } from '@/lib/player-window';
 import { playerFailureHint } from '@/lib/player-failure';
 import { IS_MAC, IS_WINDOWS } from '@/lib/platform';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 // The in-app player. Runs in its own transparent "player" window: mpv embeds
 // into the window's native view and renders *beneath* the webview, so this
@@ -56,17 +57,17 @@ const ASPECTS = ['-1', '16:9', '4:3', '21:9', '2.39:1', '1:1'] as const;
 
 /** Everything the keyboard does, for the ? sheet. */
 const SHORTCUTS: [string, string][] = [
-  ['Space', 'Play / pause'],
-  ['← / →', 'Back / forward 5 seconds'],
-  [', / .', 'One frame back / forward'],
-  ['↑ / ↓', 'Volume up / down'],
-  ['M', 'Mute'],
-  ['F', 'Full screen'],
-  ['N / P', 'Next / previous file in the folder'],
-  ['L', 'A-B loop: set start, set end, clear'],
-  ['A', 'Cycle the picture shape'],
-  ['S', 'Screenshot to Pictures/Prism'],
-  ['?', 'Show these shortcuts'],
+  ['Space', t('player.shortcuts.playPause')],
+  ['← / →', t('player.shortcuts.seek')],
+  [', / .', t('player.shortcuts.frame')],
+  ['↑ / ↓', t('player.shortcuts.volume')],
+  ['M', t('player.shortcuts.mute')],
+  ['F', t('player.shortcuts.fullscreen')],
+  ['N / P', t('player.shortcuts.nextPrev')],
+  ['L', t('player.shortcuts.loop')],
+  ['A', t('player.shortcuts.shape')],
+  ['S', t('player.shortcuts.screenshot')],
+  ['?', t('player.shortcuts.help')],
 ];
 
 interface MpvTrack {
@@ -93,11 +94,11 @@ interface VideoParams {
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 
-function trackLabel(t: MpvTrack): string {
-  const parts = [t.title, t.lang?.toUpperCase()].filter(Boolean);
-  const label = parts.join(' · ') || `Track ${t.id}`;
-  const ch = t['demux-channel-count'];
-  return ch && ch > 2 ? `${label} (${ch}ch)` : label;
+function trackLabel(track: MpvTrack): string {
+  const parts = [track.title, track.lang?.toUpperCase()].filter(Boolean);
+  const label = parts.join(' · ') || t('player.track', { id: track.id });
+  const ch = track['demux-channel-count'];
+  return ch && ch > 2 ? t('player.trackChannels', { label, ch }) : label;
 }
 
 export default function Player() {
@@ -112,7 +113,7 @@ export default function Player() {
   const [speed, setSpeed] = useState(1);
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [videoParams, setVideoParams] = useState<VideoParams | null>(null);
-  const [title, setTitle] = useState('Prism Player');
+  const [title, setTitle] = useState(t('player.windowTitle'));
   const [eof, setEof] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -427,12 +428,12 @@ export default function Player() {
   }, []);
   const screenshot = useCallback(() => {
     invoke<string>('player_screenshot')
-      .then(path => say(`Screenshot saved to ${path.split(/[\\/]/).slice(-2).join('/')}`))
+      .then(path => say(t('player.screenshotSaved', { path: path.split(/[\\/]/).slice(-2).join('/') })))
       .catch(e => say(e instanceof Error ? e.message : String(e)));
   }, [say]);
   const cycleAspect = useCallback(() => {
     const next = ASPECTS[(ASPECTS.indexOf(aspect as typeof ASPECTS[number]) + 1) % ASPECTS.length];
-    setProp('video-aspect-override', next).then(() => say(next === '-1' ? 'Picture: original shape' : `Picture: ${next}`)).catch(() => {});
+    setProp('video-aspect-override', next).then(() => say(next === '-1' ? t('player.pictureOriginal') : t('player.picture', { shape: next }))).catch(() => {});
   }, [aspect, say]);
 
   // Keyboard parity with normal players.
@@ -476,7 +477,7 @@ export default function Player() {
       <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-8">
         <div className="max-w-md text-center space-y-3">
           <AlertTriangle className="w-8 h-8 mx-auto text-amber-400" />
-          <h1 className="text-sm font-semibold">The player engine failed to start</h1>
+          <h1 className="text-sm font-semibold">{t('player.failed')}</h1>
           <p className="text-xs text-white/70 break-words">{initError}</p>
           {/* A reinstall only helps when the library is missing; see
               lib/player-failure.ts. */}
@@ -504,10 +505,10 @@ export default function Player() {
           className="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
           onClick={() => setShowKeys(false)}
           role="dialog"
-          aria-label="Keyboard shortcuts"
+          aria-label={t('player.page.keyboardShortcuts')}
         >
           <div className="rounded-xl bg-black/85 border border-white/15 p-5 min-w-80" onClick={e => e.stopPropagation()}>
-            <h2 className="text-sm font-semibold text-white mb-3">Keyboard shortcuts</h2>
+            <h2 className="text-sm font-semibold text-white mb-3">{t('player.shortcutsTitle')}</h2>
             <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-xs">
               {SHORTCUTS.map(([k, what]) => (
                 <Fragment key={k}>
@@ -537,9 +538,9 @@ export default function Player() {
             <button
               onClick={() => action('ab-loop')}
               className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-primary/80 text-white hover:bg-primary transition-colors"
-              title="A-B loop (L): click to move to the next step"
+              title={t('player.page.aBLoopLClick')}
             >
-              {loopB ? `Looping ${formatDuration(Number(loopA))}–${formatDuration(Number(loopB))}` : `Loop from ${formatDuration(Number(loopA))} · L to set the end`}
+              {loopB ? t('player.looping', { from: formatDuration(Number(loopA)), to: formatDuration(Number(loopB)) }) : t('player.loopFrom', { from: formatDuration(Number(loopA)) })}
             </button>
           )}
           {notice && (
@@ -549,9 +550,9 @@ export default function Player() {
             <button
               onClick={() => { seek(0).catch(() => {}); setResumedFrom(null); }}
               className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/90 hover:bg-white/25 transition-colors"
-              title={`Resumed from ${formatDuration(resumedFrom)}`}
+              title={t('player.resumed', { time: formatDuration(resumedFrom) })}
             >
-              Resumed from {formatDuration(resumedFrom)} · Start over
+              {t('player.resumedStartOver', { time: formatDuration(resumedFrom) })}
             </button>
           )}
           {isHdr && (
@@ -584,7 +585,7 @@ export default function Player() {
             step={0.1}
             onValueChange={([v]) => { seekingRef.current = true; setTimePos(v); }}
             onValueCommit={([v]) => { seekingRef.current = false; seekTo(v); }}
-            aria-label="Seek"
+            aria-label={t('player.page.seek')}
           />
           {/* Chapter marks. Decoration only — the slider underneath stays the
               thing you drag. */}
@@ -604,35 +605,35 @@ export default function Player() {
           <button
             onClick={togglePause}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title={eof ? 'Replay' : paused ? 'Play' : 'Pause'}
-            aria-label={eof ? 'Replay' : paused ? 'Play' : 'Pause'}
+            title={eof ? t('player.replay') : paused ? t('player.play') : t('queue.pause')}
+            aria-label={eof ? t('player.replay') : paused ? t('player.play') : t('queue.pause')}
           >
             {eof ? <RotateCcw className="w-5 h-5" /> : paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
 
           {playlistCount > 1 && (
             <>
-              <DisabledReason reason={hasPrev ? null : 'This is the first file in the folder'}>
+              <DisabledReason reason={hasPrev ? null : t('player.firstFile')}>
                 <button
                   onClick={() => step(false)}
                   disabled={!hasPrev}
                   className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                  title="Previous file in this folder (P)"
-                  aria-label="Previous file"
+                  title={t('player.page.previousFileInThisFolder')}
+                  aria-label={t('player.page.previousFile')}
                 >
                   <ChevronsLeft className="w-4 h-4" />
                 </button>
               </DisabledReason>
-              <span className="text-xs tabular-nums text-white/80" title="Files in this folder">
+              <span className="text-xs tabular-nums text-white/80" title={t('player.page.filesInThisFolder')}>
                 {(playlistPos ?? 0) + 1}/{playlistCount}
               </span>
-              <DisabledReason reason={hasNext ? null : 'This is the last file in the folder'}>
+              <DisabledReason reason={hasNext ? null : t('player.lastFile')}>
                 <button
                   onClick={() => step(true)}
                   disabled={!hasNext}
                   className="p-1.5 rounded-md hover:bg-white/15 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                  title="Next file in this folder (N)"
-                  aria-label="Next file"
+                  title={t('player.page.nextFileInThisFolder')}
+                  aria-label={t('player.page.nextFile')}
                 >
                   <ChevronsRight className="w-4 h-4" />
                 </button>
@@ -645,16 +646,16 @@ export default function Player() {
               <button
                 onClick={() => goChapter(-1)}
                 className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-                title="Previous chapter"
-                aria-label="Previous chapter"
+                title={t('player.page.previousChapter')}
+                aria-label={t('player.page.previousChapter')}
               >
                 <SkipBack className="w-4 h-4" />
               </button>
               <button
                 onClick={() => goChapter(1)}
                 className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-                title="Next chapter"
-                aria-label="Next chapter"
+                title={t('player.page.nextChapter')}
+                aria-label={t('player.page.nextChapter')}
               >
                 <SkipForward className="w-4 h-4" />
               </button>
@@ -675,8 +676,8 @@ export default function Player() {
             <button
               onClick={() => setProp('mute', muted ? 'no' : 'yes').catch(() => {})}
               className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-              title={muted ? 'Unmute' : 'Mute'}
-              aria-label={muted ? 'Unmute' : 'Mute'}
+              title={muted ? t('player.unmute') : t('player.shortcuts.mute')}
+              aria-label={muted ? t('player.unmute') : t('player.shortcuts.mute')}
             >
               {muted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
@@ -687,7 +688,7 @@ export default function Player() {
               step={1}
               onValueChange={([v]) => setProp('volume', v).catch(() => {})}
               className="w-20"
-              aria-label="Volume"
+              aria-label={t('player.page.volume')}
             />
           </div>
 
@@ -695,7 +696,7 @@ export default function Player() {
 
           {audioTracks.length > 0 && (
             <label className="flex items-center gap-1 text-xs text-white/80">
-              Audio
+              {t('library.tabs.audio')}
               <select
                 value={audioTracks.find((t) => t.selected)?.id ?? ''}
                 onChange={(e) => setProp('aid', e.target.value).catch(() => {})}
@@ -709,19 +710,19 @@ export default function Player() {
                 <button
                   onClick={() => setProp('audio-delay', Math.max(-10, Number((audioDelay - 0.1).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Sound earlier"
-                  aria-label="Sound earlier"
+                  title={t('player.page.soundEarlier')}
+                  aria-label={t('player.page.soundEarlier')}
                 >
                   −
                 </button>
-                <span className="tabular-nums text-white/70 w-10 text-center" title="Audio delay (sync)">
-                  {audioDelay.toFixed(1)}s
+                <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.audioDelaySync')}>
+                  {t('player.seconds', { n: audioDelay.toFixed(1) })}
                 </span>
                 <button
                   onClick={() => setProp('audio-delay', Math.min(10, Number((audioDelay + 0.1).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Sound later"
-                  aria-label="Sound later"
+                  title={t('player.page.soundLater')}
+                  aria-label={t('player.page.soundLater')}
                 >
                   +
                 </button>
@@ -730,7 +731,7 @@ export default function Player() {
           )}
 
           <label className="flex items-center gap-1 text-xs text-white/80">
-            Subs
+            {t('player.subs')}
             {subTracks.length > 0 && (
               <select
                 value={subVisible ? (subTracks.find((t) => t.selected)?.id ?? 'no') : 'no'}
@@ -742,7 +743,7 @@ export default function Player() {
                 }}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-36"
               >
-                <option value="no">Off</option>
+                <option value="no">{t('player.off')}</option>
                 {subTracks.map((t) => (
                   <option key={t.id} value={t.id}>{trackLabel(t)}</option>
                 ))}
@@ -759,9 +760,9 @@ export default function Player() {
                   e.target.value = '';
                 }}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-28"
-                aria-label="Subtitles found next to this file"
+                aria-label={t('player.page.subtitlesFoundNextToThis')}
               >
-                <option value="">Nearby…</option>
+                <option value="">{t('player.nearby')}</option>
                 {siblingSubs.map((p) => (
                   <option key={p} value={p}>{p.split('/').pop()}</option>
                 ))}
@@ -770,8 +771,8 @@ export default function Player() {
             <button
               onClick={addSubtitle}
               className="p-1 rounded-md hover:bg-white/15 transition-colors"
-              title="Add a subtitle file…"
-              aria-label="Add a subtitle file…"
+              title={t('player.page.addASubtitleFile')}
+              aria-label={t('player.page.addASubtitleFile')}
             >
               <Captions className="w-4 h-4" />
             </button>
@@ -780,19 +781,19 @@ export default function Player() {
                 <button
                   onClick={() => setProp('sub-delay', Math.max(-60, Number((subDelay - 0.5).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Subtitles earlier"
-                  aria-label="Subtitles earlier"
+                  title={t('player.page.subtitlesEarlier')}
+                  aria-label={t('player.page.subtitlesEarlier')}
                 >
                   −
                 </button>
-                <span className="tabular-nums text-white/70 w-10 text-center" title="Subtitle delay">
-                  {subDelay.toFixed(1)}s
+                <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.subtitleDelay')}>
+                  {t('player.seconds', { n: subDelay.toFixed(1) })}
                 </span>
                 <button
                   onClick={() => setProp('sub-delay', Math.min(60, Number((subDelay + 0.5).toFixed(1)))).catch(() => {})}
                   className="px-1 rounded hover:bg-white/15 transition-colors"
-                  title="Subtitles later"
-                  aria-label="Subtitles later"
+                  title={t('player.page.subtitlesLater')}
+                  aria-label={t('player.page.subtitlesLater')}
                 >
                   +
                 </button>
@@ -805,7 +806,7 @@ export default function Player() {
               value={speed}
               onChange={(e) => setProp('speed', Number(e.target.value)).catch(() => {})}
               className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white"
-              aria-label="Playback speed"
+              aria-label={t('player.page.playbackSpeed')}
             >
               {SPEEDS.map((s) => (
                 <option key={s} value={s}>{s}×</option>
@@ -816,8 +817,8 @@ export default function Player() {
           <button
             onClick={pickAndPlay}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title="Open file…"
-            aria-label="Open file…"
+            title={t('player.page.openFile')}
+            aria-label={t('player.page.openFile')}
           >
             <FolderOpen className="w-4 h-4" />
           </button>
@@ -825,8 +826,8 @@ export default function Player() {
           <button
             onClick={toggleMini}
             className={`p-1.5 rounded-md hover:bg-white/15 transition-colors ${mini ? 'bg-white/20' : ''}`}
-            title={mini ? 'Leave mini player' : 'Mini player'}
-            aria-label={mini ? 'Leave mini player' : 'Mini player'}
+            title={mini ? t('player.leaveMini') : t('player.mini')}
+            aria-label={mini ? t('player.leaveMini') : t('player.mini')}
             aria-pressed={mini}
           >
             <PictureInPicture2 className="w-4 h-4" />
@@ -835,8 +836,8 @@ export default function Player() {
           <button
             onClick={toggleFullscreen}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title={fullscreen ? 'Exit full screen' : 'Full screen'}
-            aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
+            title={fullscreen ? t('player.exitFullscreen') : t('player.shortcuts.fullscreen')}
+            aria-label={fullscreen ? t('player.exitFullscreen') : t('player.shortcuts.fullscreen')}
           >
             {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>

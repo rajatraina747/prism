@@ -1,0 +1,58 @@
+{
+  "appName": "Prism",
+  "companyName": "RainaCorp",
+  "byCompany": "by RainaCorp",
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "fallback": "An unexpected error occurred."
+  },
+  "tryAgain": "Try Again",
+  "retry": "Retry",
+  "change": "Change",
+  "separator": " · ",
+  "notFound": {
+    "code": "404",
+    "title": "Oops! Page not found",
+    "home": "Return to Home"
+  },
+  "failure": {
+    "setCookies": "Set browser cookies",
+    "updateEngine": "Update engine"
+  },
+  "quietHours": {
+    "until": "Quiet hours until {{time}}.",
+    "pause": "New downloads wait until then; running ones continue.",
+    "limit": "Downloads start at up to {{mbps}} MB/s and torrents are capped to it."
+  },
+  "cancel": "Cancel",
+  "openLinkFailed": "Couldn't open that link",
+  "loading": "Loading...",
+  "empty": {
+    "addLink": "Add a link",
+    "playFile": "Play a file"
+  },
+  "status": {
+    "queued": "Queued",
+    "parsing": "Parsing",
+    "ready": "Ready",
+    "downloading": "Downloading",
+    "seeding": "Seeding",
+    "paused": "Paused",
+    "completed": "Completed",
+    "failed": "Failed",
+    "canceled": "Cancelled"
+  },
+  "tryAgainLower": "Try again",
+  "done": "Done",
+  "undo": "Undo",
+  "trash": {
+    "windows": "Recycle Bin",
+    "other": "Trash"
+  },
+  "quality": {
+    "bestAvailable": "Best available",
+    "n4k2160p": "4K (2160p)",
+    "n1080pFullHd": "1080p (Full HD)",
+    "n480pSmallerFiles": "480p (smaller files)"
+  }
+}

@@ -1075,7 +1075,7 @@ pub fn verify_player_from_env(app: &AppHandle) -> Result<(), String> {
     let url = format!("player?{}", query.query().unwrap_or_default());
     // Same window options as openInPlayer (src/lib/player-window.ts).
     WebviewWindowBuilder::new(app, PLAYER_LABEL, WebviewUrl::App(url.into()))
-        .title("Prism Player")
+        .title(crate::i18n::t("native.windows.player"))
         .inner_size(1024.0, 640.0)
         .min_inner_size(480.0, 320.0)
         .transparent(true)

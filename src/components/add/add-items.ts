@@ -4,6 +4,7 @@ import type { DefaultQuality, DownloadItem, FormatOption, PlaylistEntry } from '
 import { isTorrentUrl, isDirectFileUrl, directFileName, torrentDisplayName, siteKey, sanitizeFilename } from '@/services';
 import { referrerFor } from '@/lib/referrers';
 import { buildItem, linkMetadata } from '@/stores/build-item';
+import { t } from '@/i18n';
 
 /** Lookups a pasted batch runs at once (the backend allows six). */
 export const BATCH_LOOKUPS = 4;
@@ -27,7 +28,7 @@ export function qualityToFormat(quality: DefaultQuality): FormatOption | null {
   const h = parseInt(quality, 10);
   return {
     id: `bestvideo[height<=${h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=${h}][vcodec^=avc1]/bestvideo[height<=${h}]+bestaudio/best[height<=${h}]`,
-    label: `${quality} · H.264 when available`,
+    label: t('add.h264When', { quality }),
     resolution: quality,
     container: 'mp4',
     codec: 'H.264',
@@ -77,7 +78,7 @@ export function watchWithListInfo(url: string): { videoUrl: string; playlistUrl:
 
 /** One-line summary of a link for the confirmation card. */
 export function describeExternalLink(url: string): string {
-  if (isTorrentUrl(url)) return `Torrent · ${torrentDisplayName(url)}`;
+  if (isTorrentUrl(url)) return t('add.externalTorrent', { name: torrentDisplayName(url) });
   try { return new URL(url).hostname; } catch { return url; }
 }
 

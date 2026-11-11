@@ -1,0 +1,38 @@
+{
+  "menu": {
+    "quit": "Quit Prism",
+    "about": "About Prism",
+    "add": "Add Link…",
+    "playFile": "Play a File…",
+    "go": "Go",
+    "downloads": "Downloads",
+    "subscriptions": "Subscriptions",
+    "library": "Library",
+    "settings": "Settings"
+  },
+  "tray": {
+    "open": "Open Prism",
+    "paste": "Paste && Download",
+    "quit": "Quit Prism"
+  },
+  "windows": {
+    "about": "About Prism",
+    "player": "Prism Player"
+  },
+  "quit": {
+    "title": "Quit Prism?",
+    "confirm": "Quit",
+    "keep": "Keep running",
+    "prompt_one": "{{count}} transfer is still running. Quitting stops it; it resumes the next time Prism starts.",
+    "prompt_other": "{{count}} transfers are still running. Quitting stops them; they resume the next time Prism starts."
+  },
+  "background": {
+    "title": "Prism is still running",
+    "body": "Downloads carry on in the background. Open Prism from the tray icon."
+  },
+  "notify": {
+    "complete": "Download complete",
+    "failed": "Download failed",
+    "untitled": "Download"
+  }
+}

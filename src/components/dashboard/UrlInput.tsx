@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { ClipboardPaste, Link2, Loader2, AlertCircle, FileText, ListPlus } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 interface UrlInputProps {
   onSubmit: (url: string) => void;
@@ -130,8 +131,8 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
             onChange={(e) => { setUrl(e.target.value); if (error) onErrorClear?.(); }}
             onKeyDown={handleKeyDown}
             onPaste={handleInputPaste}
-            aria-label="Video URL or magnet link"
-            placeholder="Paste a video URL or magnet link..."
+            aria-label={t('add.url.label')}
+            placeholder={t('add.url.placeholder')}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
             disabled={isLoading}
           />
@@ -145,35 +146,35 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
             className="hidden"
             onChange={handleFileInput}
           />
-          <DisabledReason reason={isLoading ? 'Wait for this link to finish reading' : null}>
+          <DisabledReason reason={isLoading ? t('add.url.waitReading') : null}>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading}
-              title="Import URLs from text file"
-              aria-label="Import URLs from text file"
+              title={t('add.url.importFile')}
+              aria-label={t('add.url.importFile')}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
             >
               <FileText className="w-3.5 h-3.5" />
             </button>
           </DisabledReason>
 
-          <DisabledReason reason={isLoading ? 'Wait for this link to finish reading' : null}>
+          <DisabledReason reason={isLoading ? t('add.url.waitReading') : null}>
             <button
               onClick={handlePaste}
               disabled={isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 text-xs font-medium text-secondary-foreground transition-colors active:scale-[0.97] disabled:opacity-50"
             >
               <ClipboardPaste className="w-3.5 h-3.5" />
-              Paste
+              {t('add.paste')}
             </button>
           </DisabledReason>
-          <DisabledReason reason={isLoading ? 'Already reading this link' : !url.trim() ? 'Paste a link first' : null}>
+          <DisabledReason reason={isLoading ? t('add.url.alreadyReading') : !url.trim() ? t('add.pasteFirst') : null}>
             <button
               onClick={handleSubmit}
               disabled={isLoading || !url.trim()}
               className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground transition-colors active:scale-[0.97] disabled:opacity-40"
             >
-              {isLoading ? 'Parsing…' : 'Fetch'}
+              {isLoading ? t('add.url.parsing') : t('add.url.fetch')}
             </button>
           </DisabledReason>
         </div>
@@ -182,7 +183,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
           <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-primary/5 backdrop-blur-sm pointer-events-none">
             <div className="flex items-center gap-2">
               <ListPlus className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Drop links, .torrent files or a text file</span>
+              <span className="text-sm font-medium text-primary">{t('add.dropHint')}</span>
             </div>
           </div>
         )}
@@ -207,7 +208,7 @@ export function UrlInput({ onSubmit, onBatchSubmit, isLoading, error, errorHint,
       )}
 
       <p className="mt-2.5 px-1 text-xs text-muted-foreground">
-        Supports single or multiple URLs · Drag and drop URLs or text files · Paste from clipboard
+        {t('add.url.supports')}
       </p>
     </div>
   );

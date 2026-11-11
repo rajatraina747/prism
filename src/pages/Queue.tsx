@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ArrowDownToLine, Pause, Play, Search, ArrowUpDown, RefreshCw, Trash2, Tag, Tags, X } from 'lucide-react';
 import type { TransfersFilter, TransfersSort } from '@/types/models';
+import { t } from '@/i18n';
 
 /** Up to this many transfers, the page has room for Recent Downloads too. */
 const SHORT_QUEUE = 3;
@@ -72,9 +73,9 @@ export default function Queue() {
     let undone = false;
     const finish = () => { if (!undone) cancelDownload(id); };
     if (wasRunning) pauseDownload(id);
-    toast(`Canceling: ${title}`, {
+    toast(t('queue.canceling', { title }), {
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         // Clicking the action also dismisses the toast, so the flag is what
         // stops the dismissal handler cancelling what was just resumed.
         onClick: () => { undone = true; if (wasRunning) resumeDownload(id); },
@@ -210,7 +211,7 @@ export default function Queue() {
   const hasPaused = items.some(i => i.status === 'paused' || i.status === 'queued');
   const hasTorrents = activeItems.some(i => i.kind === 'torrent');
   const totalSpeed = downloading.reduce((sum, i) => sum + (i.speed || 0), 0);
-  const subtitle = activeItems.length === 0 ? 'Paste a link, a magnet or a .torrent to start' : `${activeItems.length} in the list`;
+  const subtitle = activeItems.length === 0 ? t('queue.subtitleEmpty') : t('queue.subtitle', { count: activeItems.length });
 
   const completedHistory = useMemo(() => historyItems.filter(i => i.status === 'completed'), [historyItems]);
   const totalDownloadedBytes = useMemo(() => completedHistory.reduce((s, i) => s + (i.fileSize || 0), 0), [completedHistory]);
@@ -232,17 +233,17 @@ export default function Queue() {
   return (
     <div className="page-container flex flex-col max-w-4xl mx-auto">
       <div className="relative page-header text-center">
-        <h1 className="page-title">Downloads</h1>
+        <h1 className="page-title">{t('shell.nav.downloads')}</h1>
         <p className="page-subtitle tabular-nums">{subtitle}</p>
         <div className="absolute right-0 top-0 flex gap-1.5">
           {hasActive && (
             <button onClick={pauseAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]">
-              <Pause className="w-3 h-3" /> Pause all
+              <Pause className="w-3 h-3" /> {t('queue.pauseAll')}
             </button>
           )}
           {hasPaused && (
             <button onClick={startAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-xs font-medium text-primary hover:bg-primary/20 transition-colors active:scale-[0.97]">
-              <Play className="w-3 h-3" /> Resume all
+              <Play className="w-3 h-3" /> {t('queue.resumeAll')}
             </button>
           )}
         </div>
@@ -265,7 +266,7 @@ export default function Queue() {
       {/* Filter tabs + sort + search */}
       {(activeItems.length > 0 || attentionCount > 0) && (
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <TabsList aria-label="Filter downloads" className="h-auto gap-1 bg-transparent p-0">
+          <TabsList aria-label={t('queue.filterLabel')} className="h-auto gap-1 bg-transparent p-0">
             {FILTERS.map(f => (
               <TabsTrigger
                 key={f.id}
@@ -283,7 +284,7 @@ export default function Queue() {
           </TabsList>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Sort downloads">
+              <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label={t('queue.sortLabel')}>
                 <ArrowUpDown className="w-3 h-3" /> {SORTS.find(s => s.id === sort)?.label}
               </button>
             </DropdownMenuTrigger>
@@ -296,13 +297,13 @@ export default function Queue() {
           {categories.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by category">
+                <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label={t('queue.byCategory')}>
                   <Tag className="w-3 h-3" />
-                  {activeCategory ? categories.find(c => c.id === activeCategory)?.name : 'All categories'}
+                  {activeCategory ? categories.find(c => c.id === activeCategory)?.name : t('queue.allCategories')}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
-                <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>All categories</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setCategory(null)} className={cn('text-xs', !activeCategory && 'text-primary')}>{t('queue.allCategories')}</DropdownMenuItem>
                 {categories.map(c => (
                   <DropdownMenuItem key={c.id} onSelect={() => setCategory(c.id)} className={cn('text-xs', activeCategory === c.id && 'text-primary')}>{c.name}</DropdownMenuItem>
                 ))}
@@ -312,13 +313,13 @@ export default function Queue() {
           {labels.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label="Filter by label">
+                <button className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors" aria-label={t('queue.byLabel')}>
                   <Tags className="w-3 h-3" />
-                  {activeLabel ? labels.find(l => l.id === activeLabel)?.name : 'All labels'}
+                  {activeLabel ? labels.find(l => l.id === activeLabel)?.name : t('queue.allLabels')}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
-                <DropdownMenuItem onSelect={() => setLabel(null)} className={cn('text-xs', !activeLabel && 'text-primary')}>All labels</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setLabel(null)} className={cn('text-xs', !activeLabel && 'text-primary')}>{t('queue.allLabels')}</DropdownMenuItem>
                 {labels.map(l => (
                   <DropdownMenuItem key={l.id} onSelect={() => setLabel(l.id)} className={cn('text-xs', activeLabel === l.id && 'text-primary')}>{l.name || 'Unnamed'}</DropdownMenuItem>
                 ))}
@@ -332,8 +333,8 @@ export default function Queue() {
               value={search}
               ref={searchRef}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Filter downloads…"
-              aria-label="Filter downloads"
+              placeholder={t('queue.searchPlaceholder')}
+              aria-label={t('queue.filterLabel')}
               className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
             />
           </div>
@@ -343,14 +344,14 @@ export default function Queue() {
       {/* Bulk action bar */}
       {selectedItems.length > 1 && (
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-primary/8 border border-primary/20 text-xs animate-fade-in">
-          <span className="text-foreground tabular-nums">{selectedItems.length} selected</span>
-          <BulkButton icon={Pause} label="Pause" onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it && (it.status === 'downloading' || it.status === 'seeding' || it.status === 'queued')) pauseDownload(id); })} />
-          <BulkButton icon={Play} label="Resume" onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it?.status === 'paused' || it?.status === 'ready') resumeDownload(id); })} />
+          <span className="text-foreground tabular-nums">{t('queue.selected', { count: selectedItems.length })}</span>
+          <BulkButton icon={Pause} label={t('queue.pause')} onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it && (it.status === 'downloading' || it.status === 'seeding' || it.status === 'queued')) pauseDownload(id); })} />
+          <BulkButton icon={Play} label={t('queue.resume')} onClick={() => forSelection(id => { const it = items.find(i => i.id === id); if (it?.status === 'paused' || it?.status === 'ready') resumeDownload(id); })} />
           {selectedItems.some(i => i.kind === 'torrent') && (
-            <BulkButton icon={RefreshCw} label="Update tracker" onClick={shortcuts.updateTracker} />
+            <BulkButton icon={RefreshCw} label={t('queue.updateTracker')} onClick={shortcuts.updateTracker} />
           )}
-          <BulkButton icon={Trash2} label="Remove" onClick={() => setConfirmRemove(true)} />
-          <button onClick={() => setSelected(new Set())} aria-label="Clear selection" className="ml-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><X className="w-3.5 h-3.5" /></button>
+          <BulkButton icon={Trash2} label={t('queue.remove')} onClick={() => setConfirmRemove(true)} />
+          <button onClick={() => setSelected(new Set())} aria-label={t('queue.clearSelection')} className="ml-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><X className="w-3.5 h-3.5" /></button>
         </div>
       )}
 
@@ -358,14 +359,14 @@ export default function Queue() {
         {(filter === 'errored' && visibleItems.length === 0) || (showRecent && activeItems.length === 0) ? null : activeItems.length === 0 ? (
           <EmptyState
             icon={ArrowDownToLine}
-            title="Nothing downloading"
-            description="Videos, links and torrents you add show up here while they download. Finished ones move to the Library."
+            title={t('queue.emptyTitle')}
+            description={t('queue.emptyDescription')}
           />
         ) : visibleItems.length === 0 ? (
           <EmptyState
             icon={Search}
-            title="No matches"
-            description={search ? `Nothing matches “${search}”.` : `Nothing is ${FILTERS.find(f => f.id === filter)?.label.toLowerCase()} right now.`}
+            title={t('queue.noMatches')}
+            description={search ? t('queue.nothingMatches', { search }) : t(`queue.nothingIn.${filter}`)}
           />
         ) : (
           <TabsContent value={filter} className="flex-1 min-h-0 overflow-auto mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
@@ -427,17 +428,17 @@ export default function Queue() {
       <ConfirmDialog
         open={confirmDelete !== null}
         onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
-        title="Remove torrent and delete its files?"
-        description={`This stops "${items.find(i => i.id === confirmDelete)?.metadata.title ?? 'the torrent'}" and permanently deletes everything it downloaded. This cannot be undone.`}
-        confirmLabel="Delete files"
+        title={t('queue.deleteTitle')}
+        description={t('queue.deleteDescription', { title: items.find(i => i.id === confirmDelete)?.metadata.title ?? t('queue.theTorrent') })}
+        confirmLabel={t('queue.deleteFiles')}
         destructive
         onConfirm={() => { if (confirmDelete) removeWithData(confirmDelete); setConfirmDelete(null); setSelected(new Set()); }}
       />
       <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
-        title={`Remove ${selectedItems.length} download${selectedItems.length === 1 ? '' : 's'}?`}
-        description="Active downloads are cancelled; downloaded data stays on disk."
+        title={t('queue.removeTitle', { count: selectedItems.length })}
+        description={t('queue.removeDescription')}
         confirmLabel="Remove"
         destructive
         onConfirm={removeSelectedNow}

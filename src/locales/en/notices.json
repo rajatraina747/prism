@@ -1,0 +1,57 @@
+{
+  "queueFailed": "The queue could not do that",
+  "updateAvailable": "Update available",
+  "updateReady": "Version {{version}} is ready to install",
+  "install": "Install",
+  "installing": "Downloading and installing — Prism will restart shortly...",
+  "alreadyHad": "You already had this: {{title}}",
+  "downloaded": "Downloaded: {{title}}",
+  "shortfall": "Downloaded at {{actual}}p — {{requested}}p wasn't delivered",
+  "failedGeneric": "Download failed",
+  "failed": "Failed: {{title}}",
+  "whenDone_one": "{{action}} in {{count}} second",
+  "whenDone_other": "{{action}} in {{count}} seconds",
+  "allFinished": "Everything has finished downloading.",
+  "calledOff": "Called off: there is more to download",
+  "addFailed": "Couldn't add {{title}}: {{error}}",
+  "filesFailed": "Couldn't update file selection: {{error}}",
+  "reannounced": "Asked trackers and DHT for peers",
+  "reannounceFailed": "Couldn't update tracker: {{error}}",
+  "rechecking": "Re-checking files on disk",
+  "recheckFailed": "Couldn't re-check: {{error}}",
+  "deleted": "Removed {{title}} and deleted its files",
+  "torrent": "torrent",
+  "deleteFailed": "Couldn't delete files: {{error}}",
+  "whenDoneAction": {
+    "sleep": "Sleeping",
+    "shutdown": "Shutting down",
+    "quit": "Quitting Prism"
+  },
+  "store": {
+    "files": {
+      "queue": "your transfers",
+      "history": "your Library",
+      "settings": "your settings",
+      "subscriptions": "your subscriptions",
+      "stats": "your statistics",
+      "db": "your queue and Library"
+    },
+    "kept": " The damaged file was kept as {{file}}.",
+    "recoveredTitle": "Restored {{what}} from a backup",
+    "recovered": "The saved copy was damaged, so Prism loaded the one before it.",
+    "rebuiltTitle": "Rebuilt {{what}} from an older copy",
+    "rebuilt": "The saved copy was damaged and there was no recent backup, so Prism loaded the one from before version 2.3 — anything since may be missing.",
+    "resetTitle": "Couldn't read {{what}}",
+    "reset": "The saved copy was damaged and there was no backup, so Prism started it fresh.",
+    "saveFailedTitle": "Couldn't save {{what}}",
+    "saveFailed": "Check free disk space. Recent changes may not survive a restart until a save succeeds."
+  },
+  "updateProgress": "{{pct}}% · {{done}} of {{total}}",
+  "updateBytes": "{{done}} downloaded",
+  "updateStarting": "Starting download…",
+  "filters": {
+    "torrent": "Torrent",
+    "backup": "Prism backup"
+  },
+  "torrentDownload": "Torrent download"
+}

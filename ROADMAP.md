@@ -213,19 +213,25 @@ next one starts.
 Agreed 2026-11-11. One feature release, in this order. 2.7.0 ships alone; the
 rest ship as 2.7.x or one 2.7.1, decided after 2.7.0.
 
-- [ ] **2.7.0 i18n scaffold, on its own.** First, so every new screen is
-  written with keys from the start, and alone, so visual regressions are
-  caught before features pile on.
-  - react-i18next, with `src/locales/en/*.json` split by area.
-  - Every JSX, aria and toast string goes through `t()`. Plurals, dates,
-    numbers and byte sizes through i18next/`Intl`, never hand-built.
-  - The UI translates `PrismError.code`; Rust's `summary` stays the English
-    fallback.
-  - Rust-owned text (app menu, notifications, About window) reads the same `en`
-    files through a small Rust catalog.
-  - An ESLint rule fails CI on raw JSX text.
-  - A dev-only pseudo-locale to find missed and clipped strings.
-  - English only; no RTL until a right-to-left language is wanted.
+- [x] **2.7.0 i18n scaffold, on its own.** Done 2026-11-11 on
+  `feat/i18n-scaffold`. Every new screen is written with keys from now on.
+  - react-i18next; `src/locales/en/<area>.json` (`add.json` → `add.*`).
+    Language is fixed at startup, so any module imports `t` from `src/i18n.ts`.
+  - All UI text, aria labels, tooltips, toasts and store messages go through
+    `t()`, with `_one`/`_other` plurals. Byte sizes, speeds and ETAs format
+    through the catalog and `Intl`; dates keep the OS locale on purpose.
+  - Error suggestions are looked up by `PrismError.code` (`errors.*`).
+  - Rust's menus, tray, quit dialog, notifications and window titles come from
+    `src/locales/en/native.json`, built in (`src-tauri/src/i18n.rs`).
+  - Guards: ESLint `i18next/no-literal-string` on JSX text; a vitest that every
+    `t('…')` key exists; a Rust test that every `"native.…"` key exists; an e2e
+    sweep under the pseudo-locale (`localStorage.prism_locale = "pseudo"`,
+    dev only) that fails on plain English across the main screens.
+  - The legal pages stay English: a translated policy is a legal text of its own.
+  - Cost: the main chunk grew from 696 KB to 801 KB (+35 KB gzip) for i18next
+    and the catalog. Split per area only if startup is measurably slower.
+  - To add a language: copy `src/locales/en` to `src/locales/<code>`, load it
+    in `src/i18n.ts` and `src-tauri/src/i18n.rs`, and add a picker.
 - [ ] **Audio quality picker.** Per download, defaulting to Settings.
   - Original (no re-encode), MP3 128/192/256/320/V0, M4A, Opus.
   - Shows the source stream ("Source: Opus 160 kbps") from the formats

@@ -609,7 +609,7 @@ struct Notice {
 }
 
 fn title_of(item: &Item) -> String {
-    rules::metadata_str(item, "title").unwrap_or("Download").to_string()
+    rules::metadata_str(item, "title").map(str::to_string).unwrap_or_else(|| crate::i18n::t("native.notify.untitled"))
 }
 
 /// The main window is in front of someone: a toast will be seen.
@@ -626,8 +626,8 @@ fn os_notify(app: &AppHandle, title: &str, body: &str) {
 fn notice(app: &AppHandle, n: Notice, notifications: bool) {
     if notifications && !window_in_front(app) {
         match n.kind {
-            "completed" => os_notify(app, "Download complete", &n.title),
-            "failed" => os_notify(app, "Download failed", &n.title),
+            "completed" => os_notify(app, &crate::i18n::t("native.notify.complete"), &n.title),
+            "failed" => os_notify(app, &crate::i18n::t("native.notify.failed"), &n.title),
             _ => {}
         }
     }
@@ -694,7 +694,7 @@ fn on_success(app: &AppHandle, complete: &DownloadComplete) {
         .or_else(|| complete.output_folder.clone())
         .or_else(|| rules::setting_str(&done, "destination").map(str::to_string));
     match (after.as_str(), target) {
-        ("notify", _) => os_notify(app, "Download complete", &title),
+        ("notify", _) => os_notify(app, &crate::i18n::t("native.notify.complete"), &title),
         ("open", Some(path)) => {
             let app = app.clone();
             tauri::async_runtime::spawn(async move { let _ = crate::open_file(app, path).await; });

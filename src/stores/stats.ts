@@ -1,5 +1,6 @@
 import type { DownloadItem, HistoryItem, DownloadKind } from '@/types/models';
 import { isTorrentUrl, isDirectFileUrl, siteKey } from '@/services';
+import { t } from '@/i18n';
 
 // What Prism has actually downloaded, kept as running counters.
 //
@@ -244,11 +245,11 @@ export function hydrateStats(stored: unknown, now = new Date()): Stats {
 export type ActivityPeriod = 7 | 30 | 90 | 365 | 'all';
 
 export const ACTIVITY_PERIODS: { value: ActivityPeriod; label: string }[] = [
-  { value: 7, label: '7 days' },
-  { value: 30, label: '30 days' },
-  { value: 90, label: '90 days' },
-  { value: 365, label: '1 year' },
-  { value: 'all', label: 'All time' },
+  { value: 7, label: t('library.activity.periods.days', { count: 7 }) },
+  { value: 30, label: t('library.activity.periods.days', { count: 30 }) },
+  { value: 90, label: t('library.activity.periods.days', { count: 90 }) },
+  { value: 365, label: t('library.activity.periods.year') },
+  { value: 'all', label: t('library.activity.periods.all') },
 ];
 
 function cutoffDay(days: number, now: Date): string {

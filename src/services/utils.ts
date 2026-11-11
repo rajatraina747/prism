@@ -1,16 +1,23 @@
 import type { DownloadKind } from '@/types/models';
 import { noteReferrer } from '@/lib/referrers';
+import { t, locale } from '@/i18n';
 
 export function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2, 11);
 }
 
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(i > 1 ? 1 : 0)} ${sizes[i]}`;
+  const i = bytes === 0 ? 0 : Math.min(Math.floor(Math.log(bytes) / Math.log(k)), BYTE_UNITS.length - 1);
+  const digits = i > 1 ? 1 : 0;
+  const n = new Intl.NumberFormat(locale(), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  }).format(bytes / Math.pow(k, i));
+  return t(`units.bytes.${BYTE_UNITS[i]}`, { n });
 }
 
 export function formatDuration(seconds: number): string {
@@ -22,7 +29,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatSpeed(bytesPerSec: number): string {
-  return `${formatBytes(bytesPerSec)}/s`;
+  return t('units.perSecond', { size: formatBytes(bytesPerSec) });
 }
 
 // Titles come from the remote site and are untrusted: they can contain path
@@ -73,10 +80,10 @@ export function formatReleaseNotes(raw: string): string {
 }
 
 export function formatEta(seconds: number): string {
-  if (!seconds || seconds <= 0 || !isFinite(seconds)) return '--';
-  if (seconds < 60) return `${Math.ceil(seconds)}s`;
-  if (seconds < 3600) return `${Math.ceil(seconds / 60)}m`;
-  return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
+  if (!seconds || seconds <= 0 || !isFinite(seconds)) return t('units.eta.unknown');
+  if (seconds < 60) return t('units.eta.seconds', { s: Math.ceil(seconds) });
+  if (seconds < 3600) return t('units.eta.minutes', { m: Math.ceil(seconds / 60) });
+  return t('units.eta.hoursMinutes', { h: Math.floor(seconds / 3600), m: Math.ceil((seconds % 3600) / 60) });
 }
 
 /** Extract the video URL from a `prism://add?url=...` deep link. Anything that
@@ -211,7 +218,7 @@ export function torrentDisplayName(url: string): string {
   } catch {
     /* fall through */
   }
-  return 'Torrent download';
+  return t('notices.torrentDownload');
 }
 
 /** A YouTube watch URL inside a Mix (`list=RD…`): the video alone. A Mix is

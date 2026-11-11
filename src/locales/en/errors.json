@@ -1,0 +1,20 @@
+{
+  "unsupported": "This link may not be supported",
+  "network": "Check your connection, then retry",
+  "auth": "This video needs you to be signed in — choose a browser where you're logged in under Browser cookies",
+  "unavailable": "This video is no longer available",
+  "geo": "Not available in your region",
+  "rateLimited": "Rate limited by the site — wait a few minutes, then retry",
+  "forbidden": "The site refused the download — retry; if it keeps happening, update the engine in Settings → General → Updates",
+  "diskFull": "Free up disk space, then retry",
+  "permission": "Prism can't write there — pick another download folder in Settings → Downloads → Storage",
+  "format": "Try a different quality",
+  "checksum": "The file didn't match its expected checksum — retry, or check the checksum you entered",
+  "invalidInput": "Check the link and your proxy settings",
+  "engineMissing": "Prism's downloader is missing — reinstall Prism",
+  "busy": "Prism is busy — try again in a moment",
+  "cancelled": "The download was stopped",
+  "alreadyDownloaded": "Already downloaded — Prism skipped it",
+  "unknown": "Check the link, then retry",
+  "unexpected": "An unexpected error occurred"
+}

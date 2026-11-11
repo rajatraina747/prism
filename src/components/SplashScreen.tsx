@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { publicAsset } from "@/lib/public-asset";
+import { useTranslation } from 'react-i18next';
 
 interface SplashScreenProps {
   onFinished: () => void;
@@ -7,6 +8,7 @@ interface SplashScreenProps {
 }
 
 export function SplashScreen({ onFinished, minimumDuration = 2800 }: SplashScreenProps) {
+  const { t } = useTranslation();
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
@@ -29,14 +31,14 @@ export function SplashScreen({ onFinished, minimumDuration = 2800 }: SplashScree
         <div className="flex items-center gap-8">
           <img
             src={publicAsset("logo-nobg.webp")}
-            alt="Prism"
+            alt={t('common.appName')}
             className="splash-logo-enter h-28 w-28 object-contain drop-shadow-[0_0_24px_hsl(160,50%,44%,0.35)]"
             style={{ animationDelay: '0.2s' }}
           />
           <div className="splash-divider-enter h-20 w-px bg-gradient-to-b from-transparent via-muted-foreground/30 to-transparent" />
           <img
             src={publicAsset("rainacorp-logo.webp")}
-            alt="RainaCorp"
+            alt={t('common.companyName')}
             className="splash-logo-enter h-24 w-24 object-contain drop-shadow-[0_0_24px_hsl(45,80%,55%,0.3)]"
             style={{ animationDelay: '0.4s' }}
           />
@@ -45,10 +47,10 @@ export function SplashScreen({ onFinished, minimumDuration = 2800 }: SplashScree
         {/* Brand text */}
         <div className="splash-text-enter flex flex-col items-center gap-1">
           <span className="text-lg font-semibold tracking-wide text-foreground">
-            Prism
+            {t('common.appName')}
           </span>
           <span className="text-xs text-muted-foreground tracking-wider">
-            by RainaCorp
+            {t('common.byCompany')}
           </span>
         </div>
 

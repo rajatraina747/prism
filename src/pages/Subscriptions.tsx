@@ -7,6 +7,7 @@ import { useService } from '@/services/ServiceProvider';
 import { QUALITY_CHOICES, type DefaultQuality, type Subscription } from '@/types/models';
 import { Rss, RefreshCw, Trash2, Music, Video, Loader2, AlertTriangle, Pause, Play, SlidersHorizontal, FolderOpen } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
+import { t } from '@/i18n';
 
 /** A comma-separated list of words, edited as plain text.
  *
@@ -65,7 +66,7 @@ function SubscriptionOptions({ sub, onChange }: {
       <div className="grid grid-cols-2 gap-2">
         {showQuality && (
           <label className="block">
-            <span className={optionLabelClass}>Quality</span>
+            <span className={optionLabelClass}>{t('add.batch.quality')}</span>
             <select
               value={sub.quality ?? 'best'}
               onChange={e => {
@@ -80,25 +81,25 @@ function SubscriptionOptions({ sub, onChange }: {
         )}
         {preferences.categories.length > 0 && (
           <label className="block">
-            <span className={optionLabelClass}>Category</span>
+            <span className={optionLabelClass}>{t('details.category')}</span>
             <select
               value={category?.id ?? ''}
               onChange={e => onChange({ categoryId: e.target.value || undefined })}
               className={selectClass}
             >
-              <option value="">Sort automatically</option>
+              <option value="">{t('subscriptions.sortAuto')}</option>
               {preferences.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
         )}
       </div>
       <div>
-        <span className={optionLabelClass}>Save to</span>
+        <span className={optionLabelClass}>{t('subscriptions.saveTo')}</span>
         <div className="mt-0.5 flex items-center gap-2">
           <button
             type="button"
             onClick={() => void chooseFolder()}
-            title="Choose a folder for this subscription"
+            title={t('subscriptions.page.chooseAFolderForThis')}
             className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1 rounded-md bg-input border border-border/40 text-xs text-muted-foreground hover:bg-secondary transition-colors"
           >
             <FolderOpen className="w-3 h-3 shrink-0" />
@@ -110,26 +111,25 @@ function SubscriptionOptions({ sub, onChange }: {
               onClick={() => onChange({ destination: undefined })}
               className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              Use default
+              {t('subscriptions.useDefault')}
             </button>
           )}
         </div>
       </div>
       <KeywordField
-        label="Only download titles containing"
-        placeholder="review, episode — leave empty for everything"
+        label={t('subscriptions.page.onlyDownloadTitlesContaining')}
+        placeholder={t('subscriptions.page.reviewEpisodeLeaveEmptyFor')}
         words={sub.includeKeywords}
         onChange={words => onChange({ includeKeywords: words })}
       />
       <KeywordField
-        label="Never download titles containing"
-        placeholder="trailer, shorts"
+        label={t('subscriptions.page.neverDownloadTitlesContaining')}
+        placeholder={t('subscriptions.page.trailerShorts')}
         words={sub.excludeKeywords}
         onChange={words => onChange({ excludeKeywords: words })}
       />
       <p className="text-xs text-muted-foreground/80">
-        These apply to new videos. Keywords match the title and the link, ignoring case. A video
-        they turn down is still remembered, so changing them later won't pull in the back catalogue.
+        {t('subscriptions.optionsNote')}
       </p>
     </div>
   );
@@ -141,18 +141,18 @@ function optionSummary(sub: Subscription, categoryName?: string): string[] {
   return [
     ...(quality ? [quality] : []),
     ...(categoryName ? [categoryName] : []),
-    ...(sub.destination ? [`To ${sub.destination.split(/[/\\]/).filter(Boolean).pop() ?? sub.destination}`] : []),
+    ...(sub.destination ? [t('subscriptions.to', { folder: sub.destination.split(/[/\\]/).filter(Boolean).pop() ?? sub.destination })] : []),
   ];
 }
 
 function formatRelative(iso?: string): string {
-  if (!iso) return 'never';
+  if (!iso) return t('subscriptions.relative.never');
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('subscriptions.relative.now');
+  if (mins < 60) return t('subscriptions.relative.minutes', { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t('subscriptions.relative.hours', { n: hours });
+  return t('subscriptions.relative.days', { n: Math.floor(hours / 24) });
 }
 
 export default function Subscriptions() {
@@ -164,8 +164,8 @@ export default function Subscriptions() {
   // Per-item destructive action → undo toast rather than a confirm dialog.
   const unsubscribeWithUndo = useCallback((sub: (typeof items)[number]) => {
     removeSubscription(sub.id);
-    toast(`Unsubscribed from ${sub.title}`, {
-      action: { label: 'Undo', onClick: () => restoreSubscription(sub) },
+    toast(t('subscriptions.unsubscribed', { title: sub.title }), {
+      action: { label: t('subscriptions.page.undo'), onClick: () => restoreSubscription(sub) },
       duration: 6000,
     });
   }, [removeSubscription, restoreSubscription]);
@@ -182,7 +182,7 @@ export default function Subscriptions() {
       await addSubscription(trimmed);
       setUrl('');
     } catch (e) {
-      setAddError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Could not read this URL as a channel, playlist, or feed');
+      setAddError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('subscriptions.unreadable'));
     } finally {
       setAdding(false);
     }
@@ -192,22 +192,22 @@ export default function Subscriptions() {
     <div className="page-container">
       <div className="flex items-center justify-between page-header">
         <div>
-          <h1 className="page-title">Subscriptions</h1>
+          <h1 className="page-title">{t('shell.nav.subscriptions')}</h1>
           <p className="page-subtitle">
             {items.length === 0
-              ? 'Watch channels and playlists — new videos download automatically'
-              : `${items.length} subscription${items.length !== 1 ? 's' : ''} · new videos are queued automatically`}
+              ? t('subscriptions.subtitleEmpty')
+              : t('subscriptions.subtitle', { count: items.length })}
           </p>
         </div>
         {items.length > 0 && (
-          <DisabledReason reason={checking ? 'A check is already running' : null}>
+          <DisabledReason reason={checking ? t('subscriptions.checkRunning') : null}>
             <button
               onClick={() => checkNow()}
               disabled={checking}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97] disabled:opacity-50"
             >
               {checking ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              {checking ? 'Checking…' : 'Check All Now'}
+              {checking ? t('about.update.checking') : t('subscriptions.checkAll')}
             </button>
           </DisabledReason>
         )}
@@ -221,18 +221,18 @@ export default function Subscriptions() {
             value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-            placeholder="Paste a channel, playlist, or RSS feed URL to subscribe"
+            placeholder={t('subscriptions.page.pasteAChannelPlaylistOr')}
             className="flex-1 bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
             disabled={adding}
           />
-          <DisabledReason reason={adding ? 'Already adding this feed' : !url.trim() ? 'Paste a feed link first' : null}>
+          <DisabledReason reason={adding ? t('subscriptions.alreadyAdding') : !url.trim() ? t('subscriptions.pasteFirst') : null}>
             <button
               onClick={handleAdd}
               disabled={adding || !url.trim()}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97] disabled:opacity-50"
             >
               {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rss className="w-3 h-3" />}
-              {adding ? 'Adding…' : 'Subscribe'}
+              {adding ? t('subscriptions.adding') : t('subscriptions.subscribe')}
             </button>
           </DisabledReason>
         </div>
@@ -240,15 +240,15 @@ export default function Subscriptions() {
           <p className="mt-2 text-xs text-destructive">{addError}</p>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          Only videos published after you subscribe are downloaded — the existing catalog is marked as seen.
+          {t('subscriptions.onlyNew')}
         </p>
       </div>
 
       {items.length === 0 ? (
         <EmptyState
           icon={Rss}
-          title="No subscriptions yet"
-          description="Subscribe to a channel or playlist and Prism will check it periodically, queueing anything new."
+          title={t('subscriptions.page.noSubscriptionsYet')}
+          description={t('subscriptions.page.subscribeToAChannelOr')}
         />
       ) : (
         <div className="space-y-1.5">
@@ -268,12 +268,12 @@ export default function Subscriptions() {
                   </h4>
                   <p className="text-xs text-muted-foreground truncate">{sub.url}</p>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>Checked {formatRelative(sub.lastCheckedAt)}</span>
+                    <span>{t('subscriptions.checked', { when: formatRelative(sub.lastCheckedAt) })}</span>
                     <span>·</span>
-                    <span>{sub.audioOnly ? 'Audio only' : 'Video'}</span>
-                    {!sub.enabled && (<><span>·</span><span>Paused</span></>)}
+                    <span>{sub.audioOnly ? t('add.batch.audioOnly') : t('add.batch.video')}</span>
+                    {!sub.enabled && (<><span>·</span><span>{t('common.status.paused')}</span></>)}
                     {(sub.includeKeywords?.length || sub.excludeKeywords?.length) ? (
-                      <><span>·</span><span>Filtered</span></>
+                      <><span>·</span><span>{t('subscriptions.filtered')}</span></>
                     ) : null}
                     {optionSummary(sub, preferences.categories.find(c => c.id === sub.categoryId)?.name).map(text => (
                       <React.Fragment key={text}><span>·</span><span className="truncate">{text}</span></React.Fragment>
@@ -292,16 +292,16 @@ export default function Subscriptions() {
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => setAudioOnly(sub.id, !sub.audioOnly)}
-                    title={sub.audioOnly ? 'Switch to video downloads' : 'Switch to audio-only downloads'}
-                    aria-label={sub.audioOnly ? 'Switch to video downloads' : 'Switch to audio-only downloads'}
+                    title={sub.audioOnly ? t('subscriptions.toVideo') : t('subscriptions.toAudio')}
+                    aria-label={sub.audioOnly ? t('subscriptions.toVideo') : t('subscriptions.toAudio')}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                   >
                     {sub.audioOnly ? <Music className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
                   </button>
                   <button
                     onClick={() => setEditingOptions(id => (id === sub.id ? null : sub.id))}
-                    title="Download options"
-                    aria-label="Download options"
+                    title={t('subscriptions.page.downloadOptions')}
+                    aria-label={t('subscriptions.page.downloadOptions')}
                     aria-expanded={editingOptions === sub.id}
                     className={`p-1.5 rounded-md hover:bg-secondary transition-colors active:scale-[0.95] ${
                       editingOptions === sub.id ? 'text-foreground bg-secondary' : 'text-muted-foreground hover:text-foreground'
@@ -309,12 +309,12 @@ export default function Subscriptions() {
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </button>
-                  <DisabledReason reason={checking ? 'A check is already running' : null}>
+                  <DisabledReason reason={checking ? t('subscriptions.checkRunning') : null}>
                     <button
                       onClick={() => checkNow(sub.id)}
                       disabled={checking}
-                      title="Check now"
-                      aria-label="Check now"
+                      title={t('subscriptions.page.checkNow')}
+                      aria-label={t('subscriptions.page.checkNow')}
                       className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95] disabled:opacity-50"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
@@ -322,16 +322,16 @@ export default function Subscriptions() {
                   </DisabledReason>
                   <button
                     onClick={() => toggleSubscription(sub.id)}
-                    title={sub.enabled ? 'Pause subscription' : 'Resume subscription'}
-                    aria-label={sub.enabled ? 'Pause subscription' : 'Resume subscription'}
+                    title={sub.enabled ? t('subscriptions.pause') : t('subscriptions.resume')}
+                    aria-label={sub.enabled ? t('subscriptions.pause') : t('subscriptions.resume')}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-[0.95]"
                   >
                     {sub.enabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                   </button>
                   <button
                     onClick={() => unsubscribeWithUndo(sub)}
-                    title="Unsubscribe"
-                    aria-label="Unsubscribe"
+                    title={t('subscriptions.page.unsubscribe')}
+                    aria-label={t('subscriptions.page.unsubscribe')}
                     className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors active:scale-[0.95]"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

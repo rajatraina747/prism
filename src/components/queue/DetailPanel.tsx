@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { X, RefreshCw, FolderOpen, Play, MonitorPlay, Folder, ChevronRight } from 'lucide-react';
 import { DisabledReason } from '@/components/common/DisabledReason';
 import { shortPeerAddress } from './peer-address';
+import { t, locale } from '@/i18n';
 
 export interface DetailPanelProps {
   item: DownloadItem | null;
@@ -93,14 +94,14 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
 
   return (
     <section
-      aria-label="Transfer details"
+      aria-label={t('details.label')}
       className="mt-3 glass-strong rounded-xl flex flex-col animate-fade-in"
       style={{ height: shown }}
     >
       <div
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Resize details panel"
+        aria-label={t('details.resize')}
         aria-valuenow={shown}
         aria-valuemin={MIN_H}
         aria-valuemax={MAX_H}
@@ -118,14 +119,14 @@ export function DetailPanel({ item, height, onHeightChange, onClose, onUpdateFil
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex-1 min-h-0 flex flex-col px-3 pb-3">
         <div className="flex items-center gap-2">
           <TabsList className="h-8">
-            <TabsTrigger value="general" className="text-xs h-6">General</TabsTrigger>
-            {isTorrent && <TabsTrigger value="files" className="text-xs h-6">Files</TabsTrigger>}
-            {isTorrent && <TabsTrigger value="peers" className="text-xs h-6">Peers</TabsTrigger>}
-            {isTorrent && <TabsTrigger value="trackers" className="text-xs h-6">Trackers</TabsTrigger>}
-            <TabsTrigger value="speed" className="text-xs h-6">Speed</TabsTrigger>
+            <TabsTrigger value="general" className="text-xs h-6">{t('details.tabs.general')}</TabsTrigger>
+            {isTorrent && <TabsTrigger value="files" className="text-xs h-6">{t('details.tabs.files')}</TabsTrigger>}
+            {isTorrent && <TabsTrigger value="peers" className="text-xs h-6">{t('details.tabs.peers')}</TabsTrigger>}
+            {isTorrent && <TabsTrigger value="trackers" className="text-xs h-6">{t('details.tabs.trackers')}</TabsTrigger>}
+            <TabsTrigger value="speed" className="text-xs h-6">{t('details.tabs.speed')}</TabsTrigger>
           </TabsList>
           <span className="text-xs text-foreground truncate flex-1 min-w-0" title={item.metadata.title}>{item.metadata.title}</span>
-          <button onClick={onClose} aria-label="Close details" className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <button onClick={onClose} aria-label={t('details.close')} className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -194,44 +195,44 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
       {isTorrent && item.pieces && item.pieces.length > 0 && (
         <div className="mb-2">
           <PiecesBar pieces={item.pieces} height="h-2.5" />
-          <p className="text-xs text-muted-foreground mt-1">Pieces on disk{details ? ` · ${details.totalPieces.toLocaleString()} × ${formatBytes(details.pieceLength)}` : ''}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t('details.pieces')}{details ? t('details.piecesCount', { count: details.totalPieces, pieces: details.totalPieces.toLocaleString(locale()), size: formatBytes(details.pieceLength) }) : ''}</p>
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
         <div>
-          <Row label="Status">{item.status}{item.stage === 'processing' ? ' · processing' : ''}</Row>
-          <Row label="Size">{item.totalBytes > 0 ? formatBytes(item.totalBytes) : isTorrent ? 'pending (resolving metadata)' : '—'}</Row>
-          <Row label="Downloaded">{formatBytes(item.downloadedBytes)} ({item.progress.toFixed(1)}%)</Row>
-          {isTorrent && <Row label="Uploaded">{formatBytes(item.uploadedBytes ?? 0)} · ratio {(item.ratio ?? 0).toFixed(2)}</Row>}
-          <Row label="Speed">↓ {formatSpeed(item.speed)}{isTorrent ? ` · ↑ ${formatSpeed(item.uploadSpeed ?? 0)}` : ''}</Row>
-          <Row label="ETA">{formatEta(item.eta)}</Row>
-          {isTorrent && <Row label="Peers">{item.peers ?? 0} connected · {item.peersSeen ?? 0} seen{(item.peerlessSecs ?? 0) >= 60 ? ` · peerless for ${formatEta(item.peerlessSecs ?? 0)}` : ''}</Row>}
+          <Row label={t('details.status')}>{t(`common.status.${item.status}`)}{item.stage === 'processing' ? t('details.processing') : ''}</Row>
+          <Row label={t('details.size')}>{item.totalBytes > 0 ? formatBytes(item.totalBytes) : isTorrent ? t('details.sizePending') : '—'}</Row>
+          <Row label={t('details.downloaded')}>{t('details.downloadedValue', { size: formatBytes(item.downloadedBytes), percent: item.progress.toFixed(1) })}</Row>
+          {isTorrent && <Row label={t('details.uploaded')}>{t('details.uploadedValue', { size: formatBytes(item.uploadedBytes ?? 0), ratio: (item.ratio ?? 0).toFixed(2) })}</Row>}
+          <Row label={t('details.tabs.speed')}>{t('details.down', { speed: formatSpeed(item.speed) })}{isTorrent ? t('details.upSuffix', { speed: formatSpeed(item.uploadSpeed ?? 0) }) : ''}</Row>
+          <Row label={t('queue.sorts.eta')}>{formatEta(item.eta)}</Row>
+          {isTorrent && <Row label={t('details.tabs.peers')}>{t('details.peersValue', { connected: item.peers ?? 0, seen: item.peersSeen ?? 0 })}{(item.peerlessSecs ?? 0) >= 60 ? t('details.peerless', { time: formatEta(item.peerlessSecs ?? 0) }) : ''}</Row>}
         </div>
         <div>
-          <Row label="Save path">
+          <Row label={t('details.savePath')}>
             <button
               className="hover:text-primary transition-colors inline-flex items-center gap-1 max-w-full"
               onClick={() => service.showInFolder(item.filePath ?? dest).catch((e) => toast.error(String(e)))}
-              title="Show in folder"
+              title={t('queue.actions.showInFolder')}
             >
               <FolderOpen className="w-3 h-3 shrink-0" /><span className="truncate">{dest}</span>
             </button>
           </Row>
           {onSetCategory && (
-            <Row label="Category">
+            <Row label={t('details.category')}>
               <select
                 value={item.settings.categoryId ?? ''}
                 onChange={(e) => onSetCategory(item.id, preferences.categories.find(c => c.id === e.target.value) ?? null)}
-                aria-label="Category"
+                aria-label={t('details.category')}
                 className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               >
-                <option value="">None</option>
+                <option value="">{t('details.none')}</option>
                 {preferences.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 {filedUnderMissing && (
-                  <option value={item.settings.categoryId}>{item.settings.categoryName ?? 'Deleted category'}</option>
+                  <option value={item.settings.categoryId}>{item.settings.categoryName ?? t('details.deletedCategory')}</option>
                 )}
               </select>
-              {item.status === 'queued' ? '' : ' · label only while it runs'}
+              {item.status === 'queued' ? '' : t('details.categoryWhileRunning')}
             </Row>
           )}
           {/* Only before it starts, and only for a plain file download: the
@@ -242,21 +243,21 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
           {/* Only while it can still finish: setting this on something already
               finished would promise something that has already happened. */}
           {onSetWhenComplete && item.status !== 'completed' && (
-            <Row label="When it finishes">
+            <Row label={t('details.whenFinishes')}>
               <select
                 value={item.settings.whenComplete ?? ''}
                 onChange={(e) => onSetWhenComplete(
                   item.id,
                   (e.target.value || null) as PostCompletionAction | null,
                 )}
-                aria-label="When it finishes"
+                aria-label={t('details.whenFinishes')}
                 className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               >
-                <option value="">Use the default</option>
-                <option value="nothing">Do nothing</option>
-                <option value="notify">Notify me</option>
-                <option value="open">Open the file</option>
-                <option value="reveal">Show in folder</option>
+                <option value="">{t('details.finish.default')}</option>
+                <option value="nothing">{t('details.finish.nothing')}</option>
+                <option value="notify">{t('details.finish.notify')}</option>
+                <option value="open">{t('details.finish.open')}</option>
+                <option value="reveal">{t('queue.actions.showInFolder')}</option>
               </select>
             </Row>
           )}
@@ -264,7 +265,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
               already running is past the point of being held. It delays this
               download alone — the rest of the queue carries on without it. */}
           {onSetStartAt && item.status === 'queued' && (
-            <Row label="Start after">
+            <Row label={t('details.startAfter')}>
               <input
                 type="datetime-local"
                 value={toLocalDateTimeInput(item.settings.startAt)}
@@ -272,7 +273,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                   item.id,
                   e.target.value ? new Date(e.target.value).toISOString() : null,
                 )}
-                aria-label="Start after"
+                aria-label={t('details.startAfter')}
                 className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 max-w-[180px]"
               />
             </Row>
@@ -284,7 +285,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
               refuses an end before a start. */}
           {onSetClip && item.status === 'queued' && item.kind !== 'torrent' && item.kind !== 'direct' && (
             <>
-              <Row label="Clip">
+              <Row label={t('details.clip')}>
                 <span className="inline-flex items-center gap-1">
                   <CommitInput
                     inputMode="numeric"
@@ -296,7 +297,7 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                       item.settings.clipEnd ?? null,
                       item.settings.splitChapters ?? false,
                     )}
-                    aria-label="Clip from"
+                    aria-label={t('details.clipFrom')}
                     className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 w-20"
                   />
                   <span className="text-muted-foreground">–</span>
@@ -310,45 +311,45 @@ function GeneralTab({ item, onReannounce, onSetCategory, onSetLabels, onSetCheck
                       v || null,
                       item.settings.splitChapters ?? false,
                     )}
-                    aria-label="Clip to"
+                    aria-label={t('details.clipTo')}
                     className="bg-input border border-border/40 rounded-md px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-primary/50 w-20"
                   />
-                  <span className="text-muted-foreground">e.g. 1:23</span>
+                  <span className="text-muted-foreground">{t('details.clipExample')}</span>
                 </span>
               </Row>
               {/* Ignored when a range is set, so it is only offered without one. */}
               {!item.settings.clipStart && !item.settings.clipEnd && (
-                <Row label="Split by chapter">
+                <Row label={t('details.splitChapters')}>
                   <label className="inline-flex items-center gap-1.5">
                     <input
                       type="checkbox"
                       checked={item.settings.splitChapters ?? false}
                       onChange={(e) => onSetClip(item.id, null, null, e.target.checked)}
-                      aria-label="Split by chapter"
+                      aria-label={t('details.splitChapters')}
                       className="accent-primary"
                     />
-                    <span className="text-xs text-muted-foreground">One file per chapter</span>
+                    <span className="text-xs text-muted-foreground">{t('details.splitHint')}</span>
                   </label>
                 </Row>
               )}
             </>
           )}
-          <Row label="Added">{when(item.addedAt)}</Row>
-          <Row label="Started">{when(item.startedAt)}</Row>
-          {isTorrent && details && <Row label="Info hash" mono>{details.infoHash}</Row>}
-          {isTorrent && details && <Row label="Files">{details.fileCount} · {details.private ? 'private torrent' : 'public (DHT/PEX allowed)'}</Row>}
-          {!isTorrent && <Row label="Source">{item.metadata.source.domain}</Row>}
-          {!isTorrent && item.settings.format && <Row label="Format">{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</Row>}
+          <Row label={t('details.added')}>{when(item.addedAt)}</Row>
+          <Row label={t('details.started')}>{when(item.startedAt)}</Row>
+          {isTorrent && details && <Row label={t('details.infoHash')} mono>{details.infoHash}</Row>}
+          {isTorrent && details && <Row label={t('details.tabs.files')}>{details.fileCount}{t('common.separator')}{details.private ? t('details.private') : t('details.public')}</Row>}
+          {!isTorrent && <Row label={t('details.source')}>{item.metadata.source.domain}</Row>}
+          {!isTorrent && item.settings.format && <Row label={t('details.format')}>{item.settings.format.resolution} · {item.settings.format.container.toUpperCase()}</Row>}
           {isTorrent && onReannounce && (item.status === 'downloading' || item.status === 'seeding') && (
             <button onClick={() => onReannounce(item.id)} className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors">
-              <RefreshCw className="w-3 h-3" /> Update tracker
+              <RefreshCw className="w-3 h-3" /> {t('queue.updateTracker')}
             </button>
           )}
         </div>
       </div>
       {onSetLabels && preferences.labels.length > 0 && (
         <div className="flex items-baseline gap-3 mt-2 pt-2 border-t border-border/20">
-          <span className="w-28 shrink-0 text-xs text-muted-foreground">Labels</span>
+          <span className="w-28 shrink-0 text-xs text-muted-foreground">{t('details.labels')}</span>
           <span className="flex flex-wrap gap-1">
             {preferences.labels.map(label => {
               const on = item.settings.labelIds?.includes(label.id) ?? false;
@@ -395,7 +396,7 @@ function ChecksumRow({ item, onSetChecksum }: {
     onSetChecksum(item.id, draft.trim() === '' ? null : normalizeSha256(draft));
   };
   return (
-    <Row label="Expected SHA-256">
+    <Row label={t('details.sha')}>
       <span className="flex flex-col gap-0.5">
         <input
           type="text"
@@ -403,16 +404,16 @@ function ChecksumRow({ item, onSetChecksum }: {
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
-          placeholder="Optional — paste the published hash"
+          placeholder={t('details.shaPlaceholder')}
           spellCheck={false}
-          aria-label="Expected SHA-256"
+          aria-label={t('details.sha')}
           aria-invalid={invalid}
           className={cn(
             'w-64 max-w-full bg-input border rounded-md px-1.5 py-0.5 text-xs font-mono text-foreground outline-none',
             invalid ? 'border-destructive/60' : 'border-border/40 focus:border-primary/50',
           )}
         />
-        {invalid && <span className="text-xs text-destructive">That isn't a SHA-256 (64 hex characters)</span>}
+        {invalid && <span className="text-xs text-destructive">{t('details.shaInvalid')}</span>}
       </span>
     </Row>
   );
@@ -455,7 +456,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
   const files: FileNode[] = (item.files ?? []).map((f, index) => ({ index, ...f }));
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
   if (files.length === 0) {
-    return <p className="text-xs text-muted-foreground px-1">File list appears once the torrent's metadata has been fetched from peers.</p>;
+    return <p className="text-xs text-muted-foreground px-1">{t('details.filesPending')}</p>;
   }
   const canEdit = !!onUpdateFiles && (item.status === 'downloading' || item.status === 'paused');
   const dest = (item.outputFolder || item.settings.destination || '~/Downloads/Prism').replace(/\/+$/, '');
@@ -465,7 +466,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
   const toggle = (i: number) => {
     const current = selectedSet ?? files.map(f => f.index);
     const next = isSelected(i) ? current.filter(x => x !== i) : [...current, i].sort((a, b) => a - b);
-    if (next.length === 0) { toast.error('At least one file must stay selected'); return; }
+    if (next.length === 0) { toast.error(t('queue.table.keepOne')); return; }
     onUpdateFiles?.(item.id, next);
   };
   const errToast = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e));
@@ -497,7 +498,7 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
                 return (
                   <div key={f.index} className={cn('flex items-center gap-2 text-xs py-0.5 tabular-nums', folder.path && 'pl-6')}>
                     {canEdit ? (
-                      <input type="checkbox" checked={sel} onChange={() => toggle(f.index)} aria-label={`Download ${base}`} className="w-3 h-3 accent-primary shrink-0 cursor-pointer" />
+                      <input type="checkbox" checked={sel} onChange={() => toggle(f.index)} aria-label={t('queue.table.downloadFile', { name: base })} className="w-3 h-3 accent-primary shrink-0 cursor-pointer" />
                     ) : <span className="w-3" />}
                     <span className={cn('truncate flex-1 text-foreground', !sel && 'line-through opacity-50')} title={f.name}>{base}</span>
                     <span className="w-16 text-right text-muted-foreground">{formatBytes(f.size)}</span>
@@ -508,23 +509,23 @@ function FilesTab({ item, onUpdateFiles, playerAvailable }: { item: DownloadItem
                           actually fetching: selecting one here would mean
                           dropping every other file the user chose. */}
                       {!complete && sel && playerAvailable && isStreamable(base) && (
-                        <button title="Play now — streams while it downloads" aria-label={`Play ${base} now`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                        <button title={t('details.playNow')} aria-label={t('details.playNowLabel', { name: base })} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
                           onClick={() => import('@/lib/player-window').then(({ openInPlayer }) => openInPlayer({ stream: { torrentId: item.id, fileIdx: f.index }, title: base })).catch(errToast)}>
                           <MonitorPlay className="w-3 h-3" />
                         </button>
                       )}
                       {complete && playerAvailable && (
-                        <button title="Play in Prism" aria-label={`Play ${base} in Prism`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
+                        <button title={t('details.playInPrism')} aria-label={t('details.playInPrismLabel', { name: base })} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"
                           onClick={() => import('@/lib/player-window').then(({ openInPlayer }) => openInPlayer({ path: full, title: base })).catch(errToast)}>
                           <MonitorPlay className="w-3 h-3" />
                         </button>
                       )}
                       {complete && (
-                        <button title="Open" aria-label={`Open ${base}`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground" onClick={() => service.openFile(full).catch(errToast)}>
+                        <button title={t('details.open')} aria-label={t('details.openLabel', { name: base })} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground" onClick={() => service.openFile(full).catch(errToast)}>
                           <Play className="w-3 h-3" />
                         </button>
                       )}
-                      <button title="Show in folder" aria-label={`Show ${base} in folder`} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground" onClick={() => service.showInFolder(complete ? full : dest).catch(errToast)}>
+                      <button title={t('queue.actions.showInFolder')} aria-label={t('details.showLabel', { name: base })} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground" onClick={() => service.showInFolder(complete ? full : dest).catch(errToast)}>
                         <FolderOpen className="w-3 h-3" />
                       </button>
                     </span>
@@ -554,16 +555,18 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
     return () => { cancelled = true; clearInterval(t); };
   }, [service, item.id, active, live]);
 
-  if (!live) return <p className="text-xs text-muted-foreground px-1">Peers are listed while the torrent is downloading or seeding.</p>;
-  if (peers === null) return <p className="text-xs text-muted-foreground px-1">Loading peers…</p>;
+  if (!live) return <p className="text-xs text-muted-foreground px-1">{t('details.peersInactive')}</p>;
+  if (peers === null) return <p className="text-xs text-muted-foreground px-1">{t('details.peersLoading')}</p>;
   if (peers.length === 0) {
     return (
       <p className="text-xs text-muted-foreground px-1">
-        No peers yet. Prism is asking the trackers, the DHT and the local network every few minutes — low-seed torrents can sit here for a while and still complete.
+        {t('details.noPeers')}
       </p>
     );
   }
   const liveCount = peers.filter(p => p.state === 'live').length;
+  // librqbit's peer states (`PeerState::name`); anything new shows as-is.
+  const peerState = (s: string) => (['queued', 'connecting', 'live', 'dead', 'not needed'].includes(s) ? t(`details.peerStates.${s.replace(' ', '_')}`) : s);
   return (
     // ScrollArea's inner wrapper grows to fit its content; made a block here so
     // the table is held to the panel's width and can't run off the edge.
@@ -572,14 +575,14 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
       <table className="w-full table-fixed text-xs tabular-nums [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
         <thead className="text-muted-foreground">
           <tr className="text-left">
-            <th className="font-medium py-1 pr-2">Address</th>
-            <th className="font-medium py-1 pr-2">Client</th>
-            <th className="w-10 font-medium py-1 pr-2">Via</th>
-            <th className="w-20 font-medium py-1 pr-2">State</th>
-            <th className="w-20 font-medium py-1 pr-2 text-right">↓ speed</th>
-            <th className="w-20 font-medium py-1 pr-2 text-right">↑ speed</th>
-            <th className="w-20 font-medium py-1 pr-2 text-right">Downloaded</th>
-            <th className="w-[4.5rem] font-medium py-1 text-right">Uploaded</th>
+            <th className="font-medium py-1 pr-2">{t('details.peerTable.address')}</th>
+            <th className="font-medium py-1 pr-2">{t('details.peerTable.client')}</th>
+            <th className="w-10 font-medium py-1 pr-2">{t('details.peerTable.via')}</th>
+            <th className="w-20 font-medium py-1 pr-2">{t('details.peerTable.state')}</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">{t('details.peerTable.down')}</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">{t('details.peerTable.up')}</th>
+            <th className="w-20 font-medium py-1 pr-2 text-right">{t('details.downloaded')}</th>
+            <th className="w-[4.5rem] font-medium py-1 text-right">{t('details.uploaded')}</th>
           </tr>
         </thead>
         <tbody>
@@ -588,7 +591,7 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
               <td className="py-1 pr-2 font-mono text-foreground truncate" title={p.addr}>{shortPeerAddress(p.addr)}</td>
               <td className="py-1 pr-2 truncate" title={p.client ?? undefined}>{p.client ?? '—'}</td>
               <td className="py-1 pr-2 truncate">{p.kind}</td>
-              <td className="py-1 pr-2 truncate" title={p.errors > 0 ? `${p.state}, ${p.errors} errors` : undefined}>{p.state}{p.errors > 0 ? ` (${p.errors} err)` : ''}</td>
+              <td className="py-1 pr-2 truncate" title={p.errors > 0 ? t('details.peerErrorsTitle', { state: peerState(p.state), count: p.errors }) : undefined}>{peerState(p.state)}{p.errors > 0 ? t('details.peerErrors', { count: p.errors }) : ''}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.downBps)}</td>
               <td className="py-1 pr-2 text-right">{formatSpeed(p.upBps)}</td>
               <td className="py-1 pr-2 text-right">{formatBytes(p.downloaded)}</td>
@@ -597,7 +600,7 @@ function PeersTab({ item, active }: { item: DownloadItem; active: boolean }) {
           ))}
         </tbody>
       </table>
-      <p className="text-xs text-muted-foreground mt-2">{liveCount} connected · {peers.length - liveCount} connecting/other. Per-peer progress and flags aren't reported by the engine.</p>
+      <p className="text-xs text-muted-foreground mt-2">{t('details.peerSummary', { live: liveCount, other: peers.length - liveCount })}</p>
     </ScrollArea>
   );
 }
@@ -614,17 +617,17 @@ function TrackersTab({ item, onReannounce }: { item: DownloadItem; onReannounce?
     <ScrollArea className="h-full pr-2">
       <div className="flex items-center gap-2 mb-2">
         {onReannounce && (
-          <DisabledReason reason={live ? null : 'Only while the torrent is downloading or seeding'}>
+          <DisabledReason reason={live ? null : t('details.onlyLive')}>
             <button disabled={!live} onClick={() => onReannounce(item.id)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50">
-              <RefreshCw className="w-3 h-3" /> Update tracker
+              <RefreshCw className="w-3 h-3" /> {t('queue.updateTracker')}
             </button>
           </DisabledReason>
         )}
-        <button onClick={() => navigate('/settings')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Add trackers in Settings →</button>
+        <button onClick={() => navigate('/settings')} className="text-xs text-muted-foreground hover:text-foreground transition-colors">{t('details.addTrackers')}</button>
       </div>
       {details ? (
         details.trackers.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No trackers in this torrent — peers come from DHT, PEX and the local network only.</p>
+          <p className="text-xs text-muted-foreground">{t('details.noTrackers')}</p>
         ) : (
           <ul className="space-y-0.5">
             {details.trackers.map(t => (
@@ -633,16 +636,16 @@ function TrackersTab({ item, onReannounce }: { item: DownloadItem; onReannounce?
           </ul>
         )
       ) : (
-        <p className="text-xs text-muted-foreground">Tracker list appears once the torrent is active.</p>
+        <p className="text-xs text-muted-foreground">{t('details.trackersPending')}</p>
       )}
       {extra.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Added to every torrent (Settings)</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">{t('details.extraTrackers')}</p>
           <ul className="space-y-0.5">{extra.map(t => <li key={t} className="text-xs font-mono text-muted-foreground truncate" title={t}>{t}</li>)}</ul>
         </div>
       )}
       <p className="text-xs text-muted-foreground mt-3">
-        Prism announces to every tracker on start and re-announces automatically every 5 minutes while no peers are connected. Per-tracker status (last announce, seeders/leechers) isn't reported by the engine.
+        {t('details.announceNote')}
       </p>
     </ScrollArea>
   );
@@ -673,11 +676,11 @@ function SpeedTab({ item }: { item: DownloadItem }) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-4 text-xs text-muted-foreground mb-1">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> ↓ {formatSpeed(item.speed || 0)}</span>
-        {item.kind === 'torrent' && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> ↑ {formatSpeed(item.uploadSpeed || 0)}</span>}
-        <span className="ml-auto">peak {formatSpeed(max)} · last {SAMPLES} s</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> {t('details.down', { speed: formatSpeed(item.speed || 0) })}</span>
+        {item.kind === 'torrent' && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success inline-block" /> {t('details.up', { speed: formatSpeed(item.uploadSpeed || 0) })}</span>}
+        <span className="ml-auto">{t('details.peak', { speed: formatSpeed(max), seconds: SAMPLES })}</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="flex-1 w-full min-h-0 rounded-lg bg-secondary/40" role="img" aria-label="Transfer speed over the last minute">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="flex-1 w-full min-h-0 rounded-lg bg-secondary/40" role="img" aria-label={t('details.speedChart')}>
         <polyline fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" points={path(padLeft(down))} vectorEffect="non-scaling-stroke" />
         {item.kind === 'torrent' && <polyline fill="none" stroke="hsl(var(--success))" strokeWidth="1.5" points={path(padLeft(up))} vectorEffect="non-scaling-stroke" />}
       </svg>

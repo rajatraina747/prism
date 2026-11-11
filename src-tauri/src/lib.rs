@@ -1,4 +1,5 @@
 mod about;
+mod i18n;
 mod app_menu;
 mod client_import;
 mod clip;
@@ -2491,10 +2492,10 @@ pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 /// reads the clipboard and, if it holds an http(s) URL, hands it to the
 /// frontend over the same channel deep links use.
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Prism", true, None::<&str>)?;
-    let paste = MenuItem::with_id(app, "paste", "Paste && Download", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", crate::i18n::t("native.tray.open"), true, None::<&str>)?;
+    let paste = MenuItem::with_id(app, "paste", crate::i18n::t("native.tray.paste"), true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Prism", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", crate::i18n::t("native.tray.quit"), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &paste, &sep, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main-tray")

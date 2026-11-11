@@ -24,6 +24,7 @@ import {
   PlayCircle,
 } from 'lucide-react';
 import { publicAsset } from "@/lib/public-asset";
+import { t } from '@/i18n';
 
 /** "Play a File…" from the app menu (⌘O): any audio or video on this
  * computer, picked in a dialog Rust shows. Dynamic import keeps the Tauri
@@ -31,20 +32,20 @@ import { publicAsset } from "@/lib/public-asset";
 function playAFile() {
   import('@/lib/player-window')
     .then(({ pickAndPlay }) => pickAndPlay())
-    .catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => toast.error(t('shell.playFailed', { error: e instanceof Error ? e.message : String(e) })));
 }
 
 const NAV_ITEMS = [
-  { path: '/', icon: ArrowDownToLine, label: 'Downloads' },
-  { path: '/subscriptions', icon: Rss, label: 'Subscriptions' },
-  { path: '/library', icon: LibraryIcon, label: 'Library' },
+  { path: '/', icon: ArrowDownToLine, label: t('shell.nav.downloads') },
+  { path: '/subscriptions', icon: Rss, label: t('shell.nav.subscriptions') },
+  { path: '/library', icon: LibraryIcon, label: t('shell.nav.library') },
 ] as const;
 
 /** Pages reached from Settings, which keep Settings lit in the sidebar. */
 const UNDER_SETTINGS = ['/about', '/privacy', '/terms', '/licenses'];
 
 const BOTTOM_ITEMS = [
-  { path: '/settings', icon: Settings2, label: 'Settings' },
+  { path: '/settings', icon: Settings2, label: t('shell.nav.settings') },
 ] as const;
 
 function SidebarNav({ onAdd }: { onAdd: () => void }) {
@@ -58,23 +59,23 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
   const { pathname } = useLocation();
 
   return (
-    <aside aria-label="Navigation" className="w-[220px] min-w-[220px] max-[999px]:w-16 max-[999px]:min-w-16 h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
+    <aside aria-label={t('shell.navigation')} className="w-[220px] min-w-[220px] max-[999px]:w-16 max-[999px]:min-w-16 h-screen flex flex-col border-r border-border/50 bg-sidebar select-none">
       {/* Brand. Below 1000px the sidebar is icons only, and this is the logo. */}
       <div className="flex flex-col items-center gap-1.5 px-4 py-5 border-b border-border/30 max-[999px]:h-[72px] max-[999px]:justify-center max-[999px]:px-0 max-[999px]:py-0">
-        <img src={publicAsset("logo-nobg.webp")} alt="Prism" className="w-24 h-24 rounded-2xl object-contain shrink-0 max-[999px]:w-11 max-[999px]:h-11 max-[999px]:rounded-xl" />
+        <img src={publicAsset("logo-nobg.webp")} alt={t('common.appName')} className="w-24 h-24 rounded-2xl object-contain shrink-0 max-[999px]:w-11 max-[999px]:h-11 max-[999px]:rounded-xl" />
         <div className="min-w-0 text-center max-[999px]:sr-only">
           <p className="text-base font-semibold tracking-tight text-foreground leading-tight whitespace-nowrap flex items-center justify-center gap-2">
-            Prism
+            {t('common.appName')}
             {service.isDemo && (
               <span
-                title="Browser demo: downloads are simulated and nothing is saved to disk"
+                title={t('shell.demoTitle')}
                 className="px-1.5 rounded-full bg-warning/15 text-warning text-xs font-semibold uppercase tracking-wide"
               >
-                Demo
+                {t('shell.demo')}
               </span>
             )}
           </p>
-          <p className="text-xs text-muted-foreground leading-tight whitespace-nowrap">by RainaCorp</p>
+          <p className="text-xs text-muted-foreground leading-tight whitespace-nowrap">{t('common.byCompany')}</p>
         </div>
       </div>
 
@@ -82,24 +83,24 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
         <button
           type="button"
           onClick={onAdd}
-          title={`Add (${MOD_KEY}N)`}
+          title={t('shell.addTitle', { key: `${MOD_KEY}N` })}
           aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+N' : 'Control+N'}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors active:scale-[0.98] max-[999px]:justify-center max-[999px]:px-0"
         >
           <Plus className="w-4 h-4 shrink-0" strokeWidth={2} />
-          <span className="max-[999px]:sr-only">Add</span>
+          <span className="max-[999px]:sr-only">{t('shell.add')}</span>
           <kbd className="ml-auto text-xs font-sans opacity-70 max-[999px]:hidden">{MOD_KEY}N</kbd>
         </button>
         {playerAvailable && (
           <button
             type="button"
             onClick={playAFile}
-            title={`Play any video or audio file on this computer (${MOD_KEY}O)`}
+            title={t('shell.playTitle', { key: `${MOD_KEY}O` })}
             aria-keyshortcuts={MOD_KEY === '⌘' ? 'Meta+O' : 'Control+O'}
             className="mt-1.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors active:scale-[0.98] max-[999px]:justify-center max-[999px]:px-0"
           >
             <PlayCircle className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-            <span className="max-[999px]:sr-only">Play a file</span>
+            <span className="max-[999px]:sr-only">{t('common.empty.playFile')}</span>
             <kbd className="ml-auto text-xs font-sans opacity-70 max-[999px]:hidden">{MOD_KEY}O</kbd>
           </button>
         )}
@@ -129,7 +130,7 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             )}
             {item.path === '/library' && failedCount > 0 && (
               <span
-                title={`${failedCount} failed download${failedCount !== 1 ? 's' : ''}`}
+                title={t('shell.failedCount', { count: failedCount })}
                 className="ml-auto text-xs tabular-nums font-semibold bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-md max-[999px]:absolute max-[999px]:-top-1 max-[999px]:right-1 max-[999px]:px-1 max-[999px]:py-0"
               >
                 {failedCount}
@@ -143,12 +144,12 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
       <div className="px-3 py-3 space-y-0.5 border-t border-border/30 max-[999px]:px-2">
         <OutboundLink
           href="https://www.rainacorp.co.uk"
-          title="RainaCorp — rainacorp.co.uk"
+          title={t('shell.companyLink')}
           className="flex flex-col items-center gap-1 py-2 mb-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors group"
         >
           <img src={publicAsset("rainacorp-logo.webp")} alt="" className="w-7 h-7 object-contain opacity-70 group-hover:opacity-100 transition-opacity" />
-          <span className="text-xs font-semibold tracking-wide whitespace-nowrap max-[999px]:sr-only">A RAINACORP PRODUCT</span>
-          <span className="text-xs whitespace-nowrap max-[999px]:sr-only">rainacorp.co.uk</span>
+          <span className="text-xs font-semibold tracking-wide whitespace-nowrap max-[999px]:sr-only">{t('shell.product')}</span>
+          <span className="text-xs whitespace-nowrap max-[999px]:sr-only">{t('shell.domain')}</span>
         </OutboundLink>
         {BOTTOM_ITEMS.map(item => (
           <NavLink
@@ -167,8 +168,8 @@ function SidebarNav({ onAdd }: { onAdd: () => void }) {
             <span className="max-[999px]:sr-only">{item.label}</span>
             {item.path === '/settings' && engine?.updateAvailable && (
               <span
-                title={`Downloader engine ${engine.latest} is available`}
-                aria-label="Engine update available"
+                title={t('shell.engineAvailable', { version: engine.latest })}
+                aria-label={t('shell.engineUpdate')}
                 className="ml-auto w-2 h-2 rounded-full bg-primary max-[999px]:absolute max-[999px]:top-1 max-[999px]:right-3"
               />
             )}
@@ -227,7 +228,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         publishEngineInfo(info);
         if (info.updateAvailable && engineAutoUpdate) {
           const version = await service.updateEngine();
-          toast.success(`Downloader engine updated to ${version}`);
+          toast.success(t('shell.engineUpdated', { version }));
           publishEngineInfo(await service.getEngineInfo());
         }
       } catch { /* try again on the next tick */ }
@@ -253,7 +254,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (service.isDemo) return;
     service.setShortcuts(JSON.parse(shortcutsKey)).catch((e: unknown) => {
-      toast.error(e instanceof Error ? e.message : 'Could not register that shortcut');
+      toast.error(e instanceof Error ? e.message : t('shell.shortcutFailed'));
     });
   }, [service, shortcutsKey]);
 
@@ -266,9 +267,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       try {
         const text = (await service.readClipboard()).trim();
         if (text) addLinks([text]);
-        else toast('Nothing on the clipboard to add');
+        else toast(t('shell.clipboardEmpty'));
       } catch {
-        toast.error('Could not read the clipboard');
+        toast.error(t('shell.clipboardFailed'));
       }
     }
   }), [service, pauseAll, addLinks]);
@@ -292,7 +293,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!isTauri() || !live) return;
       const { playOpenedMedia } = await import('@/lib/player-window');
       const { listen } = await import('@tauri-apps/api/event');
-      const play = () => playOpenedMedia().catch((e) => toast.error(`Couldn't play that file: ${e instanceof Error ? e.message : e}`));
+      const play = () => playOpenedMedia().catch((e) => toast.error(t('shell.playFailed', { error: e instanceof Error ? e.message : String(e) })));
       unlisten = await listen('open-media-file', play);
       if (!live) { unlisten(); return; }
       play();
@@ -343,7 +344,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {dragging && (
         <div aria-hidden="true" className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-background/70 border-2 border-dashed border-primary/60 rounded-xl m-2">
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card border border-border/60 text-sm font-medium text-primary">
-            <Plus className="w-4 h-4" /> Drop to add links, .torrent files or a list
+            <Plus className="w-4 h-4" /> {t('shell.dropToAdd')}
           </div>
         </div>
       )}

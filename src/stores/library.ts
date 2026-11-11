@@ -1,12 +1,13 @@
 import type { HistoryItem, LibrarySort } from '@/types/models';
+import { t } from '@/i18n';
 
 /** The orderings offered, with their labels — the same shape as FILTERS and
  * SORTS in stores/transfers.ts, so the two pages stay recognisably alike. */
 export const LIBRARY_SORTS: { id: LibrarySort; label: string }[] = [
-  { id: 'newest', label: 'Newest first' },
-  { id: 'oldest', label: 'Oldest first' },
-  { id: 'title', label: 'Title' },
-  { id: 'size', label: 'Largest first' },
+  { id: 'newest', label: t('library.sorts.newestFirst') },
+  { id: 'oldest', label: t('library.sorts.oldestFirst') },
+  { id: 'title', label: t('library.sorts.title') },
+  { id: 'size', label: t('library.sorts.largestFirst') },
 ];
 
 // Pure ordering for the Library page, kept out of the component the same way

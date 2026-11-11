@@ -6,19 +6,10 @@ in-app updater notes. This comment block is invisible in rendered markdown.
 
 ## What's New
 
-### Fixes
+### Under the hood
 
-- **No more crash after using the player with AirPods (macOS).** After you
-  played something on AirPods, Prism could quit unexpectedly the next time your
-  audio device changed, such as when you took them out, even with the player
-  long closed.
-- **Updated SQLite.** The library Prism stores its data with is now a version
-  that includes a recent upstream security fix.
-
-### Interface
-
-- **A new About window.** About Prism now opens a window in Prism's own design,
-  with the version, an update check, and links to release notes, bug reports
-  and licenses.
-- **Steadier Transfers.** The stats under a running download stay on one line
-  instead of making the row jump, and the peers table now fits its panel.
+- **Ready for other languages.** Every piece of text in Prism, from buttons
+  and messages to menus and notifications, now comes from one place, so
+  Prism can be translated. It's still English only for now.
+- **Better wording for single items.** Counts read properly: "1 peer",
+  "1 subscription", "Remove 1 download?" instead of "1 peers" and similar.

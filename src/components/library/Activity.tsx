@@ -6,15 +6,16 @@ import { topBy, engineTotals, periodTotals, chartBuckets, ACTIVITY_PERIODS, type
 import { ConfirmDialog } from '@/components/common';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle, Ban, HardDrive, ArrowUpFromLine, ChevronRight, BarChart3 } from 'lucide-react';
+import { t, locale } from '@/i18n';
 
 // Charts are drawn by hand, the way the player's speed graph is: a handful of
 // bars doesn't justify a charting library, and these stay in step with the
 // app's own colours for free.
 
 const ENGINE_LABELS: Record<StatsEngine, string> = {
-  ytdlp: 'Video sites',
-  torrent: 'Torrents',
-  direct: 'Direct files',
+  ytdlp: t('library.activity.engines.ytdlp'),
+  torrent: t('library.activity.engines.torrent'),
+  direct: t('library.activity.engines.direct'),
 };
 
 function when(iso: string): string {
@@ -87,11 +88,11 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
   const finished = stats.completed + stats.failed + stats.canceled;
 
   const summary = finished === 0
-    ? 'Nothing has finished downloading yet'
-    : `${stats.completed.toLocaleString()} completed · ${formatBytes(stats.bytes)} since ${when(stats.since)}`;
+    ? t('library.activity.nothingYet')
+    : t('library.activity.summary', { completed: stats.completed.toLocaleString(locale()), size: formatBytes(stats.bytes), since: when(stats.since) });
 
   return (
-    <section aria-label="Activity" className="mb-4 rounded-xl border border-border/30 bg-card/40">
+    <section aria-label={t('library.activity.title')} className="mb-4 rounded-xl border border-border/30 bg-card/40">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -99,13 +100,13 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
         className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <BarChart3 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-        <span className="font-medium text-foreground">Activity</span>
+        <span className="font-medium text-foreground">{t('library.activity.title')}</span>
         <span className="truncate tabular-nums">{summary}</span>
         <ChevronRight className={`w-3.5 h-3.5 ml-auto shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
       </button>
       {open && (
       <div className="px-3 pb-3">
-      <div className="flex items-center gap-1 mb-3 flex-wrap" role="radiogroup" aria-label="Period">
+      <div className="flex items-center gap-1 mb-3 flex-wrap" role="radiogroup" aria-label={t('library.activity.period')}>
         {ACTIVITY_PERIODS.map(p => (
           <button
             key={String(p.value)}
@@ -126,16 +127,16 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
           onClick={() => setConfirmReset(true)}
           className="ml-auto px-2.5 py-1 rounded-lg text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors"
         >
-          Reset statistics…
+          {t('library.activity.reset')}
         </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-        <Tile icon={HardDrive} label={`Downloaded · ${periodLabel}`} value={formatBytes(inPeriod.bytes)} />
-        <Tile icon={CheckCircle2} label={`Completed · ${periodLabel}`} value={inPeriod.items.toLocaleString()} />
+        <Tile icon={HardDrive} label={t('library.activity.downloaded', { period: periodLabel })} value={formatBytes(inPeriod.bytes)} />
+        <Tile icon={CheckCircle2} label={t('library.activity.completed', { period: periodLabel })} value={inPeriod.items.toLocaleString(locale())} />
         {/* Only completions are kept per day, so these two are lifetime figures. */}
-        <Tile icon={XCircle} label="Failed · all time" value={stats.failed.toLocaleString()} />
-        <Tile icon={Ban} label="Cancelled · all time" value={stats.canceled.toLocaleString()} />
+        <Tile icon={XCircle} label={t('library.activity.failedAllTime')} value={stats.failed.toLocaleString(locale())} />
+        <Tile icon={Ban} label={t('library.activity.canceledAllTime')} value={stats.canceled.toLocaleString(locale())} />
       </div>
 
       {/* Upload is a torrent figure, and only ever counted live — nothing in
@@ -145,9 +146,9 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
         <div className="mb-4">
           <Tile
             icon={ArrowUpFromLine}
-            label="Uploaded (torrents)"
+            label={t('library.activity.uploaded')}
             value={formatBytes(stats.uploadedBytes)}
-            hint={`Counted from ${when(stats.uploadedSince)} — earlier uploads weren't recorded`}
+            hint={t('library.activity.uploadedHint', { since: when(stats.uploadedSince) })}
           />
         </div>
       )}
@@ -155,14 +156,14 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
       <Panel className="mb-4">
         <h3 className="text-xs font-semibold text-foreground mb-2">{period === 'all' ? 'All time, by month' : period === 365 ? 'Last year, by month' : `Last ${periodLabel}`}</h3>
         {inPeriod.bytes === 0 ? (
-          <p className="text-xs text-muted-foreground">Finished downloads will show up here.</p>
+          <p className="text-xs text-muted-foreground">{t('library.activity.chartEmpty')}</p>
         ) : (
           <>
-            <div className="flex items-end gap-[2px] h-24" role="img" aria-label={`Bytes downloaded, ${periodLabel}`}>
+            <div className="flex items-end gap-[2px] h-24" role="img" aria-label={t('library.activity.chartLabel', { period: periodLabel })}>
               {days.map(d => (
                 <div
                   key={d.label}
-                  title={`${d.label}: ${formatBytes(d.bytes)} · ${d.items} item${d.items === 1 ? '' : 's'}`}
+                  title={t('library.activity.bar', { label: d.label, size: formatBytes(d.bytes), count: d.items })}
                   className="flex-1 rounded-t bg-primary/60 hover:bg-primary transition-colors"
                   style={{ height: `${Math.max(d.bytes > 0 ? 4 : 1, (d.bytes / busiest) * 100)}%` }}
                 />
@@ -178,39 +179,38 @@ export function ActivityPanel({ defaultOpen = false }: { defaultOpen?: boolean }
 
       <div className="grid md:grid-cols-2 gap-3">
         <Panel>
-          <h3 className="text-xs font-semibold text-foreground mb-2">By engine · all time</h3>
+          <h3 className="text-xs font-semibold text-foreground mb-2">{t('library.activity.byEngine')}</h3>
           <BarList
             rows={engines
               .filter(e => e.items > 0)
               .map(e => ({ key: ENGINE_LABELS[e.engine], items: e.items, bytes: e.bytes }))}
-            empty="Nothing finished yet."
+            empty={t('library.activity.engineEmpty')}
           />
         </Panel>
 
         <Panel>
-          <h3 className="text-xs font-semibold text-foreground mb-2">By site · all time</h3>
-          <BarList rows={sites} empty="Sites appear once downloads finish." />
+          <h3 className="text-xs font-semibold text-foreground mb-2">{t('library.activity.bySite')}</h3>
+          <BarList rows={sites} empty={t('library.activity.siteEmpty')} />
         </Panel>
       </div>
 
       {categories.length > 0 && (
         <Panel className="mt-3">
-          <h3 className="text-xs font-semibold text-foreground mb-2">By category · all time</h3>
+          <h3 className="text-xs font-semibold text-foreground mb-2">{t('library.activity.byCategory')}</h3>
           <BarList rows={categories} empty="" />
         </Panel>
       )}
 
       <p className="text-xs text-muted-foreground mt-4 px-1">
-        These counters are kept separately from the Library, so removing entries from the Library
-        doesn't change the totals above.
+        {t('library.activity.footnote')}
       </p>
       </div>
       )}
       <ConfirmDialog
         open={confirmReset}
         onOpenChange={setConfirmReset}
-        title="Reset statistics?"
-        description="Every counter starts again from zero today. Your Library and your files are not touched, and downloads already finished aren't counted again."
+        title={t('library.activity.resetTitle')}
+        description={t('library.activity.resetDescription')}
         confirmLabel="Reset"
         destructive
         onConfirm={() => { resetStats(); setConfirmReset(false); }}

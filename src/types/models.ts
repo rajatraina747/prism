@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 export type DownloadStatus =
   | 'queued'
   | 'parsing'
@@ -306,12 +307,12 @@ export interface DownloadError {
 export type DefaultQuality = 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p';
 
 export const QUALITY_CHOICES: { value: DefaultQuality; label: string }[] = [
-  { value: 'best', label: 'Best available' },
-  { value: '2160p', label: '4K (2160p)' },
+  { value: 'best', label: t('common.quality.bestAvailable') },
+  { value: '2160p', label: t('common.quality.n4k2160p') },
   { value: '1440p', label: '1440p' },
-  { value: '1080p', label: '1080p (Full HD)' },
+  { value: '1080p', label: t('common.quality.n1080pFullHd') },
   { value: '720p', label: '720p' },
-  { value: '480p', label: '480p (smaller files)' },
+  { value: '480p', label: t('common.quality.n480pSmallerFiles') },
 ];
 
 /** How the videos in a list or batch are downloaded. */

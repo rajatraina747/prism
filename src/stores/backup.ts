@@ -1,5 +1,6 @@
 import type { AppPreferences, HistoryItem, Subscription } from '@/types/models';
 import { migrateSettings } from '@/stores/settings-migrations';
+import { t } from '@/i18n';
 
 // Settings, Library and subscriptions in one file (`prism-export-v1`), to move
 // Prism to another Mac or keep a copy. Pure, so what goes in and what comes
@@ -61,13 +62,13 @@ export function parseBackup(text: string): ParsedBackup {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "That file isn't a Prism backup (it isn't valid JSON)." };
+    return { ok: false, error: t('settings.backup.notJson') };
   }
   if (!isObject(raw) || raw.format !== BACKUP_FORMAT) {
-    return { ok: false, error: "That file isn't a Prism backup." };
+    return { ok: false, error: t('settings.backup.notBackup') };
   }
   if (typeof raw.version !== 'number' || raw.version > BACKUP_VERSION) {
-    return { ok: false, error: 'That backup is from a newer Prism. Update Prism, then import it.' };
+    return { ok: false, error: t('settings.backup.newer') };
   }
   const history = Array.isArray(raw.history)
     ? raw.history.filter((h): h is HistoryItem => isObject(h) && typeof h.id === 'string' && typeof h.completedAt === 'string' && isObject(h.metadata))
