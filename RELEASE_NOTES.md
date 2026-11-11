@@ -12,6 +12,8 @@ in-app updater notes. This comment block is invisible in rendered markdown.
   played something on AirPods, Prism could quit unexpectedly the next time your
   audio device changed, such as when you took them out, even with the player
   long closed.
+- **Updated SQLite.** The library Prism stores its data with is now a version
+  that includes a recent upstream security fix.
 
 ### Interface
 
