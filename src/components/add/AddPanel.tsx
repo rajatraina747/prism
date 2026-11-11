@@ -114,7 +114,7 @@ export function AddPanel() {
   // Offer to fetch video URLs found on the clipboard when the app regains
   // focus — a user-controlled setting, since it means reading the clipboard.
   useClipboardWatcher(useCallback((url: string) => {
-    toast('Video link on clipboard', {
+    toast(t('add.panel.clipboardLink'), {
       description: url,
       action: { label: t('add.panel.fetch'), onClick: () => handleUrlSubmitRef.current(url) },
       duration: 8000,
@@ -126,8 +126,8 @@ export function AddPanel() {
     // Skip an exact re-add of something already downloading; warn (but allow) a
     // re-download of something already in history.
     const dup = findDuplicate(url, queueItems, historyItems);
-    if (dup === 'queue') { toast.warning('That’s already in your queue'); return; }
-    if (dup === 'completed') { toast.info('You’ve downloaded this before — fetching again'); }
+    if (dup === 'queue') { toast.warning(t('add.panel.alreadyQueued')); return; }
+    if (dup === 'completed') { toast.info(t('add.panel.downloadedBefore')); }
     // Direct file links (disk images, archives, documents) skip yt-dlp and go
     // straight to the queue.
     if (isDirectFileUrl(url)) {
@@ -137,7 +137,7 @@ export function AddPanel() {
         preferences.bandwidthLimit > 0 ? preferences.bandwidthLimit * 1024 * 1024 : undefined,
       );
       addToQueue(item);
-      toast.success(`Added ${item.metadata.title}`);
+      toast.success(t('add.panel.added', { title: item.metadata.title }));
       return;
     }
     // Torrents skip yt-dlp entirely. Fetch the file list first so the user can
@@ -155,7 +155,7 @@ export function AddPanel() {
         .catch((err) => {
           if (torrentParseIdRef.current !== parseId) return; // superseded — ignore
           setShowTorrentModal(false);
-          toast.error(typeof err === 'string' ? err : (err?.message || 'Could not read torrent'));
+          toast.error(typeof err === 'string' ? err : (err?.message || t('add.panel.torrentUnreadable')));
         });
       return;
     }
@@ -185,13 +185,13 @@ export function AddPanel() {
           return;
         }
         if (entries.length === 0) {
-          setParseError({ message: 'That list has no videos Prism can download' });
+          setParseError({ message: t('add.panel.emptyList') });
           return;
         }
         // A list of one is that one video.
         found = await service.inspectUrl(entries[0].url);
         if (found.kind !== 'video') {
-          setParseError({ message: 'Couldn’t read that link' });
+          setParseError({ message: t('add.panel.linkUnreadable') });
           return;
         }
       }
@@ -205,14 +205,14 @@ export function AddPanel() {
       // lookup has named it (extractor + the site's own id), ask again.
       if (dup === null) {
         const again = findMediaDuplicate(metadata.mediaKey, queueItems, historyItems);
-        if (again === 'queue') { toast.warning('That’s already in your queue'); return; }
-        if (again === 'completed') toast.info('You’ve downloaded this before — fetching again');
+        if (again === 'queue') { toast.warning(t('add.panel.alreadyQueued')); return; }
+        if (again === 'completed') toast.info(t('add.panel.downloadedBefore'));
       }
       setParsedMetadata(metadata);
       setShowMediaModal(true);
     } catch (err: unknown) {
       // Tauri commands reject with a structured EngineError; the web demo throws Errors.
-      setParseError(errorText(err, 'Failed to parse URL'));
+      setParseError(errorText(err, t('add.panel.parseFailed')));
     } finally {
       setIsParsing(false);
     }
@@ -224,7 +224,7 @@ export function AddPanel() {
     try {
       const probe = await service.probeDirectLink(url, referrerFor(url));
       if (probe.contentType?.toLowerCase().startsWith('text/html')) {
-        toast.error('That link opens a web page, not a file');
+        toast.error(t('add.panel.webPage'));
         return;
       }
       setParseError(null);
@@ -236,9 +236,9 @@ export function AddPanel() {
       );
       if (probe.size) item.totalBytes = probe.size;
       addToQueue(item);
-      toast.success(`Added ${item.metadata.title}`);
+      toast.success(t('add.panel.added', { title: item.metadata.title }));
     } catch (err) {
-      toast.error(errorText(err, 'Could not read that link').message);
+      toast.error(errorText(err, t('add.panel.readFailed')).message);
     }
   }, [service, preferences.defaultSaveFolder, preferences.bandwidthLimit, addToQueue]);
   downloadAsFileRef.current = downloadAsFile;
@@ -386,7 +386,7 @@ export function AddPanel() {
     addToQueue(item);
     setParsedMetadata(null);
     setQueuedCount(n => n + 1);
-    toast.success(`Added to queue: ${item.metadata.title}`, {
+    toast.success(t('add.panel.addedToQueue', { title: item.metadata.title }), {
       action: { label: t('add.panel.viewQueue'), onClick: () => navigate('/queue') },
     });
     // Remember the quality picked on this site for next time. Key through
@@ -404,7 +404,7 @@ export function AddPanel() {
     const allSelected = torrentFiles ? indices.length === torrentFiles.length : true;
     const item = buildTorrentItem(torrentUrl, preferences.defaultSaveFolder, allSelected ? undefined : indices);
     addToQueue(item);
-    toast.success(`Added torrent: ${item.metadata.title}`);
+    toast.success(t('add.panel.addedTorrent', { title: item.metadata.title }));
     torrentParseIdRef.current++; // invalidate any in-flight parse
     setShowTorrentModal(false);
     setTorrentFiles(null);
@@ -467,7 +467,7 @@ export function AddPanel() {
           <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-foreground">
-              Parsing batch… {batchProgress.done} / {batchProgress.total}
+              {t('add.panel.batchProgress', { done: batchProgress.done, total: batchProgress.total })}
             </p>
             <div className="mt-1.5 w-full h-1 rounded-full bg-secondary overflow-hidden">
               <div
@@ -480,7 +480,7 @@ export function AddPanel() {
             onClick={() => { abortBulkRef.current = true; }}
             className="shrink-0 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors active:scale-[0.97]"
           >
-            Stop
+            {t('add.panel.stop')}
           </button>
         </div>
       )}
@@ -508,10 +508,10 @@ export function AddPanel() {
         <DialogContent className="glass-strong max-w-sm border-border/40 bg-card/95">
           <DialogHeader>
             <DialogTitle className="text-base">
-              Add {pendingBatch?.length ?? 0} link{pendingBatch?.length === 1 ? '' : 's'}
+              {t('add.panel.addLinks', { count: pendingBatch?.length ?? 0 })}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Choose how to download the videos. Torrents and file links are added as they are.
+              {t('add.panel.batchHint')}
             </DialogDescription>
           </DialogHeader>
           <BatchOptions value={batchChoice} onChange={setBatchChoice} />
@@ -521,7 +521,7 @@ export function AddPanel() {
               onClick={() => setPendingBatch(null)}
               className="px-4 py-2 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -531,7 +531,7 @@ export function AddPanel() {
               }}
               className="px-4 py-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
             >
-              Add {pendingBatch?.length ?? 0}
+              {t('add.sheet.addMany', { count: pendingBatch?.length ?? 0 })}
             </button>
           </div>
         </DialogContent>
@@ -541,9 +541,9 @@ export function AddPanel() {
       <Dialog open={!!listChoice} onOpenChange={(open) => { if (!open) setListChoice(null); }}>
         <DialogContent className="glass-strong max-w-sm border-border/40 bg-card/95">
           <DialogHeader>
-            <DialogTitle className="text-base">This link is part of a playlist</DialogTitle>
+            <DialogTitle className="text-base">{t('add.panel.inPlaylist')}</DialogTitle>
             <DialogDescription className="text-xs">
-              Download just this video, or import the whole playlist?
+              {t('add.panel.inPlaylistHint')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-1">
@@ -555,7 +555,7 @@ export function AddPanel() {
               }}
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.98]"
             >
-              <Film className="w-3.5 h-3.5" /> Just this video
+              <Film className="w-3.5 h-3.5" /> {t('add.panel.justThis')}
             </button>
             <button
               onClick={() => {
@@ -565,7 +565,7 @@ export function AddPanel() {
               }}
               className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.98]"
             >
-              <ListMusic className="w-3.5 h-3.5" /> Whole playlist
+              <ListMusic className="w-3.5 h-3.5" /> {t('add.panel.wholePlaylist')}
             </button>
           </div>
         </DialogContent>
@@ -577,10 +577,10 @@ export function AddPanel() {
         <DialogContent className="glass-strong max-w-md border-border/40 bg-card/95">
           <DialogHeader>
             <DialogTitle className="text-base">
-              {pendingExternalLink && isTorrentUrl(pendingExternalLink) ? 'Add this torrent?' : 'Download from this link?'}
+              {pendingExternalLink && isTorrentUrl(pendingExternalLink) ? t('add.panel.externalTorrent') : t('add.panel.externalLink')}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              A web page or another app sent this to Prism. Nothing is fetched until you choose Add.
+              {t('add.panel.externalHint')}
             </DialogDescription>
           </DialogHeader>
           {pendingExternalLink && (
@@ -593,11 +593,11 @@ export function AddPanel() {
                 // Sent as the Referer with this download: the page said it came
                 // from here, so show it (REVIEW 2026-09-28).
                 <p className="text-xs text-muted-foreground truncate">
-                  From the page: {referrerFor(pendingExternalLink)}
+                  {t('add.panel.fromPage', { page: referrerFor(pendingExternalLink) })}
                 </p>
               )}
               {externalLinks.length > 1 && (
-                <p className="text-xs text-muted-foreground">{externalLinks.length - 1} more waiting</p>
+                <p className="text-xs text-muted-foreground">{t('add.panel.moreWaiting', { count: externalLinks.length - 1 })}</p>
               )}
             </div>
           )}
@@ -606,13 +606,13 @@ export function AddPanel() {
               onClick={() => settleExternalLink(false)}
               className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors active:scale-[0.97]"
             >
-              Ignore
+              {t('add.panel.ignore')}
             </button>
             <button
               onClick={() => settleExternalLink(true)}
               className="px-3 py-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors active:scale-[0.97]"
             >
-              Add
+              {t('add.sheet.add')}
             </button>
           </div>
         </DialogContent>

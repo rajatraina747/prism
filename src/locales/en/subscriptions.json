@@ -12,5 +12,32 @@
     "downloadOptions": "Download options",
     "checkNow": "Check now",
     "unsubscribe": "Unsubscribe"
-  }
+  },
+  "sortAuto": "Sort automatically",
+  "saveTo": "Save to",
+  "useDefault": "Use default",
+  "optionsNote": "These apply to new videos. Keywords match the title and the link, ignoring case. A video they turn down is still remembered, so changing them later won't pull in the back catalogue.",
+  "to": "To {{folder}}",
+  "relative": {
+    "never": "never",
+    "now": "just now",
+    "minutes": "{{n}}m ago",
+    "hours": "{{n}}h ago",
+    "days": "{{n}}d ago"
+  },
+  "unsubscribed": "Unsubscribed from {{title}}",
+  "unreadable": "Could not read this URL as a channel, playlist, or feed",
+  "checkRunning": "A check is already running",
+  "checkAll": "Check All Now",
+  "alreadyAdding": "Already adding this feed",
+  "pasteFirst": "Paste a feed link first",
+  "adding": "Adding…",
+  "subscribe": "Subscribe",
+  "onlyNew": "Only videos published after you subscribe are downloaded — the existing catalog is marked as seen.",
+  "checked": "Checked {{when}}",
+  "filtered": "Filtered",
+  "toVideo": "Switch to video downloads",
+  "toAudio": "Switch to audio-only downloads",
+  "pause": "Pause subscription",
+  "resume": "Resume subscription"
 }

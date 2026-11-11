@@ -57,17 +57,17 @@ const ASPECTS = ['-1', '16:9', '4:3', '21:9', '2.39:1', '1:1'] as const;
 
 /** Everything the keyboard does, for the ? sheet. */
 const SHORTCUTS: [string, string][] = [
-  ['Space', 'Play / pause'],
-  ['← / →', 'Back / forward 5 seconds'],
-  [', / .', 'One frame back / forward'],
-  ['↑ / ↓', 'Volume up / down'],
-  ['M', 'Mute'],
-  ['F', 'Full screen'],
-  ['N / P', 'Next / previous file in the folder'],
-  ['L', 'A-B loop: set start, set end, clear'],
-  ['A', 'Cycle the picture shape'],
-  ['S', 'Screenshot to Pictures/Prism'],
-  ['?', 'Show these shortcuts'],
+  ['Space', t('player.shortcuts.playPause')],
+  ['← / →', t('player.shortcuts.seek')],
+  [', / .', t('player.shortcuts.frame')],
+  ['↑ / ↓', t('player.shortcuts.volume')],
+  ['M', t('player.shortcuts.mute')],
+  ['F', t('player.shortcuts.fullscreen')],
+  ['N / P', t('player.shortcuts.nextPrev')],
+  ['L', t('player.shortcuts.loop')],
+  ['A', t('player.shortcuts.shape')],
+  ['S', t('player.shortcuts.screenshot')],
+  ['?', t('player.shortcuts.help')],
 ];
 
 interface MpvTrack {
@@ -94,11 +94,11 @@ interface VideoParams {
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 
-function trackLabel(t: MpvTrack): string {
-  const parts = [t.title, t.lang?.toUpperCase()].filter(Boolean);
-  const label = parts.join(' · ') || `Track ${t.id}`;
-  const ch = t['demux-channel-count'];
-  return ch && ch > 2 ? `${label} (${ch}ch)` : label;
+function trackLabel(track: MpvTrack): string {
+  const parts = [track.title, track.lang?.toUpperCase()].filter(Boolean);
+  const label = parts.join(' · ') || t('player.track', { id: track.id });
+  const ch = track['demux-channel-count'];
+  return ch && ch > 2 ? t('player.trackChannels', { label, ch }) : label;
 }
 
 export default function Player() {
@@ -113,7 +113,7 @@ export default function Player() {
   const [speed, setSpeed] = useState(1);
   const [tracks, setTracks] = useState<MpvTrack[]>([]);
   const [videoParams, setVideoParams] = useState<VideoParams | null>(null);
-  const [title, setTitle] = useState('Prism Player');
+  const [title, setTitle] = useState(t('player.windowTitle'));
   const [eof, setEof] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -477,7 +477,7 @@ export default function Player() {
       <div className="fixed inset-0 bg-black text-white flex items-center justify-center p-8">
         <div className="max-w-md text-center space-y-3">
           <AlertTriangle className="w-8 h-8 mx-auto text-amber-400" />
-          <h1 className="text-sm font-semibold">The player engine failed to start</h1>
+          <h1 className="text-sm font-semibold">{t('player.failed')}</h1>
           <p className="text-xs text-white/70 break-words">{initError}</p>
           {/* A reinstall only helps when the library is missing; see
               lib/player-failure.ts. */}
@@ -508,7 +508,7 @@ export default function Player() {
           aria-label={t('player.page.keyboardShortcuts')}
         >
           <div className="rounded-xl bg-black/85 border border-white/15 p-5 min-w-80" onClick={e => e.stopPropagation()}>
-            <h2 className="text-sm font-semibold text-white mb-3">Keyboard shortcuts</h2>
+            <h2 className="text-sm font-semibold text-white mb-3">{t('player.shortcutsTitle')}</h2>
             <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-xs">
               {SHORTCUTS.map(([k, what]) => (
                 <Fragment key={k}>
@@ -550,9 +550,9 @@ export default function Player() {
             <button
               onClick={() => { seek(0).catch(() => {}); setResumedFrom(null); }}
               className="shrink-0 pointer-events-auto text-xs px-1.5 py-0.5 rounded bg-white/15 text-white/90 hover:bg-white/25 transition-colors"
-              title={`Resumed from ${formatDuration(resumedFrom)}`}
+              title={t('player.resumed', { time: formatDuration(resumedFrom) })}
             >
-              Resumed from {formatDuration(resumedFrom)} · Start over
+              {t('player.resumedStartOver', { time: formatDuration(resumedFrom) })}
             </button>
           )}
           {isHdr && (
@@ -605,15 +605,15 @@ export default function Player() {
           <button
             onClick={togglePause}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title={eof ? 'Replay' : paused ? 'Play' : 'Pause'}
-            aria-label={eof ? 'Replay' : paused ? 'Play' : 'Pause'}
+            title={eof ? t('player.replay') : paused ? t('player.play') : t('queue.pause')}
+            aria-label={eof ? t('player.replay') : paused ? t('player.play') : t('queue.pause')}
           >
             {eof ? <RotateCcw className="w-5 h-5" /> : paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
 
           {playlistCount > 1 && (
             <>
-              <DisabledReason reason={hasPrev ? null : 'This is the first file in the folder'}>
+              <DisabledReason reason={hasPrev ? null : t('player.firstFile')}>
                 <button
                   onClick={() => step(false)}
                   disabled={!hasPrev}
@@ -627,7 +627,7 @@ export default function Player() {
               <span className="text-xs tabular-nums text-white/80" title={t('player.page.filesInThisFolder')}>
                 {(playlistPos ?? 0) + 1}/{playlistCount}
               </span>
-              <DisabledReason reason={hasNext ? null : 'This is the last file in the folder'}>
+              <DisabledReason reason={hasNext ? null : t('player.lastFile')}>
                 <button
                   onClick={() => step(true)}
                   disabled={!hasNext}
@@ -676,8 +676,8 @@ export default function Player() {
             <button
               onClick={() => setProp('mute', muted ? 'no' : 'yes').catch(() => {})}
               className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-              title={muted ? 'Unmute' : 'Mute'}
-              aria-label={muted ? 'Unmute' : 'Mute'}
+              title={muted ? t('player.unmute') : t('player.shortcuts.mute')}
+              aria-label={muted ? t('player.unmute') : t('player.shortcuts.mute')}
             >
               {muted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
@@ -696,7 +696,7 @@ export default function Player() {
 
           {audioTracks.length > 0 && (
             <label className="flex items-center gap-1 text-xs text-white/80">
-              Audio
+              {t('library.tabs.audio')}
               <select
                 value={audioTracks.find((t) => t.selected)?.id ?? ''}
                 onChange={(e) => setProp('aid', e.target.value).catch(() => {})}
@@ -716,7 +716,7 @@ export default function Player() {
                   −
                 </button>
                 <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.audioDelaySync')}>
-                  {audioDelay.toFixed(1)}s
+                  {t('player.seconds', { n: audioDelay.toFixed(1) })}
                 </span>
                 <button
                   onClick={() => setProp('audio-delay', Math.min(10, Number((audioDelay + 0.1).toFixed(1)))).catch(() => {})}
@@ -731,7 +731,7 @@ export default function Player() {
           )}
 
           <label className="flex items-center gap-1 text-xs text-white/80">
-            Subs
+            {t('player.subs')}
             {subTracks.length > 0 && (
               <select
                 value={subVisible ? (subTracks.find((t) => t.selected)?.id ?? 'no') : 'no'}
@@ -743,7 +743,7 @@ export default function Player() {
                 }}
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-36"
               >
-                <option value="no">Off</option>
+                <option value="no">{t('player.off')}</option>
                 {subTracks.map((t) => (
                   <option key={t.id} value={t.id}>{trackLabel(t)}</option>
                 ))}
@@ -762,7 +762,7 @@ export default function Player() {
                 className="bg-black/60 border border-white/20 rounded px-1 py-0.5 text-xs text-white max-w-28"
                 aria-label={t('player.page.subtitlesFoundNextToThis')}
               >
-                <option value="">Nearby…</option>
+                <option value="">{t('player.nearby')}</option>
                 {siblingSubs.map((p) => (
                   <option key={p} value={p}>{p.split('/').pop()}</option>
                 ))}
@@ -787,7 +787,7 @@ export default function Player() {
                   −
                 </button>
                 <span className="tabular-nums text-white/70 w-10 text-center" title={t('player.page.subtitleDelay')}>
-                  {subDelay.toFixed(1)}s
+                  {t('player.seconds', { n: subDelay.toFixed(1) })}
                 </span>
                 <button
                   onClick={() => setProp('sub-delay', Math.min(60, Number((subDelay + 0.5).toFixed(1)))).catch(() => {})}
@@ -826,8 +826,8 @@ export default function Player() {
           <button
             onClick={toggleMini}
             className={`p-1.5 rounded-md hover:bg-white/15 transition-colors ${mini ? 'bg-white/20' : ''}`}
-            title={mini ? 'Leave mini player' : 'Mini player'}
-            aria-label={mini ? 'Leave mini player' : 'Mini player'}
+            title={mini ? t('player.leaveMini') : t('player.mini')}
+            aria-label={mini ? t('player.leaveMini') : t('player.mini')}
             aria-pressed={mini}
           >
             <PictureInPicture2 className="w-4 h-4" />
@@ -836,8 +836,8 @@ export default function Player() {
           <button
             onClick={toggleFullscreen}
             className="p-1.5 rounded-md hover:bg-white/15 transition-colors"
-            title={fullscreen ? 'Exit full screen' : 'Full screen'}
-            aria-label={fullscreen ? 'Exit full screen' : 'Full screen'}
+            title={fullscreen ? t('player.exitFullscreen') : t('player.shortcuts.fullscreen')}
+            aria-label={fullscreen ? t('player.exitFullscreen') : t('player.shortcuts.fullscreen')}
           >
             {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>

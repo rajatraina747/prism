@@ -21,5 +21,37 @@
     "subtitlesLater": "Subtitles later",
     "playbackSpeed": "Playback speed",
     "openFile": "Open file…"
-  }
+  },
+  "shortcuts": {
+    "playPause": "Play / pause",
+    "seek": "Back / forward 5 seconds",
+    "frame": "One frame back / forward",
+    "volume": "Volume up / down",
+    "mute": "Mute",
+    "fullscreen": "Full screen",
+    "nextPrev": "Next / previous file in the folder",
+    "loop": "A-B loop: set start, set end, clear",
+    "shape": "Cycle the picture shape",
+    "screenshot": "Screenshot to Pictures/Prism",
+    "help": "Show these shortcuts"
+  },
+  "track": "Track {{id}}",
+  "trackChannels": "{{label}} ({{ch}}ch)",
+  "windowTitle": "Prism Player",
+  "failed": "The player engine failed to start",
+  "shortcutsTitle": "Keyboard shortcuts",
+  "resumed": "Resumed from {{time}}",
+  "resumedStartOver": "Resumed from {{time}} · Start over",
+  "replay": "Replay",
+  "play": "Play",
+  "firstFile": "This is the first file in the folder",
+  "lastFile": "This is the last file in the folder",
+  "unmute": "Unmute",
+  "seconds": "{{n}}s",
+  "subs": "Subs",
+  "off": "Off",
+  "nearby": "Nearby…",
+  "leaveMini": "Leave mini player",
+  "mini": "Mini player",
+  "exitFullscreen": "Exit full screen"
 }
